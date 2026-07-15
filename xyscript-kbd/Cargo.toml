@@ -1,0 +1,42 @@
+[package]
+name = "xyscript-kbd"
+version = "0.1.0"
+edition = "2021"
+# MSRV: a modern floor — the `comrak` dependency tree (in the app crate) pushed
+# the workspace past 1.86 today; 1.88 is the shared declared minimum. Latest
+# stable is recommended (developed on 1.96).
+rust-version = "1.88"
+description = "XyScript keyboard layer prototype: data-driven .KBD modifier model with cross-platform non-exclusive interception."
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "xykbd"
+path = "src/main.rs"
+
+[lib]
+name = "xyscript_kbd"
+path = "src/lib.rs"
+
+# ---------------------------------------------------------------------------
+# The headless engine (parser, modifier model, lookup, dual-role state machine,
+# injection channel) has ZERO platform dependencies and compiles everywhere.
+# Only the interception layer in src/platform/* needs OS-specific crates, and
+# each is gated behind its target_os so the others never need to build.
+# ---------------------------------------------------------------------------
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# evdev gives non-exclusive read access to /dev/input/event* (no EVIOCGRAB).
+evdev = "0.12"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# WH_KEYBOARD_LL low-level hook + the message loop that drives it.
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# CGEventTap as a listen-but-don't-swallow tap; CFRunLoop drives it.
+core-foundation = "0.9"
+core-graphics = "0.23"

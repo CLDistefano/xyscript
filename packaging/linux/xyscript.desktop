@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=XyScript
+GenericName=Text Editor
+Comment=XyWrite-inspired programmable text editor
+Exec=xyscript %F
+Icon=xyscript
+Terminal=false
+Categories=Utility;TextEditor;Development;
+MimeType=text/plain;
+Keywords=editor;xywrite;xpl;script;
+StartupNotify=true
+StartupWMClass=xyscript

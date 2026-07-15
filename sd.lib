@@ -1,0 +1,60 @@
+# DOC: "Smart" DIR command.
+# Usage: sd file[,ext]   e.g.:  sd rep  sd rep,txt  sd /w rep
+SUB sd
+	IF NOT $1
+		DIR
+		RETURN
+	EI
+	LOCAL dcm n fnm ext farray spec swt hits hitcount row
+	SET dcm = "DIR"
+	SET swt = ""
+	SET fnm = $*
+	IF INDEX($fnm, "/") == 0 OR INDEX($fnm, "-") == 0
+		SET swt = $1
+		SET dcm = "DIR" . $swt
+		SET fnm = LSTRIP(REPLACE($fnm, $swt, ""))
+	EI
+	SET ext = "*"
+	IF NOT Contains($fnm, ",")
+		SET fnm = $fnm . "*"
+		GOTO :a
+	EI
+	SET fnm = REPLACE($fnm, " ", "")
+	SET farray = SPLIT($fnm, ",")
+	SET fnm = ""
+	SET n = 0
+	WHILE $n < Len($farray) - 1
+		SET fnm = $fnm . $farray[$n] . "*"
+		SET n += 1
+	ENDWHILE
+	IF Len($farray[$n]) > 0 SET ext = $farray[$n] . "*"
+	:a
+	SET spec = $fnm
+	SET spec = $spec . $ext
+	# DIR never sets $ERROR on an empty match, so count real hits instead: capture a
+	# bare listing and tally lines that aren't the ".." parent (always present).
+	CAPTURE hits DIR/B $spec
+	SET hitcount = 0
+	FOR row IN LINES($hits)
+		IF LEN(STRIP($row)) > 0 AND LEFT(STRIP($row), 2) != ".."
+			SET hitcount += 1
+		EI
+	ENDFOR
+	IF $hitcount > 0
+		RUNCODE $dcm $spec
+		PR Files matching $spec
+		RETURN
+	EI
+	IF LEN($ext) > 1
+		SET ext = TRIMRIGHT($ext, 2)
+		SET ext = $ext . "*"
+		GOTO :a
+	EI
+	IF LEN($fnm) > 2
+		SET fnm = TRIMRIGHT($fnm, 2)
+		IF SUBSTR($fnm, LEN($fnm) - 1, 1) != "*" SET fnm = $fnm . "*"
+		GOTO :a
+	ELSE
+		PR No matching files
+	EI
+ENDSUB

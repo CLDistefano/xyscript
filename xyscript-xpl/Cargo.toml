@@ -1,0 +1,28 @@
+[package]
+name = "xyscript-xpl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "XPL (XyScript Programming Language) interpreter: parse -> AST -> flat IR -> execute. Headless, no OS or GUI dependencies."
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "xyscript_xpl"
+path = "src/lib.rs"
+
+[features]
+# Compile in the email verbs (`SENDMAIL` + SMTP config), which the app implements by shelling out to
+# `curl`. Off by default; NOT part of the distributable tester build. See docs/email.md.
+email = []
+
+# The interpreter is deliberately dependency-free in Stage 1: the value model,
+# lexer, parser, IR, and executor are all hand-written. The owned regex engine
+# and any heavier crates are deferred (see stage1-interpreter-plan.md §12).
+[dependencies]
+
+# The keyboard layer is a DEV-dependency only — used by the end-to-end seam test
+# (tests/end_to_end.rs) to drive the real resolver into the interpreter. The
+# library itself depends on nothing from xyscript-kbd (the seam is the Host
+# trait), preserving the no-cycle dependency direction (plan §2).
+[dev-dependencies]
+xyscript-kbd = { path = "../xyscript-kbd" }

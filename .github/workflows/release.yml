@@ -1,0 +1,111 @@
+name: Build binaries
+
+# Produces native XyScript GUI binaries on each OS's own runner (no cross-compiling — winit/wgpu/egui
+# and the macOS frameworks link cleanly only on their own platform). Triggered manually, or on a
+# version tag (`git tag v0.1.0 && git push --tags`) which also attaches the binaries to a Release.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x86_64
+            bin: xyscript-gui
+            artifact: xyscript-linux-x86_64
+          - os: macos-14
+            name: macos-aarch64
+            bin: xyscript-gui
+            artifact: xyscript-macos-aarch64
+          - os: macos-13
+            name: macos-x86_64
+            bin: xyscript-gui
+            artifact: xyscript-macos-x86_64
+          - os: windows-latest
+            name: windows-x86_64
+            bin: xyscript-gui.exe
+            artifact: xyscript-windows-x86_64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # `xyscript-gui` is a detached workspace, so its build tree lives under xyscript-gui/target.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: xyscript-gui
+
+      # winit (X11/Wayland), wgpu (GL/Vulkan), rfd (portal/GTK), arboard, cosmic-text/fontconfig all
+      # need their dev headers on Linux. macOS/Windows get everything from the SDK.
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libgl1-mesa-dev \
+            libfontconfig1-dev
+
+      # Build from INSIDE xyscript-gui so its .cargo/config.toml applies (static MSVC CRT on Windows).
+      # `lint` = language checker, `email` = mail verbs — the same feature set as the shipped dist.
+      - name: Build (release, lint + email)
+        working-directory: xyscript-gui
+        run: cargo build --release --features lint,email
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staged
+          cp "xyscript-gui/target/release/${{ matrix.bin }}" "staged/${{ matrix.artifact }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: staged/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # On a version tag, gather every platform's binary and attach them to a GitHub Release.
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Attach binaries to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: true

@@ -1,0 +1,21 @@
+# XyScript workspace root.
+#
+# Member crates:
+#   xyscript-kbd — the keyboard layer (Stage 0; produces opaque XPL strings).
+#   xyscript-xpl — the XPL interpreter (Stage 1; executes those strings).
+#
+# xyscript-xpl depends on NOTHING from xyscript-kbd: the seam between them is a
+# trait (`Host`) the eventual app crate implements. This keeps the interpreter
+# fully headless-testable, mirroring the keyboard layer's discipline.
+[workspace]
+resolver = "2"
+members = [
+    "xyscript-kbd",
+    "xyscript-xpl",
+    "xyscript-app",
+]
+
+# Release tuning lives at the workspace root so it applies to every member
+# (Cargo ignores `[profile.*]` declared in non-root members).
+[profile.release]
+lto = true

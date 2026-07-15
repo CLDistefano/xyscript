@@ -1,0 +1,13 @@
+# Cargo build output — every workspace has its own `target/` (root, xyscript-gui, pdf-spike).
+# These are large (hundreds of MB to GB) and rebuilt from source, so they never go in git.
+target/
+
+# The shipped Windows binary is a build artifact — CI rebuilds it for every platform.
+# Delete this line if you'd rather track dist/xyscript.exe in the repo (note: it's ~78 MB,
+# and GitHub warns on files over 50 MB).
+dist/
+
+# Debug symbols and OS cruft.
+*.pdb
+Thumbs.db
+.DS_Store

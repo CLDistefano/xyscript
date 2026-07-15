@@ -1,0 +1,63 @@
+# The real GUI shell (live shell build, Milestone 1) — egui + a CPU-rastered
+# cosmic-text editing canvas over the tested core. Detached during the build
+# (own [workspace]); promote to a workspace member once solid.
+[package]
+name = "xyscript-gui"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# macOS / Linux packaging metadata, read by `cargo bundle` (cargo install cargo-bundle).
+# On macOS this produces `XyScript.app` with the .icns as its Dock/Finder icon; on Linux it can
+# build a .deb that drops the PNG icons into hicolor. `identifier` is a placeholder reverse-DNS —
+# change it to a domain you control before publishing.
+[package.metadata.bundle]
+name = "XyScript"
+identifier = "net.xyscript.editor"
+icon = ["assets/xyscript.icns", "assets/icon-256.png"]
+category = "public.app-category.developer-tools"
+short_description = "XyWrite-inspired programmable text editor"
+long_description = "A modern, keyboard-first text editor in the XyWrite tradition, driven by the XPL scripting language."
+
+[features]
+# Forward the language checker to the core. Off by default (keeps `cargo run` lean); build the
+# distributable with `cargo build --release --features lint`.
+lint = ["xyscript-app/lint"]
+# Forward the email verbs to the core. Off by default; build a personal email edition with
+# `cargo build --release --features lint,email`. NOT part of the tester dist.
+email = ["xyscript-app/email"]
+
+[dependencies]
+xyscript-app = { path = "../xyscript-app" }
+xyscript-kbd = { path = "../xyscript-kbd" }
+# We own the winit event loop directly (egui + egui-winit + egui-wgpu) instead of going
+# through eframe's wrapper, so we can intercept raw `KeyboardInput` for the keymap before
+# egui sees it (eframe hid winit's native key events, and a global WH_KEYBOARD_LL hook does
+# not fire in-process). Versions pinned to the egui 0.34 line that ships together.
+egui = "0.34.3"
+egui-winit = "0.34.3"
+egui-wgpu = { version = "0.34.3", features = ["winit"] }
+winit = "0.30.13"
+pollster = "0.4.0"
+cosmic-text = "0.19"
+# Used now for headless `--render-only` canvas verification; also the natural
+# choice for GFM image handling later.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Native file dialogs (Open / Save As / Export). Default features = native Win32.
+rfd = "0.17"
+# OS clipboard bridge: mirror the editor's `$CB` to/from the system clipboard so
+# cut/copy/paste move text in and out of other apps. The engine stays platform-
+# agnostic (internal `$CB`); only the GUI talks to the OS clipboard.
+arboard = "3"
+
+# Embeds a Windows application manifest declaring Per-Monitor-DPI-Aware v2 at build time. This is the
+# authoritative way to set DPI awareness (applied before any code runs) — relying on winit's runtime
+# call alone let Windows bitmap-stretch the window on a different-DPI monitor (blurry + wrong size).
+[target.'cfg(windows)'.build-dependencies]
+embed-manifest = "1"
+# Compiles `app.rc` (the application icon) into the executable's resources so Explorer, the
+# taskbar, and Alt-Tab show it. Only the icon — the DPI manifest stays with embed-manifest, so
+# there is no duplicate-manifest conflict.
+embed-resource = "3"
+
+[workspace]

@@ -1,0 +1,6 @@
+# Statically link the MSVC C runtime so the release `xyscript.exe` is fully self-contained — no
+# dependency on the Visual C++ redistributable (vcruntime140.dll) on a tester's machine. Applies to
+# every build from this crate (debug + release); the deps are pure Rust, so there's no C-runtime
+# mismatch to worry about.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

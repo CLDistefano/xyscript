@@ -1,0 +1,19 @@
+# GUI-shell spike (GUI1: egui). Detached from the workspace (own [workspace]);
+# path-depends on the real xyscript-app core to validate integration.
+[package]
+name = "gui-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+xyscript-app = { path = "../xyscript-app" }
+xyscript-kbd = { path = "../xyscript-kbd" }
+eframe = "0.34.3"
+typst = "0.14.2"
+typst-as-lib = "0.15.5"
+typst-assets = { version = "0.14.2", features = ["fonts"] }
+typst-render = "0.14.2"
+tiny-skia = { version = "0.11", features = ["png"] }
+
+[workspace]

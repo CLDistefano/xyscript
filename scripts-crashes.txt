@@ -1,0 +1,172 @@
+
+===== XyScript crash =====
+version : 0.1.0
+unix-ts : 1782718030
+panicked at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\num\f32.rs:1505:9:
+min > max, or either was NaN. min = 24.0, max = 1.0
+backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: CallWindowProcW
+  20: SendMessageW
+  21: GetWindowDpiAwarenessContext
+  22: KiUserCallbackDispatcher
+  23: NtUserDispatchMessage
+  24: IsWindowUnicode
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: BaseThreadInitThunk
+  34: RtlUserThreadStart
+
+
+===== XyScript crash =====
+version : 0.1.0
+unix-ts : 1782811786
+panicked at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\num\f32.rs:1505:9:
+min > max, or either was NaN. min = 24.0, max = 1.0
+backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: CallWindowProcW
+  20: SendMessageW
+  21: GetWindowDpiAwarenessContext
+  22: KiUserCallbackDispatcher
+  23: NtUserDispatchMessage
+  24: IsWindowUnicode
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: BaseThreadInitThunk
+  34: RtlUserThreadStart
+
+
+===== XyScript crash =====
+version : 0.1.0
+unix-ts : 1782860957
+panicked at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\num\f32.rs:1505:9:
+min > max, or either was NaN. min = 24.0, max = 1.0
+backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: CallWindowProcW
+  20: SendMessageW
+  21: GetWindowDpiAwarenessContext
+  22: KiUserCallbackDispatcher
+  23: NtUserDispatchMessage
+  24: IsWindowUnicode
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: BaseThreadInitThunk
+  34: RtlUserThreadStart
+
+
+===== XyScript crash =====
+version : 0.1.0
+unix-ts : 1782894406
+panicked at /rustc/ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96/library\core\src\num\f32.rs:1505:9:
+min > max, or either was NaN. min = 24.0, max = 1.0
+backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: CallWindowProcW
+  20: SendMessageW
+  21: GetWindowDpiAwarenessContext
+  22: KiUserCallbackDispatcher
+  23: NtUserDispatchMessage
+  24: IsWindowUnicode
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: BaseThreadInitThunk
+  34: RtlUserThreadStart
+

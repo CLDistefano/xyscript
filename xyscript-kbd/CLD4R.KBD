@@ -1,0 +1,95 @@
+;KB;; CLD4R.KBD — XyScript-format translation (UTF-8) of the CLD4R reference keyboard.
+;;;;; This file is XyScript-NATIVE: UTF-8, whole-line ';' comments, and XPL
+;;;;; right-hand sides (design 3.3) — NOT literal XyWrite verbs. The original
+;;;;; XyWrite CLD4R.KBD (DOS Code Page 437 + 3-byte control sequences) is kept
+;;;;; only as a structural reference, at reference/CLD4R.xyw.KBD; it is not
+;;;;; parsed by the editor or the tests.
+;
+;;;;; Modifiers are declared CAPS, SHIFT, ALT, CTRL, HOTKEY so the bottom-up bit
+;;;;; assignment (design 2: last-declared = 256, doubling upward) yields
+;;;;; CAPS=4096, SHIFT=2048, ALT=1024, CTRL=512, HOTKEY=256.
+;;;;; MOUSE is declared but referenced by NO table, so it stays a preserved
+;;;;; special key, not a modifier (design 3.1).
+;
+KEYS=104
+CAPS=58,T:C
+SHIFT=42,54
+ALT=56,98
+CTRL=29,99
+HOTKEY=76
+MOUSE=83
+;
+; ---- OS-baseline note ----
+;;;;; Lookup is STRICT with no fallthrough (design 6), so Esc(1) and Tab(15) are
+;;;;; repeated as KF in EVERY layer; otherwise holding a modifier or latching
+;;;;; Caps would leave no way to hand those keys back to the OS.
+;
+; ---- Unshifted layer (bitmask 0) ----
+TABLE=
+1=KF
+15=KF
+16=q
+17=w
+18=e
+30=a
+31=s
+32=d
+76=insert "warning: numpad-5 tapped"
+;
+; ---- Shift layer (2048) ----
+TABLE=SHIFT
+1=KF
+15=KF
+16=Q
+17=W
+18=E
+30=A
+31=S
+32=D
+;
+; ---- Caps layer (4096, latching) ----
+TABLE=CAPS
+1=KF
+15=KF
+16=Q
+17=W
+18=E
+30=A
+31=S
+32=D
+;
+; ---- Shift+Caps layer (6144): the two cancel back to lowercase ----
+TABLE=SHIFT+CAPS
+1=KF
+15=KF
+16=q
+17=w
+18=e
+30=a
+31=s
+32=d
+;
+; ---- Alt layer: one TABLE serving two bitmasks (Alt+Caps = 5120, Alt = 1024) ----
+TABLE=ALT+CAPS,ALT
+1=KF
+15=KF
+2=call alt_two
+16=call window_quit
+30=call agenda_open
+;
+; ---- Ctrl layer (Ctrl+Caps = 4608, Ctrl = 512): editor commands as XPL ----
+TABLE=CTRL+CAPS,CTRL
+1=KF
+15=KF
+31=call save_buffer
+38=LOADKBD
+46=call copy_region
+47=call paste_region
+;
+; ---- HOTKEY (Numpad 5 = 76) as a modifier: a personal command layer ----
+TABLE=HOTKEY+CAPS,HOTKEY
+1=KF
+15=KF
+16=call quicknote_new
+17=call window_next
+30=call agenda_open

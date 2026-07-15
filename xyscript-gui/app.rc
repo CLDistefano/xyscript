@@ -1,0 +1,4 @@
+// Windows resource script: embed the application icon.
+// Resource ID 1 (numerically lowest) is what Explorer / the taskbar / Alt-Tab use as the
+// executable's icon. Compiled by build.rs via the embed-resource crate on Windows only.
+1 ICON "assets/xyscript.ico"

@@ -1,0 +1,52 @@
+This is a strong, coherent proposal — it fits XyScript's grain well. Almost everything maps cleanly onto the established patterns (a verb + `on|off` toggle + `$readback` + SaveCfg; color knobs with the `…S` picker variant; hand-drawn highlight rects in the raster). Here's my read item by item, with a few clarifications and refinements.
+
+## Per-item
+
+**1) `TAB in` / `TAB out`** — Straightforward and a good fit. One thing to pin down: with no selection, does `TAB in` insert an indent **at the caret** (today's behavior) or **at the line start**? Most code editors do "at line start when the caret is in leading whitespace, otherwise insert at caret." `TAB out` = strip one indent level from the line start. Outdent needs a rule for mixed leading whitespace — I'd say: remove one leading tab, or up to `$TB` leading spaces, whichever comes first.
+
+**2) Multi-line selection indent/outdent** — Standard and expected; feasible. The main care points are XyScript-specific: it has to play with the DF/persistent-selection model, indent every line the selection *touches* (even partially), and restore/extend the selection afterward so you can Tab-Tab-Tab. Low risk, just fiddly.
+
+**3) `TABSPACES on|off`** — I want to make sure I read this right. "Rendered as spaces per `$TB`" could mean either:
+- **Soft tabs** — pressing TAB inserts `$TB` *spaces* (the file contains spaces), or
+- **Display only** — a real tab character stays in the file but is drawn as `$TB` spaces.
+
+I suspect you mean **soft tabs** (it's what pairs naturally with the indent/outdent verbs). That's also the cleaner one to implement. Worth confirming, because it changes what ends up in the file.
+
+**4) `TABINDENT on|off` + `$INDENTED`** — `$INDENTED` (leading indent measured in spaces, expanding tabs to tab stops) is easy and useful. The one thing I'd clarify: you tie auto-indent to **TAB**, but in most editors "auto-indent" fires on **Enter** (a new line inherits the previous line's indent). Do you want it on TAB, on Enter, or both? They're different behaviors and I can do either — just want to build the one you have in mind.
+
+**5) `WRAPINDENT on|off`** — Conceptually great (hanging indent so wrapped code lines align under their indent). **This is the one technically hard item.** Our wrapping is done by cosmic-text, which wraps each logical line at the full pane width and doesn't natively support a per-line hanging indent for continuation rows. Making continuation rows start at `$INDENTED` likely needs custom shaping (shape each logical line at a reduced width and offset its continuation rows), which is a real change to the render path. Very doable, but it's a spike, not a quick add — I'd sequence it last and possibly time-box an investigation first.
+
+**6) `BALPAIRS on|off` + `BALPAIRSCOLOR(S)`** — Excellent, self-contained. The match highlight slots right into the existing hand-drawn-rects approach (same machinery as the lint underlines / find highlights), and `BALPAIRSCOLOR`/`BALPAIRSCOLORS` follow the color-knob pattern exactly. Two design notes:
+- Define "on a bracket" precisely — I'd match when the char **at or immediately before** the caret is a bracket (that's the common convention and feels natural).
+- Cap the scan distance for the match so a huge file with an unmatched bracket can't cost a full-buffer scan every frame.
+
+**7) `TYPEPAIRS on|off`** — Good, and easy in its basic form (type `(` → insert `()`, caret between). To make it feel right, I'd fold in the standard refinements — worth deciding up front:
+- **Over-type**: typing `)` when the caret sits just before an auto-inserted `)` skips over it instead of adding a second.
+- **Wrap selection**: typing `(` with text selected wraps the selection in `( … )`.
+- **Backspace deletes the pair**: erasing the `(` of an empty `()` removes both.
+- Possibly extend to quotes `" '` (you listed only the brackets — intentional?).
+
+## Overall thoughts
+
+- **Coherence & dependencies:** there's a natural build order baked in — `$INDENTED` (4) feeds WRAPINDENT (5); BALPAIRS (6) is referenced by TYPEPAIRS (7). I'd phase it: **(1,2) Tab indent/outdent → (3) TABSPACES → (4) TABINDENT/`$INDENTED` → (6) BALPAIRS+color → (7) TYPEPAIRS → (5) WRAPINDENT last.**
+- **Scope note:** this nudges XyScript from "prose authoring" toward "code editor" territory. That's a fine and natural expansion — just flagging it since your product notes lean prose-first. None of it conflicts with the XyWrite-style core.
+- **Consistency:** everything reuses existing idioms (toggles, `$`-reads, color knobs, SaveCfg, raster overlays), so there are no new architectural concepts to invent — which is exactly why it'll fit smoothly.
+
+Net: I like it. If you confirm the three clarifications — **(3) soft-tabs vs display**, **(4) auto-indent on TAB vs Enter**, and **(7) which refinements + quotes** — I can start knocking these out in the phased order above, one verb at a time with tests and a dist rebuild each, the way we've been working.
+
+
+I'd like to add several aids for writing code that are standard in many text editors. Here my thoughts. Let me know what you think.
+
+1) Add options to the `TAB` verb: `TAB in` (default) for indenting and `TAB out` for outdenting. Typical key binding for `out` would be in `TABLE=SHIFT ... 15=TAB out`.
+
+2) TAB (in or out) on a selection of multiple lines indents/outdents all of the selected lines.
+
+3) New verb `TABSPACES on|off` -- `On` means that tabs are rendered as spaces (according to the value of $TB); $TABSPACES is the readback.
+
+4) New verb `TABINDENT on|off` -- `On` means that TAB automatically indents to the indentation level of the line above; $TABINDENT is the readback. A new special var $INDENTED returns the indentation level of the current line in spaces.
+
+5) New verb `WRAPINDENT on|off -- `On` means that lines wrap to the current ($INDENTED) indentation level; $WRAPINDENT is the readback.
+
+6) New verb `BALPAIRS on|off` -- `On` means that when the cursor is on the first or last member of balanced pairs of (), [], {}, both the opening and closing characters are highlighted (taking nesting into account); $BALPAIRS is the readback. The default highlight color is the selected-text color, customizable via new BALPAIRSCOLOR(S) knobs. An unbalanced char is reported on the status line when the cursor is on it but is not highlighted.
+
+7) New verb `TYPEPAIRS on|off` -- `On` means : Typing the left member of (), [], or {} automatically adds the right member and moves the cursor between them (highlighted if $BALPAIRS==1); $TYPEPAIRS is the readback.
