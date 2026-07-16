@@ -1,8 +1,10 @@
 name: Build binaries
 
-# Produces native XyScript GUI binaries on each OS's own runner (no cross-compiling — winit/wgpu/egui
-# and the macOS frameworks link cleanly only on their own platform). Triggered manually, or on a
-# version tag (`git tag v0.1.0 && git push --tags`) which also attaches the binaries to a Release.
+# Produces native XyScript GUI binaries per platform. Linux + Windows build on their own runners;
+# macOS builds a single UNIVERSAL binary (Intel + Apple Silicon) on the Apple-Silicon runner, whose
+# Xcode SDK can also cross-compile x86_64 — GitHub's Intel (macos-13) runners are being retired and
+# often never get allocated, so we don't depend on one. Triggered manually, or on a version tag
+# (`git tag v0.1.0 && git push --tags`) which also attaches the binaries to a Release.
 on:
   workflow_dispatch:
   push:
@@ -25,21 +27,13 @@ jobs:
             name: linux-x86_64
             bin: xyscript-gui
             artifact: xyscript-linux-x86_64
-          - os: macos-14
-            name: macos-aarch64
-            bin: xyscript-gui
-            artifact: xyscript-macos-aarch64
-          - os: macos-13
-            name: macos-x86_64
-            bin: xyscript-gui
-            artifact: xyscript-macos-x86_64
           - os: windows-latest
             name: windows-x86_64
             bin: xyscript-gui.exe
             artifact: xyscript-windows-x86_64.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -51,7 +45,7 @@ jobs:
           workspaces: xyscript-gui
 
       # winit (X11/Wayland), wgpu (GL/Vulkan), rfd (portal/GTK), arboard, cosmic-text/fontconfig all
-      # need their dev headers on Linux. macOS/Windows get everything from the SDK.
+      # need their dev headers on Linux. Windows gets everything from the SDK.
       - name: Install Linux system libraries
         if: runner.os == 'Linux'
         run: |
@@ -84,28 +78,68 @@ jobs:
           cp "xyscript-gui/target/release/${{ matrix.bin }}" "staged/${{ matrix.artifact }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: staged/${{ matrix.artifact }}
           if-no-files-found: error
 
+  # One macOS binary for BOTH architectures. The Apple-Silicon runner (macos-14) builds its native
+  # arm64 plus a cross-compiled x86_64, then `lipo` merges them into a universal executable.
+  macos:
+    name: macos-universal
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain (both Apple targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: xyscript-gui
+
+      - name: Build both architectures (release, lint + email)
+        working-directory: xyscript-gui
+        run: |
+          cargo build --release --features lint,email --target aarch64-apple-darwin
+          cargo build --release --features lint,email --target x86_64-apple-darwin
+
+      - name: Merge into a universal binary
+        shell: bash
+        run: |
+          mkdir -p staged
+          lipo -create -output staged/xyscript-macos-universal \
+            xyscript-gui/target/aarch64-apple-darwin/release/xyscript-gui \
+            xyscript-gui/target/x86_64-apple-darwin/release/xyscript-gui
+          lipo -info staged/xyscript-macos-universal
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: xyscript-macos-universal
+          path: staged/xyscript-macos-universal
+          if-no-files-found: error
+
   # On a version tag, gather every platform's binary and attach them to a GitHub Release.
   release:
     name: Publish release
-    needs: build
+    needs: [build, macos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
       - name: Attach binaries to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*
           fail_on_unmatched_files: true
