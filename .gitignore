@@ -7,6 +7,18 @@ target/
 # and GitHub warns on files over 50 MB).
 dist/
 
+# CI binaries pulled down with `gh run download` — each artifact lands in its own folder named
+# after the artifact. They run 78-170 MB each, and GitHub REJECTS any file over 100 MB, so these
+# must never be committed. Tip: download into one folder instead — `gh run download -D artifacts`.
+/artifacts/
+/xyscript-linux-x86_64/
+/xyscript-macos-universal/
+/xyscript-windows-x86_64.exe/
+
+# Claude Code's per-machine local settings (permission allowlists etc.) — not shared state.
+# A shared `.claude/settings.json` would still be tracked if one is ever added.
+.claude/settings.local.json
+
 # Debug symbols and OS cruft.
 *.pdb
 Thumbs.db
