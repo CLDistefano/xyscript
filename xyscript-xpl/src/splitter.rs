@@ -221,7 +221,10 @@ fn exempt_split(rest: &str) -> Option<ExemptSplit> {
     let is_exempt = EXEMPT_VERBS.iter().any(|v| {
         token.eq_ignore_ascii_case(v)
             || (token.len() > v.len()
-                && token[..v.len()].eq_ignore_ascii_case(v)
+                // Compare BYTES, never `token[..v.len()]`: the token may begin with a multi-byte
+                // character (a pasted curly quote, say), and slicing a `&str` mid-character PANICS.
+                // The verbs are ASCII, so a byte compare is exactly equivalent and can't panic.
+                && token.as_bytes()[..v.len()].eq_ignore_ascii_case(v.as_bytes())
                 && matches!(token.as_bytes()[v.len()], b'/' | b'-'))
     });
     if !is_exempt {
@@ -325,7 +328,10 @@ fn search_split(rest: &str) -> Option<SearchSplit> {
     //    (so `SET`, `CHANGE`, `SEEK` don't match). Length of the base verb token.
     let base_len = SEARCH_VERBS.iter().find_map(|v| {
         let l = v.len();
-        if n >= l && rest[..l].eq_ignore_ascii_case(v) {
+        // Compare BYTES, never `rest[..l]`: `rest` may begin with a multi-byte character, and
+        // slicing a `&str` mid-character PANICS — a real crash report was a command starting with a
+        // curly quote (`se |“|;BD;‘;…`). The verbs are ASCII, so a byte compare is equivalent.
+        if n >= l && b[..l].eq_ignore_ascii_case(v.as_bytes()) {
             match b.get(l) {
                 None => Some(l),
                 Some(&c) if matches!(c, b' ' | b'\t' | b'/' | b'-') => Some(l),
@@ -499,6 +505,22 @@ mod tests {
     #[test]
     fn escaped_semicolon_is_literal() {
         assert_eq!(split(r"PR foo\;bar"), vec!["PR foo;bar"]);
+    }
+
+    /// Regression: a chunk STARTING with a multi-byte character used to panic — the verb probes
+    /// sliced `&str` at an ASCII verb's byte length, landing inside the character. Reported from the
+    /// field as `se |“|;BD;‘;se |”|;BD;’;` (curly quotes), which killed the editor outright. Splitting
+    /// must simply produce chunks; whether the verbs are valid is the VM's problem, not the splitter's.
+    #[test]
+    fn chunks_starting_with_a_multibyte_char_do_not_panic() {
+        // The exact reported command.
+        let out = split("se |“|;BD;‘;se |”|;BD;’;");
+        assert!(out.iter().any(|c| c.contains('‘')), "curly-quote chunk survives: {out:?}");
+        // A multi-byte lead-in on its own, and one that shadows a search/exempt verb prefix.
+        assert_eq!(split("‘"), vec!["‘"]);
+        assert_eq!(split("’; PR ok"), vec!["’", "PR ok"]);
+        assert_eq!(split("“SE”; PR ok"), vec!["“SE”", "PR ok"]);
+        assert_eq!(split("—X/BG; PR ok"), vec!["—X/BG", "PR ok"]);
     }
 
     #[test]

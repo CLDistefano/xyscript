@@ -711,7 +711,7 @@ impl Handler {
                 );
                 let mut painter = pollster::block_on(Painter::new(
                     ctx.clone(),
-                    WgpuConfiguration::default(),
+                    wgpu_config(),
                     false,
                     RendererOptions::default(),
                 ));
@@ -1150,7 +1150,7 @@ impl Handler {
         );
         let mut painter = pollster::block_on(Painter::new(
             ctx.clone(),
-            WgpuConfiguration::default(),
+            wgpu_config(),
             false,
             RendererOptions::default(),
         ));
@@ -1445,7 +1445,7 @@ impl Handler {
         );
         let mut painter = pollster::block_on(Painter::new(
             ctx.clone(),
-            WgpuConfiguration::default(),
+            wgpu_config(),
             false,
             RendererOptions::default(),
         ));
@@ -1751,6 +1751,42 @@ impl Handler {
     }
 }
 
+/// The wgpu configuration used for every window (main + TXT/DIR/FIND). On Windows we default the
+/// backend to **DX12**: wgpu's automatic selection picks a Vulkan/GL adapter on some machines whose
+/// driver then fails at surface creation — the window opens and instantly vanishes (a 2026-07 field
+/// report on a Windows 11 box; DX12 worked, Vulkan didn't). DX12 is the reliable Windows backend. An
+/// explicit `WGPU_BACKEND` still wins — the default setup already reads it — so we only force DX12
+/// when the user hasn't chosen a backend. Off Windows this is exactly `WgpuConfiguration::default()`.
+fn wgpu_config() -> WgpuConfiguration {
+    #[allow(unused_mut)]
+    let mut cfg = WgpuConfiguration::default();
+    #[cfg(windows)]
+    if std::env::var_os("WGPU_BACKEND").is_none() {
+        if let egui_wgpu::WgpuSetup::CreateNew(new) = &mut cfg.wgpu_setup {
+            new.instance_descriptor.backends = egui_wgpu::wgpu::Backends::DX12;
+        }
+    }
+    cfg
+}
+
+/// Fatal graphics-init failure (no usable GPU adapter/surface): show a native dialog explaining the
+/// fix, then exit — instead of a bare panic that vanishes the window with no message. `os_message::show`
+/// spawns a DETACHED box (a separate process), so exiting immediately still leaves it on screen.
+fn graphics_init_failed(detail: &str) -> ! {
+    xyscript_app::os_message::show(
+        Some("XyScript — graphics error"),
+        &format!(
+            "XyScript couldn't start the graphics system on this PC.\n\n\
+             This is almost always a display-driver problem. Two things to try:\n\
+             \u{2022} Update your graphics driver (Intel / AMD / NVIDIA), then restart.\n\
+             \u{2022} Launch with a different renderer: set the environment variable WGPU_BACKEND \
+             to dx12 (or vulkan, or gl) before starting XyScript.\n\n\
+             Technical detail: {detail}"
+        ),
+    );
+    std::process::exit(1);
+}
+
 /// Per-user path for a window-geometry file (`window.txt`, `find-window.txt`, `dir-window.txt`,
 /// `txt-window.txt`): `%APPDATA%\xyscript\<name>` on Windows, `$XDG_CONFIG_HOME`/`~/.config/xyscript/
 /// <name>` elsewhere. `None` if no per-user dir is resolvable.
@@ -1929,12 +1965,16 @@ impl ApplicationHandler for Handler {
         );
         let mut painter = pollster::block_on(Painter::new(
             self.egui_ctx.clone(),
-            WgpuConfiguration::default(),
+            wgpu_config(),
             false,
             RendererOptions::default(),
         ));
-        pollster::block_on(painter.set_window(ViewportId::ROOT, Some(window.clone())))
-            .expect("set wgpu window");
+        // No usable GPU adapter/surface → tell the user how to fix it and exit cleanly, rather than
+        // panicking (which just vanishes the window a second after it appears).
+        if let Err(e) = pollster::block_on(painter.set_window(ViewportId::ROOT, Some(window.clone())))
+        {
+            graphics_init_failed(&e.to_string());
+        }
 
         self.window = Some(window.clone());
         self.egui_state = Some(egui_state);

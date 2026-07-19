@@ -471,7 +471,10 @@ pub enum EditorOp {
     FgColor(Option<(u8, u8, u8)>),
     /// `HLCOLOR <kind> <r g b>` — set the syntax-highlight colour for a token kind (by name).
     /// `color = None` (`HLCOLOR <kind> default`) clears it → that kind renders in `FGCOLOR`.
-    /// Unknown kind names are a trappable error. The GUI rasters tokens with these.
+    /// ANY kind name is accepted (2026-06-18 decision: arbitrary string kinds) — a built-in name
+    /// maps to its variant, anything else to a grammar-defined `Other` kind. So a colour may be set
+    /// before (or without) a grammar emitting that kind; it is simply inert until an `HLRULE`
+    /// produces tokens of it. The GUI rasters tokens with these.
     SetHighlightColor { kind: String, color: Option<(u8, u8, u8)> },
     /// `HLRESET` — restore the built-in default highlight theme.
     ResetHighlightTheme,

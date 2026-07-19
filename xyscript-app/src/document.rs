@@ -681,6 +681,37 @@ impl Document {
         });
     }
 
+    /// Slide the live language-check underlines along with an edit, so they stay on the words they
+    /// actually mark until the background re-check lands.
+    ///
+    /// Without this the marks keep the byte offsets they were computed at, so EVERY keystroke draws
+    /// every underline after the caret one byte out of place — the reported symptom was the last
+    /// letter of each flagged word flickering while typing (and the first letter while backspacing),
+    /// a screen-wide flash on every key. `poll_lint` correctly refuses to apply a result computed
+    /// against a superseded revision, which is precisely why the OLD marks have to be kept honest in
+    /// the meantime.
+    ///
+    /// Marks wholly before the edit are untouched; marks wholly after it shift by the edit's delta;
+    /// a mark the edit lands INSIDE is dropped — that word is being retyped, so its squiggle is
+    /// meaningless until the checker reports on the new text.
+    fn adjust_lints(&mut self, at: usize, removed: usize, inserted: usize) {
+        if self.lints.is_empty() {
+            return;
+        }
+        let end_of_edit = at + removed;
+        self.lints.retain_mut(|m| {
+            if m.end <= at {
+                true // entirely before the edit — unaffected
+            } else if m.start >= end_of_edit {
+                m.start = m.start - removed + inserted; // entirely after — slide along
+                m.end = m.end - removed + inserted;
+                true
+            } else {
+                false // the edit touches this word — drop it until the re-check
+            }
+        });
+    }
+
     /// The transient colour spans converted to DECODED-byte offsets (what the renderer/tokens use).
     /// Identity for a UTF-8 document; the conversion matters only for non-UTF-8 encodings.
     pub fn color_spans_decoded(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
@@ -1700,6 +1731,9 @@ impl Document {
         // Transient FGCOLOR-on-selection spans follow the edit (typing before a coloured word
         // shifts its colour along, an edit inside grows/shrinks it, a deletion over it clips it).
         self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());
+        // Live spelling/grammar underlines follow the edit too — otherwise every keystroke redraws
+        // them one byte out of place until the async re-check lands (a screen-wide flicker).
+        self.adjust_lints(op.at, op.removed.len(), op.inserted.len());
         // If the saved state lived in the redo region we're about to discard, it
         // becomes unreachable by undo -> the document is permanently modified.
         if let Some(sl) = self.saved_len {
@@ -1787,6 +1821,49 @@ fn merge(last: &mut Unit, op: Op, cursor_after: usize, anchor_after: Option<usiz
 mod tests {
     use super::*;
     use crate::dir::DirEntry;
+
+    fn mark(start: usize, end: usize) -> crate::lint::LintMark {
+        crate::lint::LintMark {
+            start,
+            end,
+            kind: "spelling".into(),
+            message: String::new(),
+        }
+    }
+
+    /// Live underlines must ride along with edits. Before this, the marks kept the offsets they were
+    /// computed at, so every keystroke drew each underline after the caret one byte off — the last
+    /// letter of each flagged word flickered while typing, the first letter while backspacing.
+    #[test]
+    fn lint_marks_follow_edits_instead_of_flickering() {
+        let mut d = Document::from_str("aaa bbb ccc");
+        // Flag "bbb" (4..7) and "ccc" (8..11).
+        d.set_lints(vec![mark(4, 7), mark(8, 11)]);
+
+        // Type one character at the very start: both marks shift right by one.
+        d.replace_span(0, 0, "X");
+        assert_eq!(
+            d.lints().iter().map(|m| (m.start, m.end)).collect::<Vec<_>>(),
+            vec![(5, 8), (9, 12)],
+            "marks after an insert must slide, not stay put"
+        );
+
+        // Backspace that character: they shift back.
+        d.replace_span(0, 1, "");
+        assert_eq!(
+            d.lints().iter().map(|m| (m.start, m.end)).collect::<Vec<_>>(),
+            vec![(4, 7), (8, 11)]
+        );
+
+        // A mark BEFORE the edit is untouched; the word the edit lands inside is dropped (it is
+        // being retyped, so its squiggle is stale until the re-check reports).
+        d.replace_span(5, 6, "Z"); // inside "bbb"
+        assert_eq!(
+            d.lints().iter().map(|m| (m.start, m.end)).collect::<Vec<_>>(),
+            vec![(8, 11)],
+            "the edited word's mark is dropped, the later one survives unmoved"
+        );
+    }
 
     fn entry(name: &str, is_dir: bool) -> DirEntry {
         DirEntry {

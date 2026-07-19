@@ -1276,6 +1276,56 @@ fn preview_one_line(s: &str) -> String {
     }
 }
 
+/// How the word the user actually typed was capitalized — used to case-match an auto-replace
+/// expansion, so one entry `equ=equilibrium` covers `equ`/`Equ`/`EQU`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyCase {
+    /// All lower case, no letters, or a mixed pattern we don't try to interpret (`eQu`): use the
+    /// replacement EXACTLY as written, so a deliberately-cased value (`usa=United States`) survives.
+    AsIs,
+    /// Leading capital, remainder lower (`Equ`) — or a lone capital (`I`), which is deliberately
+    /// treated as capitalised rather than all-caps.
+    Capitalized,
+    /// Two or more letters, all capital (`EQU`).
+    Upper,
+}
+
+/// Classify the typed key's capitalisation. Only alphabetic characters count, so `e-mail` /
+/// `E-Mail` classify on their letters alone.
+pub(crate) fn key_case(word: &str) -> KeyCase {
+    let letters: Vec<char> = word.chars().filter(|c| c.is_alphabetic()).collect();
+    let Some(first) = letters.first().copied() else {
+        return KeyCase::AsIs; // no letters to judge by
+    };
+    if !first.is_uppercase() {
+        return KeyCase::AsIs; // starts lower → plain
+    }
+    let rest_upper = letters[1..].iter().all(|c| c.is_uppercase());
+    let rest_lower = letters[1..].iter().all(|c| !c.is_uppercase());
+    match () {
+        // `EQU` — needs 2+ letters, so a lone `I` doesn't shout the whole expansion.
+        _ if letters.len() > 1 && rest_upper => KeyCase::Upper,
+        _ if rest_lower => KeyCase::Capitalized,
+        _ => KeyCase::AsIs, // `eQu`, `EqU` — no clear intent
+    }
+}
+
+/// Recase an auto-replace expansion to match how its key was typed.
+pub(crate) fn apply_key_case(case: KeyCase, val: &str) -> String {
+    match case {
+        KeyCase::AsIs => val.to_string(),
+        KeyCase::Upper => val.to_uppercase(),
+        KeyCase::Capitalized => {
+            let mut chars = val.chars();
+            match chars.next() {
+                // `to_uppercase` can yield several chars (ß → SS), so extend rather than push.
+                Some(c) => c.to_uppercase().chain(chars).collect(),
+                None => String::new(),
+            }
+        }
+    }
+}
+
 fn decode_ar_escapes(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -7113,21 +7163,41 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("merged {chars} chars from {name}")));
             }
             EditorOp::AutoReplace => {
-                // The word ending at the caret; replace it if it's a key (case-sensitive, exact).
+                // The word ending at the caret; replace it if it's a key.
                 let found = {
                     let b = self.docs[self.active].buffer();
                     b.word_before_cursor().map(|(s, e)| (s, e, b.slice(s, e)))
                 };
                 if let Some((s, e, word)) = found {
-                    if let Some(val) = self.auto_replace.get(&word).cloned() {
+                    // An EXACT key wins and is used verbatim — defining both `equ` and `EQU` keeps
+                    // each one's literal value. Otherwise fall back to a case-INSENSITIVE match and
+                    // recase the expansion to match how the key was typed, so a single
+                    // `equ=equilibrium` serves `equ`→equilibrium, `Equ`→Equilibrium, `EQU`→EQUILIBRIUM.
+                    let hit = self.auto_replace.get(&word).map(|v| (v.clone(), KeyCase::AsIs)).or_else(|| {
+                        let lower = word.to_lowercase();
+                        // A HashMap has no stable iteration order, so pick deterministically:
+                        // an all-lowercase key wins, then the lexicographically smallest.
+                        self.auto_replace
+                            .iter()
+                            .filter(|(k, _)| k.to_lowercase() == lower)
+                            .min_by(|(a, _), (b, _)| {
+                                let rank = |k: &String| (k.chars().any(|c| c.is_uppercase()), k.clone());
+                                rank(a).cmp(&rank(b))
+                            })
+                            .map(|(_, v)| (v.clone(), key_case(&word)))
+                    });
+                    if let Some((val, case)) = hit {
                         if let Some(xpl) = val.strip_prefix('#') {
                             // XPL ACTION: delete the matched key, then queue the XPL for the VM to
-                            // run (and abort the rest of the AR chain). E.g. `pd=#DA;PW`.
+                            // run (and abort the rest of the AR chain). E.g. `pd=#DA;PW`. The value
+                            // is CODE, so it is never recased — only the key match is case-loose.
                             self.docs[self.active].replace_span(s, e, "");
                             self.ar_pending_xpl = Some(xpl.to_string());
                             return Ok(Value::str(""));
                         }
-                        // Plain text replacement (the original behavior).
+                        // Plain text replacement, recased to match the typed key (`AsIs` for an
+                        // exact hit, so an explicitly-cased entry is reproduced verbatim).
+                        let val = apply_key_case(case, &val);
                         self.docs[self.active].replace_span(s, e, &val);
                         return Ok(Value::str(format!("AR: {word} → {val}")));
                     }

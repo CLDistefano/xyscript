@@ -1498,83 +1498,11 @@ bar (#raw("SMB")).
 
 == Syntax highlighting
 
-*Syntax highlighting* colors parts of your text according to what they _mean_: in
-a Markdown file, headings, *bold* and _italic_ runs, `inline code`, links, and block quotes each take
-their own color, so the document's structure is visible at a glance. It is purely visual — it never
-changes a single byte of the file — and it is *off by default*.
-
-=== Which files can be highlighted
-
-Highlighting is chosen by the file's *extension*. Out of the box XyScript understands *Markdown*
-(#raw(".md"), #raw(".markdown"), #raw(".mkd"), #raw(".mdown")); a file with any other extension stays
-plain until you teach XyScript its grammar (see _Teaching a new file type_ below). So the very first
-step is simply to be editing a file XyScript recognizes:
-
-/ *A new document*: #raw("NEW notes.md") opens a fresh buffer already named #raw(".md").
-/ *Text you already have*: save the current buffer under a #raw(".md") name — #raw("SAAS notes.md") — or open an existing #raw(".md") file.
-
-#tip("Highlighting keys off the name, not the content")[Typing Markdown into an *untitled* buffer, or
-one named #raw(".txt"), shows no colors no matter what — there is no recognized type to highlight. Give
-the file a #raw(".md") name first and the colors become available.]
-
-=== Turning it on
-
-With a Markdown file in front of you, switch highlighting on in either of two ways:
-
-/ *From the menu*: #raw("View ▸ Highlighting") — a checkmark shows when it is on; choose it again to turn it off.
-/ *From the command line*: #raw("HIGHLIGHT on") (and #raw("HIGHLIGHT off") to stop).
-
-The colors appear at once. Because highlighting is only a lens over the text, turning it on or off leaves the
-file exactly as it was.
-
-#ex("NEW notes.md
-HIGHLIGHT on")
-
-=== Highlighting every file automatically
-
-Flipping the switch for each file soon gets tiresome. #raw("HLAUTO on") — also #raw("Settings ▸ Syntax
-highlighting ▸ Auto-highlight on open") — tells XyScript to highlight *every* recognized file the moment
-it opens, so you never think about it again; #raw("HLAUTO off") returns to per-file control. Like other
-preferences it is saved with your configuration (below).
-
-=== Choosing the colors
-
-Each highlighted element belongs to a *token kind*. The Markdown kinds are #raw("heading"),
-#raw("strong"), #raw("emphasis"), #raw("code"), #raw("link"), #raw("quote"), and #raw("rule"); grammars
-for code add #raw("keyword"), #raw("string"), #raw("comment"), and #raw("number"). To see the current
-palette, run #raw("HLKINDS") (#raw("Settings ▸ Syntax highlighting ▸ Token kinds")) — it lists every kind
-beside its color.
-
-There are three ways to change a color:
-
-/ *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ opens a live color picker for that one kind.
-/ *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. Add #raw("/HSL") to give hue / saturation / lightness instead of #raw("R G B").
-/ *Back to normal*: #raw("HLCOLOR <kind> default") drops that kind's override so it draws in the ordinary text color.
-
-#ex("HLCOLOR heading 200 40 40
-HLCOLOR comment 120 120 120")
-
-#raw("HLRESET") (#raw("Settings ▸ Syntax highlighting ▸ Reset theme")) restores the built-in colors, and
-the whole-editor schemes #raw("THEME light") / #raw("THEME dark") set a coordinated highlight palette
-along with everything else.
-
-=== Teaching a new file type
-
-You can highlight a language XyScript doesn't know by giving it a small regular-expression grammar:
-declare the language with #raw("HLLANG <name> <.ext,…>"), then add one or more #raw("HLRULE <kind>
-<regex>") rules — the first rule that matches a stretch of text wins. The kinds are the same ones above,
-so any colors you have chosen apply automatically. The Reference has the full grammar syntax.
-
-=== Making it stick
-
-#raw("SAVECFG") captures everything about highlighting — whether #raw("HLAUTO") is on and every color you
-have set — in your configuration file, so your scheme returns each session. (A grammar declared with
-#raw("HLLANG") / #raw("HLRULE") lives in a script you #raw("RUN"); the natural home is your
-#raw("startup.xpl"), which runs at launch.)
-
-#tip("The whole feature in ten seconds")[Run #raw("NEW demo.md"); type a line starting with #raw("# "),
-then a line with #raw("**bold**") and #raw("`code`"); choose #raw("View ▸ Highlighting") to color it, and
-open #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ Heading") to recolor headings with the picker.]
+XyScript can color your text according to what it _means_ — headings and links in a Markdown file,
+keywords and strings and comments in a program — and every one of those colors is yours to change with
+#raw("HLCOLOR"). There is enough to it that it has a chapter of its own: which files highlight, the
+ready-made grammars for a dozen languages, the token kinds and their colors, and how to make your
+scheme come back every session. See _Syntax Highlighting_, the next chapter.
 
 == Saving and loading your settings
 
@@ -1601,6 +1529,171 @@ By convention four kinds of plain-text file carry your setup, each runnable or l
 #tip("Set it up once")[A script named #raw("startup.xpl") beside the program runs at launch — the
 natural place to load everything: #raw("LOADCFG") your settings, #raw("LOADKBD") your keyboard, and
 #raw("LOADLIB") your library. Drop it in place and XyScript opens fully outfitted every time.]
+
+// ===================================================================================================
+= Syntax Highlighting
+
+*Syntax highlighting* colors parts of your text according to what they _mean_: in a Markdown file,
+headings, *bold* and _italic_ runs, `inline code`, links, and block quotes each take their own color,
+so the document's structure is visible at a glance; in a program, keywords, strings, and comments
+separate from the code around them. It is purely visual — it never changes a single byte of the file —
+and it is *off by default*.
+
+Three things have to line up before you see any color, and they are the shape of this chapter:
+XyScript has to *recognize the file's type*, highlighting has to be *switched on*, and each *token
+kind* carries a *color* you can change.
+
+== Which files can be highlighted
+
+Highlighting is chosen by the file's *extension*. *Markdown* is built in — #raw(".md"),
+#raw(".markdown"), #raw(".mkd"), #raw(".mdown") — and needs nothing loaded. Every other language is
+described by a *grammar*, a small script XyScript reads. You rarely have to write one: ready-made
+grammars for a dozen languages ship with the program, so in practice "teaching" XyScript a language
+means running one (see _The ready-made grammars_).
+
+So the very first step is simply to be editing a file XyScript recognizes:
+
+/ *A new document*: #raw("NEW notes.md") opens a fresh buffer already named #raw(".md").
+/ *Text you already have*: save the current buffer under a #raw(".md") name — #raw("SAAS notes.md") — or open an existing #raw(".md") file.
+
+#tip("Highlighting keys off the name, not the content")[Typing Markdown into an *untitled* buffer, or
+one named #raw(".txt"), shows no colors no matter what — there is no recognized type to highlight. Give
+the file a #raw(".md") name first and the colors become available.]
+
+== Turning it on
+
+With a recognized file in front of you, switch highlighting on in either of two ways:
+
+/ *From the menu*: #raw("View ▸ Highlighting") — a checkmark shows when it is on; choose it again to turn it off.
+/ *From the command line*: #raw("HIGHLIGHT on") (and #raw("HIGHLIGHT off") to stop).
+
+The colors appear at once. Because highlighting is only a lens over the text, turning it on or off leaves the
+file exactly as it was.
+
+#ex("NEW notes.md
+HIGHLIGHT on")
+
+=== Highlighting every file automatically
+
+Flipping the switch for each file soon gets tiresome. #raw("HLAUTO on") — also #raw("Settings ▸ Syntax
+highlighting ▸ Auto-highlight on open") — tells XyScript to highlight *every* recognized file the moment
+it opens, so you never think about it again; #raw("HLAUTO off") returns to per-file control. Like other
+preferences it is saved with your configuration.
+
+== The ready-made grammars
+
+Markdown aside, a language only lights up once its *grammar* has been loaded. XyScript ships these in
+the #raw("grammars") folder beside the program:
+
+#table(
+  columns: (auto, auto, 1fr),
+  inset: 5pt,
+  stroke: 0.5pt + luma(200),
+  table.header([*Script*], [*Language*], [*Extensions*]),
+  [#raw("rust.xpl")], [Rust], [#raw(".rs")],
+  [#raw("python.xpl")], [Python], [#raw(".py .pyw")],
+  [#raw("javascript.xpl")], [JavaScript / TypeScript], [#raw(".js .mjs .cjs .ts .jsx .tsx")],
+  [#raw("shell.xpl")], [Shell], [#raw(".sh .bash .zsh .ksh")],
+  [#raw("toml.xpl")], [TOML], [#raw(".toml")],
+  [#raw("typst.xpl")], [Typst], [#raw(".typ")],
+  [#raw("xpl.xpl")], [XPL (XyScript's own)], [#raw(".xpl .pm .pgm .cfg .lib")],
+  [#raw("xywrite.xpl")], [XyWrite], [#raw(".xy3 .xy4")],
+)
+
+Load the one you want with #raw("RUN"), then open your file:
+
+#ex("RUN grammars/rust.xpl
+OPEN main.rs
+HIGHLIGHT on")
+
+#tip("The step that is easy to miss")[Without the #raw("RUN"), a #raw(".rs") file shows *no*
+highlighting at all — not the wrong colors, simply none, because no grammar has claimed the extension.
+#raw("HIGHLIGHT on") by itself is enough only for Markdown.]
+
+You will not want to type that every session; _Making it stick_, below, shows the two ways to have your
+grammars loaded automatically at launch.
+
+== Token kinds and their colors
+
+Each highlighted element belongs to a *token kind*, and the kind is what carries the color. The
+Markdown kinds are #raw("heading"), #raw("strong"), #raw("emphasis"), #raw("code"), #raw("link"),
+#raw("quote"), and #raw("rule"); grammars for code add #raw("keyword"), #raw("string"),
+#raw("comment"), and #raw("number"). To see the current palette, run #raw("HLKINDS") (#raw("Settings ▸
+Syntax highlighting ▸ Token kinds")) — it lists every kind beside its color, each name drawn in the
+color itself.
+
+There are three ways to change a color:
+
+/ *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ — or the command #raw("HLCOLORS <kind>") — opens a live color picker for that one kind.
+/ *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. The three numbers each run #raw("0")–#raw("255"); there are no color names or hex codes. Add #raw("/HSL") to give hue / saturation / lightness instead.
+/ *Switching one off*: #raw("HLCOLOR <kind> default") drops that kind's color so it draws in the ordinary text color.
+
+#ex("HLCOLOR heading 200 40 40
+HLCOLOR comment 120 120 120")
+
+#raw("HLRESET") (#raw("Settings ▸ Syntax highlighting ▸ Reset theme")) restores the built-in colors, and
+the whole-editor schemes #raw("THEME light") / #raw("THEME dark") set a coordinated highlight palette
+along with everything else.
+
+#tip("`default` is not the same as `HLRESET`")[#raw("HLCOLOR <kind> default") does *not* put back that
+kind's built-in color — it turns that kind's highlighting *off*, so it draws like ordinary text.
+#raw("HLRESET") is what brings the built-in palette back.]
+
+== Teaching XyScript a new file type
+
+If no ready-made grammar covers your language, write one — a grammar is just a short XPL script.
+Declare the language with #raw("HLLANG <name> <.ext,…>"), then add #raw("HLRULE <kind> <regex>") rules.
+Each line is matched on its own, in rule order, and the first rule to match a stretch of text wins.
+
+#ex("HLLANG mylang .foo,.bar
+HLRULE comment #.*$
+HLRULE keyword \\b(fn|let|return)\\b
+HLRULE number \\b[0-9]+\\b")
+
+Save that as a #raw(".xpl") file, #raw("RUN") it, and any #raw(".foo") you open highlights. The
+Reference has the full grammar syntax; _Appendix B_ covers the regular-expression dialect.
+
+=== Inventing your own kinds
+
+A rule's kind may be *any name you like* — you are not limited to the eleven built-ins. Naming a new
+one in an #raw("HLRULE") is all it takes to bring it into being; give it a color with #raw("HLCOLOR")
+and it appears in #raw("HLKINDS") alongside the rest. (The shipped #raw("typst.xpl") does exactly this
+with a #raw("math") kind.)
+
+#ex("HLRULE mykind \\btodo\\b
+HLCOLOR mykind 10 20 30")
+
+#tip("Rules create kinds; colors paint them")[#raw("HLRULE") is what brings a kind into existence.
+#raw("HLCOLOR") on a name that nothing emits is accepted and remembered, but nothing will ever be drawn
+in it. Conversely, a kind with no color of its own still highlights — in the ordinary text color. Order
+does not matter: you may color a kind before or after the rule that creates it.]
+
+== Making it stick
+
+#raw("SAVECFG") captures everything about highlighting: whether #raw("HLAUTO") is on, every color you
+have set, *and* every grammar you have loaded — each one written back out as its #raw("HLLANG") line
+followed by its #raw("HLRULE") rules. Your whole scheme therefore returns with a single
+#raw("LOADCFG").
+
+That gives two ways to have your grammars ready at every launch. Put either in #raw("startup.xpl"),
+which runs automatically:
+
+/ *Run the scripts*: a #raw("RUN grammars/rust.xpl") line per language, plus #raw("HLAUTO on"). The grammar files stay the master copy — edit one and the change takes effect next launch.
+/ *Load your config*: #raw("RUN") the grammars once and #raw("SAVECFG"); from then on a single #raw("LOADCFG") restores grammars and colors together.
+
+#tip("Snapshot versus source")[The second route copies each grammar into your configuration as a
+*snapshot*. Edit #raw("grammars/rust.xpl") afterwards and your config still holds the old rules —
+#raw("RUN") it again and #raw("SAVECFG") to refresh. While you are still tinkering with a grammar, the
+first route is the friendlier one.]
+
+#tip("THEME overwrites the palette")[#raw("THEME light") and #raw("THEME dark") replace every highlight
+color at once. If your #raw("startup.xpl") runs #raw("THEME"), put it *before* your #raw("HLCOLOR")
+lines or they will be overwritten. A configuration written by #raw("SAVECFG") is immune: it stores the
+resulting colors, not the #raw("THEME") command.]
+
+#tip("The whole feature in ten seconds")[Run #raw("NEW demo.md"); type a line starting with #raw("# "),
+then a line with #raw("**bold**") and #raw("`code`"); choose #raw("View ▸ Highlighting") to color it, and
+open #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ Heading") to recolor headings with the picker.]
 
 // ===================================================================================================
 = Email

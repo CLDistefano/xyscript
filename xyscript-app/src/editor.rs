@@ -7271,19 +7271,55 @@ mod tests {
     }
 
     #[test]
-    fn auto_replace_is_exact_case_sensitive_and_noops_on_miss() {
+    fn auto_replace_matches_the_typed_case_and_noops_on_miss() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
-        e.host_mut().files.insert("fix.ar".into(), "teh=the\n".into());
+        e.host_mut().files.insert("fix.ar".into(), "equ=equilibrium\n".into());
         e.run_command("LoadAR fix.ar");
 
-        e.run_command(r#"INSERT "Teh""#); // capitalized → not an exact key match
+        // One entry serves all three capitalisations of the key.
+        e.run_command(r#"INSERT "equ""#);
         e.run_command("AR");
-        assert_eq!(e.document().text(), "Teh"); // unchanged
+        assert_eq!(e.document().text(), "equilibrium");
+
+        e.run_command(r#"INSERT " Equ""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "equilibrium Equilibrium");
+
+        e.run_command(r#"INSERT " EQU""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "equilibrium Equilibrium EQUILIBRIUM");
+
+        // A mixed pattern has no clear intent → the value is used exactly as written.
+        e.run_command(r#"INSERT " eQu""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "equilibrium Equilibrium EQUILIBRIUM equilibrium");
 
         e.run_command(r#"INSERT " zzz""#); // unknown word
         e.run_command("AR");
-        assert_eq!(e.document().text(), "Teh zzz"); // unchanged
+        assert_eq!(e.document().text(), "equilibrium Equilibrium EQUILIBRIUM equilibrium zzz");
+    }
+
+    /// A deliberately-cased expansion must survive when its key is typed plainly, and an EXACT key
+    /// always wins over the case-insensitive fallback.
+    #[test]
+    fn auto_replace_preserves_value_case_and_prefers_an_exact_key() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut()
+            .files
+            .insert("fix.ar".into(), "usa=United States of America\nHTML=HyperText Markup Language\n".into());
+        e.run_command("LoadAR fix.ar");
+
+        // Lower-case key, capitalised value → value reproduced verbatim.
+        e.run_command(r#"INSERT "usa""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "United States of America");
+
+        // The exact key `HTML` wins (verbatim) rather than being upper-cased by the fallback.
+        e.run_command(r#"INSERT " HTML""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "United States of America HyperText Markup Language");
     }
 
     #[test]

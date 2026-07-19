@@ -601,6 +601,29 @@ fn first_selectable(list: &[MenuNode]) -> usize {
 /// opens leftward; a top dropdown right-aligns under its button); if it would overflow the bottom
 /// it shifts up. `size` is the column's size measured on the previous frame — menus are stable, so
 /// a freshly-opened column settles within one frame.
+/// Which egui layer a menu column paints in — deeper columns MUST paint above shallower ones.
+///
+/// `ctx.move_to_top()` cannot deliver that. egui applies it at end-of-pass as a STABLE sort keyed on
+/// a bool (`order.sort_by_key(|l| (l.order, wants_to_be_on_top.contains(l)))`), so calling it for
+/// every column drops them all in the same bucket and leaves their relative order untouched. Worse,
+/// egui raises an area when the POINTER interacts with it — so hovering a parent item lifts the
+/// PARENT above the child it just opened. Reported from the field: `Settings ▸ Appearance ▸ Colors`
+/// in an ~897 px window, where the flipped Appearance column covered the top half of the Colors
+/// column it had just spawned.
+///
+/// `Order` is that sort's PRIMARY key, so ranking columns by depth is authoritative regardless of any
+/// of that bookkeeping. The mapping is FIXED per depth (not "is this the deepest?") so a column's
+/// `LayerId` never changes between frames. It also never places a column BELOW `Foreground`, where
+/// they all used to be, so nothing can now fall behind an `egui::Window` (About / Properties / MSG).
+/// Three distinct levels; a 4th-level column ties with the 3rd, which is no worse than before.
+fn menu_col_order(depth: usize) -> egui::Order {
+    match depth {
+        0 => egui::Order::Foreground,
+        1 => egui::Order::Tooltip,
+        _ => egui::Order::Debug,
+    }
+}
+
 fn place_menu_col(anchor: egui::Rect, size: egui::Vec2, screen: egui::Rect, to_right: bool) -> egui::Pos2 {
     let mut x = if to_right { anchor.right() } else { anchor.left() };
     let mut y = if to_right { anchor.top() } else { anchor.bottom() };
@@ -895,6 +918,32 @@ fn encoding_convert_items() -> Vec<MenuNode> {
 #[cfg(test)]
 mod menu_tests {
     use super::*;
+
+    /// Deeper menu columns must sit in a STRICTLY higher egui layer than their parent, so a submenu
+    /// can never be painted under the column that spawned it (the field report was
+    /// `Settings ▸ Appearance ▸ Colors` at ~897 px, Colors half-covered by Appearance). `Order` is
+    /// the primary key egui sorts layers by, so this ordering is what actually guarantees it.
+    #[test]
+    fn deeper_menu_columns_paint_in_higher_layers() {
+        let (c0, c1, c2) = (menu_col_order(0), menu_col_order(1), menu_col_order(2));
+        assert!(c0 < c1, "column 1 must be above column 0");
+        assert!(c1 < c2, "column 2 must be above column 1");
+        // Never below Foreground, so a column can't fall behind an `egui::Window`.
+        assert!(c0 >= egui::Order::Foreground);
+        // Fixed per depth: a column's layer must not change between frames.
+        assert_eq!(menu_col_order(2), menu_col_order(3));
+    }
+
+    /// The crash log's human-readable stamp. Tests run with the default (unset) local offset, i.e.
+    /// UTC, so this is deterministic. The epoch here is a real crash report from a tester.
+    #[test]
+    fn crash_log_timestamp_is_human_readable_with_its_utc_offset() {
+        // 1784430921 s == 2026-07-19 03:15:21 UTC.
+        assert_eq!(local_timestamp(1_784_430_921_000), "2026-07-19 03:15:21 +00:00");
+        // Sub-second input truncates rather than rounding up, and the epoch itself is sane.
+        assert_eq!(local_timestamp(1_784_430_921_999), "2026-07-19 03:15:21 +00:00");
+        assert_eq!(local_timestamp(0), "1970-01-01 00:00:00 +00:00");
+    }
 
     #[test]
     fn leading_glyph_cursor_anchors_on_the_char_under_the_point() {
@@ -1271,15 +1320,15 @@ mod menu_tests {
     fn menu_labels_stay_within_width() {
         // Menu columns render with `TextWrapMode::Extend`, so a label never WRAPS — the column widens
         // to fit it. This guard keeps that widening sane: no item (any submenu depth) may exceed a
-        // budget that comfortably fits a readable column. A submenu item also shows a "    ▸" marker,
-        // so it's charged 5 extra. Counts CHARS (so "…"/"▸"/"✔" count as one), matching visual width.
+        // budget that comfortably fits a readable column. A submenu item also shows a "    ⏵" marker,
+        // so it's charged 5 extra. Counts CHARS (so "…"/"⏵"/"✔" count as one), matching visual width.
         const MAX: usize = 40;
         fn walk(nodes: &[MenuNode], out: &mut Vec<(String, usize)>) {
             for n in nodes {
                 match n {
                     MenuNode::Item { label, .. } => out.push((label.clone(), label.chars().count())),
                     MenuNode::Sub { label, children } => {
-                        out.push((label.clone(), label.chars().count() + 5)); // + "    ▸"
+                        out.push((label.clone(), label.chars().count() + 5)); // + "    ⏵"
                         walk(children, out);
                     }
                     MenuNode::Sep => {}
@@ -4342,7 +4391,9 @@ impl GuiApp {
                 if !trusted {
                     ui.colored_label(
                         ui.visuals().warn_fg_color,
-                        "Shell commands are off — enable in Settings ▸ Allow shell commands.",
+                        // `⏵` (U+23F5), not `▸` (U+25B8) — see the submenu marker: only the former
+                        // is in egui's bundled fonts, and this label renders with them.
+                        "Shell commands are off — enable in Settings ⏵ Allow shell commands.",
                     );
                     ui.add_space(2.0);
                 }
@@ -5043,7 +5094,7 @@ impl GuiApp {
                 let pos = place_menu_col(anchor, size, screen, c > 0);
                 let mut hl_rect: Option<egui::Rect> = None;
                 let area = egui::Area::new(egui::Id::new(("menu_col", c)))
-                    .order(egui::Order::Foreground)
+                    .order(menu_col_order(c)) // deeper column = higher layer; see `menu_col_order`
                     .fixed_pos(pos)
                     .show(&ctx, |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
@@ -5072,7 +5123,12 @@ impl GuiApp {
                                         }
                                     }
                                     MenuNode::Sub { label, children } => {
-                                        let disp = format!("{label}    ▸");
+                                        // U+23F5 — the SAME glyph egui uses for its own submenu
+                                        // icon, so it is guaranteed to exist in egui's bundled
+                                        // fonts. U+25B8 (`▸`) does NOT, and rendered as an empty
+                                        // tofu box. Menu glyphs must be in the bundled fonts —
+                                        // see `m_tog` for the same rule forcing ✔ over ✓.
+                                        let disp = format!("{label}    ⏵");
                                         let text = accel_label(ui, &disp, accels[i]);
                                         let resp = ui.selectable_label(i == sel, text);
                                         if i == sel {
@@ -7732,20 +7788,46 @@ fn crash_log_path() -> std::path::PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("xyscript-crash.log"))
 }
 
+/// Format Unix `millis` as a human-readable LOCAL timestamp with its UTC offset, e.g.
+/// `2026-07-19 03:15:21 +00:00`. Bug reports quote these, so a bare epoch number is unhelpful — and
+/// the offset makes a report from another timezone unambiguous. Reuses the engine's own civil-date
+/// math (`clock::fields_from_millis`, no date crate) and the offset resolved at startup
+/// (`dir::set_local_offset`); both are pure/atomic, so this is safe to call from a panic hook.
+/// A crash before the offset is resolved simply reports UTC (`+00:00`), which is still correct.
+fn local_timestamp(millis: i64) -> String {
+    let offset = xyscript_app::dir::local_offset_secs();
+    let t = xyscript_app::clock::fields_from_millis(millis, offset);
+    let (sign, abs) = if offset < 0 { ('-', -offset) } else { ('+', offset) };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02} {sign}{:02}:{:02}",
+        t.year,
+        t.month,
+        t.mday,
+        t.hour,
+        t.min,
+        t.sec,
+        abs / 3600,
+        (abs % 3600) / 60,
+    )
+}
+
 /// Install a panic hook that appends a timestamped report (message, location, backtrace) to a log
 /// file, then chains to the previous hook so a debug build still prints to its console. A
 /// release/windowed build has no console, so without this a crash would vanish silently.
 fn install_crash_logger() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let secs = std::time::SystemTime::now()
+        let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
+            .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
+        let secs = millis / 1000;
+        let when = local_timestamp(millis);
         let backtrace = std::backtrace::Backtrace::force_capture();
         let report = format!(
             "\n===== XyScript crash =====\n\
              version : {}\n\
+             time    : {when}\n\
              unix-ts : {secs}\n\
              {info}\n\
              backtrace:\n{backtrace}\n",
