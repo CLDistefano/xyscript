@@ -5141,6 +5141,66 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
     }
 
+    /// `DIRWNW` governs the SEPARATE `DIR/W` window (vs `DIRNW`, which governs an in-tab listing).
+    /// Default `on` preserves how `DIR/W` has always behaved; `off` reuses the active tab — but never
+    /// discards a MODIFIED buffer to do it.
+    #[test]
+    fn dirwnw_controls_the_dir_window_open_and_never_discards_unsaved_work() {
+        let base = std::env::temp_dir().join(format!("xyscript-dirwnw-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.txt"), b"alpha\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+
+        // Default is ON — and it is INDEPENDENT of DIRNW (which defaults off).
+        e.run_command("PR $DIRWNW");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        e.run_command("PR $DIRNW");
+        assert_eq!(e.output().last().map(String::as_str), Some("0"));
+
+        // DIRWNW off → the picked file takes over the active (unmodified) tab.
+        e.run_command("DIRWNW off");
+        assert_eq!(e.status_message(), Some("DIRWNW off"));
+        e.run_command("DIR/W");
+        e.host_mut().dir_window_find_push('a');
+        let before = e.host_mut().buffer_count();
+        e.host_mut().dir_window_activate().unwrap();
+        assert_eq!(e.host_mut().buffer_count(), before, "reused the active tab");
+        assert_eq!(e.document().text(), "alpha\n");
+        // The focused pane must follow the replacement (a fresh `DocId`).
+        let active_id = e.host_mut().active_doc().id();
+        assert_eq!(e.host_mut().panes().focused_doc(), active_id);
+
+        // With UNSAVED changes in the active buffer, `off` must NOT clobber it.
+        e.run_command(r#"INSERT "dirty""#);
+        assert!(e.host_mut().active_doc().is_modified());
+        let before = e.host_mut().buffer_count();
+        e.host_mut().dir_window_find_clear();
+        e.host_mut().dir_window_find_push('a');
+        e.host_mut().dir_window_activate().unwrap();
+        assert_eq!(e.host_mut().buffer_count(), before + 1, "opened beside the modified buffer");
+
+        // DIRWNW on → always a new tab.
+        e.run_command("DIRWNW on");
+        let before = e.host_mut().buffer_count();
+        e.host_mut().dir_window_find_clear();
+        e.host_mut().dir_window_find_push('a');
+        e.host_mut().dir_window_activate().unwrap();
+        assert_eq!(e.host_mut().buffer_count(), before + 1);
+
+        // Bad argument is trappable; state unchanged.
+        e.run_command("DIRWNW 2");
+        assert!(e.last_error().unwrap().starts_with("DIRWNW: expected on or off"));
+        e.run_command("PR $DIRWNW");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+
+        // Best-effort: the DIR/W window is still open on this directory, so Windows can refuse the
+        // removal. It is a temp dir either way.
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn dirnw_controls_in_place_vs_new_tab_open() {
         let base = std::env::temp_dir().join(format!("xyscript-dirnw-{:p}", &"tag"));
@@ -5161,6 +5221,16 @@ mod tests {
         assert!(!e.host_mut().active_is_dir_listing());
         assert_eq!(e.host_mut().buffer_count(), 1); // replaced in place
         assert_eq!(e.document().text(), "alpha\n");
+        // ...and the focused PANE must follow the replacement. A `DocId` is unique per live
+        // `Document`, so the new doc has an id the pane tree has never seen; without a re-sync the
+        // pane still pointed at the listing's dead id and the file showed up as its own tab —
+        // `DIRNW off` behaving exactly like `DIRNW on`, which is what a tester reported.
+        let active_id = e.host_mut().active_doc().id();
+        assert_eq!(
+            e.host_mut().panes().focused_doc(),
+            active_id,
+            "the focused pane must show the file that replaced the listing"
+        );
 
         // DIRNW on: $DIRNW = 1 → opening lands in a NEW tab, the listing stays behind.
         e.run_command("DIRNW on");

@@ -123,9 +123,14 @@ pub enum EditorOp {
     /// single reusable window). Double-click opens a file in a new parent tab; the listing
     /// auto-refreshes when the window regains focus (if the directory changed).
     DirWindow { path: Option<String>, opts: DirOpts },
-    /// `DIRNW on|off` — whether opening a file from a directory listing opens it in a **new** tab
-    /// (`on`, listing stays) or replaces the listing in place (`off`). Read back via `$DIRNW`.
+    /// `DIRNW on|off` — whether opening a file from an in-TAB directory listing opens it in a **new**
+    /// tab (`on`, listing stays) or replaces the listing in place (`off`). Read back via `$DIRNW`.
     SetDirNewTab(bool),
+    /// `DIRWNW on|off` — the same choice for the separate `DIR/W` WINDOW: `on` (the default) opens
+    /// the picked file in a new tab; `off` reuses the active tab instead. Distinct from `DIRNW`
+    /// because the two are different interactions — `DIR/W` floats beside your work, so it has
+    /// always added a tab. Read back via `$DIRWNW`.
+    SetDirWindowNewTab(bool),
     /// `DIRRT on|off` — whether a `DIR` command reuses an already-open listing tab (`on`) instead of
     /// spawning a new one each time (`off`, the default). Read back via `$DIRRT`.
     SetDirReuse(bool),

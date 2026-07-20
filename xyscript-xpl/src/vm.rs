@@ -2130,7 +2130,7 @@ impl Vm<'_, '_> {
             // `DIRNW on|off` ("DIR NeW tab"): on = opening a file from a listing lands in a new tab
             // (the listing stays); off = it replaces the listing in place. `DIRRT on|off` ("DIR
             // Reuse Tab"): on = a `DIR` reuses an open listing tab instead of spawning a new one.
-            "DIRNW" | "DIRRT" => {
+            "DIRNW" | "DIRWNW" | "DIRRT" => {
                 let on = match args.trim().to_ascii_lowercase().as_str() {
                     "on" => true,
                     "off" => false,
@@ -2140,10 +2140,10 @@ impl Vm<'_, '_> {
                         )))
                     }
                 };
-                self.host_op(if base == "DIRNW" {
-                    EditorOp::SetDirNewTab(on)
-                } else {
-                    EditorOp::SetDirReuse(on)
+                self.host_op(match base {
+                    "DIRNW" => EditorOp::SetDirNewTab(on),
+                    "DIRWNW" => EditorOp::SetDirWindowNewTab(on),
+                    _ => EditorOp::SetDirReuse(on),
                 })?;
                 Ok(Flow::Next)
             }

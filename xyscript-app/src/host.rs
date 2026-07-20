@@ -1542,10 +1542,17 @@ pub struct AppHost {
     /// so a bare drive change (`D:`) returns to where you were on that drive — like `cmd.exe` —
     /// instead of its root. Updated on every cwd change; seeded with the startup drive.
     drive_dirs: HashMap<char, PathBuf>,
-    /// `DIRNW` — when true (`DIRNW on`), opening a file from a directory listing opens it in a
-    /// **new** tab; when false (`DIRNW off`, the default), it replaces the listing in place. Read
+    /// `DIRNW` — when true (`DIRNW on`), opening a file from an in-TAB directory listing opens it in
+    /// a **new** tab; when false (`DIRNW off`, the default), it replaces the listing in place. Read
     /// back via `$DIRNW`.
     new_window: bool,
+    /// `DIRWNW` — the same choice for the separate `DIR/W` WINDOW. True (`DIRWNW on`, the DEFAULT)
+    /// opens the picked file in a new tab, which is how `DIR/W` has always behaved; false reuses the
+    /// active tab. Kept separate from `DIRNW` because they are different interactions: an in-tab
+    /// listing replaces ITSELF (a read-only buffer, safe to discard), whereas `DIR/W` floats beside
+    /// whatever you are editing — so `off` never discards a MODIFIED buffer, it opens alongside it
+    /// instead. Read back via `$DIRWNW`.
+    dir_window_new_tab: bool,
     /// `DIRRT` — when true (`DIRRT on`), a `DIR` command reuses an already-open listing tab instead
     /// of spawning a new one each time (avoids a proliferation of listing tabs). Default false
     /// (`DIRRT off` = a new tab per `DIR`). Read back via `$DIRRT`.
@@ -1978,6 +1985,7 @@ impl AppHost {
             cwd: std::env::current_dir().unwrap_or_default(),
             drive_dirs: HashMap::new(), // seeded from the startup cwd just after construction
             new_window: false,
+            dir_window_new_tab: true, // DIR/W has always opened a new tab — keep that the default
             dir_reuse: false,
             show_titlebar: true,
             remember_window_geometry: true,
@@ -4955,6 +4963,12 @@ impl AppHost {
                 doc.share_grammars(self.highlight_grammars.clone());
                 self.docs[self.active] = doc;
                 self.auto_highlight_active();
+                // A `DocId` is unique per live `Document`, so replacing the slot gives the pane tree
+                // a doc id it has never seen — the focused pane would still point at the LISTING's
+                // dead id, and the file surfaced as a separate tab instead of taking the listing's
+                // place (i.e. `DIRNW off` looked like `DIRNW on`). Every other in-place replacement
+                // (see `add_or_reuse`) re-points the pane; this one has to as well.
+                self.sync_panes();
             }
         }
         Ok(())
@@ -5178,7 +5192,15 @@ impl AppHost {
             let mut doc = Document::new();
             doc.load(bytes, entry.path.clone());
             doc.share_grammars(self.highlight_grammars.clone());
-            self.add_or_reuse(doc);
+            // `DIRWNW on` (default) opens a new tab; `off` reuses the ACTIVE one. Unsaved work is
+            // never discarded to do so — a modified buffer is left alone and the file opens beside
+            // it. (`DIRNW`'s in-tab case has no such risk: what it replaces is the listing itself.)
+            if self.dir_window_new_tab || self.docs[self.active].is_modified() {
+                self.add_or_reuse(doc);
+            } else {
+                self.docs[self.active] = doc;
+                self.sync_panes(); // fresh `DocId` — re-point the focused pane (see `dir_enter`)
+            }
             self.auto_highlight_active();
             Ok(DirWindowAction::Opened(entry.path))
         }
@@ -6007,6 +6029,7 @@ impl AppHost {
         put(&mut s, "OS window title bar — on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
         put(&mut s, "Remember window size+position across runs — off helps mixed-DPI multi-monitor setups", if self.remember_window_geometry { "WINGEO on" } else { "WINGEO off" }.to_string());
         put(&mut s, "Open a file from a DIR listing in a new tab (on) or in place (off) — DIRNW", format!("DIRNW {}", if self.new_window { "on" } else { "off" }));
+        put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) — DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
         put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) — DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
         put(
             &mut s,
@@ -6619,6 +6642,10 @@ impl Host for AppHost {
             EditorOp::SetDirNewTab(on) => {
                 self.new_window = on;
                 return Ok(Value::str(format!("DIRNW {}", if on { "on" } else { "off" })));
+            }
+            EditorOp::SetDirWindowNewTab(on) => {
+                self.dir_window_new_tab = on;
+                return Ok(Value::str(format!("DIRWNW {}", if on { "on" } else { "off" })));
             }
             EditorOp::SetDirReuse(on) => {
                 self.dir_reuse = on;
@@ -8815,6 +8842,7 @@ impl Host for AppHost {
             "CC" => Some(Value::Int(self.change_count)),
             "PS" => Some(Value::Int(if self.persistent { 1 } else { 0 })),
             "DIRNW" => Some(Value::Int(if self.new_window { 1 } else { 0 })),
+            "DIRWNW" => Some(Value::Int(if self.dir_window_new_tab { 1 } else { 0 })),
             "DIRRT" => Some(Value::Int(if self.dir_reuse { 1 } else { 0 })),
             "TITLEBAR" => Some(Value::Int(if self.show_titlebar { 1 } else { 0 })),
             "WINGEO" => Some(Value::Int(if self.remember_window_geometry { 1 } else { 0 })),

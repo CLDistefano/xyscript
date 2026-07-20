@@ -64,7 +64,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "SE", "SEL", "SL", "DF", "DS", "DN", "CS",
     // editor state/flags (EN = active document's encoding-view name)
     "FB", "FE", "RE", "MO", "EN", "FS", "LC", "TL", "WC", "CC", "CH", "TB", "GC", "MB",
-    "AU", "PS", "VR", "TC", "CT", "TX", "DIRNW", "DIRRT", "LNS", "WS", "RO", "HLAUTO", "DECIMALS", "SW", "SH", "AR", "TABSPACES", "TABINDENT", "INDENTED", "BALPAIRS", "BALPAIRSCOLOR", "TYPEPAIRS", "WRAPINDENT",
+    "AU", "PS", "VR", "TC", "CT", "TX", "DIRNW", "DIRWNW", "DIRRT", "LNS", "WS", "RO", "HLAUTO", "DECIMALS", "SW", "SH", "AR", "TABSPACES", "TABINDENT", "INDENTED", "BALPAIRS", "BALPAIRSCOLOR", "TYPEPAIRS", "WRAPINDENT",
     "DOCTYPE", "PV", "TITLEBAR", "WINGEO",
     // lock keys (full names; $CL/$NL freed for other specials)
     "CAPSLOCK", "NUMLOCK", "SCROLLLOCK",
