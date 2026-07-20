@@ -1092,6 +1092,12 @@ impl Handler {
     /// Create the `DIR/W` window, or — if it already exists — focus it and refresh its listing, to
     /// match a freshly-issued `DIR/W`. Called each loop iteration (needs the `ActiveEventLoop`).
     fn sync_dir(&mut self, event_loop: &ActiveEventLoop) {
+        // The ENGINE can drop the listing on its own — `DIRWCLOSE on` dismisses it as soon as a file
+        // is opened. Tear the OS window down to match, or it would linger with nothing to draw
+        // (`redraw_dir` early-returns without a view). Geometry is saved by `close_dir` as usual.
+        if self.dir.is_some() && !self.app.dir_window_active() {
+            self.close_dir();
+        }
         if !self.app.take_dir_window_open() {
             return;
         }

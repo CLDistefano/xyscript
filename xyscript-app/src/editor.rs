@@ -5175,6 +5175,52 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
     }
 
+    /// `DIRWCLOSE` dismisses the `DIR/W` picker once a file is opened — independent of `DIRWNW`,
+    /// which only chooses the TAB. Off by default (the window has always stayed open), and
+    /// descending into a subdirectory never closes it.
+    #[test]
+    fn dirwclose_dismisses_the_picker_only_after_opening_a_file() {
+        let base = std::env::temp_dir().join(format!("xyscript-dirwclose-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.txt"), b"alpha\n").unwrap();
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("PR $DIRWCLOSE");
+        assert_eq!(e.output().last().map(String::as_str), Some("0"), "off by default");
+
+        // Default (off): the window survives opening a file.
+        e.run_command("DIR/W");
+        e.host_mut().dir_window_find_push('a');
+        e.host_mut().dir_window_activate().unwrap();
+        assert!(e.host_mut().dir_window_active(), "off keeps the picker open");
+
+        // On: opening a file dismisses it.
+        e.run_command("DIRWCLOSE on");
+        assert_eq!(e.status_message(), Some("DIRWCLOSE on"));
+        e.run_command("DIR/W");
+        e.host_mut().dir_window_find_push('a');
+        e.host_mut().dir_window_activate().unwrap();
+        assert!(!e.host_mut().dir_window_active(), "on closes it once a file opens");
+
+        // ...but DESCENDING keeps it open, even with DIRWCLOSE on.
+        e.run_command("DIR/W");
+        e.host_mut().dir_window_find_push('s'); // the "sub" directory
+        e.host_mut().dir_window_activate().unwrap();
+        assert!(e.host_mut().dir_window_active(), "descending must not close the picker");
+
+        // Independent of DIRWNW.
+        e.run_command("PR $DIRWNW");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"), "DIRWNW untouched");
+
+        e.run_command("DIRWCLOSE 2");
+        assert!(e.last_error().unwrap().starts_with("DIRWCLOSE: expected on or off"));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// `DIRWNW` governs the SEPARATE `DIR/W` window (vs `DIRNW`, which governs an in-tab listing).
     /// Default `on` preserves how `DIR/W` has always behaved; `off` reuses the active tab — but never
     /// discards a MODIFIED buffer to do it.

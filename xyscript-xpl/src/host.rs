@@ -131,6 +131,11 @@ pub enum EditorOp {
     /// because the two are different interactions — `DIR/W` floats beside your work, so it has
     /// always added a tab. Read back via `$DIRWNW`.
     SetDirWindowNewTab(bool),
+    /// `DIRWCLOSE on|off` — whether the `DIR/W` window CLOSES once you open a file from it (`on`),
+    /// or stays open to keep picking (`off`, the default). Independent of [`Self::SetDirWindowNewTab`],
+    /// which chooses the TAB the file lands in. Descending into a subdirectory never closes it.
+    /// Read back via `$DIRWCLOSE`.
+    SetDirWindowClose(bool),
     /// `DIRRT on|off` — whether a `DIR` command reuses an already-open listing tab (`on`) instead of
     /// spawning a new one each time (`off`, the default). Read back via `$DIRRT`.
     SetDirReuse(bool),

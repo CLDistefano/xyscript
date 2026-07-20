@@ -3668,6 +3668,11 @@ impl GuiApp {
     fn close_dir_window(&mut self) {
         self.editor.host_mut().close_dir_window();
     }
+    /// Whether the engine still has a `DIR/W` listing. The host can drop it on its own (`DIRWCLOSE
+    /// on` dismisses it once a file opens), so the runtime polls this to tear the OS window down.
+    fn dir_window_active(&self) -> bool {
+        self.editor.host().dir_window_active()
+    }
     fn dir_window_move(&mut self, delta: isize) {
         self.editor.host_mut().dir_window_move(delta);
     }

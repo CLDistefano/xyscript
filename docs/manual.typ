@@ -598,6 +598,7 @@ colours (#raw("SELFGCOLOR") / #raw("SELBGCOLOR")).
 Two toggles tune how a listing behaves, each with a read-back:
 
 / #raw("DIRNW"): when on, opening a file from an in-tab listing lands it in a *new* tab and leaves the listing in place; off (the default) replaces the listing. Reads as #raw("$DIRNW").
+/ #raw("DIRWCLOSE"): when on, the #raw("DIR/W") window closes as soon as you open a file from it; off (the default) leaves it open so you can carry on picking. Descending into a sub-directory never closes it. This is independent of #raw("DIRWNW") — one decides whether the *picker* stays, the other which *tab* the file lands in. Reads as #raw("$DIRWCLOSE").
 / #raw("DIRWNW"): the same choice for the separate #raw("DIR/W") window — on (the default) opens the picked file in a new tab, off reuses the active tab. It is separate from #raw("DIRNW") because #raw("DIR/W") floats beside your work rather than occupying a tab of its own. With off, a file you have *unsaved changes* in is never replaced; the picked file opens beside it. Reads as #raw("$DIRWNW").
 / #raw("DIRRT"): when on, a #raw("DIR") command *reuses* an open listing tab instead of spawning a new one each time. Reads as #raw("$DIRRT").
 

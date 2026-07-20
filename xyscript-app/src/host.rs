@@ -1553,6 +1553,12 @@ pub struct AppHost {
     /// whatever you are editing — so `off` never discards a MODIFIED buffer, it opens alongside it
     /// instead. Read back via `$DIRWNW`.
     dir_window_new_tab: bool,
+    /// `DIRWCLOSE` — whether the `DIR/W` window closes once you open a file from it. False
+    /// (`DIRWCLOSE off`, the DEFAULT) keeps it open to carry on picking, which is how `DIR/W` has
+    /// always behaved; true dismisses it as soon as a file opens. Independent of `DIRWNW` (which
+    /// chooses the TAB): the two answer different questions. Descending into a SUBDIRECTORY never
+    /// closes the window — only opening a file does. Read back via `$DIRWCLOSE`.
+    dir_window_close_on_open: bool,
     /// `DIRRT` — when true (`DIRRT on`), a `DIR` command reuses an already-open listing tab instead
     /// of spawning a new one each time (avoids a proliferation of listing tabs). Default false
     /// (`DIRRT off` = a new tab per `DIR`). Read back via `$DIRRT`.
@@ -1986,6 +1992,7 @@ impl AppHost {
             drive_dirs: HashMap::new(), // seeded from the startup cwd just after construction
             new_window: false,
             dir_window_new_tab: true, // DIR/W has always opened a new tab — keep that the default
+            dir_window_close_on_open: false, // DIR/W is a picker — it has always stayed open
             dir_reuse: false,
             show_titlebar: true,
             remember_window_geometry: true,
@@ -5202,6 +5209,12 @@ impl AppHost {
                 self.sync_panes(); // fresh `DocId` — re-point the focused pane (see `dir_enter`)
             }
             self.auto_highlight_active();
+            // `DIRWCLOSE on` dismisses the picker now that it has done its job. Only on a FILE —
+            // descending into a subdirectory (the branch above) keeps the window so you can carry on
+            // browsing. The GUI notices the listing is gone and tears the OS window down to match.
+            if self.dir_window_close_on_open {
+                self.close_dir_window();
+            }
             Ok(DirWindowAction::Opened(entry.path))
         }
     }
@@ -6030,6 +6043,7 @@ impl AppHost {
         put(&mut s, "Remember window size+position across runs — off helps mixed-DPI multi-monitor setups", if self.remember_window_geometry { "WINGEO on" } else { "WINGEO off" }.to_string());
         put(&mut s, "Open a file from a DIR listing in a new tab (on) or in place (off) — DIRNW", format!("DIRNW {}", if self.new_window { "on" } else { "off" }));
         put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) — DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
+        put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) — DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
         put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) — DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
         put(
             &mut s,
@@ -6646,6 +6660,10 @@ impl Host for AppHost {
             EditorOp::SetDirWindowNewTab(on) => {
                 self.dir_window_new_tab = on;
                 return Ok(Value::str(format!("DIRWNW {}", if on { "on" } else { "off" })));
+            }
+            EditorOp::SetDirWindowClose(on) => {
+                self.dir_window_close_on_open = on;
+                return Ok(Value::str(format!("DIRWCLOSE {}", if on { "on" } else { "off" })));
             }
             EditorOp::SetDirReuse(on) => {
                 self.dir_reuse = on;
@@ -8843,6 +8861,7 @@ impl Host for AppHost {
             "PS" => Some(Value::Int(if self.persistent { 1 } else { 0 })),
             "DIRNW" => Some(Value::Int(if self.new_window { 1 } else { 0 })),
             "DIRWNW" => Some(Value::Int(if self.dir_window_new_tab { 1 } else { 0 })),
+            "DIRWCLOSE" => Some(Value::Int(if self.dir_window_close_on_open { 1 } else { 0 })),
             "DIRRT" => Some(Value::Int(if self.dir_reuse { 1 } else { 0 })),
             "TITLEBAR" => Some(Value::Int(if self.show_titlebar { 1 } else { 0 })),
             "WINGEO" => Some(Value::Int(if self.remember_window_geometry { 1 } else { 0 })),
