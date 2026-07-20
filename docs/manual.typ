@@ -1330,6 +1330,13 @@ Libraries are managed with a small set of verbs, also on the *Tools ▸ Library*
 While you are developing a library the cycle is quick: save the file, #raw("RELOADLIB"), call the
 routine again.
 
+#tip("A library is how routines are shared — RUN is not")[A #raw("SUB") defined inside a script is
+*local to that script*. If #raw("startup.xpl") does #raw("RUN mydefs.xpl") and then calls a routine
+that #raw("mydefs.xpl") defined, that call fails with #raw("unknown command") — and because such an
+error is fatal, the rest of #raw("startup.xpl") stops there. Put routines you want to reuse in a
+#raw(".lib") and #raw("LOADLIB") it instead; a routine loaded that way is callable by the rest of the
+very same script, including the startup script that loaded it.]
+
 #tip("A bad routine is skipped, not fatal")[Loading validates each routine. If one will not compile —
 say it jumps to a label that isn't there — XyScript skips just that routine with a message and loads the
 rest, so a single typo can't take your whole library down with it.]

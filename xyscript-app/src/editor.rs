@@ -1994,6 +1994,40 @@ mod tests {
         assert!(saved.contains("# DOC: says hi"), "DOC preserved: {saved}");
     }
 
+    /// A routine loaded by `LOADLIB` must be callable LATER IN THE SAME SCRIPT — the `startup.xpl`
+    /// shape. Library routines are lowered into the program up front, so the compiled routine table
+    /// is a snapshot from before the `LOADLIB` ran; the call used to die as a FATAL "unknown
+    /// command", which killed the rest of the script (reported from the field: startup.xpl
+    /// terminating early). The VM now falls back to the host's CURRENT library.
+    #[test]
+    fn a_routine_loadlib_ed_mid_script_is_callable_by_the_same_script() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("src.lib".into(), "SUB greet\nPR hello\nENDSUB".into());
+        // ONE program: load, then call, then keep going.
+        e.run_command("LOADLIB src.lib\ngreet\nPR still-running");
+        assert_eq!(e.last_error(), None, "the call must not be a fatal unknown command");
+        let out = e.output();
+        assert!(out.iter().any(|l| l == "hello"), "routine ran: {out:?}");
+        assert!(out.iter().any(|l| l == "still-running"), "script continued past it: {out:?}");
+    }
+
+    /// ...but a `SUB` defined inside a RUN-ed script stays LOCAL to that script (user decision
+    /// 2026-07-20): `.lib` + `LOADLIB` is the mechanism for sharing routines. Pinned so the
+    /// `LOADLIB` fallback above is never widened into "any SUB anyone ever ran".
+    #[test]
+    fn a_sub_defined_in_a_run_ed_script_stays_local_to_it() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("defs.xpl".into(), "SUB helper\nPR from-helper\nENDSUB".into());
+        e.run_command("RUN defs.xpl\nhelper");
+        assert!(
+            e.last_error().unwrap_or_default().contains("unknown command"),
+            "a RUN-ed script's SUB must not leak to the caller: {:?}",
+            e.last_error()
+        );
+    }
+
     #[test]
     fn savelib_is_captureable() {
         let mut e = ed();

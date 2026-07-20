@@ -3901,6 +3901,23 @@ impl Vm<'_, '_> {
             other if self.subs.contains_key(other) => {
                 self.exec_call(&format!("{other} {args}"))
             }
+            // A routine that arrived AFTER this program was compiled — `LOADLIB` inside the very
+            // script that then calls the routine (the classic `startup.xpl` shape). Library routines
+            // are lowered INTO the program up front (see `ir::lower`'s `extra_subs`), so `self.subs`
+            // is a snapshot from compile time and cannot see it; the call died as "unknown command",
+            // which is FATAL and killed the rest of the script. Run it as a nested script instead:
+            // that compiles fresh against the CURRENT library, exactly as `RUNCODE greet` already
+            // did. Args go through `$1..$N` rather than being pasted back into source, so a value
+            // that happens to contain a `$` isn't substituted a second time.
+            other if self.ctx.library.get(other).is_some() => {
+                let call_args: Vec<Value> =
+                    args.split_whitespace().map(Value::str).collect();
+                let refs: String = (1..=call_args.len())
+                    .map(|i| format!("${i}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                self.run_source_sync(&format!("CALL {other} {refs}"), &call_args)
+            }
             other => Err(XplError::fatal(unknown_command_message(other, &self.subs))),
         }
     }
