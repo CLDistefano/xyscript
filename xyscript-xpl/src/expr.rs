@@ -1134,8 +1134,17 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             Ok(Value::Int(if s(0).contains(&s(1)) { 1 } else { 0 }))
         }
         "REPLACE" => {
-            expect(3)?;
-            Ok(Value::str(s(0).replace(&s(1), &s(2))))
+            // `REPLACE(s, from, to)` replaces ALL occurrences; the optional 4th arg bounds it:
+            // `n > 0` = at most n from the start, `n < 0` = at most |n| from the END, `0` = none.
+            if argc != 3 && argc != 4 {
+                return Err(ExprError::new(format!("REPLACE: expected 3 or 4 args, got {argc}")));
+            }
+            if argc == 3 {
+                Ok(Value::str(s(0).replace(&s(1), &s(2))))
+            } else {
+                let n = int_arg(&vals[3], "REPLACE")?;
+                Ok(Value::str(replace_bounded(&s(0), &s(1), &s(2), n)))
+            }
         }
         "SEL" => {
             // `SEL()` = the current selection; `SEL(n)` = tab n's selection (1-based; "" if out of
@@ -1399,6 +1408,63 @@ fn right(s: &str, n: i64) -> String {
     let chars: Vec<char> = s.chars().collect();
     let start = chars.len().saturating_sub(n as usize);
     chars[start..].iter().collect()
+}
+
+/// Replace up to `n` non-overlapping occurrences of `from` with `to`. `n > 0` takes the FIRST `n`
+/// (left to right); `n < 0` takes the LAST `|n|` (right to left); `n == 0` replaces nothing. An
+/// empty `from` matches nothing here (returns `s` unchanged) — the unbounded 3-arg `REPLACE` keeps
+/// Rust's `str::replace` semantics for that corner. Byte indices come from `find`/`rfind`, so they
+/// always land on char boundaries (`from` is a substring), keeping the slicing UTF-8-safe. The
+/// direction genuinely matters for self-overlapping patterns: `REPLACE("aaa","aa","X",-1)` → `"aX"`
+/// (rightmost match), whereas `+1` → `"Xa"` (leftmost).
+fn replace_bounded(s: &str, from: &str, to: &str, n: i64) -> String {
+    if from.is_empty() || n == 0 {
+        return s.to_string();
+    }
+    if n > 0 {
+        // First `n`, scanning left to right.
+        let limit = n as usize;
+        let mut out = String::with_capacity(s.len());
+        let mut rest = s;
+        let mut done = 0;
+        while done < limit {
+            match rest.find(from) {
+                Some(pos) => {
+                    out.push_str(&rest[..pos]);
+                    out.push_str(to);
+                    rest = &rest[pos + from.len()..];
+                    done += 1;
+                }
+                None => break,
+            }
+        }
+        out.push_str(rest);
+        out
+    } else {
+        // Last `|n|`, scanning right to left so overlapping matches are picked from the end.
+        let limit = n.unsigned_abs() as usize;
+        let mut starts: Vec<usize> = Vec::new(); // match starts, collected descending
+        let mut end = s.len();
+        while starts.len() < limit {
+            match s[..end].rfind(from) {
+                Some(pos) => {
+                    starts.push(pos);
+                    end = pos; // next match must not overlap this one
+                }
+                None => break,
+            }
+        }
+        starts.reverse(); // ascending, to rebuild left to right
+        let mut out = String::with_capacity(s.len());
+        let mut last = 0;
+        for pos in starts {
+            out.push_str(&s[last..pos]);
+            out.push_str(to);
+            last = pos + from.len();
+        }
+        out.push_str(&s[last..]);
+        out
+    }
 }
 
 fn substr(s: &str, start: i64, len: i64) -> String {
@@ -1802,6 +1868,18 @@ mod tests {
         assert_eq!(ev(r#"INDEX("hello", "z")"#), Value::Int(-1));
         assert_eq!(ev(r#"CONTAINS("hello", "ell")"#), Value::Int(1));
         assert_eq!(ev(r#"REPLACE("a-b-c", "-", "+")"#), Value::str("a+b+c"));
+        // Optional 4th arg bounds the replacements: n>0 from the start, n<0 from the end, 0 = none.
+        assert_eq!(ev(r#"REPLACE("a-b-c-d", "-", "+", 2)"#), Value::str("a+b+c-d"));
+        assert_eq!(ev(r#"REPLACE("a-b-c-d", "-", "+", -2)"#), Value::str("a-b+c+d"));
+        assert_eq!(ev(r#"REPLACE("a-b-c-d", "-", "+", 1)"#), Value::str("a+b-c-d"));
+        assert_eq!(ev(r#"REPLACE("a-b-c-d", "-", "+", -1)"#), Value::str("a-b-c+d"));
+        assert_eq!(ev(r#"REPLACE("a-b", "-", "+", 0)"#), Value::str("a-b")); // 0 → unchanged
+        assert_eq!(ev(r#"REPLACE("a-b", "-", "+", 9)"#), Value::str("a+b")); // n past count → all
+        // Direction matters for self-overlapping patterns.
+        assert_eq!(ev(r#"REPLACE("aaa", "aa", "X", 1)"#), Value::str("Xa"));
+        assert_eq!(ev(r#"REPLACE("aaa", "aa", "X", -1)"#), Value::str("aX"));
+        // Multi-byte safety: replace only the last accented match.
+        assert_eq!(ev(r#"REPLACE("é-é-é", "é", "e", -1)"#), Value::str("é-é-e"));
         assert_eq!(ev("CHR(65)"), Value::str("A"));
         assert_eq!(ev("CHR(70000)"), Value::str("")); // out of 0..255
         assert_eq!(ev(r#"ASC("A")"#), Value::str("65"));

@@ -898,7 +898,7 @@ an expression: in `SET`, `IF`, and `WHILE`, or inline on any command line inside
 / #func("LEFT", "s, n") / #func("RIGHT", "s, n"): the leftmost / rightmost `n` characters of `s`.
 / #func("INDEX", "s, sub"): the 0-based position of `sub` within `s`, or `-1` if it isn't found.
 / #func("CONTAINS", "s, sub"): `1` if `sub` appears anywhere in `s`, otherwise `0`.
-/ #func("REPLACE", "s, from, to"): `s` with every occurrence of `from` replaced by `to`.
+/ #func("REPLACE", "s, from, to, [[-]n]"): `s` with occurrences of `from` replaced by `to` — all of them, or, with the optional 4th argument, at most `n`: a positive `n` replaces the first `n` (from the start), a negative `-n` the last `n` (from the end), and `0` replaces none. So `REPLACE("a-b-c-d", "-", "+", -2)` = `a-b+c+d`.
 / #func("CHR", "n"): the character whose code is `n` (0–255). #func("ASC", "s"): the reverse — the code of `s`'s first character.
 
 == Splitting and joining
