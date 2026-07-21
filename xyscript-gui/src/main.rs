@@ -1793,6 +1793,8 @@ struct GuiApp {
     shell_pane_was_visible: bool,
     /// Wall-clock of the last autosave pass (drives the `AUTOSAVE` interval timer).
     last_autosave: std::time::Instant,
+    /// Wall-clock of the last `SESSION` snapshot (drives the crash-resilience interval timer).
+    last_session_snapshot: std::time::Instant,
     /// The `HISTORY`/`HI` picker, when open: the highlighted row in the filtered view.
     history_dialog: Option<usize>,
     /// The picker's filter arg (number = last N, text = contains, empty = all).
@@ -1951,6 +1953,7 @@ impl GuiApp {
             shell_hist_pos: None,
             shell_pane_was_visible: false,
             last_autosave: std::time::Instant::now(),
+            last_session_snapshot: std::time::Instant::now(),
             history_dialog: None,
             history_filter: String::new(),
             pick_dialog: None,
@@ -4157,11 +4160,17 @@ impl GuiApp {
         self.editor.host().session_restore_enabled()
     }
 
-    /// Save the open tabs to the per-user session dir (called on graceful exit when `SESSION` is on).
-    /// Best-effort: a failure is logged, not surfaced (nothing to show as the app is closing).
-    fn save_session(&self, dir: &std::path::Path) {
-        if let Err(e) = self.editor.host().save_session(dir) {
-            eprintln!("xyscript: session save failed: {e}");
+    /// Snapshot the open tabs to the per-user session dir if `SESSION` is on. Called both on the
+    /// periodic timer (crash resilience — the snapshot is changed-only, so an idle tick does no disk
+    /// work) and on graceful exit (a final flush). Best-effort: a failure is logged, not surfaced.
+    fn snapshot_session(&mut self) {
+        if !self.editor.host().session_restore_enabled() {
+            return;
+        }
+        if let Some(dir) = crate::runtime::session_dir() {
+            if let Err(e) = self.editor.host_mut().save_session(&dir) {
+                eprintln!("xyscript: session save failed: {e}");
+            }
         }
     }
 
@@ -5582,6 +5591,19 @@ impl GuiApp {
                 self.last_autosave = std::time::Instant::now();
             }
             ctx.request_repaint_after(interval);
+        }
+
+        // Session snapshot (`SESSION on`): keep the on-disk session current so a CRASH or forced kill
+        // still restores the tabs, not just a graceful quit. The snapshot is changed-only (a shadow
+        // is rewritten only when its buffer changed, the manifest skipped when unchanged), so an idle
+        // tick does no disk work. `request_repaint_after` keeps the reactive loop waking to run it.
+        if self.session_enabled() {
+            const SNAP: std::time::Duration = std::time::Duration::from_secs(5);
+            if self.last_session_snapshot.elapsed() >= SNAP {
+                self.snapshot_session();
+                self.last_session_snapshot = std::time::Instant::now();
+            }
+            ctx.request_repaint_after(SNAP);
         }
 
         // Live language check (`LINT on`): harper runs on a BACKGROUND worker so the UI NEVER blocks

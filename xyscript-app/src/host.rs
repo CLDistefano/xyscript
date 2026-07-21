@@ -1571,6 +1571,12 @@ pub struct AppHost {
     /// the GUI writes a session on graceful exit and restores it at startup; dirty/untitled buffers
     /// keep SHADOW backups so the user's real files are never touched. Off by default. `$SESSION`.
     session_restore: bool,
+    /// Change-detection for the periodic session snapshot (Phase 2, crash resilience): the buffer
+    /// revision last written to each doc's shadow backup, so an unchanged buffer isn't rewritten
+    /// every tick. Keyed by the stable `DocId`. Session-only.
+    session_snapshot_revs: std::collections::HashMap<crate::panes::DocId, u64>,
+    /// The last session manifest written to disk — so a snapshot with nothing new skips the write.
+    last_session_manifest: Option<String>,
     /// `TITLEBAR` — whether the OS window title bar is shown (default true). The GUI runtime applies
     /// it via `set_decorations`; read back via `$TITLEBAR`. Persisted by SAVECFG.
     show_titlebar: bool,
@@ -2004,6 +2010,8 @@ impl AppHost {
             dir_reuse: false,
             dir_defaults: Vec::new(),
             session_restore: false,
+            session_snapshot_revs: std::collections::HashMap::new(),
+            last_session_manifest: None,
             show_titlebar: true,
             remember_window_geometry: true,
             pending_delete: None,
@@ -4714,16 +4722,19 @@ impl AppHost {
         !d.is_dir_listing() && d.label() != Some(SHELL_OUTPUT_NAME) && !Self::is_pristine_untitled(d)
     }
 
-    /// Write the current session (open tabs + their state) to `dir`, Notepad++-style. Dirty named
-    /// buffers and untitled buffers keep a SHADOW backup of their bytes (`bak<N>`); the user's real
+    /// Snapshot the current session (open tabs + their state) to `dir`, Notepad++-style. Dirty named
+    /// buffers and untitled buffers keep a SHADOW backup of their bytes (`bak-<id>`); the user's real
     /// files are never written. Clean named buffers record only their path and reopen from disk.
-    /// Returns how many tabs were recorded. Overwrites any previous session in `dir`.
-    pub fn save_session(&self, dir: &Path) -> Result<usize, String> {
-        let _ = std::fs::remove_dir_all(dir); // clear stale backups from the last run
+    ///
+    /// Safe to call repeatedly on a timer (Phase 2 crash resilience): CHANGED-ONLY — a shadow is only
+    /// rewritten when its buffer's revision moved since the last snapshot, the manifest is skipped
+    /// when unchanged, and backups for tabs that closed (or stragglers from a previous run) are
+    /// garbage-collected. Returns how many tabs were recorded.
+    pub fn save_session(&mut self, dir: &Path) -> Result<usize, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("session: {e}"))?;
         let mut manifest = String::from("v1\n");
-        let mut n_backup = 0usize;
         let mut count = 0usize;
+        let mut live = std::collections::HashSet::new(); // backup filenames still in use this pass
         for (i, doc) in self.docs.iter().enumerate() {
             if !Self::is_session_restorable(doc) {
                 continue;
@@ -4731,11 +4742,19 @@ impl AppHost {
             let untitled = doc.path().is_none();
             let needs_backup = untitled || doc.is_modified();
             let backup = if needs_backup {
-                let name = format!("bak{n_backup}");
-                std::fs::write(dir.join(&name), doc.save_bytes()).map_err(|e| format!("session: {e}"))?;
-                n_backup += 1;
+                let id = doc.id();
+                let name = format!("bak-{}", id.0); // stable per live document
+                let rev = doc.buffer().revision();
+                // Only (re)write the shadow when the content actually changed since last snapshot.
+                if self.session_snapshot_revs.get(&id) != Some(&rev) {
+                    std::fs::write(dir.join(&name), doc.save_bytes())
+                        .map_err(|e| format!("session: {e}"))?;
+                    self.session_snapshot_revs.insert(id, rev);
+                }
+                live.insert(name.clone());
                 name
             } else {
+                self.session_snapshot_revs.remove(&doc.id()); // was dirty, now clean → drop its cache
                 "-".to_string()
             };
             let kind = if untitled { "unti" } else { "file" };
@@ -4759,8 +4778,22 @@ impl AppHost {
             ));
             count += 1;
         }
-        // Manifest last: if it lands, every backup it names already exists.
-        std::fs::write(dir.join("manifest.txt"), manifest).map_err(|e| format!("session: {e}"))?;
+        // GC: drop any `bak-*` file no longer referenced (a closed tab, or a straggler from a prior
+        // run whose docs had different ids). Cheap — a handful of small files.
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for ent in rd.flatten() {
+                let fname = ent.file_name();
+                let name = fname.to_string_lossy();
+                if name.starts_with("bak-") && !live.contains(name.as_ref()) {
+                    let _ = std::fs::remove_file(ent.path());
+                }
+            }
+        }
+        // Manifest last (so every backup it names already exists); skip the write when unchanged.
+        if self.last_session_manifest.as_deref() != Some(manifest.as_str()) {
+            std::fs::write(dir.join("manifest.txt"), &manifest).map_err(|e| format!("session: {e}"))?;
+            self.last_session_manifest = Some(manifest);
+        }
         Ok(count)
     }
 

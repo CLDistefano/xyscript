@@ -1541,10 +1541,13 @@ copied to a private *shadow* backup, so it comes back with your unsaved content 
 modified; your file on disk is untouched until you #raw("SAVE"). A clean file is simply reopened from
 disk. If you launch with a file on the command line, it opens *alongside* the restored tabs.
 
-#tip("What isn't restored (yet)")[Directory listings and the shell-output pane are working views, not
-documents, so they aren't part of a session. And restore happens on a *graceful* quit — a crash or a
-forced kill isn't covered yet. #raw("SESSION") is off until you turn it on, and the setting is saved
-with your configuration.]
+Your session is also saved quietly every few seconds as you work, so it survives a *crash* or a forced
+kill — not just a tidy quit. (The save is cheap: a tab is only re-written when its content actually
+changed.)
+
+#tip("What isn't restored")[Directory listings and the shell-output pane are working views, not
+documents, so they aren't part of a session, and a split-pane arrangement comes back as plain tabs for
+now. #raw("SESSION") is off until you turn it on, and the setting is saved with your configuration.]
 
 == The files XyScript uses
 

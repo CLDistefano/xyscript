@@ -2080,7 +2080,7 @@ mod tests {
         e.run_command(r#"INSERT "scratch notes""#); // untitled, now with content
         assert_eq!(e.buffer_count(), 3);
 
-        let saved = e.host().save_session(&sdir).unwrap();
+        let saved = e.host_mut().save_session(&sdir).unwrap();
         assert!(saved >= 3, "at least clean + dirty + untitled recorded, got {saved}");
 
         // The user's REAL file on disk is untouched (shadow model).
@@ -2103,6 +2103,50 @@ mod tests {
         assert!(texts.iter().any(|t| t.contains("scratch notes")), "untitled restored");
         // The shadow-backed tabs come back MODIFIED (so a later save writes them out).
         assert!(e2.next_dirty_tab().is_some(), "restored dirty/untitled tabs report modified");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Phase 2 crash resilience: repeated snapshots are CHANGED-ONLY (an unchanged buffer's shadow
+    /// isn't rewritten) and stale backups are garbage-collected. Verified by sentinelling the shadow
+    /// file on disk and watching whether a snapshot overwrites it.
+    #[test]
+    fn session_snapshot_is_changed_only_and_gcs_stale_backups() {
+        let base = std::env::temp_dir().join(format!("xyscript-snap-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+
+        let mut e = ed();
+        e.run_command("NEW"); // untitled tab
+        e.run_command(r#"INSERT "aaa""#); // with content → always shadow-backed
+        e.host_mut().save_session(&sdir).unwrap();
+
+        // Find the single shadow backup and overwrite it with a sentinel.
+        let bak = std::fs::read_dir(&sdir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.file_name().unwrap().to_string_lossy().starts_with("bak-"))
+            .expect("a shadow backup was written");
+        std::fs::write(&bak, b"SENTINEL").unwrap();
+
+        // No edit → the snapshot must NOT rewrite the (unchanged) shadow.
+        e.host_mut().save_session(&sdir).unwrap();
+        assert_eq!(std::fs::read(&bak).unwrap(), b"SENTINEL", "unchanged buffer's shadow left alone");
+
+        // Edit → its revision moves → the shadow is rewritten (sentinel gone, new content in).
+        e.run_command(r#"INSERT "bbb""#);
+        e.host_mut().save_session(&sdir).unwrap();
+        let now = std::fs::read(&bak).unwrap();
+        assert_ne!(now, b"SENTINEL", "changed buffer's shadow rewritten");
+        assert!(String::from_utf8_lossy(&now).contains("bbb"));
+
+        // GC: a straggler backup (e.g. from a prior run) is removed on the next snapshot.
+        std::fs::write(sdir.join("bak-99999"), b"stale").unwrap();
+        e.host_mut().save_session(&sdir).unwrap();
+        assert!(!sdir.join("bak-99999").exists(), "straggler backup garbage-collected");
+        assert!(bak.exists(), "the live backup is kept");
 
         std::fs::remove_dir_all(&base).ok();
     }

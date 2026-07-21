@@ -1998,13 +1998,9 @@ impl ApplicationHandler for Handler {
     /// The event loop is exiting (window close or `QUIT`). Remember the window geometry so the next
     /// run restores it. Called once, while the window still exists, for either exit path.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        // Save the open tabs (`SESSION`) on graceful exit — every quit route reaches here, and it's
-        // independent of the window-geometry (`WINGEO`) setting below.
-        if self.app.session_enabled() {
-            if let Some(dir) = session_dir() {
-                self.app.save_session(&dir);
-            }
-        }
+        // Final session flush on graceful exit — captures edits since the last periodic snapshot.
+        // Every quit route reaches here; independent of the window-geometry (`WINGEO`) setting below.
+        self.app.snapshot_session();
         if !self.app.remember_window_geometry() {
             return; // user opted out — leave any previous window.txt untouched
         }
