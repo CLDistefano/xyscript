@@ -433,8 +433,10 @@ all are off by default, so ordinary prose editing is unchanged.
 *Indenting.* Bound to the Tab key, #raw("TAB in") indents and #raw("TAB out") dedents. With several
 lines selected they shift the whole block at once (a single undo step); with nothing selected,
 #raw("TAB in") just inserts one level of indentation at the cursor. A "level" is one tab character — or,
-with #raw("TABSPACES on"), #raw("$TB") spaces instead (soft tabs), so the file holds spaces rather than
-tabs. #raw("$TB") is the tab width you set with #raw("TB").
+with #raw("TABSPACES on"), spaces instead (soft tabs), so the file holds spaces rather than tabs.
+#raw("$TB") is the tab width you set with #raw("TB"); at the cursor a soft tab pads to the next tab
+stop, adding only as many spaces as it takes to reach it — so a Tab lands the text on the stop instead
+of overshooting when some spaces are already there.
 
 / #raw("TABSPACES"): soft tabs — indenting inserts #raw("$TB") spaces rather than a tab character.
 

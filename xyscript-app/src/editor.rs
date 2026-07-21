@@ -2028,6 +2028,34 @@ mod tests {
         );
     }
 
+    /// Renaming a file that is OPEN must move the tab with it: the tab label is derived from the
+    /// document's path, so the open doc has to be repointed at the new name (reported: the tab kept
+    /// showing the old file name after `RENAME`).
+    #[test]
+    fn renaming_an_open_file_updates_its_tab() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("old.txt".into(), "hello\n".into());
+        e.run_command("OPEN old.txt");
+        assert_eq!(e.host().active_doc().file_name().as_deref(), Some("old.txt"));
+
+        e.run_command("RENAME old.txt new.txt");
+        assert_eq!(e.last_error(), None);
+        // The open tab now shows the new name, and its path followed.
+        assert_eq!(
+            e.host().active_doc().file_name().as_deref(),
+            Some("new.txt"),
+            "the tab label must follow the rename"
+        );
+        assert_eq!(e.active_path().unwrap().to_string_lossy(), "new.txt");
+
+        // Renaming a file that ISN'T open is unaffected (and doesn't disturb the active tab).
+        e.host_mut().files.insert("other.txt".into(), "x".into());
+        e.run_command("RENAME other.txt renamed-other.txt");
+        assert_eq!(e.last_error(), None);
+        assert_eq!(e.host().active_doc().file_name().as_deref(), Some("new.txt"));
+    }
+
     #[test]
     fn savelib_is_captureable() {
         let mut e = ed();
@@ -2158,14 +2186,34 @@ mod tests {
         e.run_command("TAB out");
         assert_eq!(e.document().text(), "one\ntwo\nthree");
 
-        // Soft tabs: TAB inserts `$TB` spaces instead of a tab; outdent removes up to `$TB` spaces.
+        // Soft tabs: TAB pads to the NEXT tab stop (not a blind `$TB` spaces); outdent removes up to
+        // `$TB` spaces.
         let mut e = ed();
         e.run_command("TB 2");
         e.run_command("TABSPACES on");
         e.run_command(r#"INSERT "x""#);
         e.run_command("TF");
         e.run_command("TAB");
-        assert_eq!(e.document().text(), "  x"); // 2 spaces
+        assert_eq!(e.document().text(), "  x"); // caret on a stop (col 0) → a full 2 spaces
+
+        // Caret NOT on a tab stop: pad only to the next one. With TB=2, typing one char puts the
+        // caret at column 1, so TAB adds a SINGLE space to reach column 2 — the bug was inserting a
+        // full 2 regardless, landing at column 3.
+        let mut e = ed();
+        e.run_command("TB 2");
+        e.run_command("TABSPACES on");
+        e.run_command(r#"INSERT "x""#); // caret at column 1
+        e.run_command("TAB");
+        assert_eq!(e.document().text(), "x "); // one space → column 2
+
+        // With TB=4 and the caret at column 3 (some spaces already present), TAB adds one space to
+        // reach column 4, not four.
+        let mut e = ed();
+        e.run_command("TB 4");
+        e.run_command("TABSPACES on");
+        e.run_command(r#"INSERT "ab ""#); // 'a','b',' ' → caret at column 3
+        e.run_command("TAB");
+        assert_eq!(e.document().text(), "ab  "); // one more space → column 4
         // Outdent removes up to $TB(=2) leading spaces even when there are more.
         let mut e = ed();
         e.run_command("TB 4");

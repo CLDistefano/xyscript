@@ -4769,6 +4769,21 @@ impl AppHost {
         self.docs.iter().position(|d| d.path() == Some(target.as_path()))
     }
 
+    /// A file was renamed on disk from `old` to `new`. If it is open in a tab, repoint that tab's
+    /// document at the new path so its label (the file name) follows the rename, and re-run
+    /// auto-highlight in case the new extension binds a different grammar. Exact-path match, mirroring
+    /// `find_open_tab`. A no-op when the file isn't open. (`RENAME` doesn't touch the buffer's text or
+    /// modified flag, so nothing else about the tab changes.)
+    fn retarget_open_tab(&mut self, old: &Path, new: PathBuf) {
+        if let Some(idx) = self.docs.iter().position(|d| d.path() == Some(old)) {
+            self.docs[idx].set_path(new);
+            if self.hl_auto {
+                // The new extension may bind a different grammar (or none); re-resolve it.
+                self.docs[idx].set_highlight(true);
+            }
+        }
+    }
+
     /// Load `path` into a new tab (the shared body of `OPEN`/`READ`, with the already-open check
     /// already done). `read_only` locks the tab and makes a missing file an error (vs `OPEN`, which
     /// starts a new buffer for a missing file).
@@ -6939,6 +6954,8 @@ impl Host for AppHost {
                         XplError::trappable(format!("RENAME: {from}: not found"))
                     })?;
                     self.files.insert(to.clone(), content);
+                    // Retarget an open tab showing the old name so its tab label follows the rename.
+                    self.retarget_open_tab(Path::new(&from), PathBuf::from(&to));
                     return Ok(Value::str(format!("renamed {from} -> {to}")));
                 }
                 let f = self.resolve_path(&from);
@@ -6949,6 +6966,9 @@ impl Host for AppHost {
                     }
                 }
                 std::fs::rename(&f, &t).map_err(|e| XplError::trappable(format!("RENAME: {e}")))?;
+                // If the renamed file is open in a tab, update its path so the tab label (derived
+                // from the file name) follows the rename instead of showing the old name.
+                self.retarget_open_tab(&f, t.clone());
                 return Ok(Value::str(format!("renamed {} -> {}", f.display(), t.display())));
             }
             EditorOp::Save(opt_path) => {
@@ -7637,18 +7657,31 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("tab width {n}")));
             }
             EditorOp::Tab { out } => {
-                // Indent unit: soft tabs → `tab_width` spaces, else a tab character.
+                // Indent unit for the LINE-BASED indent/outdent (selection, or `TAB out`): soft tabs
+                // → `tab_width` spaces, else a tab character. Each touched line gets a whole unit
+                // added/removed at its start, so a full-width unit is correct there.
                 let unit = if self.tab_soft {
                     " ".repeat(self.tab_width)
                 } else {
                     "\t".to_string()
                 };
                 let width = self.tab_width;
+                let soft = self.tab_soft;
                 let doc = self.active();
-                // `TAB in` with no selection just inserts the unit at the caret; everything else is a
-                // line-based indent/outdent of the touched lines.
+                // `TAB in` with no selection inserts at the CARET; everything else is a line-based
+                // indent/outdent of the touched lines.
                 if !out && doc.buffer().selection_span().is_none() {
-                    doc.insert(&unit);
+                    if soft {
+                        // Soft tab at the caret pads to the NEXT tab stop, not a blind `tab_width`
+                        // spaces: if the caret is already `d` columns into a stop, only `tab_width -
+                        // d` spaces are needed so the text lands on the stop (a real Tab key's
+                        // behaviour). `d == 0` (already on a stop) inserts a full `tab_width`.
+                        let col = doc.buffer().column();
+                        let pad = width - (col % width);
+                        doc.insert(&" ".repeat(pad));
+                    } else {
+                        doc.insert(&unit);
+                    }
                 } else {
                     doc.indent(out, &unit, width);
                 }
