@@ -901,6 +901,19 @@ an expression: in `SET`, `IF`, and `WHILE`, or inline on any command line inside
 / #func("REPLACE", "s, from, to, [[-]n]"): `s` with occurrences of `from` replaced by `to` — all of them, or, with the optional 4th argument, at most `n`: a positive `n` replaces the first `n` (from the start), a negative `-n` the last `n` (from the end), and `0` replaces none. So `REPLACE("a-b-c-d", "-", "+", -2)` = `a-b+c+d`.
 / #func("CHR", "n"): the character whose code is `n` (0–255). #func("ASC", "s"): the reverse — the code of `s`'s first character.
 
+== Classifying a string
+
+Each returns `1` (true) or `0`. Every one is `0` for an empty string. The character-class tests below check that *every* character is in the given set (and do not trim, so a stray space fails).
+
+/ #func("ISDEC", "s"): all characters are decimal digits `0`–`9`.
+/ #func("ISHEX", "s"): all characters are hex digits `0`–`9`, `A`–`F`, `a`–`f` (no `0x` prefix).
+/ #func("ISALPHA", "s"): all characters are ASCII letters `A`–`Z`, `a`–`z`.
+/ #func("ISALNUM", "s"): all characters are ASCII letters or digits.
+/ #func("ISASCII", "s"): all characters are 7-bit ASCII (code `0`–`127`).
+/ #func("ISUTF8", "s"): all characters are in the Basic Multilingual Plane (`U+0000`–`U+FFFF`) — i.e. no "astral" characters such as most emoji. (Every XyScript string is valid UTF-8, so this tests the range, not the encoding.)
+/ #func("ISINT", "s"): `s` is a whole number — read as XyScript reads a value, so leading/trailing spaces and a leading sign are allowed (`ISINT(" -42 ")` is true). `4.2` is not an integer.
+/ #func("ISFLOAT", "s"): `s` is a number written in *float* form — a finite value with a decimal point or exponent (`4.2`, `1e3`, `-0.5`). A plain integer is #func("ISINT") instead, and `inf`/`nan` are excluded — so `ISINT` and `ISFLOAT` split the numeric strings between them.
+
 == Splitting and joining
 
 / #func("SPLIT", "s, sep"): an array made by cutting `s` at each occurrence of the text `sep`.

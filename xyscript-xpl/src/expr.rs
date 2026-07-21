@@ -740,6 +740,8 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "LEN", "UPPER", "LOWER", "STRIP", "LSTRIP", "RSTRIP", "TRIMLEFT", "TRIMRIGHT", "SUBSTR", "LEFT",
     "RIGHT", "INDEX", "CONTAINS", "REPLACE", "SPLIT", "SPLITS", "JOIN", "CHARS", "WORDS", "LINES",
     "CHR", "ASC",
+    // string classification predicates (all → 1/0; false for an empty string)
+    "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
     // arrays / collections
     "ITER", "ITERP", "PUSH", "POP", "SLICE", "SORT", "VAR", "SEL",
     // math
@@ -1146,6 +1148,49 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
                 Ok(Value::str(replace_bounded(&s(0), &s(1), &s(2), n)))
             }
         }
+        // String-classification predicates → 1/0. Each "all characters are …" test is FALSE for an
+        // empty string (nothing to classify), matching the usual convention. The character-class
+        // tests use ASCII ranges exactly as specified; they do NOT trim, so any stray space fails.
+        "ISDEC" => {
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_digit())) // [0-9]
+        }
+        "ISHEX" => {
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_hexdigit())) // [0-9A-Fa-f]
+        }
+        "ISALPHA" => {
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_alphabetic())) // [A-Za-z]
+        }
+        "ISALNUM" => {
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_alphanumeric())) // [0-9A-Za-z]
+        }
+        "ISASCII" => {
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii())) // U+0000–U+007F
+        }
+        "ISUTF8" => {
+            // Every char is in the Basic Multilingual Plane (U+0000–U+FFFF) — i.e. no astral chars
+            // like emoji. (The string is already valid UTF-8, so this is the meaningful test.)
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| (c as u32) <= 0xFFFF))
+        }
+        "ISINT" => {
+            // A whole number, as XPL itself reads it: trimmed and parsing as an integer (value.rs
+            // `to_number` tries `i64` before `f64`). `ISINT` and `ISFLOAT` partition numeric strings.
+            expect(1)?;
+            Ok(bool_val(s(0).trim().parse::<i64>().is_ok()))
+        }
+        "ISFLOAT" => {
+            // A number written in FLOAT form: not an integer, but a finite `f64` — so `4.2`/`1e3`
+            // are true, `42` is `ISINT` (false here), and `inf`/`nan` are excluded.
+            expect(1)?;
+            let t = s(0);
+            let t = t.trim();
+            Ok(bool_val(t.parse::<i64>().is_err() && t.parse::<f64>().map(f64::is_finite).unwrap_or(false)))
+        }
         "SEL" => {
             // `SEL()` = the current selection; `SEL(n)` = tab n's selection (1-based; "" if out of
             // range or that tab has no selection).
@@ -1408,6 +1453,18 @@ fn right(s: &str, n: i64) -> String {
     let chars: Vec<char> = s.chars().collect();
     let start = chars.len().saturating_sub(n as usize);
     chars[start..].iter().collect()
+}
+
+/// A boolean predicate result in the function library's convention: `1`/`0` (matching
+/// `CONTAINS`/`ISDIR`/`ISFILE`), not a `Value::Bool`.
+fn bool_val(b: bool) -> Value {
+    Value::Int(if b { 1 } else { 0 })
+}
+
+/// True iff `s` is non-empty and EVERY character satisfies `pred` — the shared shape of the
+/// character-class predicates (`ISDEC`, `ISHEX`, …). Empty is false by decision (nothing to classify).
+fn all_chars(s: &str, pred: impl Fn(char) -> bool) -> Value {
+    bool_val(!s.is_empty() && s.chars().all(pred))
 }
 
 /// Replace up to `n` non-overlapping occurrences of `from` with `to`. `n > 0` takes the FIRST `n`
@@ -1825,6 +1882,49 @@ mod tests {
         // Usable inside expressions.
         assert_eq!(ev_ctx(r#"@A == "hello""#, &ctx), Value::Int(1));
         assert_eq!(ev_ctx(r#"UPPER(@A)"#, &ctx), Value::str("HELLO"));
+    }
+
+    #[test]
+    fn string_classification_predicates() {
+        let t = Value::Int(1);
+        let f = Value::Int(0);
+        // Empty is FALSE for every char-class test (and for the number ones).
+        for fname in ["ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8"] {
+            assert_eq!(ev(&format!(r#"{fname}("")"#)), f, "{fname}(\"\") should be false");
+        }
+        // ISDEC — ASCII digits only.
+        assert_eq!(ev(r#"ISDEC("0123456789")"#), t);
+        assert_eq!(ev(r#"ISDEC("12a")"#), f);
+        assert_eq!(ev(r#"ISDEC("-1")"#), f); // the sign isn't a digit
+        assert_eq!(ev(r#"ISDEC("1 2")"#), f); // no trimming — the space fails
+        // ISHEX — [0-9A-Fa-f], no `0x`.
+        assert_eq!(ev(r#"ISHEX("1fF0aA")"#), t);
+        assert_eq!(ev(r#"ISHEX("0x1F")"#), f);
+        assert_eq!(ev(r#"ISHEX("g1")"#), f);
+        // ISINT / ISFLOAT partition numeric strings by FORM (trimmed, like the language).
+        assert_eq!(ev(r#"ISINT("42")"#), t);
+        assert_eq!(ev(r#"ISINT("-42")"#), t);
+        assert_eq!(ev(r#"ISINT(" 42 ")"#), t); // trims, matching to_number
+        assert_eq!(ev(r#"ISINT("4.2")"#), f);
+        assert_eq!(ev(r#"ISINT("4x")"#), f);
+        assert_eq!(ev(r#"ISFLOAT("4.2")"#), t);
+        assert_eq!(ev(r#"ISFLOAT("1e3")"#), t);
+        assert_eq!(ev(r#"ISFLOAT("-0.5")"#), t);
+        assert_eq!(ev(r#"ISFLOAT("42")"#), f); // an integer is ISINT, not ISFLOAT
+        assert_eq!(ev(r#"ISFLOAT("inf")"#), f); // non-finite excluded
+        assert_eq!(ev(r#"ISFLOAT("nan")"#), f);
+        // ISALPHA / ISALNUM — ASCII letters, then letters+digits.
+        assert_eq!(ev(r#"ISALPHA("Hello")"#), t);
+        assert_eq!(ev(r#"ISALPHA("Hi5")"#), f);
+        assert_eq!(ev(r#"ISALPHA("café")"#), f); // é is not ASCII [A-Za-z]
+        assert_eq!(ev(r#"ISALNUM("abc123")"#), t);
+        assert_eq!(ev(r#"ISALNUM("a b")"#), f);
+        // ISASCII — codepoints 0..127.
+        assert_eq!(ev(r#"ISASCII("plain~text!")"#), t);
+        assert_eq!(ev(r#"ISASCII("café")"#), f);
+        // ISUTF8 — all chars in the BMP (U+0000..U+FFFF); astral chars (emoji) fail.
+        assert_eq!(ev(r#"ISUTF8("café")"#), t); // é is U+00E9, in the BMP
+        assert_eq!(ev(r#"ISUTF8("hi 😀")"#), f); // U+1F600 is above the BMP
     }
 
     // ---- concat, comparison, logic -----------------------------------------
