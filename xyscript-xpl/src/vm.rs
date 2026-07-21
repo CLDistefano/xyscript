@@ -1280,6 +1280,10 @@ impl Vm<'_, '_> {
                 })
                 .cloned()
                 .collect();
+            // Fold in the `DIRSET` defaults for the switch categories the command didn't specify.
+            // Applies to every open path (tab / `DIR/W` window / split pane) since it happens before
+            // the branch below, and only touches sort/filter/view — `/W`/`/H`/`/V` were peeled off.
+            let vsw = merge_dir_defaults(&vsw, &self.ctx.host.dir_default_switches());
             let (opts, rest) = parse_dir(&vsw, &args)?;
             let p = rest.trim();
             let path = if p.is_empty() { None } else { Some(p.to_string()) };
@@ -2146,6 +2150,37 @@ impl Vm<'_, '_> {
                     "DIRWCLOSE" => EditorOp::SetDirWindowClose(on),
                     _ => EditorOp::SetDirReuse(on),
                 })?;
+                Ok(Flow::Next)
+            }
+            // `DIRSET <switches>` — default sort/filter/view switches for `DIR`/`LS`. `DIRSET off`
+            // (or `none`/`clear`) clears; bare `DIRSET` re-reports the current value. Each switch is
+            // validated against `DirOpts`; `/W`/`/H`/`/V` (where the listing opens) are rejected —
+            // `DIRSET` governs only HOW a listing is sorted/filtered/formatted.
+            "DIRSET" => {
+                let a = args.trim();
+                let tokens = if a.eq_ignore_ascii_case("off")
+                    || a.eq_ignore_ascii_case("none")
+                    || a.eq_ignore_ascii_case("clear")
+                {
+                    Vec::new()
+                } else if a.is_empty() {
+                    self.ctx.host.dir_default_switches() // bare: report the current value
+                } else {
+                    let toks = split_switch_names(a);
+                    for t in &toks {
+                        if matches!(t.as_str(), "W" | "H" | "V") {
+                            return Err(XplError::trappable(format!(
+                                "DIRSET: /{t} controls WHERE the listing opens, not how it's sorted — not a default"
+                            )));
+                        }
+                        let mut probe = DirOpts::default();
+                        if !apply_dir_switch(&mut probe, t) {
+                            return Err(XplError::trappable(format!("DIRSET: unknown switch /{t}")));
+                        }
+                    }
+                    toks
+                };
+                self.host_op(EditorOp::SetDirDefaults(tokens))?;
                 Ok(Flow::Next)
             }
             // `ENCODING <name>` switches the DISPLAY view (re-decodes the same bytes). `ENCODING/C
@@ -4867,6 +4902,30 @@ fn pane_split_switch(vswitches: &[String]) -> Option<bool> {
     }
 }
 
+/// Split a `DIRSET` argument (`/OD/R`, `/OD /R`, or `OD R`) into uppercased switch NAMES. Sigils
+/// (`/`, `-`) and whitespace all separate; empties dropped. Unlike [`switches::take_leading`], which
+/// stops at the first non-switch token, this consumes the WHOLE string — a `DIRSET` operand is only
+/// switches (no path), so `/OD/R` must split into `["OD", "R"]` rather than be read as one token.
+fn split_switch_names(s: &str) -> Vec<String> {
+    s.split(|c: char| c == '/' || c == '-' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_ascii_uppercase())
+        .collect()
+}
+
+/// Merge `DIRSET` defaults into a `DIR` command's switch list. Keep every command switch, and add
+/// each default whose LEADING LETTER isn't already present in the command — coarse per-letter
+/// override: a command `/O…` supersedes a default `/O…`, while an unrelated command `/A…` leaves an
+/// `/O…` default in place (the reported intent). Command switches come last so they win on any tie.
+fn merge_dir_defaults(cmd: &[String], defaults: &[String]) -> Vec<String> {
+    let letter = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase());
+    let cmd_letters: std::collections::HashSet<Option<char>> = cmd.iter().map(|s| letter(s)).collect();
+    let mut out: Vec<String> =
+        defaults.iter().filter(|d| !cmd_letters.contains(&letter(d))).cloned().collect();
+    out.extend(cmd.iter().cloned());
+    out
+}
+
 fn parse_dir(vswitches: &[String], args: &str) -> VmResult<(DirOpts, String)> {
     let mut opts = DirOpts::default();
     for s in vswitches {
@@ -5115,6 +5174,31 @@ impl EvalContext for Ctx<'_> {
 mod tests {
     use super::*;
     use crate::host::StubHost;
+
+    #[test]
+    fn dirset_splits_switch_strings_every_way() {
+        assert_eq!(split_switch_names("/OD/R"), vec!["OD", "R"]);
+        assert_eq!(split_switch_names("/OD /R"), vec!["OD", "R"]);
+        assert_eq!(split_switch_names("od r"), vec!["OD", "R"]);
+        assert_eq!(split_switch_names("/AH/AS"), vec!["AH", "AS"]);
+        assert_eq!(split_switch_names(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn dirset_merge_is_coarse_per_leading_letter() {
+        let def = vec!["OD".to_string(), "R".to_string()];
+        // No command switches → the defaults apply as-is.
+        assert_eq!(merge_dir_defaults(&[], &def), vec!["OD", "R"]);
+        // A command /O overrides the /O default; /R (a different letter) survives.
+        let m = merge_dir_defaults(&["ON".to_string()], &def);
+        assert!(m.contains(&"ON".to_string()) && m.contains(&"R".to_string()) && !m.contains(&"OD".to_string()));
+        // An unrelated command switch leaves BOTH defaults in place.
+        let m = merge_dir_defaults(&["AD".to_string()], &def);
+        assert!(m.contains(&"OD".to_string()) && m.contains(&"R".to_string()) && m.contains(&"AD".to_string()));
+        // Coarse /A: any command /A replaces ALL /A defaults, but not /O.
+        let m = merge_dir_defaults(&["AF".to_string()], &vec!["AH".to_string(), "OD".to_string()]);
+        assert!(m.contains(&"AF".to_string()) && m.contains(&"OD".to_string()) && !m.contains(&"AH".to_string()));
+    }
 
     #[test]
     #[cfg(feature = "email")]

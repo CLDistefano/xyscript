@@ -5772,6 +5772,52 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
     }
 
+    /// `DIRSET` stores default DIR switches, reports via `$DIRSET`, validates its argument, and its
+    /// defaults reach a real `DIR` (here, `/R` reverses the listing) unless the command overrides the
+    /// same category.
+    #[test]
+    fn dirset_defaults_apply_to_dir_and_validate() {
+        use xyscript_xpl::{Host, Value};
+        let base = std::env::temp_dir().join(format!("xyscript-dirset-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        for n in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(base.join(n), b"x").unwrap();
+        }
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+
+        // Set + readback.
+        e.run_command("DIRSET /ON/R");
+        assert_eq!(e.host().special("DIRSET"), Some(Value::str("/ON/R")));
+
+        // The /R default reverses a bare DIR/B (name order → c, b, a among the files).
+        e.run_command("CAPTURE lst DIR/B");
+        let lst = e.breakpoint_vars().into_iter().collect::<std::collections::HashMap<_, _>>();
+        let files: Vec<&str> =
+            lst["LST"].lines().filter(|l| l.ends_with(".txt")).collect();
+        assert_eq!(files, vec!["c.txt", "b.txt", "a.txt"], "the /R default reversed the listing");
+
+        // Validation: /W (where it opens) and an unknown switch are rejected; state is unchanged.
+        e.run_command("DIRSET /W");
+        assert!(e.last_error().unwrap().contains("not a default"));
+        e.run_command("DIRSET /ZZ");
+        assert!(e.last_error().unwrap().contains("unknown switch"));
+        assert_eq!(e.host().special("DIRSET"), Some(Value::str("/ON/R")), "a bad DIRSET leaves it unchanged");
+
+        // Clear.
+        e.run_command("DIRSET off");
+        assert_eq!(e.host().special("DIRSET"), Some(Value::str("")));
+        e.run_command("CAPTURE lst2 DIR/B");
+        let lst2 = e.breakpoint_vars().into_iter().collect::<std::collections::HashMap<_, _>>();
+        let files2: Vec<&str> =
+            lst2["LST2"].lines().filter(|l| l.ends_with(".txt")).collect();
+        assert_eq!(files2, vec!["a.txt", "b.txt", "c.txt"], "cleared → plain name order");
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
     #[test]
     fn file_verbs_copy_rename_delete_on_disk() {
         let base = std::env::temp_dir().join(format!("xyscript-fileverbs-{:p}", &"tag"));

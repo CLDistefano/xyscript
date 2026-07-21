@@ -1563,6 +1563,10 @@ pub struct AppHost {
     /// of spawning a new one each time (avoids a proliferation of listing tabs). Default false
     /// (`DIRRT off` = a new tab per `DIR`). Read back via `$DIRRT`.
     dir_reuse: bool,
+    /// `DIRSET` — default sort/filter/view switch names for `DIR`/`LS` (each a validated `DirOpts`
+    /// switch like `"OD"`, `"R"`), applied to a command that doesn't override the same category.
+    /// Empty = no defaults. Read back via `$DIRSET`; persisted by `SAVECFG`.
+    dir_defaults: Vec<String>,
     /// `TITLEBAR` — whether the OS window title bar is shown (default true). The GUI runtime applies
     /// it via `set_decorations`; read back via `$TITLEBAR`. Persisted by SAVECFG.
     show_titlebar: bool,
@@ -1994,6 +1998,7 @@ impl AppHost {
             dir_window_new_tab: true, // DIR/W has always opened a new tab — keep that the default
             dir_window_close_on_open: false, // DIR/W is a picker — it has always stayed open
             dir_reuse: false,
+            dir_defaults: Vec::new(),
             show_titlebar: true,
             remember_window_geometry: true,
             pending_delete: None,
@@ -4761,6 +4766,26 @@ impl AppHost {
         self.sync_panes();
     }
 
+    /// The `DIRSET` default switches as a command-style string (`/OD/R`), or empty when there are
+    /// none. Used by `$DIRSET` and `SAVECFG`.
+    fn dir_defaults_string(&self) -> String {
+        if self.dir_defaults.is_empty() {
+            String::new()
+        } else {
+            format!("/{}", self.dir_defaults.join("/"))
+        }
+    }
+
+    /// Same, but a friendly `(none)` for the empty case — for the status line after `DIRSET`.
+    fn dir_defaults_display(&self) -> String {
+        let s = self.dir_defaults_string();
+        if s.is_empty() {
+            "(none)".to_string()
+        } else {
+            s
+        }
+    }
+
     /// The index of an open tab already showing `path` (resolved against `$CWD`), if any — for the
     /// `OPEN`/`READ` "already open?" prompt.
     fn find_open_tab(&self, path: &str) -> Option<usize> {
@@ -6060,6 +6085,9 @@ impl AppHost {
         put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) — DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
         put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) — DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
         put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) — DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
+        if !self.dir_defaults.is_empty() {
+            put(&mut s, "Default DIR sort/filter/view switches — DIRSET", format!("DIRSET {}", self.dir_defaults_string()));
+        }
         put(
             &mut s,
             "Autosave interval, seconds (off = disabled)",
@@ -6683,6 +6711,11 @@ impl Host for AppHost {
             EditorOp::SetDirReuse(on) => {
                 self.dir_reuse = on;
                 return Ok(Value::str(format!("DIRRT {}", if on { "on" } else { "off" })));
+            }
+            EditorOp::SetDirDefaults(switches) => {
+                self.dir_defaults = switches;
+                let shown = self.dir_defaults_display();
+                return Ok(Value::str(format!("DIRSET {shown}")));
             }
             EditorOp::SetTitlebar(opt) => {
                 self.show_titlebar = opt.unwrap_or(!self.show_titlebar);
@@ -8866,6 +8899,10 @@ impl Host for AppHost {
         self.float_decimals
     }
 
+    fn dir_default_switches(&self) -> Vec<String> {
+        self.dir_defaults.clone()
+    }
+
     fn special(&self, name: &str) -> Option<Value> {
         // Content `$`-vars read the active document — or, during a blind edit (`BEDIT`), the hidden
         // buffer, so a script can branch on the file it's editing (`$SE`/`$LN`/`$LI`/`$FI`/…).
@@ -8896,6 +8933,7 @@ impl Host for AppHost {
             "DIRWNW" => Some(Value::Int(if self.dir_window_new_tab { 1 } else { 0 })),
             "DIRWCLOSE" => Some(Value::Int(if self.dir_window_close_on_open { 1 } else { 0 })),
             "DIRRT" => Some(Value::Int(if self.dir_reuse { 1 } else { 0 })),
+            "DIRSET" => Some(Value::str(self.dir_defaults_string())),
             "TITLEBAR" => Some(Value::Int(if self.show_titlebar { 1 } else { 0 })),
             "WINGEO" => Some(Value::Int(if self.remember_window_geometry { 1 } else { 0 })),
             // GUI view flags (see EditorOp::SetView).

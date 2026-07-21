@@ -416,6 +416,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("CD"): change the working directory (or switch drive).
 / #cmd("DIR", "LS"): open a directory-listing browser.
 / #cmd("DIRNW") / #cmd("DIRWNW") / #cmd("DIRWCLOSE") / #cmd("DIRRT"): open-in-new-tab modes for an in-tab listing / the `DIR/W` window, whether `DIR/W` closes after opening a file, and reuse-the-listing-tab mode.
+/ #cmd("DIRSET"): default sort/filter/view switches applied to every `DIR`/`LS`.
 
 == Split panes
 
@@ -652,6 +653,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("DIRNW"): `DIRNW on|off` — whether opening a file from an in-TAB listing lands in a new tab (`on`) or replaces the listing in place (`off`, the default). For the separate `DIR/W` window see #cmd("DIRWNW").
 / #cmd("DIRWNW"): `DIRWNW on|off` — the same choice for the separate `DIR/W` WINDOW: `on` (the default) opens the picked file in a new tab, `off` reuses the active tab. It is a separate setting because the two are different interactions — `DIR/W` floats beside your work, so it has always added a tab. With `off`, a MODIFIED buffer is never discarded: the file opens beside it instead. Whether the window itself then closes is the separate #cmd("DIRWCLOSE").
 / #cmd("DIRWCLOSE"): `DIRWCLOSE on|off` — whether the `DIR/W` window CLOSES once you open a file from it (`on`), or stays open so you can carry on picking (`off`, the default — how `DIR/W` has always behaved). Independent of #cmd("DIRWNW"), which chooses the TAB the file lands in; the two answer different questions. Descending into a subdirectory never closes the window — only opening a file does.
+/ #cmd("DIRSET"): `DIRSET <switches>` — the default sort/filter/view switches applied to a `DIR`/`LS` that doesn't override them, e.g. `DIRSET /OD/R` to sort every listing by date, reversed. A command switch overrides the default with the SAME leading letter and no other: `DIR /ON` replaces the `/OD` order but keeps the `/R`; `DIR /AH` adds a filter and leaves both defaults alone (for `/A`, any command `/A…` replaces the whole `/A` default). Only the how-it-looks switches are allowed — `/O` (order), `/A` (attributes/filter), `/R` (reverse), `/S` (recurse), `/B` (bare); the where-it-opens switches (`/W`, `/H`, `/V`) are rejected, but the defaults still apply to a `DIR/W` or split-pane listing. `DIRSET off` (or `none`/`clear`) clears it; bare `DIRSET` reports the current value. Read back via #sv("DIRSET"); persists in the config.
 / #cmd("DIRRT"): `DIRRT on|off` — whether a `DIR` reuses an already-open listing tab (`on`) instead of spawning a new one each time (`off`, the default).
 / #cmd("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, or `auto` (by extension); bare reports the effective kind.
 / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `DIR/W` window's text / background color (`…S` opens a picker; unset inherits the editor).
@@ -1029,7 +1031,7 @@ Each reads `1` when the feature is on, `0` when off.
 / #sv("MB"): the menu bar. #sv("GC"): the pop-up command line. #sv("TITLEBAR"): the OS window title bar. #sv("WINGEO"): whether window size+position is remembered across runs.
 / #sv("CMPLACE"): where the command line sits — `top`, `bottom`, or `hidden` (set with `CMPLACE`).
 / #sv("VR") / #sv("WS") / #sv("LNS"): visible paragraph marks / visible whitespace / the line-number gutter.
-/ #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
+/ #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
 / #sv("HLAUTO"): auto-highlighting when a file is opened.
 / #sv("SH") / #sv("SW") / #sv("PV"): the shell pane / the *Shell Output* tab / the live preview pane.
 
@@ -1150,6 +1152,7 @@ Every special variable in one list, for quick lookup.
 / #sv("DIRNW"): open files from a listing in a new tab.
 / #sv("DIRWNW"): open files from the `DIR/W` window in a new tab.
 / #sv("DIRWCLOSE"): close the `DIR/W` window after opening a file.
+/ #sv("DIRSET"): default DIR sort/filter/view switches (e.g. `/OD/R`).
 / #sv("DIRRT"): reuse the listing tab for `DIR`.
 / #sv("DN"): selection end offset.
 / #sv("DOCTYPE"): PDF render kind (typst/gfm).

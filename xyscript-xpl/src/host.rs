@@ -139,6 +139,12 @@ pub enum EditorOp {
     /// `DIRRT on|off` — whether a `DIR` command reuses an already-open listing tab (`on`) instead of
     /// spawning a new one each time (`off`, the default). Read back via `$DIRRT`.
     SetDirReuse(bool),
+    /// `DIRSET <switches>` — the default sort/filter/view switches applied to a `DIR`/`LS` command
+    /// that doesn't override them. Each token is an already-validated `DirOpts` switch name (e.g.
+    /// `"OD"`, `"R"`); an empty vec clears the default. A command switch overrides a default with the
+    /// SAME leading letter (so `DIR /ON` beats a `/OD` default, `DIR /AH` leaves it alone). Read back
+    /// via `$DIRSET`.
+    SetDirDefaults(Vec<String>),
     /// Enable/disable shell-out for the session (`TRUST 1`/`TRUST 0`). Read back via `$TR`.
     SetTrust(bool),
     /// `RUNHERE` — run the fenced code block enclosing the caret as XPL (literate
@@ -1320,6 +1326,12 @@ pub trait Host {
     /// precision. Consulted when values are stringified for display (substitution / `$(…)`).
     fn float_decimals(&self) -> Option<u8> {
         None
+    }
+    /// The default `DIR`/`LS` sort/filter/view switch names (`DIRSET`), each an already-validated
+    /// `DirOpts` switch (e.g. `"OD"`, `"R"`). The VM merges these into a `DIR` command that doesn't
+    /// override them (a command switch beats a default with the same leading letter). Empty = none.
+    fn dir_default_switches(&self) -> Vec<String> {
+        Vec::new()
     }
     /// Read a text file (for `LOADLIB`/`ADDLIB`/`RUN`/`OPEN`). A missing/
     /// unreadable file should be a [`crate::error::XplError::Trappable`] so a
