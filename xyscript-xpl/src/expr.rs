@@ -742,7 +742,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "CHR", "ASC",
     // string classification predicates (all → 1/0; false for an empty string)
     "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
-    "ISUPPER", "ISLOWER",
+    "ISUPPER", "ISLOWER", "ISTITLE", "ISSPACE",
     // arrays / collections
     "ITER", "ITERP", "PUSH", "POP", "SLICE", "SORT", "VAR", "SEL",
     // math
@@ -1200,6 +1200,15 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             expect(1)?;
             Ok(is_cased(&s(0), false))
         }
+        "ISTITLE" => {
+            expect(1)?;
+            Ok(is_title(&s(0)))
+        }
+        "ISSPACE" => {
+            // All characters are ASCII whitespace (the C `isspace` set: space, tab, LF, VT, FF, CR).
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| matches!(c, ' ' | '\t' | '\n' | '\x0b' | '\x0c' | '\r')))
+        }
         "SEL" => {
             // `SEL()` = the current selection; `SEL(n)` = tab n's selection (1-based; "" if out of
             // range or that tab has no selection).
@@ -1485,6 +1494,34 @@ fn is_cased(s: &str, want_upper: bool) -> Value {
     let has_upper = s.chars().any(|c| c.is_ascii_uppercase());
     let has_lower = s.chars().any(|c| c.is_ascii_lowercase());
     bool_val(if want_upper { has_upper && !has_lower } else { has_lower && !has_upper })
+}
+
+/// `ISTITLE`: `s` is title-cased (each run of letters starts upper-case, the rest lower-case), with
+/// at least one letter — the standard `istitle` rule: an upper-case letter may only follow a
+/// NON-letter (or the start), and a lower-case letter may only follow a LETTER. So `"Hello World"`
+/// and `"Hello123World"` are titles; `"Hello world"` (the `w` follows a space), `"HELLO"` (the `E`
+/// follows a letter), and `"123"` (no letters) are not. ASCII-only, matching the rest of the suite.
+fn is_title(s: &str) -> Value {
+    let mut prev_letter = false;
+    let mut has_letter = false;
+    for c in s.chars() {
+        if c.is_ascii_uppercase() {
+            if prev_letter {
+                return bool_val(false); // an upper-case letter mid-word
+            }
+            has_letter = true;
+            prev_letter = true;
+        } else if c.is_ascii_lowercase() {
+            if !prev_letter {
+                return bool_val(false); // a lower-case letter starting a word
+            }
+            has_letter = true;
+            prev_letter = true;
+        } else {
+            prev_letter = false; // a non-letter ends the current word
+        }
+    }
+    bool_val(has_letter)
 }
 
 /// Replace up to `n` non-overlapping occurrences of `from` with `to`. `n > 0` takes the FIRST `n`
@@ -1958,6 +1995,21 @@ mod tests {
         // Non-ASCII letters are uncased here (ASCII-only, like ISALPHA), so an accented-only string
         // has no cased letters → false either way.
         assert_eq!(ev(r#"ISUPPER("É")"#), f);
+        // ISTITLE — first letter of each word upper, the rest lower; ≥1 letter.
+        assert_eq!(ev(r#"ISTITLE("Hello World")"#), t);
+        assert_eq!(ev(r#"ISTITLE("Hello123World")"#), t); // digits end/begin words
+        assert_eq!(ev(r#"ISTITLE("Hello world")"#), f); // second word not capitalised
+        assert_eq!(ev(r#"ISTITLE("HELLO")"#), f); // all caps isn't title case
+        assert_eq!(ev(r#"ISTITLE("hello")"#), f);
+        assert_eq!(ev(r#"ISTITLE("123")"#), f); // no letters
+        assert_eq!(ev(r#"ISTITLE("")"#), f);
+        // ISSPACE — every char is ASCII whitespace; empty is false. CHR builds tab/LF/CR/VT/FF
+        // without depending on string-escape handling.
+        assert_eq!(ev(r#"ISSPACE("   ")"#), t);
+        assert_eq!(ev(r#"ISSPACE(CHR(9) . CHR(10) . " ")"#), t); // tab, LF, space
+        assert_eq!(ev(r#"ISSPACE(CHR(11) . CHR(12) . CHR(13))"#), t); // VT, FF, CR
+        assert_eq!(ev(r#"ISSPACE("a ")"#), f);
+        assert_eq!(ev(r#"ISSPACE("")"#), f);
     }
 
     // ---- concat, comparison, logic -----------------------------------------
