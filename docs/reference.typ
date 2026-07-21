@@ -909,6 +909,8 @@ Each returns `1` (true) or `0`. Every one is `0` for an empty string. The charac
 / #func("ISHEX", "s"): all characters are hex digits `0`–`9`, `A`–`F`, `a`–`f` (no `0x` prefix).
 / #func("ISALPHA", "s"): all characters are ASCII letters `A`–`Z`, `a`–`z`.
 / #func("ISALNUM", "s"): all characters are ASCII letters or digits.
+/ #func("ISUPPER", "s"): every ASCII *letter* in `s` is upper-case, and there is at least one — non-letters (spaces, digits, punctuation) are ignored, so `ISUPPER("HELLO, WORLD!")` is true but `ISUPPER("Hello")` and `ISUPPER("123")` are not.
+/ #func("ISLOWER", "s"): the same for lower-case: every ASCII letter is lower-case and there is at least one.
 / #func("ISASCII", "s"): all characters are 7-bit ASCII (code `0`–`127`).
 / #func("ISUTF8", "s"): all characters are in the Basic Multilingual Plane (`U+0000`–`U+FFFF`) — i.e. no "astral" characters such as most emoji. (Every XyScript string is valid UTF-8, so this tests the range, not the encoding.)
 / #func("ISINT", "s"): `s` is a whole number — read as XyScript reads a value, so leading/trailing spaces and a leading sign are allowed (`ISINT(" -42 ")` is true). `4.2` is not an integer.

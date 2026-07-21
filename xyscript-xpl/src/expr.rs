@@ -742,6 +742,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "CHR", "ASC",
     // string classification predicates (all → 1/0; false for an empty string)
     "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
+    "ISUPPER", "ISLOWER",
     // arrays / collections
     "ITER", "ITERP", "PUSH", "POP", "SLICE", "SORT", "VAR", "SEL",
     // math
@@ -1191,6 +1192,14 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             let t = t.trim();
             Ok(bool_val(t.parse::<i64>().is_err() && t.parse::<f64>().map(f64::is_finite).unwrap_or(false)))
         }
+        "ISUPPER" => {
+            expect(1)?;
+            Ok(is_cased(&s(0), true))
+        }
+        "ISLOWER" => {
+            expect(1)?;
+            Ok(is_cased(&s(0), false))
+        }
         "SEL" => {
             // `SEL()` = the current selection; `SEL(n)` = tab n's selection (1-based; "" if out of
             // range or that tab has no selection).
@@ -1465,6 +1474,17 @@ fn bool_val(b: bool) -> Value {
 /// character-class predicates (`ISDEC`, `ISHEX`, …). Empty is false by decision (nothing to classify).
 fn all_chars(s: &str, pred: impl Fn(char) -> bool) -> Value {
     bool_val(!s.is_empty() && s.chars().all(pred))
+}
+
+/// `ISUPPER`/`ISLOWER`: true iff `s` has at least one ASCII letter and EVERY ASCII letter is the
+/// wanted case — non-letters (spaces, digits, punctuation) are ignored, per the conventional meaning
+/// of "is it uppercase". Equivalently: has a letter of the wanted case and none of the other case, so
+/// `ISUPPER("HELLO, WORLD!")` and `ISUPPER("ABC1")` are true, `ISUPPER("Hello")`/`ISUPPER("123")` are
+/// not. ASCII-only, matching `ISALPHA`.
+fn is_cased(s: &str, want_upper: bool) -> Value {
+    let has_upper = s.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = s.chars().any(|c| c.is_ascii_lowercase());
+    bool_val(if want_upper { has_upper && !has_lower } else { has_lower && !has_upper })
 }
 
 /// Replace up to `n` non-overlapping occurrences of `from` with `to`. `n > 0` takes the FIRST `n`
@@ -1925,6 +1945,19 @@ mod tests {
         // ISUTF8 — all chars in the BMP (U+0000..U+FFFF); astral chars (emoji) fail.
         assert_eq!(ev(r#"ISUTF8("café")"#), t); // é is U+00E9, in the BMP
         assert_eq!(ev(r#"ISUTF8("hi 😀")"#), f); // U+1F600 is above the BMP
+        // ISUPPER / ISLOWER — letters only; non-letters ignored, but at least one letter required.
+        assert_eq!(ev(r#"ISUPPER("HELLO, WORLD!")"#), t); // punctuation/space ignored
+        assert_eq!(ev(r#"ISUPPER("ABC1")"#), t); // digit ignored
+        assert_eq!(ev(r#"ISUPPER("Hello")"#), f);
+        assert_eq!(ev(r#"ISUPPER("123")"#), f); // no letters → false
+        assert_eq!(ev(r#"ISUPPER("")"#), f);
+        assert_eq!(ev(r#"ISLOWER("hello, world!")"#), t);
+        assert_eq!(ev(r#"ISLOWER("abc9")"#), t);
+        assert_eq!(ev(r#"ISLOWER("Hello")"#), f);
+        assert_eq!(ev(r#"ISLOWER("123")"#), f);
+        // Non-ASCII letters are uncased here (ASCII-only, like ISALPHA), so an accented-only string
+        // has no cased letters → false either way.
+        assert_eq!(ev(r#"ISUPPER("É")"#), f);
     }
 
     // ---- concat, comparison, logic -----------------------------------------
