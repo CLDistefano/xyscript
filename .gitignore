@@ -19,6 +19,9 @@ dist/
 # A shared `.claude/settings.json` would still be tracked if one is ever added.
 .claude/settings.local.json
 
+# Personal experimental script kept in the repo root — not part of the project.
+/savesess.xpl
+
 # Debug symbols and OS cruft.
 *.pdb
 Thumbs.db
