@@ -4732,7 +4732,7 @@ impl AppHost {
     /// garbage-collected. Returns how many tabs were recorded.
     pub fn save_session(&mut self, dir: &Path) -> Result<usize, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("session: {e}"))?;
-        let mut manifest = String::from("v1\n");
+        let mut manifest = String::from("v2\n");
         let mut count = 0usize;
         let mut live = std::collections::HashSet::new(); // backup filenames still in use this pass
         for (i, doc) in self.docs.iter().enumerate() {
@@ -4773,10 +4773,20 @@ impl AppHost {
             } else {
                 doc.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
             };
+            // The doc's stable id (field 2) lets RESTORE map the saved pane layout onto the new docs.
+            let did = doc.id().0;
             manifest.push_str(&format!(
-                "{kind}\t{active}\t{caret}\t{anchor}\t{doctype}\t{enc}\t{backup}\t{reff}\n"
+                "{kind}\t{did}\t{active}\t{caret}\t{anchor}\t{doctype}\t{enc}\t{backup}\t{reff}\n"
             ));
             count += 1;
+        }
+        // The split-pane layout, if the window is actually split. `panes\t<focused-docid>\t<tree>`.
+        if self.panes.pane_count() > 1 {
+            manifest.push_str(&format!(
+                "panes\t{}\t{}\n",
+                self.panes.focused_doc().0,
+                self.panes.serialize()
+            ));
         }
         // GC: drop any `bak-*` file no longer referenced (a closed tab, or a straggler from a prior
         // run whose docs had different ids). Cheap — a handful of small files.
@@ -4808,14 +4818,27 @@ impl AppHost {
             Err(_) => return Ok(0), // no session to restore
         };
         let mut lines = manifest.lines();
-        if lines.next() != Some("v1") {
+        if lines.next() != Some("v2") {
             return Ok(0); // unknown/foreign format — leave the editor as-is
         }
         let mut restored = 0usize;
         let mut active_target: Option<usize> = None;
+        // Saved doc id → restored `DocId`, for remapping the split-pane layout below.
+        let mut id_map: std::collections::HashMap<u32, crate::panes::DocId> = std::collections::HashMap::new();
+        let mut panes_spec: Option<(u32, String)> = None; // (focused saved-id, tree tokens)
         for line in lines {
-            let mut it = line.splitn(8, '\t');
+            // The optional trailing `panes\t<focus>\t<tree>` line describes the split layout.
+            if let Some(rest) = line.strip_prefix("panes\t") {
+                if let Some((focus, tree)) = rest.split_once('\t') {
+                    if let Ok(f) = focus.parse::<u32>() {
+                        panes_spec = Some((f, tree.to_string()));
+                    }
+                }
+                continue;
+            }
+            let mut it = line.splitn(9, '\t');
             let kind = it.next().unwrap_or("");
+            let saved_id: u32 = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let active = it.next() == Some("1");
             let caret: usize = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let anchor: Option<usize> = match it.next() {
@@ -4854,6 +4877,8 @@ impl AppHost {
             let len = doc.buffer().len();
             doc.set_caret(caret.min(len), anchor.map(|a| a.min(len)));
             doc.share_grammars(self.highlight_grammars.clone());
+            let new_id = doc.id();
+            id_map.insert(saved_id, new_id);
             self.docs.push(doc);
             if active {
                 active_target = Some(self.docs.len() - 1);
@@ -4864,10 +4889,30 @@ impl AppHost {
             if let Some(a) = active_target {
                 self.active = a;
             }
-            // Repoint the focused pane at the restored active tab FIRST, so the blank scratch the
-            // editor started with is no longer shown in a pane — otherwise `prune_untitled_tabs`
-            // spares it (it won't remove a doc a pane is displaying).
-            self.sync_panes();
+            // Restore the split-pane layout if one was saved and every pane maps to a restored doc
+            // (a pane that had shown a transient doc — a listing / shell output — won't map, so we
+            // fall back to a single pane). Otherwise repoint the single pane at the active tab.
+            let tree = panes_spec.as_ref().and_then(|(focus, tokens)| {
+                let t = crate::panes::PaneTree::from_serialized(tokens, &|d: crate::panes::DocId| {
+                    id_map.get(&d.0).copied()
+                })?;
+                Some((t, *focus))
+            });
+            if let Some((mut tree, focus)) = tree {
+                if let Some(&f) = id_map.get(&focus) {
+                    tree.focus_doc_if_shown(f);
+                    // Keep the active TAB in step with the focused pane.
+                    if let Some(i) = self.docs.iter().position(|d| d.id() == f) {
+                        self.active = i;
+                    }
+                }
+                self.panes = tree;
+            } else {
+                // Repoint the single pane at the restored active tab FIRST, so the blank scratch the
+                // editor started with is no longer shown in a pane — otherwise `prune_untitled_tabs`
+                // spares it (it won't remove a doc a pane is displaying).
+                self.sync_panes();
+            }
             self.prune_untitled_tabs();
             self.auto_highlight_active();
         }

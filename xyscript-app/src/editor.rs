@@ -2107,6 +2107,48 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
+    /// Phase 2 split-pane layout restore: a side-by-side split of two files comes back as a split
+    /// (not flattened to tabs), with the same docs in the panes, after remapping the saved DocIds.
+    #[test]
+    fn session_restores_split_pane_layout() {
+        let base = std::env::temp_dir().join(format!("xyscript-splitsess-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+        std::fs::write(base.join("a.txt"), b"AAA\n").unwrap();
+        std::fs::write(base.join("b.txt"), b"BBB\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("OPEN a.txt");
+        e.run_command("OPEN/V b.txt"); // open b.txt in a side-by-side split pane
+        assert_eq!(e.host().panes().pane_count(), 2, "setup: two panes");
+        e.host_mut().save_session(&sdir).unwrap();
+
+        // Restore into a fresh editor.
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.host_mut().restore_session(&sdir).unwrap();
+
+        // The split is rebuilt (not flattened), and it's side-by-side (two rects, different x).
+        assert_eq!(e2.host().panes().pane_count(), 2, "split layout restored");
+        let rects = e2
+            .host()
+            .panes()
+            .layout_rects(crate::panes::Rect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 });
+        assert_eq!(rects.len(), 2);
+        assert_ne!(rects[0].rect.x, rects[1].rect.x, "side-by-side split preserved");
+        // Both pane docs resolve to restored tabs (the DocId remap worked).
+        for pr in &rects {
+            assert!(
+                e2.host().panes().contains_doc(pr.doc),
+                "pane doc is a restored, live document"
+            );
+        }
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
     /// Phase 2 crash resilience: repeated snapshots are CHANGED-ONLY (an unchanged buffer's shadow
     /// isn't rewritten) and stale backups are garbage-collected. Verified by sentinelling the shadow
     /// file on disk and watching whether a snapshot overwrites it.

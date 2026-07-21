@@ -486,6 +486,73 @@ impl PaneTree {
         let mut idx = 0;
         self.root.set_nth_ratio(index, &mut idx, ratio.clamp(0.05, 0.95))
     }
+
+    /// Serialize the layout as whitespace-separated prefix tokens, for `SESSION` restore. Each node is
+    /// a leaf `L <docid>` or a split `S <h|v> <ratio> <a> <b>` (`h`=Stacked, `v`=SideBySide). Structure
+    /// + divider ratios + doc-per-pane only; focus/zoom/scroll are handled separately by the caller.
+    pub fn serialize(&self) -> String {
+        fn go(n: &Node, out: &mut String) {
+            match n {
+                Node::Leaf(p) => out.push_str(&format!("L {} ", p.doc.0)),
+                Node::Split { dir, ratio, a, b } => {
+                    let d = match dir {
+                        Split::Stacked => 'h',
+                        Split::SideBySide => 'v',
+                    };
+                    out.push_str(&format!("S {d} {ratio:.4} "));
+                    go(a, out);
+                    go(b, out);
+                }
+            }
+        }
+        let mut s = String::new();
+        go(&self.root, &mut s);
+        s.trim_end().to_string()
+    }
+
+    /// Rebuild a tree from [`serialize`](Self::serialize) tokens, mapping each saved `DocId` to a live
+    /// one via `remap` — `None` if `remap` rejects any leaf (a pane that showed a doc we didn't restore,
+    /// e.g. a transient listing) or the tokens don't parse, so the caller can fall back to flat tabs.
+    /// Fresh `PaneId`s are assigned; focus lands on the first leaf (the caller repoints it).
+    pub fn from_serialized<F: Fn(DocId) -> Option<DocId>>(s: &str, remap: &F) -> Option<PaneTree> {
+        fn parse<'a, I, F>(toks: &mut I, next_pane: &mut u32, remap: &F) -> Option<Node>
+        where
+            I: Iterator<Item = &'a str>,
+            F: Fn(DocId) -> Option<DocId>,
+        {
+            match toks.next()? {
+                "L" => {
+                    let old: u32 = toks.next()?.parse().ok()?;
+                    let doc = remap(DocId(old))?;
+                    let id = PaneId(*next_pane);
+                    *next_pane += 1;
+                    Some(Node::Leaf(Pane { id, doc, view: ViewState::default() }))
+                }
+                "S" => {
+                    let dir = match toks.next()? {
+                        "h" => Split::Stacked,
+                        "v" => Split::SideBySide,
+                        _ => return None,
+                    };
+                    let ratio: f32 = toks.next()?.parse().ok()?;
+                    let a = Box::new(parse(toks, next_pane, remap)?);
+                    let b = Box::new(parse(toks, next_pane, remap)?);
+                    Some(Node::Split { dir, ratio: ratio.clamp(0.05, 0.95), a, b })
+                }
+                _ => None,
+            }
+        }
+        let mut toks = s.split_whitespace();
+        let mut next_pane = 1u32;
+        let root = parse(&mut toks, &mut next_pane, remap)?;
+        if toks.next().is_some() {
+            return None; // trailing tokens → malformed
+        }
+        let mut leaves = Vec::new();
+        root.leaves(&mut leaves);
+        let focus = leaves.first().map(|(pid, _)| *pid)?;
+        Some(PaneTree { root, focus, zoom: None, next_pane })
+    }
 }
 
 #[cfg(test)]
@@ -494,6 +561,31 @@ mod tests {
 
     fn area() -> Rect {
         Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 }
+    }
+
+    #[test]
+    fn serialize_round_trips_and_remaps_docids() {
+        // Build: SideBySide split of doc 1 and a Stacked split of docs 2 and 3.
+        let mut t = PaneTree::new(DocId(1));
+        let p2 = t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
+        t.set_focus(p2);
+        t.split(Split::Stacked, DocId(3), Side::Second).unwrap();
+        assert_eq!(t.pane_count(), 3);
+        let s = t.serialize();
+
+        // Round-trip with a +100 remap: same shape, three panes, doc ids shifted.
+        let back = PaneTree::from_serialized(&s, &|d| Some(DocId(d.0 + 100))).expect("parses");
+        assert_eq!(back.pane_count(), 3);
+        let docs: std::collections::HashSet<u32> = back.panes().iter().map(|(_, d)| d.0).collect();
+        assert_eq!(docs, [101, 102, 103].into_iter().collect());
+        // Structure preserved: re-serializing the remapped tree matches the original with +100 ids.
+        assert_eq!(back.serialize(), s.replace("L 1", "L 101").replace("L 2", "L 102").replace("L 3", "L 103"));
+
+        // A remap that rejects any leaf → None (the caller falls back to flat tabs).
+        assert!(PaneTree::from_serialized(&s, &|d| (d.0 != 2).then_some(d)).is_none());
+        // Garbage tokens → None, not a panic.
+        assert!(PaneTree::from_serialized("S x", &|d| Some(d)).is_none());
+        assert!(PaneTree::from_serialized("", &|d| Some(d)).is_none());
     }
 
     #[test]

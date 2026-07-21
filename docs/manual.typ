@@ -1545,9 +1545,13 @@ Your session is also saved quietly every few seconds as you work, so it survives
 kill — not just a tidy quit. (The save is cheap: a tab is only re-written when its content actually
 changed.)
 
+A split-pane arrangement is restored too — the same files in the same panes, split the same way. (If a
+pane had been showing a working view rather than a file — a directory listing or the shell output —
+that arrangement can't be rebuilt, so the session comes back as plain tabs instead.)
+
 #tip("What isn't restored")[Directory listings and the shell-output pane are working views, not
-documents, so they aren't part of a session, and a split-pane arrangement comes back as plain tabs for
-now. #raw("SESSION") is off until you turn it on, and the setting is saved with your configuration.]
+documents, so they aren't part of a session. #raw("SESSION") is off until you turn it on, and the
+setting is saved with your configuration.]
 
 == The files XyScript uses
 
