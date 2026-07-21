@@ -403,7 +403,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("REC", "RECALL"): revert to the last saved state. #cmd("RO"): the read-only lock. #cmd("AUTOSAVE"): the autosave interval.
 / #cmd("AB") / #cmd("ABD"): close the buffer / delete its file and close. #cmd("QUIT", "QQ"): quit the program.
 / #cmd("DEL") / #cmd("ERNV"): delete a file with / without confirmation. #cmd("RENAME", "REN"): rename or move a file. #cmd("WRITEFILE", "WF"): write content to a file.
-/ #cmd("REOPEN") / #cmd("REOPEN1") / #cmd("CLEARCLOSED"): reopen a recently-closed file from a list / the most recent / empty the list.
+/ #cmd("REOPEN") / #cmd("CLEARCLOSED"): reopen recently-closed files (a picker, or `REOPEN <n>` for the first n) / empty the list.
 
 == Tabs and buffers
 
@@ -787,7 +787,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("READ"): open an existing file in a read-only tab (unlock it with `RO`); a missing file is an error. Always opens a fresh copy — no "already open?" prompt — so you can hold several read-only views of one file. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab.
 / #cmd("READKEY", "RK"): pause for a single keystroke into a variable — `READKEY <var> [message]`. With a `message` (a quoted string; `\n` for line breaks), it pops a modal box showing the message while it waits (handy for a keypress menu: `READKEY k "Pick:\nA\nB\nC"` then `SWITCH UPPER($k)`). A bare modifier press (Shift / Ctrl / Alt / …) is ignored — it waits for a real key. That key's scancode lands in #sv("SC"), and #sv("SCC") holds the *computed* scancode (the scancode plus the bit value of any held modifier keys), so a script can tell a plain key from its Shift / Ctrl / Alt-modified form (e.g. `SWITCH $SCC` or `KEY($SCC)`). With `/D` (`READKEY/D <var>`) the variable instead gets a readable *description* of the key — the held modifiers (named and bit-valued exactly as the loaded KBD file defines them — the built-in default uses `CTRL` / `ALT` / `SHIFT` / `CAPS`, and any user-defined modifier such as `HOTKEY` is recognised) joined with `+` to the key label, e.g. `CTRL+Y`, `SHIFT+F3`, `HOTKEY+A`, `Enter`, `A` — handy for showing the user which key they pressed.
 / #cmd("REC", "RECALL"): revert the document to its last saved state.
-/ #cmd("REOPEN"): choose a recently-closed file from a list to reopen, restoring the caret to where it was. (The list is `SaveCfg`-persisted; see `SaveClosed`/`LoadClosed`.) #cmd("REOPEN1"): reopen the most-recently-closed file straight away, no list. #cmd("CLEARCLOSED"): empty the recently-closed list.
+/ #cmd("REOPEN"): choose a recently-closed file from a list to reopen, restoring the caret to where it was. `REOPEN <n>` skips the picker and reopens the first `n` closed files straight away (`REOPEN 1` = the most recent; `n` is clamped to the list length, and the most-recent of the batch ends up active). (The list is `SaveCfg`-persisted; see `SaveClosed`/`LoadClosed`.) #cmd("CLEARCLOSED"): empty the recently-closed list.
 / #cmd("RELOADLIB"): re-run the recorded library-load sequence. #cmd("UNLOADLIB"): drop all user-library routines.
 / #cmd("SAVELIB"): write all currently-loaded *user* library routines to one `.lib` file (`SUB…ENDSUB` per routine, `# DOC:` lines preserved), reloadable with #cmd("LOADLIB") or #cmd("ADDLIB"). `SaveLib [path]`; bare → `xyscript.lib` (resolved against `$CWD`). Under `CAPTURE` the text goes into the variable instead.
 / #cmd("RENAME", "REN"): rename or move a file.

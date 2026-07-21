@@ -7865,14 +7865,31 @@ impl Host for AppHost {
             EditorOp::SaveClosedToString => {
                 return Ok(Value::str(self.reopen_script_text()));
             }
-            EditorOp::ReopenMostRecent => {
-                return match self.recently_closed.first().cloned() {
-                    Some((path, caret)) => {
-                        let p = path.to_string_lossy().into_owned();
-                        Ok(Value::str(self.reopen_file(&p, caret)?))
+            EditorOp::ReopenRecent(n) => {
+                if self.recently_closed.is_empty() {
+                    return Err(XplError::trappable("REOPEN: no recently-closed file"));
+                }
+                // Snapshot the first `n` (each `reopen_file` mutates the list). Reopen the OLDEST of
+                // the batch first so the MOST-recent ends up active — matching a manual reopen chain.
+                let n = n.min(self.recently_closed.len());
+                let batch: Vec<(String, usize)> = self
+                    .recently_closed
+                    .iter()
+                    .take(n)
+                    .map(|(p, c)| (p.to_string_lossy().into_owned(), *c))
+                    .collect();
+                let mut opened = 0usize;
+                for (path, caret) in batch.into_iter().rev() {
+                    // Best-effort: a file gone since it was closed is skipped (and dropped from the
+                    // list by `reopen_file`), not fatal, so the rest of the batch still reopens.
+                    if self.reopen_file(&path, caret).is_ok() {
+                        opened += 1;
                     }
-                    None => Err(XplError::trappable("REOPEN1: no recently-closed file")),
-                };
+                }
+                return Ok(Value::str(format!(
+                    "reopened {opened} file{}",
+                    if opened == 1 { "" } else { "s" }
+                )));
             }
             EditorOp::ClearClosed => {
                 let n = self.recently_closed.len();

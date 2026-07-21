@@ -600,8 +600,9 @@ pub enum EditorOp {
     SaveClosed(Option<String>),
     /// The same `SaveClosed` script TEXT, returned (not written) — for `SaveClosed` under `CAPTURE`.
     SaveClosedToString,
-    /// `REOPEN1` — reopen the MOST-recent closed file immediately (no chooser), restoring its caret.
-    ReopenMostRecent,
+    /// `REOPEN <n>` — reopen the first `n` recently-closed files immediately (no chooser), restoring
+    /// each caret; the most-recent of the batch ends up active. `n` is clamped to the list length.
+    ReopenRecent(usize),
     /// `CLEARCLOSED` — empty the reopen list.
     ClearClosed,
     /// `CMH ["command"]` — add a command to the TOP of the command history (dedup + move-to-front,

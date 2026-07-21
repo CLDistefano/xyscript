@@ -134,7 +134,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "SCL", "CCL", "TCL", "SNL", "CNL", "TNL", "SSL", "CSL", "TSL",
     // Command history: open the picker (HISTORY/HI), load a saved list (LoadCM), stash the
     // current cmline (CMH).
-    "HISTORY", "HI", "LOADCM", "SAVECM", "CMH", "LOADCLOSED", "SAVECLOSED", "REOPEN", "REOPEN1",
+    "HISTORY", "HI", "LOADCM", "SAVECM", "CMH", "LOADCLOSED", "SAVECLOSED", "REOPEN",
     "CLEARCLOSED",
     // Global-variable persistence: save/reload/list all globals and their values.
     "SAVEVARS", "LOADVARS", "LISTVARS", "LISTVAR",

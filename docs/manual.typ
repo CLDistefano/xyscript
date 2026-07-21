@@ -274,8 +274,8 @@ persist between sessions.]
 Each open document lives in its own tab. Click a tab to switch to it; an unsaved document is marked.
 Opening a file, starting a new one, and listing a directory all open tabs. The CMline mirrors the tab
 operations — #raw("AB") closes the active document, for instance — so a script can manage tabs without
-the mouse. Recently closed files can be brought back with #raw("REOPEN") (a picker) or #raw("REOPEN1")
-(the most recent).
+the mouse. Recently closed files can be brought back with #raw("REOPEN") (a picker) or #raw("REOPEN n")
+(the most recent `n`, no picker — #raw("REOPEN 1") for just the last).
 
 == Split panes
 
@@ -577,7 +577,7 @@ marked. #raw("BUFNEXT") and #raw("BUFPREV") step between tabs from the keyboard 
 cycling to the next match (and through several copies of one file) on each call; it stays put if the
 only match is the current tab, and sets #raw("$ERROR") if nothing matches. Closed a file by mistake?
 #raw("REOPEN") pops a picker of recently-closed files (restoring the cursor where you left it), and
-#raw("REOPEN1") reopens the most recent without asking.
+#raw("REOPEN n") reopens the most recent `n` without asking (#raw("REOPEN 1") for just the last one).
 
 When you launch with nothing to open, XyScript starts you on a single blank _Untitled_ tab. By default
 that scratch tab steps aside the moment you open a real document — and quietly reappears once you close

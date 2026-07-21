@@ -7176,7 +7176,7 @@ mod tests {
     }
 
     #[test]
-    fn reopen1_reopens_the_most_recent_immediately() {
+    fn reopen_n_reopens_the_first_n_immediately() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
         e.host_mut().files.insert("a.txt".into(), "hello world".into());
@@ -7186,15 +7186,45 @@ mod tests {
         e.run_command("OPEN b.txt");
         e.run_command("JMP 3");
         e.run_command("AB"); // b.txt is the most-recent close, caret 3
-        // REOPEN1: no dialog, reopens b.txt straight away with the caret restored.
-        e.run_command("REOPEN1");
-        assert!(e.pick_request().is_none(), "REOPEN1 opens no chooser");
+
+        // `REOPEN 1` (replaces the retired `REOPEN1`): no dialog, reopens b.txt with the caret.
+        e.run_command("REOPEN 1");
+        assert!(e.pick_request().is_none(), "REOPEN 1 opens no chooser");
         assert_eq!(e.document().text(), "second");
         assert_eq!(e.document().cursor(), 3);
-        // b.txt consumed; a.txt remains.
-        let rc = e.host_mut().recently_closed();
-        assert_eq!(rc.len(), 1);
-        assert_eq!(rc[0].0.to_string_lossy(), "a.txt");
+        // b.txt consumed; a.txt remains in the closed list.
+        assert_eq!(e.host_mut().recently_closed().len(), 1);
+        assert_eq!(e.host_mut().recently_closed()[0].0.to_string_lossy(), "a.txt");
+    }
+
+    #[test]
+    fn reopen_n_reopens_a_batch_most_recent_active_and_clamps() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        for (n, body) in [("a.txt", "AAA"), ("b.txt", "BBB"), ("c.txt", "CCC")] {
+            e.host_mut().files.insert(n.into(), body.into());
+        }
+        // Close a, then b, then c → recently-closed newest-first: c, b, a.
+        for n in ["a.txt", "b.txt", "c.txt"] {
+            e.run_command(&format!("OPEN {n}"));
+            e.run_command("AB");
+        }
+        assert_eq!(e.host_mut().recently_closed().len(), 3);
+
+        // `REOPEN 5` clamps to the 3 available; the most-recent (c.txt) ends up active.
+        e.run_command("REOPEN 5");
+        assert!(e.pick_request().is_none());
+        assert_eq!(e.document().text(), "CCC", "most-recently-closed is the active tab");
+        assert!(e.host_mut().recently_closed().is_empty(), "all consumed");
+        // All three reopened (plus whatever scratch) → the three files are open.
+        let n_files = (0..e.buffer_count())
+            .filter(|&i| e.host().doc(i).text().ends_with("AA") || e.host().doc(i).text().ends_with("BB") || e.host().doc(i).text().ends_with("CC"))
+            .count();
+        assert_eq!(n_files, 3, "all three reopened");
+
+        // A non-count argument is a trappable error.
+        e.run_command("REOPEN x");
+        assert!(e.last_error().unwrap().contains("expected a count"));
     }
 
     #[test]
@@ -7207,8 +7237,8 @@ mod tests {
         assert_eq!(e.host_mut().recently_closed().len(), 1);
         e.run_command("CLEARCLOSED");
         assert!(e.host_mut().recently_closed().is_empty());
-        // REOPEN1 on an empty list is a graceful no-op (no panic; sets $ERROR, opens nothing).
-        e.run_command("REOPEN1");
+        // REOPEN <n> on an empty list is a graceful no-op (sets $ERROR, opens nothing).
+        e.run_command("REOPEN 1");
         assert!(e.host_mut().recently_closed().is_empty());
     }
 

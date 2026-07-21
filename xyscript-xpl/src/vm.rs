@@ -3920,7 +3920,17 @@ impl Vm<'_, '_> {
             }
             // `REOPEN` — choose a recently-closed file to reopen (caret restored). Shares the PICK
             // dialog; the chosen entry's file is reopened on resume.
+            // `REOPEN` — pop up the recently-closed picker. `REOPEN <n>` skips the picker and reopens
+            // the first `n` closed files straight away (`REOPEN 1` replaces the old `REOPEN1`).
             "REOPEN" => {
+                let arg = args.trim();
+                if !arg.is_empty() {
+                    let n: usize = arg.parse().ok().filter(|&n| n >= 1).ok_or_else(|| {
+                        XplError::trappable(format!("REOPEN: expected a count >= 1, got {arg:?}"))
+                    })?;
+                    self.host_op(EditorOp::ReopenRecent(n))?;
+                    return Ok(Flow::Next);
+                }
                 let candidates = self.ctx.host.reopen_candidates();
                 if candidates.is_empty() {
                     *self.ctx.status = Some("REOPEN: no recently-closed files".to_string());
@@ -3934,12 +3944,6 @@ impl Vm<'_, '_> {
                     entries,
                 });
                 Ok(Flow::Suspend)
-            }
-            // `REOPEN1` — reopen the most-recent closed file straight away (no chooser); `CLEARCLOSED`
-            // empties the list.
-            "REOPEN1" => {
-                self.host_op(EditorOp::ReopenMostRecent)?;
-                Ok(Flow::Next)
             }
             "CLEARCLOSED" => {
                 self.host_op(EditorOp::ClearClosed)?;
