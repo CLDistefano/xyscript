@@ -2149,6 +2149,63 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
+    /// Per-pane scroll fidelity: a pane's scroll offset (`ViewState`, normally mirrored from the GUI
+    /// viewport via `set_pane_scroll`) round-trips through a session save/restore — even for a single
+    /// pane, whose layout line is now always written. Restored offsets come back exactly.
+    #[test]
+    fn session_restores_per_pane_scroll() {
+        let base = std::env::temp_dir().join(format!("xyscript-scrollsess-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+        std::fs::write(base.join("a.txt"), b"AAA\n").unwrap();
+        std::fs::write(base.join("b.txt"), b"BBB\n").unwrap();
+
+        // Single pane: scroll offset survives even though there's no split.
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("OPEN a.txt");
+        let p = e.host().focused_pane_id();
+        e.host_mut().set_pane_scroll(p, 37, 4.5, false); // scrolled away from the caret
+        e.host_mut().save_session(&sdir).unwrap();
+
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.host_mut().restore_session(&sdir).unwrap();
+        let rp = e2.host().focused_pane_id();
+        let (sl, sv, follow) = e2.host().pane_scroll(rp).expect("focused pane exists");
+        assert_eq!(sl, 37, "scroll_line restored");
+        assert!((sv - 4.5).abs() < 1e-3, "scroll_vertical restored");
+        assert!(!follow, "follow flag restored");
+
+        // Split panes: each pane keeps its own offset.
+        let mut e3 = ed();
+        e3.run_command(&format!("CD {}", base.display()));
+        e3.run_command("OPEN a.txt");
+        e3.run_command("OPEN/V b.txt");
+        let panes: Vec<_> = e3.host().panes().panes();
+        assert_eq!(panes.len(), 2);
+        for (i, (pid, _)) in panes.iter().enumerate() {
+            e3.host_mut().set_pane_scroll(*pid, (i + 1) * 10, 0.0, false);
+        }
+        let sdir2 = base.join("session2");
+        e3.host_mut().save_session(&sdir2).unwrap();
+
+        let mut e4 = ed();
+        e4.run_command(&format!("CD {}", base.display()));
+        e4.host_mut().restore_session(&sdir2).unwrap();
+        let restored: std::collections::HashSet<usize> = e4
+            .host()
+            .panes()
+            .panes()
+            .iter()
+            .map(|(pid, _)| e4.host().pane_scroll(*pid).unwrap().0)
+            .collect();
+        assert_eq!(restored, [10, 20].into_iter().collect(), "each pane's scroll restored");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
     /// Phase 2 crash resilience: repeated snapshots are CHANGED-ONLY (an unchanged buffer's shadow
     /// isn't rewritten) and stale backups are garbage-collected. Verified by sentinelling the shadow
     /// file on disk and watching whether a snapshot overwrites it.

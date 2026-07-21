@@ -510,12 +510,45 @@ impl PaneTree {
         s.trim_end().to_string()
     }
 
-    /// Rebuild a tree from [`serialize`](Self::serialize) tokens, mapping each saved `DocId` to a live
-    /// one via `remap` — `None` if `remap` rejects any leaf (a pane that showed a doc we didn't restore,
-    /// e.g. a transient listing) or the tokens don't parse, so the caller can fall back to flat tabs.
-    /// Fresh `PaneId`s are assigned; focus lands on the first leaf (the caller repoints it).
+    /// Like [`serialize`](Self::serialize) but each leaf also carries its [`ViewState`]
+    /// (`L <docid> <scroll_line> <scroll_vertical> <follow>`), so `SESSION` restore brings back each
+    /// pane's exact scroll offset — not just its document + the shared caret. Splits are unchanged.
+    /// Parsed by [`from_serialized`](Self::from_serialized), which still also accepts the view-less
+    /// `L <docid>` form the `$PANES` special (and older sessions) emit.
+    pub fn serialize_session(&self) -> String {
+        fn go(n: &Node, out: &mut String) {
+            match n {
+                Node::Leaf(p) => out.push_str(&format!(
+                    "L {} {} {:.4} {} ",
+                    p.doc.0,
+                    p.view.scroll_line,
+                    p.view.scroll_vertical,
+                    if p.view.follow { 1 } else { 0 },
+                )),
+                Node::Split { dir, ratio, a, b } => {
+                    let d = match dir {
+                        Split::Stacked => 'h',
+                        Split::SideBySide => 'v',
+                    };
+                    out.push_str(&format!("S {d} {ratio:.4} "));
+                    go(a, out);
+                    go(b, out);
+                }
+            }
+        }
+        let mut s = String::new();
+        go(&self.root, &mut s);
+        s.trim_end().to_string()
+    }
+
+    /// Rebuild a tree from [`serialize`](Self::serialize) or [`serialize_session`](Self::serialize_session)
+    /// tokens, mapping each saved `DocId` to a live one via `remap` — `None` if `remap` rejects any leaf
+    /// (a pane that showed a doc we didn't restore, e.g. a transient listing) or the tokens don't parse,
+    /// so the caller can fall back to flat tabs. Fresh `PaneId`s are assigned; focus lands on the first
+    /// leaf (the caller repoints it). A leaf's `ViewState` is read from the optional
+    /// `<scroll_line> <scroll_vertical> <follow>` tokens after its docid, defaulting when they're absent.
     pub fn from_serialized<F: Fn(DocId) -> Option<DocId>>(s: &str, remap: &F) -> Option<PaneTree> {
-        fn parse<'a, I, F>(toks: &mut I, next_pane: &mut u32, remap: &F) -> Option<Node>
+        fn parse<'a, I, F>(toks: &mut std::iter::Peekable<I>, next_pane: &mut u32, remap: &F) -> Option<Node>
         where
             I: Iterator<Item = &'a str>,
             F: Fn(DocId) -> Option<DocId>,
@@ -524,9 +557,20 @@ impl PaneTree {
                 "L" => {
                     let old: u32 = toks.next()?.parse().ok()?;
                     let doc = remap(DocId(old))?;
+                    // Optional ViewState. Present only in `serialize_session` output; in the view-less
+                    // form the next token is a sibling `L`/`S` or the end — neither parses as a line
+                    // number, so peeking a `usize` reliably tells the two apart.
+                    let view = if toks.peek().and_then(|t| t.parse::<usize>().ok()).is_some() {
+                        let scroll_line: usize = toks.next()?.parse().ok()?;
+                        let scroll_vertical: f32 = toks.next()?.parse().ok()?;
+                        let follow = toks.next()? != "0";
+                        ViewState { scroll_line, scroll_vertical, follow }
+                    } else {
+                        ViewState::default()
+                    };
                     let id = PaneId(*next_pane);
                     *next_pane += 1;
-                    Some(Node::Leaf(Pane { id, doc, view: ViewState::default() }))
+                    Some(Node::Leaf(Pane { id, doc, view }))
                 }
                 "S" => {
                     let dir = match toks.next()? {
@@ -542,7 +586,7 @@ impl PaneTree {
                 _ => None,
             }
         }
-        let mut toks = s.split_whitespace();
+        let mut toks = s.split_whitespace().peekable();
         let mut next_pane = 1u32;
         let root = parse(&mut toks, &mut next_pane, remap)?;
         if toks.next().is_some() {
@@ -586,6 +630,34 @@ mod tests {
         // Garbage tokens → None, not a panic.
         assert!(PaneTree::from_serialized("S x", &|d| Some(d)).is_none());
         assert!(PaneTree::from_serialized("", &|d| Some(d)).is_none());
+    }
+
+    #[test]
+    fn serialize_session_round_trips_view_state() {
+        // Two panes with distinct, non-default scroll offsets (one following the caret, one not).
+        let mut t = PaneTree::new(DocId(1));
+        let p2 = t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
+        let p1 = t.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
+        t.set_view(p1, ViewState { scroll_line: 42, scroll_vertical: 7.5, follow: false });
+        t.set_view(p2, ViewState { scroll_line: 0, scroll_vertical: 0.0, follow: true });
+
+        let s = t.serialize_session();
+        let back = PaneTree::from_serialized(&s, &|d| Some(d)).expect("parses");
+        let bp1 = back.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
+        let bp2 = back.panes().into_iter().find(|&(_, d)| d == DocId(2)).unwrap().0;
+        let v1 = back.view(bp1).unwrap();
+        assert_eq!(v1.scroll_line, 42);
+        assert!((v1.scroll_vertical - 7.5).abs() < 1e-3);
+        assert!(!v1.follow);
+        let v2 = back.view(bp2).unwrap();
+        assert_eq!(v2.scroll_line, 0);
+        assert!(v2.follow);
+
+        // The view-less form (what `$PANES`/older sessions emit) still parses, with default views.
+        let plain = t.serialize();
+        let back2 = PaneTree::from_serialized(&plain, &|d| Some(d)).expect("parses");
+        let bp = back2.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
+        assert!(back2.view(bp).unwrap().follow); // default
     }
 
     #[test]

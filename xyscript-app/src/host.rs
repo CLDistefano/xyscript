@@ -2862,6 +2862,20 @@ impl AppHost {
         self.panes.focus()
     }
 
+    /// Mirror a pane's live scroll offset (held in the GUI's per-pane viewport) into its `ViewState`.
+    /// The GUI calls this for every pane just before a `SESSION` snapshot so the saved layout carries
+    /// each pane's exact scroll position, and reads it back with [`pane_scroll`](Self::pane_scroll)
+    /// after a restore.
+    pub fn set_pane_scroll(&mut self, pane: crate::panes::PaneId, scroll_line: usize, scroll_vertical: f32, follow: bool) {
+        self.panes.set_view(pane, crate::panes::ViewState { scroll_line, scroll_vertical, follow });
+    }
+
+    /// Read a pane's stored scroll offset as `(scroll_line, scroll_vertical, follow)` — `None` if the
+    /// pane is gone. The GUI seeds its per-pane viewport from this after restoring a session.
+    pub fn pane_scroll(&self, pane: crate::panes::PaneId) -> Option<(usize, f32, bool)> {
+        self.panes.view(pane).map(|v| (v.scroll_line, v.scroll_vertical, v.follow))
+    }
+
     /// Resolve the pane layout for a `w`×`h` area into `(pane, doc-index, rect)` triples — the GUI
     /// renders each doc-index into its rect. A pane whose `DocId` isn't currently open (shouldn't
     /// happen) is dropped.
@@ -4748,7 +4762,7 @@ impl AppHost {
     /// garbage-collected. Returns how many tabs were recorded.
     pub fn save_session(&mut self, dir: &Path) -> Result<usize, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("session: {e}"))?;
-        let mut manifest = String::from("v2\n");
+        let mut manifest = String::from("v3\n");
         let mut count = 0usize;
         let mut live = std::collections::HashSet::new(); // backup filenames still in use this pass
         for (i, doc) in self.docs.iter().enumerate() {
@@ -4796,14 +4810,14 @@ impl AppHost {
             ));
             count += 1;
         }
-        // The split-pane layout, if the window is actually split. `panes\t<focused-docid>\t<tree>`.
-        if self.panes.pane_count() > 1 {
-            manifest.push_str(&format!(
-                "panes\t{}\t{}\n",
-                self.panes.focused_doc().0,
-                self.panes.serialize()
-            ));
-        }
+        // The pane layout + each pane's scroll offset. Always emitted (even for a single pane) so a
+        // lone tab restores to the exact spot it was scrolled to, not just its caret.
+        // `panes\t<focused-docid>\t<tree>`, where the tree carries per-pane `ViewState`.
+        manifest.push_str(&format!(
+            "panes\t{}\t{}\n",
+            self.panes.focused_doc().0,
+            self.panes.serialize_session()
+        ));
         // GC: drop any `bak-*` file no longer referenced (a closed tab, or a straggler from a prior
         // run whose docs had different ids). Cheap — a handful of small files.
         if let Ok(rd) = std::fs::read_dir(dir) {
@@ -4834,7 +4848,9 @@ impl AppHost {
             Err(_) => return Ok(0), // no session to restore
         };
         let mut lines = manifest.lines();
-        if lines.next() != Some("v2") {
+        // v2 = tabs + (split-only) layout without scroll; v3 adds per-pane scroll and always writes
+        // the layout line. Both parse the same way here — the scroll tokens are optional per leaf.
+        if !matches!(lines.next(), Some("v2") | Some("v3")) {
             return Ok(0); // unknown/foreign format — leave the editor as-is
         }
         let mut restored = 0usize;

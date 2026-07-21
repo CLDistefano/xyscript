@@ -1548,7 +1548,9 @@ is only re-written when it actually changed.)
 
 A split-pane arrangement is restored too — the same files in the same panes, split the same way. (If a
 pane had been showing a working view rather than a file — a directory listing or the shell output —
-that arrangement can't be rebuilt, so the session comes back as plain tabs instead.)
+that arrangement can't be rebuilt, so the session comes back as plain tabs instead.) Each pane also
+comes back scrolled to exactly where you left it, so if you had scrolled away from the cursor to read
+elsewhere in a file, that spot — not just the cursor — is what you see on return.
 
 #tip("What isn't restored")[Directory listings and the shell-output pane are working views, not
 documents, so they aren't part of a session. #raw("SESSION") is off until you turn it on, and the

@@ -4171,11 +4171,34 @@ impl GuiApp {
         if !self.editor.host().session_restore_enabled() {
             return;
         }
+        self.sync_pane_views_to_host(); // so the saved layout carries each pane's live scroll offset
         if let Some(dir) = crate::runtime::session_dir() {
             if let Err(e) = self.editor.host_mut().save_session(&dir) {
                 eprintln!("xyscript: session save failed: {e}");
             }
         }
+    }
+
+    /// Push the live per-pane scroll (held here in `pane_view`/`pane_views`, not in the host) into the
+    /// host's pane tree so a `SESSION` snapshot records it. The focused pane's authoritative viewport is
+    /// `pane_view`; every other pane's is in `pane_views`. Set the others first, then the focused pane,
+    /// so the focused offset always wins even if a stale copy lingers in the map.
+    fn sync_pane_views_to_host(&mut self) {
+        let focused = self.editor.host().focused_pane_id();
+        let others: Vec<_> = self
+            .pane_views
+            .iter()
+            .map(|(p, v)| (*p, v.scroll_line, v.scroll_vertical, v.follow))
+            .collect();
+        for (p, sl, sv, f) in others {
+            self.editor.host_mut().set_pane_scroll(p, sl, sv, f);
+        }
+        self.editor.host_mut().set_pane_scroll(
+            focused,
+            self.pane_view.scroll_line,
+            self.pane_view.scroll_vertical,
+            self.pane_view.follow,
+        );
     }
 
     /// At startup, restore the previous session if `SESSION` is on (a no-op otherwise, or when there's
@@ -4185,10 +4208,33 @@ impl GuiApp {
             return;
         }
         if let Some(dir) = crate::runtime::session_dir() {
-            if let Err(e) = self.editor.host_mut().restore_session(&dir) {
-                eprintln!("xyscript: session restore failed: {e}");
+            match self.editor.host_mut().restore_session(&dir) {
+                Ok(n) if n > 0 => self.load_pane_views_from_host(),
+                Ok(_) => {}
+                Err(e) => eprintln!("xyscript: session restore failed: {e}"),
             }
         }
+    }
+
+    /// Seed the live per-pane viewports from the pane scroll offsets a restore just loaded into the host
+    /// tree (the inverse of [`sync_pane_views_to_host`](Self::sync_pane_views_to_host)). Without this the
+    /// panes would come back at the top of their docs (or merely following the caret); with it they
+    /// return to the exact spot they were scrolled to. Pinning `last_focus` stops the first frame's
+    /// focus-swap from clobbering the focused pane's restored view.
+    fn load_pane_views_from_host(&mut self) {
+        let focused = self.editor.host().focused_pane_id();
+        self.pane_views.clear();
+        for (pid, _doc) in self.editor.host().panes().panes() {
+            if let Some((sl, sv, f)) = self.editor.host().pane_scroll(pid) {
+                let pv = PaneView { scroll_line: sl, scroll_vertical: sv, follow: f, canvas_px: (0, 0) };
+                if pid == focused {
+                    self.pane_view = pv;
+                } else {
+                    self.pane_views.insert(pid, pv);
+                }
+            }
+        }
+        self.last_focus = Some(focused);
     }
 
     /// Whether the title-bar drag strip was grabbed this frame (consumed; the runtime starts the move).
