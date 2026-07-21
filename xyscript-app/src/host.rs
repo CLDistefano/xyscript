@@ -1567,6 +1567,10 @@ pub struct AppHost {
     /// switch like `"OD"`, `"R"`), applied to a command that doesn't override the same category.
     /// Empty = no defaults. Read back via `$DIRSET`; persisted by `SAVECFG`.
     dir_defaults: Vec<String>,
+    /// `SESSION` — auto-save-and-restore the set of open tabs across runs (Notepad++-style). When on,
+    /// the GUI writes a session on graceful exit and restores it at startup; dirty/untitled buffers
+    /// keep SHADOW backups so the user's real files are never touched. Off by default. `$SESSION`.
+    session_restore: bool,
     /// `TITLEBAR` — whether the OS window title bar is shown (default true). The GUI runtime applies
     /// it via `set_decorations`; read back via `$TITLEBAR`. Persisted by SAVECFG.
     show_titlebar: bool,
@@ -1999,6 +2003,7 @@ impl AppHost {
             dir_window_close_on_open: false, // DIR/W is a picker — it has always stayed open
             dir_reuse: false,
             dir_defaults: Vec::new(),
+            session_restore: false,
             show_titlebar: true,
             remember_window_geometry: true,
             pending_delete: None,
@@ -4698,6 +4703,144 @@ impl AppHost {
         d.path().is_none() && d.buffer().is_empty() && !d.is_modified() && !d.is_dir_listing()
     }
 
+    /// Whether the auto-save-and-restore session feature is on (`SESSION`).
+    pub fn session_restore_enabled(&self) -> bool {
+        self.session_restore
+    }
+
+    /// Whether `doc` should be part of a saved session: a real editing buffer, not a transient one
+    /// (directory listing, the *Shell Output* tab, or a blank scratch that has nothing to restore).
+    fn is_session_restorable(d: &Document) -> bool {
+        !d.is_dir_listing() && d.label() != Some(SHELL_OUTPUT_NAME) && !Self::is_pristine_untitled(d)
+    }
+
+    /// Write the current session (open tabs + their state) to `dir`, Notepad++-style. Dirty named
+    /// buffers and untitled buffers keep a SHADOW backup of their bytes (`bak<N>`); the user's real
+    /// files are never written. Clean named buffers record only their path and reopen from disk.
+    /// Returns how many tabs were recorded. Overwrites any previous session in `dir`.
+    pub fn save_session(&self, dir: &Path) -> Result<usize, String> {
+        let _ = std::fs::remove_dir_all(dir); // clear stale backups from the last run
+        std::fs::create_dir_all(dir).map_err(|e| format!("session: {e}"))?;
+        let mut manifest = String::from("v1\n");
+        let mut n_backup = 0usize;
+        let mut count = 0usize;
+        for (i, doc) in self.docs.iter().enumerate() {
+            if !Self::is_session_restorable(doc) {
+                continue;
+            }
+            let untitled = doc.path().is_none();
+            let needs_backup = untitled || doc.is_modified();
+            let backup = if needs_backup {
+                let name = format!("bak{n_backup}");
+                std::fs::write(dir.join(&name), doc.save_bytes()).map_err(|e| format!("session: {e}"))?;
+                n_backup += 1;
+                name
+            } else {
+                "-".to_string()
+            };
+            let kind = if untitled { "unti" } else { "file" };
+            let active = if i == self.active { "1" } else { "0" };
+            let caret = doc.buffer().cursor();
+            let anchor = doc.buffer().anchor().map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
+            let doctype = match doc.render_override() {
+                None => "auto",
+                Some(crate::document::RenderKind::Gfm) => "gfm",
+                Some(crate::document::RenderKind::Typst) => "typst",
+            };
+            let enc = doc.encoding_name();
+            // The reference (path or untitled label) is LAST, so it may itself contain tabs safely.
+            let reff = if untitled {
+                doc.label().unwrap_or("Untitled").to_string()
+            } else {
+                doc.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+            };
+            manifest.push_str(&format!(
+                "{kind}\t{active}\t{caret}\t{anchor}\t{doctype}\t{enc}\t{backup}\t{reff}\n"
+            ));
+            count += 1;
+        }
+        // Manifest last: if it lands, every backup it names already exists.
+        std::fs::write(dir.join("manifest.txt"), manifest).map_err(|e| format!("session: {e}"))?;
+        Ok(count)
+    }
+
+    /// Restore a session written by [`save_session`](Self::save_session) from `dir`, appending a tab
+    /// per recorded entry and re-selecting the one that was active. A shadow-backed entry comes back
+    /// marked MODIFIED (its unsaved content, still pointing at the real path); a clean entry reopens
+    /// from disk and is skipped if the file is gone. Returns how many tabs were restored. Best-effort:
+    /// a malformed line is skipped rather than aborting the whole restore.
+    pub fn restore_session(&mut self, dir: &Path) -> Result<usize, String> {
+        let manifest = match std::fs::read_to_string(dir.join("manifest.txt")) {
+            Ok(s) => s,
+            Err(_) => return Ok(0), // no session to restore
+        };
+        let mut lines = manifest.lines();
+        if lines.next() != Some("v1") {
+            return Ok(0); // unknown/foreign format — leave the editor as-is
+        }
+        let mut restored = 0usize;
+        let mut active_target: Option<usize> = None;
+        for line in lines {
+            let mut it = line.splitn(8, '\t');
+            let kind = it.next().unwrap_or("");
+            let active = it.next() == Some("1");
+            let caret: usize = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let anchor: Option<usize> = match it.next() {
+                Some("-") | None => None,
+                Some(s) => s.parse().ok(),
+            };
+            let doctype = it.next().unwrap_or("auto");
+            let enc = it.next().unwrap_or("");
+            let backup = it.next().unwrap_or("-");
+            let reff = it.next().unwrap_or("").to_string();
+
+            let mut doc = Document::new();
+            if backup != "-" {
+                // Shadow backup: exact unsaved bytes. Load, then re-mark modified.
+                let Ok(bytes) = std::fs::read(dir.join(backup)) else { continue };
+                doc.load(bytes, PathBuf::from(&reff));
+                if kind == "unti" {
+                    doc.forget_path();
+                    doc.set_label(reff.clone());
+                }
+                doc.mark_modified();
+            } else {
+                // Clean named file: reopen from disk. Gone since exit → skip its tab.
+                let Ok(bytes) = self.read_doc_bytes(&reff) else { continue };
+                doc.load(bytes, PathBuf::from(&reff));
+            }
+            // Re-apply the recorded encoding (in case auto-detect on load differed).
+            if let Some(cs) = crate::encoding::by_name(enc) {
+                doc.set_encoding(cs);
+            }
+            doc.set_render_override(match doctype {
+                "gfm" => Some(crate::document::RenderKind::Gfm),
+                "typst" => Some(crate::document::RenderKind::Typst),
+                _ => None,
+            });
+            let len = doc.buffer().len();
+            doc.set_caret(caret.min(len), anchor.map(|a| a.min(len)));
+            doc.share_grammars(self.highlight_grammars.clone());
+            self.docs.push(doc);
+            if active {
+                active_target = Some(self.docs.len() - 1);
+            }
+            restored += 1;
+        }
+        if restored > 0 {
+            if let Some(a) = active_target {
+                self.active = a;
+            }
+            // Repoint the focused pane at the restored active tab FIRST, so the blank scratch the
+            // editor started with is no longer shown in a pane — otherwise `prune_untitled_tabs`
+            // spares it (it won't remove a doc a pane is displaying).
+            self.sync_panes();
+            self.prune_untitled_tabs();
+            self.auto_highlight_active();
+        }
+        Ok(restored)
+    }
+
     /// Append `doc` as a NEW active tab (no reuse). Shares the grammar registry and repoints the
     /// focused pane, like [`add_or_reuse`](Self::add_or_reuse)'s push path.
     fn add_doc_new(&mut self, mut doc: Document) {
@@ -6081,6 +6224,7 @@ impl AppHost {
         put(&mut s, "Persistent selection — SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
         put(&mut s, "OS window title bar — on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
         put(&mut s, "Remember window size+position across runs — off helps mixed-DPI multi-monitor setups", if self.remember_window_geometry { "WINGEO on" } else { "WINGEO off" }.to_string());
+        put(&mut s, "Auto-save-and-restore the open tabs across runs (Notepad++-style)", if self.session_restore { "SESSION on" } else { "SESSION off" }.to_string());
         put(&mut s, "Open a file from a DIR listing in a new tab (on) or in place (off) — DIRNW", format!("DIRNW {}", if self.new_window { "on" } else { "off" }));
         put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) — DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
         put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) — DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
@@ -6729,6 +6873,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!(
                     "WINGEO {}",
                     if self.remember_window_geometry { "on" } else { "off" }
+                )));
+            }
+            EditorOp::SetSessionRestore(opt) => {
+                self.session_restore = opt.unwrap_or(!self.session_restore);
+                return Ok(Value::str(format!(
+                    "SESSION {}",
+                    if self.session_restore { "on" } else { "off" }
                 )));
             }
             EditorOp::SetTrust(on) => {
@@ -8936,6 +9087,7 @@ impl Host for AppHost {
             "DIRSET" => Some(Value::str(self.dir_defaults_string())),
             "TITLEBAR" => Some(Value::Int(if self.show_titlebar { 1 } else { 0 })),
             "WINGEO" => Some(Value::Int(if self.remember_window_geometry { 1 } else { 0 })),
+            "SESSION" => Some(Value::Int(if self.session_restore { 1 } else { 0 })),
             // GUI view flags (see EditorOp::SetView).
             "MB" => Some(Value::Int(if self.menu_bar { 1 } else { 0 })),
             "VR" => Some(Value::Int(if self.visible_returns { 1 } else { 0 })),

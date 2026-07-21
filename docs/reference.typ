@@ -454,7 +454,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("SMB", "CMB", "TMB"): the menu bar — on / off / toggle. #cmd("MENU"): keyboard control of the menu bar.
 / #cmd("SVR", "CVR", "TVR") / #cmd("SWS", "CWS", "TWS") / #cmd("SLN", "CLN", "TLN"): paragraph marks / whitespace / the line-number gutter — on / off / toggle.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
-/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WINGEO"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / remember the window geometry.
+/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / remember the window geometry / auto-save-and-restore the open tabs across runs.
 
 == Colors and appearance
 
@@ -867,6 +867,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("WAIT"): pause until background job(s) finish, or `WAIT <ms>` for a timed pause (`/J <id>`).
 / #cmd("WHILE", "ENDWHILE", "EW"): loop while a condition holds, ending at `ENDWHILE`/`EW`.
 / #cmd("WINGEO"): `WINGEO on|off` (bare = toggle) — whether XyScript's windows remember their size and position between runs (the main window and the secondary `FIND`, `DIR/W`, and `TXT` windows, each in its own file); turn it off on mixed-DPI multi-monitor setups where the remembered size misbehaves.
+/ #cmd("SESSION"): `SESSION on|off` (bare = toggle) — auto-save-and-restore your open tabs across runs, Notepad++-style. When on, every graceful quit (command, menu, or the window's close button) writes the set of open tabs, and the next launch reopens them in order with the caret where you left it. Dirty and untitled buffers keep a private *shadow* backup, so they come back with their unsaved content (still marked modified) and your real files are never written to until you `SAVE`. A clean file is simply reopened from disk. Off by default; persists in the config; read back via #sv("SESSION"). (Transient tabs — directory listings and the Shell-output pane — aren't part of a session; a crash isn't yet covered, only a deliberate quit.)
 / #cmd("WORDCOUNT"): count the words in the selection or document.
 / #cmd("WRITEFILE", "WF"): `WRITEFILE <path> <content>` — write `content` to a file (resolved against `$CWD`), overwriting it. The content is taken raw after `$`-substitution (like `PUT`), so `WF out.txt $x` writes the variable's value verbatim; quote the path for spaces. Read it back with the `READFILE()` function.
 / #cmd("WRITELN", "WRL"): insert text at the caret like `INSERT`, then add a trailing newline in the document's line-ending style (`LF`/`CRLF`), the same as `ENTER`.
@@ -1047,7 +1048,7 @@ plain alphabetical index.
 
 Each reads `1` when the feature is on, `0` when off.
 
-/ #sv("MB"): the menu bar. #sv("GC"): the pop-up command line. #sv("TITLEBAR"): the OS window title bar. #sv("WINGEO"): whether window size+position is remembered across runs.
+/ #sv("MB"): the menu bar. #sv("GC"): the pop-up command line. #sv("TITLEBAR"): the OS window title bar. #sv("WINGEO"): whether window size+position is remembered across runs. #sv("SESSION"): whether open tabs are auto-saved and restored across runs.
 / #sv("CMPLACE"): where the command line sits — `top`, `bottom`, or `hidden` (set with `CMPLACE`).
 / #sv("VR") / #sv("WS") / #sv("LNS"): visible paragraph marks / visible whitespace / the line-number gutter.
 / #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
@@ -1285,6 +1286,7 @@ Every special variable in one list, for quick lookup.
 / #sv("WD"): word under the caret.
 / #sv("WDAY"): day-of-week number (1 = Sunday).
 / #sv("WINGEO"): window geometry remembered across runs.
+/ #sv("SESSION"): open tabs auto-saved and restored across runs.
 / #sv("WRAPINDENT"): hanging indent for wrapped lines on.
 / #sv("WS"): visible whitespace on.
 / #sv("XB"): deletion-buffer contents.

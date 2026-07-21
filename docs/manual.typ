@@ -1529,6 +1529,23 @@ XyScript also remembers your *window* size and position between runs — the mai
 secondary #raw("FIND"), #raw("DIR/W"), and #raw("TXT") windows (toggle all of them with
 #raw("WINGEO on") / #raw("WINGEO off")).
 
+== Restoring your tabs across runs
+
+With #raw("SESSION on"), XyScript remembers the tabs you had open and reopens them the next time you
+start — the way Notepad++ does. Every deliberate quit (the #raw("QUIT") command, the File menu, or the
+window's close button) saves the set of open tabs; the next launch brings them back in order, with the
+cursor where you left it.
+
+It never touches your real files to do this. A tab with *unsaved* changes — or an untitled buffer — is
+copied to a private *shadow* backup, so it comes back with your unsaved content still showing as
+modified; your file on disk is untouched until you #raw("SAVE"). A clean file is simply reopened from
+disk. If you launch with a file on the command line, it opens *alongside* the restored tabs.
+
+#tip("What isn't restored (yet)")[Directory listings and the shell-output pane are working views, not
+documents, so they aren't part of a session. And restore happens on a *graceful* quit — a crash or a
+forced kill isn't covered yet. #raw("SESSION") is off until you turn it on, and the setting is saved
+with your configuration.]
+
 == The files XyScript uses
 
 By convention four kinds of plain-text file carry your setup, each runnable or loadable:

@@ -2056,6 +2056,57 @@ mod tests {
         assert_eq!(e.host().active_doc().file_name().as_deref(), Some("new.txt"));
     }
 
+    /// Session save+restore (Phase 1, shadow-backup model): a clean named file, a DIRTY named file,
+    /// and an untitled buffer all come back — the dirty/untitled ones marked modified with their
+    /// unsaved content, the clean one reopened from disk, and the active tab re-selected. Transient
+    /// buffers (a blank scratch) are not restored.
+    #[test]
+    fn session_save_and_restore_round_trips_tabs() {
+        let base = std::env::temp_dir().join(format!("xyscript-session-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+        std::fs::write(base.join("clean.txt"), b"on disk\n").unwrap();
+        std::fs::write(base.join("named.txt"), b"original\n").unwrap();
+
+        // --- First session: three real tabs + a blank scratch. ---
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("OPEN clean.txt"); // reuses the blank scratch; stays clean
+        e.run_command("OPEN named.txt");
+        e.run_command("TF"); // top of file
+        e.run_command(r#"INSERT "EDIT ""#); // named.txt now dirty: "EDIT original\n"
+        e.run_command("NEW"); // a fresh untitled tab
+        e.run_command(r#"INSERT "scratch notes""#); // untitled, now with content
+        assert_eq!(e.buffer_count(), 3);
+
+        let saved = e.host().save_session(&sdir).unwrap();
+        assert!(saved >= 3, "at least clean + dirty + untitled recorded, got {saved}");
+
+        // The user's REAL file on disk is untouched (shadow model).
+        assert_eq!(std::fs::read(base.join("named.txt")).unwrap(), b"original\n");
+
+        // --- Fresh editor: restore. ---
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        let restored = e2.host_mut().restore_session(&sdir).unwrap();
+        assert_eq!(restored, saved, "every recorded tab restored");
+        // No leftover blank scratch: the editor's initial untitled is pruned once real tabs land.
+        assert_eq!(e2.buffer_count(), restored, "the startup scratch is pruned after restore");
+
+        // Find the restored docs by their content/path.
+        let texts: Vec<String> = (0..e2.buffer_count())
+            .map(|i| e2.host().doc(i).text())
+            .collect();
+        assert!(texts.iter().any(|t| t.contains("on disk")), "clean file reopened from disk");
+        assert!(texts.iter().any(|t| t.starts_with("EDIT")), "dirty file restored with unsaved edit");
+        assert!(texts.iter().any(|t| t.contains("scratch notes")), "untitled restored");
+        // The shadow-backed tabs come back MODIFIED (so a later save writes them out).
+        assert!(e2.next_dirty_tab().is_some(), "restored dirty/untitled tabs report modified");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
     #[test]
     fn savelib_is_captureable() {
         let mut e = ed();

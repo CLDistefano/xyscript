@@ -559,6 +559,25 @@ impl Document {
         self.render_override = kind;
     }
 
+    /// The `DOCTYPE` override as set (`None` = auto/by-extension) — for session persistence, which
+    /// records exactly what the user chose rather than the effective kind.
+    pub fn render_override(&self) -> Option<RenderKind> {
+        self.render_override
+    }
+
+    /// Force the buffer to report as modified (`is_modified()` → true) without editing it. Used by
+    /// session RESTORE, where a shadow-backed buffer must come back showing its unsaved state so a
+    /// later `SAVE` writes it to the real file. (`saved_len = None` can never equal `Some(undo.len())`.)
+    pub fn mark_modified(&mut self) {
+        self.saved_len = None;
+    }
+
+    /// Drop the backing path, turning the document back into an untitled buffer (keeping its content).
+    /// Session RESTORE uses this to rebuild an untitled tab from a shadow backup.
+    pub fn forget_path(&mut self) {
+        self.path = None;
+    }
+
     /// The highlighter for this document's path: a user grammar matching the extension
     /// wins, else the built-in (Markdown). `None` ⇒ nothing highlights this file type.
     fn resolve_highlighter(&self) -> Option<Highlighter> {

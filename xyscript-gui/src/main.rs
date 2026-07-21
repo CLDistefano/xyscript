@@ -4152,6 +4152,32 @@ impl GuiApp {
         self.editor.remember_window_geometry()
     }
 
+    /// Whether the auto-save-and-restore session feature (`SESSION`) is on.
+    fn session_enabled(&self) -> bool {
+        self.editor.host().session_restore_enabled()
+    }
+
+    /// Save the open tabs to the per-user session dir (called on graceful exit when `SESSION` is on).
+    /// Best-effort: a failure is logged, not surfaced (nothing to show as the app is closing).
+    fn save_session(&self, dir: &std::path::Path) {
+        if let Err(e) = self.editor.host().save_session(dir) {
+            eprintln!("xyscript: session save failed: {e}");
+        }
+    }
+
+    /// At startup, restore the previous session if `SESSION` is on (a no-op otherwise, or when there's
+    /// nothing saved). The per-user dir mirrors the window-geometry location.
+    fn restore_session_if_enabled(&mut self) {
+        if !self.editor.host().session_restore_enabled() {
+            return;
+        }
+        if let Some(dir) = crate::runtime::session_dir() {
+            if let Err(e) = self.editor.host_mut().restore_session(&dir) {
+                eprintln!("xyscript: session restore failed: {e}");
+            }
+        }
+    }
+
     /// Whether the title-bar drag strip was grabbed this frame (consumed; the runtime starts the move).
     fn take_window_drag(&mut self) -> bool {
         std::mem::take(&mut self.start_window_drag)
@@ -7917,6 +7943,9 @@ fn main() {
     // after `-s`/`--startup` — is never opened as a file (the earlier `!starts_with("--")` filter
     // did exactly that: `xyscript.exe -run startup.new` opened files named "-run" and "startup.new").
     let mut app = GuiApp::new();
+    // Restore the previous session's tabs (if `SESSION` is on) — before command-line files, so those
+    // open ALONGSIDE the restored set (Notepad++-style) and land active.
+    app.restore_session_if_enabled();
     let mut files: Vec<String> = Vec::new();
     let mut it = cli_args.iter();
     while let Some(a) = it.next() {

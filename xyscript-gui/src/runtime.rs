@@ -1757,6 +1757,13 @@ impl Handler {
     }
 }
 
+/// The per-user session directory (`%APPDATA%\xyscript\session` on Windows, `~/.config/xyscript/
+/// session` elsewhere) — where `SESSION` stores its manifest and shadow backups. Reuses the same base
+/// as `geometry_path`. `None` if no per-user dir is resolvable.
+pub(crate) fn session_dir() -> Option<PathBuf> {
+    geometry_path("session")
+}
+
 /// The wgpu configuration used for every window (main + TXT/DIR/FIND). On Windows we default the
 /// backend to **DX12**: wgpu's automatic selection picks a Vulkan/GL adapter on some machines whose
 /// driver then fails at surface creation — the window opens and instantly vanishes (a 2026-07 field
@@ -1991,6 +1998,13 @@ impl ApplicationHandler for Handler {
     /// The event loop is exiting (window close or `QUIT`). Remember the window geometry so the next
     /// run restores it. Called once, while the window still exists, for either exit path.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        // Save the open tabs (`SESSION`) on graceful exit — every quit route reaches here, and it's
+        // independent of the window-geometry (`WINGEO`) setting below.
+        if self.app.session_enabled() {
+            if let Some(dir) = session_dir() {
+                self.app.save_session(&dir);
+            }
+        }
         if !self.app.remember_window_geometry() {
             return; // user opted out — leave any previous window.txt untouched
         }

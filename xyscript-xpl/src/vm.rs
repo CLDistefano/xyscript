@@ -2233,6 +2233,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetRememberGeometry(want))?;
                 Ok(Flow::Next)
             }
+            // `SESSION on|off` (bare = toggle) — auto-save-and-restore the open tabs across runs.
+            "SESSION" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "SESSION: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetSessionRestore(want))?;
+                Ok(Flow::Next)
+            }
             // `NEWLINE lf|crlf` — convert every line ending in the document to LF or CRLF and adopt
             // it as the document's style (what `ENTER` inserts). Lossless. (`$NEWLINE` reads it.)
             "NEWLINE" => {

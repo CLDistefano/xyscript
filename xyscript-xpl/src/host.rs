@@ -145,6 +145,10 @@ pub enum EditorOp {
     /// SAME leading letter (so `DIR /ON` beats a `/OD` default, `DIR /AH` leaves it alone). Read back
     /// via `$DIRSET`.
     SetDirDefaults(Vec<String>),
+    /// `SESSION on|off` (bare = toggle) — auto-save-and-restore the open tabs across runs. `None` =
+    /// toggle. Read back via `$SESSION`; persisted by `SAVECFG`. The actual save/restore is the GUI's
+    /// job (on exit / at startup); this only flips the preference.
+    SetSessionRestore(Option<bool>),
     /// Enable/disable shell-out for the session (`TRUST 1`/`TRUST 0`). Read back via `$TR`.
     SetTrust(bool),
     /// `RUNHERE` — run the fenced code block enclosing the caret as XPL (literate
