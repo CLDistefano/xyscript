@@ -1795,6 +1795,9 @@ struct GuiApp {
     last_autosave: std::time::Instant,
     /// Wall-clock of the last `SESSION` snapshot (drives the crash-resilience interval timer).
     last_session_snapshot: std::time::Instant,
+    /// The session's structure fingerprint at the last snapshot — a change (tab open/close/switch,
+    /// split/unsplit) triggers an immediate snapshot rather than waiting for the interval.
+    last_session_signature: String,
     /// The `HISTORY`/`HI` picker, when open: the highlighted row in the filtered view.
     history_dialog: Option<usize>,
     /// The picker's filter arg (number = last N, text = contains, empty = all).
@@ -1954,6 +1957,7 @@ impl GuiApp {
             shell_pane_was_visible: false,
             last_autosave: std::time::Instant::now(),
             last_session_snapshot: std::time::Instant::now(),
+            last_session_signature: String::new(),
             history_dialog: None,
             history_filter: String::new(),
             pick_dialog: None,
@@ -5597,11 +5601,18 @@ impl GuiApp {
         // still restores the tabs, not just a graceful quit. The snapshot is changed-only (a shadow
         // is rewritten only when its buffer changed, the manifest skipped when unchanged), so an idle
         // tick does no disk work. `request_repaint_after` keeps the reactive loop waking to run it.
+        //
+        // A STRUCTURAL change (tab open/close/switch, split/unsplit) snapshots IMMEDIATELY — cheap
+        // (manifest only) and it makes the layout crash-safe the instant you change it; buffer
+        // CONTENT rides the interval below.
         if self.session_enabled() {
             const SNAP: std::time::Duration = std::time::Duration::from_secs(5);
-            if self.last_session_snapshot.elapsed() >= SNAP {
+            let sig = self.editor.host().session_structure_signature();
+            let structural = sig != self.last_session_signature;
+            if structural || self.last_session_snapshot.elapsed() >= SNAP {
                 self.snapshot_session();
                 self.last_session_snapshot = std::time::Instant::now();
+                self.last_session_signature = sig;
             }
             ctx.request_repaint_after(SNAP);
         }

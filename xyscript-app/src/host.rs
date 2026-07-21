@@ -4716,6 +4716,22 @@ impl AppHost {
         self.session_restore
     }
 
+    /// A cheap fingerprint of the session's STRUCTURE — the restorable tabs (in order), which one is
+    /// active, and the split-pane layout. The GUI compares this each frame so a structural change
+    /// (open/close a tab, switch tabs, split/unsplit) triggers an IMMEDIATE snapshot instead of
+    /// waiting for the periodic timer. Deliberately excludes buffer content (that's the timer's job),
+    /// so typing doesn't churn it.
+    pub fn session_structure_signature(&self) -> String {
+        let ids: Vec<String> = self
+            .docs
+            .iter()
+            .filter(|d| Self::is_session_restorable(d))
+            .map(|d| d.id().0.to_string())
+            .collect();
+        let active_id = self.docs.get(self.active).map(|d| d.id().0).unwrap_or(0);
+        format!("{}|{active_id}|{}", ids.join(","), self.panes.serialize())
+    }
+
     /// Whether `doc` should be part of a saved session: a real editing buffer, not a transient one
     /// (directory listing, the *Shell Output* tab, or a blank scratch that has nothing to restore).
     fn is_session_restorable(d: &Document) -> bool {

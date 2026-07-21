@@ -1541,9 +1541,10 @@ copied to a private *shadow* backup, so it comes back with your unsaved content 
 modified; your file on disk is untouched until you #raw("SAVE"). A clean file is simply reopened from
 disk. If you launch with a file on the command line, it opens *alongside* the restored tabs.
 
-Your session is also saved quietly every few seconds as you work, so it survives a *crash* or a forced
-kill — not just a tidy quit. (The save is cheap: a tab is only re-written when its content actually
-changed.)
+Your session is also saved quietly as you work, so it survives a *crash* or a forced kill — not just a
+tidy quit. Opening, closing, or switching tabs, and splitting or un-splitting panes, are saved the
+instant they happen; the text you type is saved every few seconds. (The save is cheap: a tab's content
+is only re-written when it actually changed.)
 
 A split-pane arrangement is restored too — the same files in the same panes, split the same way. (If a
 pane had been showing a working view rather than a file — a directory listing or the shell output —
