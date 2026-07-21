@@ -742,7 +742,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "CHR", "ASC",
     // string classification predicates (all → 1/0; false for an empty string)
     "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
-    "ISUPPER", "ISLOWER", "ISTITLE", "ISSPACE",
+    "ISUPPER", "ISLOWER", "ISTITLE", "ISSPACE", "ISPRINT", "ISPUNCT",
     // arrays / collections
     "ITER", "ITERP", "PUSH", "POP", "SLICE", "SORT", "VAR", "SEL",
     // math
@@ -1208,6 +1208,17 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             // All characters are ASCII whitespace (the C `isspace` set: space, tab, LF, VT, FF, CR).
             expect(1)?;
             Ok(all_chars(&s(0), |c| matches!(c, ' ' | '\t' | '\n' | '\x0b' | '\x0c' | '\r')))
+        }
+        "ISPRINT" => {
+            // All characters are printable ASCII (space through `~`, i.e. U+0020–U+007E) — graphic
+            // characters plus the space, excluding control characters and non-ASCII.
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_graphic() || c == ' '))
+        }
+        "ISPUNCT" => {
+            // All characters are ASCII punctuation: the 32 marks `!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~`.
+            expect(1)?;
+            Ok(all_chars(&s(0), |c| c.is_ascii_punctuation()))
         }
         "SEL" => {
             // `SEL()` = the current selection; `SEL(n)` = tab n's selection (1-based; "" if out of
@@ -2010,6 +2021,17 @@ mod tests {
         assert_eq!(ev(r#"ISSPACE(CHR(11) . CHR(12) . CHR(13))"#), t); // VT, FF, CR
         assert_eq!(ev(r#"ISSPACE("a ")"#), f);
         assert_eq!(ev(r#"ISSPACE("")"#), f);
+        // ISPRINT — printable ASCII (space through ~); controls and non-ASCII fail.
+        assert_eq!(ev(r#"ISPRINT("Hello, World! 123")"#), t); // space is printable
+        assert_eq!(ev(r#"ISPRINT(CHR(9))"#), f); // tab is a control char
+        assert_eq!(ev(r#"ISPRINT(CHR(127))"#), f); // DEL
+        assert_eq!(ev(r#"ISPRINT("café")"#), f); // é is non-ASCII
+        assert_eq!(ev(r#"ISPRINT("")"#), f);
+        // ISPUNCT — only ASCII punctuation; letters/digits/space fail.
+        assert_eq!(ev(r#"ISPUNCT("!?.,;:-_")"#), t);
+        assert_eq!(ev(r#"ISPUNCT("a!")"#), f);
+        assert_eq!(ev(r#"ISPUNCT(". .")"#), f); // the space is not punctuation
+        assert_eq!(ev(r#"ISPUNCT("")"#), f);
     }
 
     // ---- concat, comparison, logic -----------------------------------------

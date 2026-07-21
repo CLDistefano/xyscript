@@ -913,6 +913,8 @@ Each returns `1` (true) or `0`. Every one is `0` for an empty string. The charac
 / #func("ISLOWER", "s"): the same for lower-case: every ASCII letter is lower-case and there is at least one.
 / #func("ISTITLE", "s"): `s` is title-cased — each run of letters starts with an upper-case letter and continues in lower-case, with at least one letter. `ISTITLE("Hello World")` is true; `ISTITLE("Hello world")` and `ISTITLE("HELLO")` are not.
 / #func("ISSPACE", "s"): all characters are ASCII whitespace — space, tab, newline, carriage return, vertical tab, or form feed.
+/ #func("ISPRINT", "s"): all characters are printable ASCII — space through `~` (code `32`–`126`); control characters and non-ASCII fail.
+/ #func("ISPUNCT", "s"): all characters are ASCII punctuation — the printable marks and symbols that are not letters, digits, or spaces (`!`, `?`, `.`, `,`, `;`, `:`, `-`, `_`, brackets, quotes, and so on: 32 in all).
 / #func("ISASCII", "s"): all characters are 7-bit ASCII (code `0`–`127`).
 / #func("ISUTF8", "s"): all characters are in the Basic Multilingual Plane (`U+0000`–`U+FFFF`) — i.e. no "astral" characters such as most emoji. (Every XyScript string is valid UTF-8, so this tests the range, not the encoding.)
 / #func("ISINT", "s"): `s` is a whole number — read as XyScript reads a value, so leading/trailing spaces and a leading sign are allowed (`ISINT(" -42 ")` is true). `4.2` is not an integer.
