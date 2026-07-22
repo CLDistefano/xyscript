@@ -174,7 +174,8 @@ a non-zero `$RC` if the server rejects an over-large message.
 `SENDMAIL` runs curl as a **background job** (it never blocks the editor):
 - Progress and any curl error stream into the **\*Shell Output\*** tab.
 - On completion, **`$RC`** is curl's exit code — `0` means sent. `$XO` holds curl's output.
-- `$LJ` is the job id, so a script can `WAIT/J $LJ` and then check `$RC`.
+- `$LJ` is the job id, so a script can `WAIT/J $LJ` and then check `$RC` — or use `SENDMAIL/W` to send
+  synchronously (blocks until curl finishes, so `$RC` is set on return). See *The `/W` switch* below.
 
 ## Receive
 
@@ -262,6 +263,33 @@ For `SAVEMAIL all` use a **bare `WAIT`** specifically: it runs in two phases (a 
 download), and each is a separate job — `WAIT/J $LJ` would return after only the count, whereas a bare
 `WAIT` spans both. Interactively, the editor keeps polling while a job runs, so `$RC` updates on its own
 within a moment of completion.
+
+### The `/W` switch — run synchronously
+
+If you'd rather not manage the wait yourself, add **`/W`** to any mail verb (`LISTMAIL/W`,
+`SAVEMAIL/W`, `DELMAIL/W`, `SENDMAIL/W`). It runs the command **synchronously** — it blocks until curl
+finishes, so `$RC` is already set the moment it returns, and no separate `WAIT` is needed:
+
+```
+DELMAIL/W 3
+IF $RC != 0 ; MSG "delete failed (RC $RC)" ; EI
+```
+
+`/W` waits for the whole operation, including `SAVEMAIL all`'s two phases. It freezes the editor for the
+duration of the network call — that's the trade-off for a one-liner; the plain (async) form keeps the
+UI live. It combines with `SENDMAIL`'s `/F` (e.g. `SENDMAIL/F/W report.txt boss@x.org`).
+
+### When curl says OK but the server said no
+
+curl only checks the *transport*: for IMAP it exits `0` as long as it connected and exchanged commands,
+**even if the server refused one** (a tagged `NO`/`BAD` response — e.g. a delete you lack permission
+for). To stop a refusal from masquerading as success, XyScript scans the server's replies and, when it
+finds a rejection while curl exited `0`, sets **`$RC` to `100`** (a value outside curl's own 1–99 range,
+so you can tell "the server said no" from a curl/transport error) and prints a `⚠ IMAP command refused`
+line to *Shell Output*. `DELMAIL` always runs verbose internally so this check applies; `LISTMAIL` and
+`SAVEMAIL all` are verbose already. curl is also invoked with `--fail-early` so a genuine transport
+failure partway through a multi-step command (e.g. `DELMAIL`'s delete-then-expunge) is reported rather
+than hidden behind a later success.
 
 ## Troubleshooting
 

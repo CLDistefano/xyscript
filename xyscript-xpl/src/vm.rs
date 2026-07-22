@@ -3245,8 +3245,10 @@ impl Vm<'_, '_> {
                         (!rest.is_empty()).then(|| rest.trim_matches('"').to_string());
                     (Some(to), subject)
                 };
-                let msg =
-                    self.host_op_value(EditorOp::SendMail { to, subject, body_file })?.to_str();
+                let wait = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let msg = self
+                    .host_op_value(EditorOp::SendMail { to, subject, body_file, wait })?
+                    .to_str();
                 *self.ctx.status = Some(msg);
                 Ok(Flow::Next)
             }
@@ -3277,7 +3279,8 @@ impl Vm<'_, '_> {
             // `LISTMAIL` — list message headers (Date/From/Subject) from the mailbox to *Shell Output*.
             #[cfg(feature = "email")]
             "LISTMAIL" => {
-                let msg = self.host_op_value(EditorOp::ListMail)?.to_str();
+                let wait = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let msg = self.host_op_value(EditorOp::ListMail { wait })?.to_str();
                 *self.ctx.status = Some(msg);
                 Ok(Flow::Next)
             }
@@ -3297,7 +3300,8 @@ impl Vm<'_, '_> {
                     .next()
                     .map(|p| p.trim().trim_matches('"').to_string())
                     .filter(|p| !p.is_empty());
-                let msg = self.host_op_value(EditorOp::SaveMail { range, path })?.to_str();
+                let wait = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let msg = self.host_op_value(EditorOp::SaveMail { range, path, wait })?.to_str();
                 *self.ctx.status = Some(msg);
                 Ok(Flow::Next)
             }
@@ -3310,7 +3314,8 @@ impl Vm<'_, '_> {
                         "DELMAIL: a message range is required (e.g. 1-3,6-8 or all)",
                     ));
                 }
-                let msg = self.host_op_value(EditorOp::DelMail { range })?.to_str();
+                let wait = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let msg = self.host_op_value(EditorOp::DelMail { range, wait })?.to_str();
                 *self.ctx.status = Some(msg);
                 Ok(Flow::Next)
             }
@@ -4690,7 +4695,9 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "WAIT" => &["J"], // `/J <id>` — wait for a specific background job
         "LEARN" | "UNLEARN" => &["S", "F"], // `/S` — learn the selection; `/F <file>` — learn a word list
         #[cfg(feature = "email")]
-        "SENDMAIL" => &["F"], // `/F <file>` — read the message body from a file (email feature)
+        "SENDMAIL" => &["F", "W"], // `/F <file>` — body from a file; `/W` — run synchronously (sets $RC)
+        #[cfg(feature = "email")]
+        "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
 
         _ => &[],
     };

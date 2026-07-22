@@ -395,9 +395,10 @@ pub enum EditorOp {
     MailSet { field: String, value: String },
     /// `SENDMAIL [<to> ["subject"]]` — send the active document as an email by shelling out to `curl`
     /// (a background job). Headers come from the args or a header block atop the buffer. With `/F`,
-    /// `body_file` is read for the message text instead of the active document. (email feature.)
+    /// `body_file` is read for the message text instead of the active document. With `/W` the verb runs
+    /// SYNCHRONOUSLY — it blocks until curl finishes so `$RC` is set before it returns. (email feature.)
     #[cfg(feature = "email")]
-    SendMail { to: Option<String>, subject: Option<String>, body_file: Option<String> },
+    SendMail { to: Option<String>, subject: Option<String>, body_file: Option<String>, wait: bool },
     /// `ATTACH <path>` — stage a file to attach to the next `SENDMAIL` (validated + resolved now, read
     /// at send time). (email feature.)
     #[cfg(feature = "email")]
@@ -406,17 +407,20 @@ pub enum EditorOp {
     #[cfg(feature = "email")]
     MailClearAttach,
     /// `LISTMAIL` — FETCH message headers (Date/From/Subject + flags) from the mailbox and stream them
-    /// to *Shell Output*, via `curl` IMAP. (email feature.)
+    /// to *Shell Output*, via `curl` IMAP. With `/W` it blocks until the fetch finishes (sets `$RC`
+    /// synchronously). (email feature.)
     #[cfg(feature = "email")]
-    ListMail,
+    ListMail { wait: bool },
     /// `SAVEMAIL <range> [<path>]` — download the raw messages in `range` (`1-3,6-8,10`) to
-    /// `MSG<nnn>.TXT` files (named by message number) in `path` (default `$CWD`). (email feature.)
+    /// `MSG<nnn>.TXT` files (named by message number) in `path` (default `$CWD`). `/W` blocks until the
+    /// download finishes (sets `$RC` synchronously). (email feature.)
     #[cfg(feature = "email")]
-    SaveMail { range: String, path: Option<String> },
+    SaveMail { range: String, path: Option<String>, wait: bool },
     /// `DELMAIL <range>` — mark the messages in `range` (`1-3,6-8` or `all`) `\Deleted` and expunge
-    /// them, via `curl` IMAP. (email feature.)
+    /// them, via `curl` IMAP. `/W` blocks until the delete finishes (sets `$RC` synchronously). (email
+    /// feature.)
     #[cfg(feature = "email")]
-    DelMail { range: String },
+    DelMail { range: String, wait: bool },
     /// Set the tab close-`×` glyph colour (`TABXCOLOR <r g b>`; `None` = default to the UI foreground).
     /// Read back via `$TABXCOLOR`.
     SetTabXColor(Option<(u8, u8, u8)>),

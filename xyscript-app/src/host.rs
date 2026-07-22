@@ -630,6 +630,34 @@ fn max_fetch_seq(raw: &str) -> u32 {
     max
 }
 
+/// `$RC` value used when the IMAP server refused a command (a tagged `NO`/`BAD` response) even though
+/// curl connected and exited `0`. Deliberately outside curl's own exit-code range (1–99) so a script
+/// can tell "the server said no" apart from a curl/transport error.
+#[cfg(feature = "email")]
+pub const IMAP_REJECT_CODE: i64 = 100;
+
+/// Scan a `curl -v` IMAP trace for a tagged failure response — `<tag> NO …` or `<tag> BAD …`, where
+/// curl's tags look like `A001`, `A002`, … — and return that response line. curl only checks the
+/// transport, so a refused STORE/EXPUNGE/FETCH leaves curl exiting `0`; this catches it. Returns `None`
+/// when the trace shows only `OK`s (or no tagged responses, e.g. a non-verbose run). Anchoring to the
+/// `A<digits>` tag avoids matching the word "NO"/"BAD" inside fetched header text.
+#[cfg(feature = "email")]
+fn imap_rejection(trace: &str) -> Option<String> {
+    for line in trace.lines() {
+        // curl prints server responses as `< <tag> <status> …`; tolerate a missing `< ` prefix too.
+        let s = line.strip_prefix("< ").unwrap_or(line).trim();
+        let mut it = s.splitn(3, ' ');
+        let (Some(tag), Some(status)) = (it.next(), it.next()) else { continue };
+        let tagged = tag.len() >= 2
+            && tag.starts_with('A')
+            && tag[1..].bytes().all(|b| b.is_ascii_digit());
+        if tagged && (status == "NO" || status == "BAD") {
+            return Some(s.to_string());
+        }
+    }
+    None
+}
+
 /// The bare address for the SMTP envelope (`--mail-from` / `--mail-rcpt`): the text inside `<…>` if the
 /// address carries a display name (`"Name" <addr>`), else the whole (trimmed) token. The display-name
 /// form is kept only in the visible `From:`/`To:`/`Cc:` headers.
@@ -858,6 +886,11 @@ enum JobSink {
     /// up in `mail_save_all` by job id).
     #[cfg(feature = "email")]
     MailSearchSave,
+    /// `DELMAIL`: run curl `-v` (so the server's tagged `OK`/`NO`/`BAD` response is captured for the
+    /// IMAP-rejection check), but keep *Shell Output* clean — buffer the trace silently and, unless
+    /// `MAILDEBUG` is on, show only the exit line (plus a warning if the server refused the command).
+    #[cfg(feature = "email")]
+    MailAction,
 }
 
 /// A running background shell job (`X/BG`, or an `SH` pane command). The worker streams output lines
@@ -876,6 +909,10 @@ struct Job {
     /// A temp file to delete once the job finishes (the `SENDMAIL` message file curl uploads). `None`
     /// for ordinary jobs.
     cleanup: Option<std::path::PathBuf>,
+    /// A mail job (curl to SMTP/IMAP). `poll_jobs` scans a mail job's output for an IMAP `NO`/`BAD`
+    /// rejection and elevates `$RC` — curl exits `0` even when the server refuses a command. `false`
+    /// for ordinary shell jobs (whose output must never be scanned for false positives).
+    is_mail: bool,
 }
 
 /// Bounded job-channel capacity: the worker blocks on `send` once this many lines are unread,
@@ -3271,6 +3308,7 @@ impl AppHost {
             return_var: None,
             sink,
             cleanup: None,
+            is_mail: false,
         });
     }
 
@@ -3358,7 +3396,7 @@ impl AppHost {
                     JobSink::ShellPane => self.append_shell_pane(&batch),
                     JobSink::Document { .. } => {}
                     #[cfg(feature = "email")]
-                    JobSink::MailHeaders | JobSink::MailSearchSave => {} // buffered; handled on done
+                    JobSink::MailHeaders | JobSink::MailSearchSave | JobSink::MailAction => {}
                 }
             }
             if let Some(code) = done {
@@ -3366,6 +3404,15 @@ impl AppHost {
                 if let Some(p) = &job.cleanup {
                     let _ = std::fs::remove_file(p); // curl is done with the SENDMAIL message file
                 }
+                // A mail job whose curl exited 0 may still have been REFUSED by the IMAP server (curl
+                // only checks the transport). Detect a tagged NO/BAD and elevate `$RC` so scripts and
+                // the user see a failure. Non-mail jobs are never scanned (false-positive risk).
+                #[cfg(feature = "email")]
+                let imap_reject = (job.is_mail && code == 0)
+                    .then(|| imap_rejection(&job.output))
+                    .flatten();
+                #[cfg(feature = "email")]
+                let code = if imap_reject.is_some() { IMAP_REJECT_CODE } else { code };
                 self.last_rc = code;
                 // `/R:<var>` — queue the job's full output for delivery into its parent variable
                 // (the editor writes it into the interpreter Env after this drain).
@@ -3418,6 +3465,22 @@ impl AppHost {
                             )),
                         }
                     }
+                    #[cfg(feature = "email")]
+                    JobSink::MailAction => {
+                        // Ran with `-v` to capture the server's tagged response for the check above,
+                        // but keep *Shell Output* clean: show the raw trace only under MAILDEBUG.
+                        if self.mail_debug {
+                            self.append_shell_output_text(&job.output);
+                        }
+                        self.append_shell_output_text(&format!("(exit {code})\n\n"));
+                    }
+                }
+                // Surface an IMAP refusal (curl said OK at the transport level, the server said NO).
+                #[cfg(feature = "email")]
+                if let Some(resp) = imap_reject {
+                    self.append_shell_output_text(&format!(
+                        "⚠ IMAP command refused by the server (RC {code}): {resp}\n\n"
+                    ));
                 }
                 self.last_output = job.output;
                 notices.push(format!("job {} done (exit {code}): {}", job.id, job.cmd));
@@ -3541,8 +3604,17 @@ impl AppHost {
         let child = std::sync::Arc::new(std::sync::Mutex::new(None));
         let mut command = std::process::Command::new("curl");
         // `-v` (MAILDEBUG on) streams the whole SMTP dialogue to *Shell Output*; else `-s` is quiet
-        // but `-S` still surfaces errors.
-        command.args([if self.mail_debug { "-v" } else { "-s" }, "-S", "-K", "-"]);
+        // but `-S` still surfaces errors. `--fail-early` stops + reports on the first error (so a
+        // failed step isn't masked by a later success); `--connect-timeout` bounds a stuck connect.
+        command.args([
+            if self.mail_debug { "-v" } else { "-s" },
+            "-S",
+            "--fail-early",
+            "--connect-timeout",
+            "30",
+            "-K",
+            "-",
+        ]);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -3558,6 +3630,7 @@ impl AppHost {
             return_var: None,
             sink: JobSink::ShellTab,
             cleanup: Some(tmp),
+            is_mail: true,
         });
         self.start_shell_output_log(&format!(
             "sending mail to {} (job {id})…\n",
@@ -3612,7 +3685,18 @@ impl AppHost {
         let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
         let child = std::sync::Arc::new(std::sync::Mutex::new(None));
         let mut command = std::process::Command::new("curl");
-        command.args([if verbose { "-v" } else { "-s" }, "-S", "-K", "-"]);
+        // `--fail-early`: on a multi-request config (SAVEMAIL's several messages, DELMAIL's STORE then
+        // EXPUNGE) fail + report on the FIRST error instead of letting a later success mask it.
+        // `--connect-timeout` bounds a stuck connect (matters for the synchronous `/W` path).
+        command.args([
+            if verbose { "-v" } else { "-s" },
+            "-S",
+            "--fail-early",
+            "--connect-timeout",
+            "30",
+            "-K",
+            "-",
+        ]);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -3628,6 +3712,7 @@ impl AppHost {
             return_var: None,
             sink,
             cleanup: None,
+            is_mail: true,
         });
         self.start_shell_output_log(&header);
         id
@@ -3758,16 +3843,66 @@ impl AppHost {
         cfg.push_str(&format!("--next\n{user_line}\nssl-reqd\nurl = \"{u}\"\nrequest = \"EXPUNGE\"\n"));
         let id = self.next_job_id;
         let mbox = self.mailbox.clone();
+        // Always `-v` (the `MailAction` sink keeps the trace hidden unless MAILDEBUG) so the server's
+        // tagged `OK`/`NO`/`BAD` response is captured — a refused delete otherwise leaves curl at 0.
         self.spawn_mail_curl(
             cfg,
             "curl → DELMAIL (delete + expunge)".to_string(),
             format!("deleting {seqset} from {mbox} (job {id})…\n"),
-            self.mail_debug,
-            JobSink::ShellTab,
+            true,
+            JobSink::MailAction,
         );
         Ok(Value::str(format!(
             "deleting {seqset} — job {id} (WAIT, then $RC; 0 = deleted)"
         )))
+    }
+
+    /// The ids of the jobs running right now — snapshotted before a `/W` mail verb spawns its own, so
+    /// [`drain_jobs_blocking`](Self::drain_jobs_blocking) can wait for *just* that verb's job(s).
+    #[cfg(feature = "email")]
+    fn mail_job_ids(&self) -> std::collections::HashSet<u64> {
+        self.jobs.iter().map(|j| j.id).collect()
+    }
+
+    /// Block (driving [`poll_jobs`](Self::poll_jobs) in a tight loop) until every job spawned at/after
+    /// the `before` snapshot has finished — i.e. the `/W` mail verb's job and any follow-on it triggers
+    /// (a `SAVEMAIL all` count job spawns its download job in the very `poll_jobs` call that retires the
+    /// count, so there's never a gap where none of "our" jobs are present). Reuses the normal completion
+    /// path, so `$RC`/`$XO`, the sinks, cleanup, and the IMAP-rejection check all run before we return.
+    /// Freezes the editor for the duration — that is what `/W` (synchronous) asks for.
+    #[cfg(feature = "email")]
+    fn drain_jobs_blocking(&mut self, before: &std::collections::HashSet<u64>) {
+        loop {
+            let _ = self.poll_jobs();
+            if !self.jobs.iter().any(|j| !before.contains(&j.id)) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    /// Shared tail for the mail verbs' `/W` (synchronous) switch. `spawn` is the verb's normal result
+    /// (which already launched the background job, or is a config error to propagate). Without `/W` we
+    /// just return that async result; with it we block until the job(s) finish and return a completion
+    /// message reporting the now-settled `$RC` (`ok_word` labels a `0`). `before` is the job snapshot
+    /// taken *before* the verb spawned, so we wait for only its work.
+    #[cfg(feature = "email")]
+    fn finish_mail(
+        &mut self,
+        spawn: VmResult<Value>,
+        wait: bool,
+        before: std::collections::HashSet<u64>,
+        label: &str,
+        ok_word: &str,
+    ) -> VmResult<Value> {
+        let async_msg = spawn?; // a config/spawn error propagates unchanged
+        if !wait {
+            return Ok(async_msg);
+        }
+        self.drain_jobs_blocking(&before);
+        let rc = self.last_rc;
+        let outcome = if rc == 0 { ok_word } else { "FAILED" };
+        Ok(Value::str(format!("{label}: done — $RC {rc} ({outcome})")))
     }
 
     /// Build the RFC822 message + recipient list for [`send_mail`](Self::send_mail). With `to_arg`
@@ -8070,7 +8205,7 @@ impl Host for AppHost {
                 let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
                 let child = std::sync::Arc::new(std::sync::Mutex::new(None));
                 spawn_shell_job(shell_command(&cmd), None, tx, std::sync::Arc::clone(&child));
-                self.jobs.push(Job { id, cmd: cmd.clone(), rx, child, output: String::new(), return_var, sink: JobSink::ShellTab, cleanup: None });
+                self.jobs.push(Job { id, cmd: cmd.clone(), rx, child, output: String::new(), return_var, sink: JobSink::ShellTab, cleanup: None, is_mail: false });
                 // Stream into the *Shell Output* tab under a header, live as the job runs. With SW
                 // on, switch to that tab so the output is visible; with SW off it streams hidden.
                 self.start_shell_output_log(&format!("$ {cmd}  (job {id})\n"));
@@ -8116,6 +8251,7 @@ impl Host for AppHost {
                     return_var,
                     sink: JobSink::ShellTab,
                     cleanup: None,
+                    is_mail: false,
                 });
                 self.start_shell_output_log(&format!("$ {display}  (job {id})\n"));
                 return Ok(Value::str(format!("background script: job {id}: {}", abs.display())));
@@ -8151,6 +8287,7 @@ impl Host for AppHost {
                     return_var,
                     sink: JobSink::ShellTab,
                     cleanup: None,
+                    is_mail: false,
                 });
                 self.start_shell_output_log(&format!("$ {display}  (job {id})\n"));
                 return Ok(Value::str(format!("background code: job {id}")));
@@ -8761,8 +8898,10 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("{label}: {shown}")));
             }
             #[cfg(feature = "email")]
-            EditorOp::SendMail { to, subject, body_file } => {
-                return self.send_mail(to, subject, body_file);
+            EditorOp::SendMail { to, subject, body_file, wait } => {
+                let before = if wait { self.mail_job_ids() } else { Default::default() };
+                let r = self.send_mail(to, subject, body_file);
+                return self.finish_mail(r, wait, before, "SENDMAIL", "sent");
             }
             #[cfg(feature = "email")]
             EditorOp::MailAttach(path) => {
@@ -8796,11 +8935,25 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("cleared {n} staged attachment(s)")));
             }
             #[cfg(feature = "email")]
-            EditorOp::ListMail => return self.list_mail(),
+            EditorOp::ListMail { wait } => {
+                let before = if wait { self.mail_job_ids() } else { Default::default() };
+                let r = self.list_mail();
+                return self.finish_mail(r, wait, before, "LISTMAIL", "ok");
+            }
             #[cfg(feature = "email")]
-            EditorOp::SaveMail { range, path } => return self.save_mail(&range, path.as_deref()),
+            EditorOp::SaveMail { range, path, wait } => {
+                let before = if wait { self.mail_job_ids() } else { Default::default() };
+                let r = self.save_mail(&range, path.as_deref());
+                let label = format!("SAVEMAIL {range}");
+                return self.finish_mail(r, wait, before, &label, "ok");
+            }
             #[cfg(feature = "email")]
-            EditorOp::DelMail { range } => return self.del_mail(&range),
+            EditorOp::DelMail { range, wait } => {
+                let before = if wait { self.mail_job_ids() } else { Default::default() };
+                let r = self.del_mail(&range);
+                let label = format!("DELMAIL {range}");
+                return self.finish_mail(r, wait, before, &label, "deleted");
+            }
             EditorOp::SetPathPlace(p) => {
                 self.path_place = p;
                 return Ok(Value::str(format!("path shown on: {}", p.name())));
@@ -10160,6 +10313,28 @@ mod tests {
         assert_eq!(super::max_fetch_seq(raw), 2);
         assert_eq!(super::max_fetch_seq(""), 0);
         assert_eq!(super::max_fetch_seq("< * 7 FETCH (FLAGS ())\r\n< * 3 FETCH (FLAGS ())\r"), 7);
+    }
+
+    #[test]
+    #[cfg(feature = "email")]
+    fn imap_rejection_detects_tagged_no_or_bad() {
+        // A refused STORE — curl exits 0, but the tagged response is NO. Detected + returned.
+        let refused = "\
+< A001 OK LOGIN completed\r
+< A002 OK SELECT completed\r
+< A003 NO [CANNOT] permission denied\r
+";
+        let hit = super::imap_rejection(refused).expect("a NO response is a rejection");
+        assert!(hit.contains("A003 NO"), "returns the offending line: {hit}");
+        // BAD is also a rejection.
+        assert!(super::imap_rejection("< A007 BAD syntax error\r").is_some());
+        // All-OK trace → no rejection.
+        assert!(super::imap_rejection("< A001 OK\r\n< A002 OK done\r").is_none());
+        // No false positive when "NO"/"BAD" appears in fetched header TEXT (not a tagged response).
+        assert!(super::imap_rejection("< Subject: NO refunds, BAD idea\r\n< A001 OK\r").is_none());
+        // Untagged responses (`*`) are progress, not the command verdict — ignored.
+        assert!(super::imap_rejection("< * NO some untagged notice\r\n< A001 OK\r").is_none());
+        assert!(super::imap_rejection("").is_none());
     }
 
     #[test]
