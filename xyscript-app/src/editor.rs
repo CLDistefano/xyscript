@@ -1718,6 +1718,49 @@ mod tests {
     }
 
     #[test]
+    fn getkey_names_a_computed_scancode_like_readkey_describe() {
+        use xyscript_kbd::{ModBehavior, ModifierDef};
+        let mut e = ed();
+        let check = |e: &mut Editor, scc: i64, want: &str| {
+            e.run_command(&format!("PR [$(GETKEY({scc}))]"));
+            assert_eq!(e.output().last().map(String::as_str), Some(format!("[{want}]").as_str()), "GETKEY({scc})");
+        };
+        // Named keys are named by physical identity (canonical chart code), independent of any binding.
+        for (scc, want) in [
+            (14, "Backspace"), (28, "Enter"), (1, "Esc"), (15, "Tab"), (57, "Space"),
+            (59, "F1"), (68, "F10"), (87, "F11"), (88, "F12"),
+            (91, "Ins"), (92, "Home"), (95, "Del"), (100, "Up"), (103, "Right"),
+        ] {
+            check(&mut e, scc, want);
+        }
+        // Invalid $SCC → empty: an unnameable code, and modifier bits this (modifier-less) keymap
+        // doesn't define (256 is not a known modifier here).
+        check(&mut e, 200, "");
+        check(&mut e, 14 + 256, "");
+
+        // A keymap WITH modifiers + printable Normal bindings: a printable key reads its own char, and
+        // a held modifier prefixes it — exactly what READKEY/D would insert.
+        let modifier = |name: &str, bit: u32| ModifierDef {
+            name: name.into(), bit, trigger_keys: vec![], behavior: ModBehavior::Hold, dual_role: false,
+        };
+        let mut tables: HashMap<(u32, u8), Assignment> = HashMap::new();
+        tables.insert((0, 21), Assignment::Xpl("y".into())); // Y key types 'y'
+        tables.insert((0, 2), Assignment::Xpl("1".into()));  // '1' key
+        e.host_mut().set_keymap(Keymap {
+            modifiers: vec![modifier("CTRL", 256), modifier("SHIFT", 1024)],
+            tables,
+            keys_max: 104,
+            virtual_base: None,
+        });
+        check(&mut e, 21, "Y");                    // printable → its char, upper-cased
+        check(&mut e, 2, "1");
+        check(&mut e, 21 + 256, "CTRL+Y");         // held modifier prefixes it
+        check(&mut e, 21 + 1024, "SHIFT+Y");
+        check(&mut e, 21 + 256 + 1024, "CTRL+SHIFT+Y"); // prefix ordered by bit value
+        check(&mut e, 28 + 256, "CTRL+Enter");     // named key + modifier, even unbound
+    }
+
+    #[test]
     fn key_uses_the_same_canonical_codes_as_sc() {
         // `scan` is the KBD-table / `$SC` numbering (canonical key code), not a native scancode:
         // press a key (sets `$SC`), then `KEY($SC)` reports that key's own binding.

@@ -613,6 +613,64 @@ fn format_mail_headers(raw: &str, mailbox: &str) -> String {
     out
 }
 
+/// The character a Normal-layer key cell types, for naming a printable key. Accepts the desugared
+/// `insert "X"` form (what a letter cell like `21=y` becomes) or a bare single-char cell. `None` if the
+/// cell is a command / multi-character / empty.
+fn key_cell_char(binding: &str) -> Option<char> {
+    let b = binding.trim();
+    let inner = b.strip_prefix("insert \"").and_then(|x| x.strip_suffix('"')).unwrap_or(b);
+    let mut it = inner.chars();
+    match (it.next(), it.next()) {
+        (Some(c), None) if !c.is_control() => Some(c),
+        _ => None,
+    }
+}
+
+/// The canonical display name of a NAMED key by its canonical code (the XyWrite-classic chart codes;
+/// see `xyscript-kbd/src/normalize.rs`). Matches the GUI's `key_name` so `GETKEY` reads the same as
+/// `READKEY/D`. `None` for keys named by their printable character instead (handled by the caller),
+/// for the pure lock/modifier keys (Caps/Num/Scroll — `READKEY` ignores them), and for unknown codes.
+fn canonical_key_name(code: u8) -> Option<String> {
+    Some(match code {
+        1 => "Esc".into(),
+        14 => "Backspace".into(),
+        15 => "Tab".into(),
+        28 | 104 => "Enter".into(), // main Enter + numpad Enter
+        57 => "Space".into(),
+        59..=68 => format!("F{}", code - 58), // 59→F1 … 68→F10
+        87 => "F11".into(),
+        88 => "F12".into(),
+        91 => "Ins".into(),
+        92 => "Home".into(),
+        93 => "PgUp".into(),
+        95 => "Del".into(),
+        96 => "End".into(),
+        97 => "PgDn".into(),
+        100 => "Up".into(),
+        101 => "Left".into(),
+        102 => "Down".into(),
+        103 => "Right".into(),
+        _ => return None,
+    })
+}
+
+/// The US-physical key-cap character for a printable code — a fallback for a key the keymap leaves
+/// unbound (digits/symbols usually fall through to the OS), so `GETKEY` still names it. The keymap's
+/// own `insert "X"` cell is preferred when present (layout-aware); this is the last resort.
+fn canonical_printable(code: u8) -> Option<&'static str> {
+    Some(match code {
+        2 => "1", 3 => "2", 4 => "3", 5 => "4", 6 => "5", 7 => "6", 8 => "7", 9 => "8", 10 => "9",
+        11 => "0", 12 => "-", 13 => "=",
+        16 => "Q", 17 => "W", 18 => "E", 19 => "R", 20 => "T", 21 => "Y", 22 => "U", 23 => "I",
+        24 => "O", 25 => "P", 26 => "[", 27 => "]",
+        30 => "A", 31 => "S", 32 => "D", 33 => "F", 34 => "G", 35 => "H", 36 => "J", 37 => "K",
+        38 => "L", 39 => ";", 40 => "'", 41 => "`", 43 => "\\",
+        44 => "Z", 45 => "X", 46 => "C", 47 => "V", 48 => "B", 49 => "N", 50 => "M", 51 => ",",
+        52 => ".", 53 => "/",
+        _ => return None,
+    })
+}
+
 /// Highest IMAP sequence number in a `curl -v` FETCH trace (`* N FETCH …` markers). Since IMAP
 /// sequence numbers are contiguous `1..N`, this is the message count. `0` if none found.
 #[cfg(feature = "email")]
@@ -6662,6 +6720,44 @@ impl Host for AppHost {
             xyscript_kbd::Assignment::Flip => Some("KF".to_string()),
             xyscript_kbd::Assignment::Xpl(s) => Some(s.clone()),
         }
+    }
+
+    fn scc_key_name(&self, scc: i64) -> Option<String> {
+        if scc < 0 {
+            return None;
+        }
+        // `$SCC` = key code (low byte, 0..=255) + modifier bits (≥256), the same split `KEY($SCC)` uses.
+        let code = (scc & 0xFF) as u8;
+        let bitmask = u32::try_from(scc & !0xFF).ok()?;
+        let km = self.current_keymap.as_ref()?;
+        // Every set modifier bit must belong to a declared modifier — otherwise this isn't a valid
+        // `$SCC` for the current keymap, so name nothing.
+        let known: u32 = km.modifiers.iter().fold(0, |acc, m| acc | m.bit);
+        if bitmask & !known != 0 {
+            return None;
+        }
+        // Base key name — mirrors the GUI's `describe_key`/`key_name`, in priority order:
+        //   1. a NAMED key by canonical code (Enter, Backspace, F3, Up, Space, …);
+        //   2. the keymap's OWN character for a printable key (its `insert "X"` cell — layout-aware);
+        //   3. the US key-cap character (for a printable the keymap leaves unbound).
+        // A key that is none of these can't be named → the whole `$SCC` is invalid.
+        let base = canonical_key_name(code)
+            .or_else(|| {
+                let cell = self.key_binding(i64::from(code))?; // Normal-layer operative cell
+                key_cell_char(&cell).map(|c| c.to_uppercase().to_string())
+            })
+            .or_else(|| canonical_printable(code).map(str::to_string))?;
+        // Modifier prefix, ascending by bit value (matches `describe_key`), using the keymap's own
+        // modifier names so a custom KBD's modifiers (e.g. a `HOTKEY`) prefix correctly.
+        let mut mods: Vec<_> = km.modifiers.iter().filter(|m| bitmask & m.bit != 0).collect();
+        mods.sort_by_key(|m| m.bit);
+        let mut out = String::new();
+        for m in mods {
+            out.push_str(&m.name);
+            out.push('+');
+        }
+        out.push_str(&base);
+        Some(out)
     }
 
     fn keyboard_chart_text(&self) -> String {

@@ -1296,6 +1296,15 @@ pub trait Host {
     fn key_binding(&self, _scan: i64) -> Option<String> {
         None
     }
+
+    /// `GETKEY(scc)` — the display NAME of a computed scan code (`$SCC` = key code + modifier bits),
+    /// the string `READKEY/D` would write into its variable: a `+`-joined modifier prefix (from the
+    /// keymap's own modifier definitions) then the key's name (`CTRL+Y`, `Enter`, `Backspace`). `None`
+    /// if `scc` carries unknown modifier bits or names no key (the function then yields the empty
+    /// string).
+    fn scc_key_name(&self, _scc: i64) -> Option<String> {
+        None
+    }
     /// `KBCHART` — the loaded keymap's full chart as display text, one section per modifier table
     /// (Normal / SHIFT / CTRL / …) listing its `scan → binding` cells. Shown in a scrollable TXT modal.
     fn keyboard_chart_text(&self) -> String {

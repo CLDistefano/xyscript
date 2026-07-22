@@ -5187,6 +5187,10 @@ impl EvalContext for Ctx<'_> {
         self.host.key_binding(scan)
     }
 
+    fn scc_key_name(&self, scc: i64) -> Option<String> {
+        self.host.scc_key_name(scc)
+    }
+
     fn path_is_dir(&self, path: &str) -> bool {
         self.host.path_is_dir(path)
     }

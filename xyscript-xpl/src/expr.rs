@@ -151,6 +151,12 @@ pub trait EvalContext {
     fn key_binding(&self, _scan: i64) -> Option<String> {
         None
     }
+    /// `GETKEY(scc)` — the human-readable NAME of a computed scan code (`$SCC` = key code + modifier
+    /// bits), like `READKEY/D` writes into its variable (`CTRL+Y`, `Enter`, `Backspace`). `None` when
+    /// `scc` isn't a valid key + modifier combination (the function then yields the empty string).
+    fn scc_key_name(&self, _scc: i64) -> Option<String> {
+        None
+    }
     /// Whether `path` is an existing directory (host-resolved against `$CWD`). For `GETPATH()`/
     /// `ISDIR()`. Default `false` (no filesystem in the bare context).
     fn path_is_dir(&self, _path: &str) -> bool {
@@ -750,7 +756,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "ATAN2", "SINH", "COSH", "TANH", "ASINH", "ACOSH",
     "ATANH", "PI", "E", "RANDOM",
     // editor / environment
-    "KEY", "GETPATH", "EXISTS", "ISDIR", "ISFILE", "READFILE", "RF",
+    "KEY", "GETKEY", "GETPATH", "EXISTS", "ISDIR", "ISFILE", "READFILE", "RF",
     // date / time (masked)
     "DATE", "TIME",
 ];
@@ -1239,6 +1245,14 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             expect(1)?;
             let scan = int_arg(&vals[0], "KEY")?;
             Ok(Value::str(ctx.key_binding(scan).unwrap_or_default()))
+        }
+        "GETKEY" => {
+            // `GETKEY(scc)` — the key NAME for a computed scan code (`$SCC`), the string `READKEY/D`
+            // would write into its variable (`CTRL+Y`, `Enter`, `Backspace`). Empty when `scc` is not a
+            // valid key + modifier-bits combination for the current keymap.
+            expect(1)?;
+            let scc = int_arg(&vals[0], "GETKEY")?;
+            Ok(Value::str(ctx.scc_key_name(scc).unwrap_or_default()))
         }
         "CHR" => {
             expect(1)?;

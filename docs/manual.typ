@@ -1446,7 +1446,10 @@ and so on — with each table's bindings, so you can see the whole map at a glan
 binding from a script, the #raw("KEY(scan)") function does it: #raw("KEY($SC)") tells you what the key
 you just pressed does on its plain layer, while #raw("KEY($SCC)") reads the binding on the *modifier
 layer* it was pressed with. #raw("$SC") is the last scan code; #raw("$SCC") is that plus the held
-modifier's bit value, so one number names the key and its shift state together.
+modifier's bit value, so one number names the key and its shift state together. Where #raw("KEY") tells
+you what a key _does_, #raw("GETKEY(scc)") tells you what it is _called_ — #raw("GETKEY($SCC)") returns
+the readable name of the key, the same string #raw("READKEY/D") would capture (#raw("CTRL+Y"),
+#raw("Enter"), #raw("Backspace")), or the empty string if the number names no key.
 
 == Binders: registers you can re-fill at runtime
 
