@@ -1652,12 +1652,35 @@ highlighting at all — not the wrong colors, simply none, because no grammar ha
 You will not want to type that every session; _Making it stick_, below, shows the two ways to have your
 grammars loaded automatically at launch.
 
+=== Highlighting your own XPL scripts
+
+Because XyScript is itself programmed in XPL, the #raw("xpl.xpl") grammar highlights the very scripts,
+configurations (#raw(".cfg")), and libraries (#raw(".lib")) you write. Alongside the usual #raw("#")
+comments, #raw("\"strings\""), #raw(":labels"), #raw("$variables"), #raw("@")/#raw("&") binders, and
+#raw("/switches"), it colors two things by name:
+
+/ *Control-flow keywords* (the #raw("keyword") kind): the block words #raw("IF"), #raw("WHILE"),
+  #raw("FOR"), #raw("SWITCH"), #raw("SUB"), #raw("CAPTURE") and their closers and short aliases
+  (#raw("ENDIF")/#raw("EI"), #raw("ENDWHILE")/#raw("EW"), …), the branch and loop words
+  #raw("ELSE"), #raw("ELSEIF"), #raw("CASE"), #raw("DEFAULT"), #raw("TO"), #raw("STEP"), #raw("IN"),
+  the jumps #raw("GOTO"), #raw("BREAK"), #raw("CONTINUE"), #raw("RETURN"), #raw("EXIT"), and the
+  expression logic #raw("AND") / #raw("OR") / #raw("NOT").
+/ *Built-in expression functions* (the #raw("function") kind): the complete library — #raw("LEN"),
+  #raw("UPPER"), #raw("SPLIT"), #raw("SUBSTR"), #raw("SIN"), #raw("SQRT"), #raw("DATE"), and the rest
+  (the _Reference_ lists them all).
+
+Ordinary verbs are deliberately left uncolored — there are hundreds, and painting them all would bury
+the structure rather than reveal it. Matching is case-insensitive, so #raw("if"), #raw("If"), and
+#raw("IF") all light up. Because #raw("function") is one of the built-in kinds, it already has a
+theme-aware color and follows #raw("THEME light") / #raw("THEME dark") with everything else; recolor it
+like any other with #raw("HLCOLOR function <R G B>").
+
 == Token kinds and their colors
 
 Each highlighted element belongs to a *token kind*, and the kind is what carries the color. The
 Markdown kinds are #raw("heading"), #raw("strong"), #raw("emphasis"), #raw("code"), #raw("link"),
 #raw("quote"), and #raw("rule"); grammars for code add #raw("keyword"), #raw("string"),
-#raw("comment"), and #raw("number"). To see the current palette, run #raw("HLKINDS") (#raw("Settings ▸
+#raw("comment"), #raw("number"), and #raw("function"). To see the current palette, run #raw("HLKINDS") (#raw("Settings ▸
 Syntax highlighting ▸ Token kinds")) — it lists every kind beside its color, each name drawn in the
 color itself.
 
@@ -1694,7 +1717,7 @@ Reference has the full grammar syntax; _Appendix B_ covers the regular-expressio
 
 === Inventing your own kinds
 
-A rule's kind may be *any name you like* — you are not limited to the eleven built-ins. Naming a new
+A rule's kind may be *any name you like* — you are not limited to the twelve built-ins. Naming a new
 one in an #raw("HLRULE") is all it takes to bring it into being; give it a color with #raw("HLCOLOR")
 and it appears in #raw("HLKINDS") alongside the rest. (The shipped #raw("typst.xpl") does exactly this
 with a #raw("math") kind.)
