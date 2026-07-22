@@ -48,13 +48,15 @@ pub enum TokenKind {
     StringLit,
     Comment,
     Number,
+    /// A callable name — built-in expression functions in a code grammar (e.g. XPL's `LEN`, `UPPER`).
+    Function,
     /// A grammar-defined kind named by the user (lowercased). Not one of the built-ins.
     Other(String),
 }
 
 impl TokenKind {
     /// The built-in (named) kinds, in a stable order (config emission, listing).
-    pub const ALL: [TokenKind; 11] = [
+    pub const ALL: [TokenKind; 12] = [
         TokenKind::Heading,
         TokenKind::Emphasis,
         TokenKind::Strong,
@@ -66,6 +68,7 @@ impl TokenKind {
         TokenKind::StringLit,
         TokenKind::Comment,
         TokenKind::Number,
+        TokenKind::Function,
     ];
 
     /// The lowercase name used by `HLCOLOR`/`HLRULE` and config emission.
@@ -82,6 +85,7 @@ impl TokenKind {
             TokenKind::StringLit => "string",
             TokenKind::Comment => "comment",
             TokenKind::Number => "number",
+            TokenKind::Function => "function",
             TokenKind::Other(s) => s.as_str(),
         }
     }
@@ -119,6 +123,7 @@ pub fn default_highlight_theme() -> HashMap<TokenKind, (u8, u8, u8)> {
         (StringLit, (40, 150, 70)),
         (Comment, (30, 150, 160)),
         (Number, (200, 60, 60)),
+        (Function, (150, 150, 50)),
     ]
     .into_iter()
     .collect()
@@ -140,6 +145,7 @@ pub fn dark_highlight_theme() -> HashMap<TokenKind, (u8, u8, u8)> {
         (StringLit, (225, 175, 120)),
         (Comment, (120, 140, 150)),
         (Number, (240, 150, 135)),
+        (Function, (205, 200, 120)),
     ]
     .into_iter()
     .collect()
@@ -162,6 +168,7 @@ pub fn theme(kind: &TokenKind) -> Style {
         TokenKind::StringLit => Style { fg: Color::Green, ..s },
         TokenKind::Comment => Style { fg: Color::Cyan, italic: true, ..s },
         TokenKind::Number => Style { fg: Color::Red, ..s },
+        TokenKind::Function => Style { fg: Color::Yellow, ..s },
         TokenKind::Other(_) => s, // no built-in TUI style for grammar kinds
     }
 }
