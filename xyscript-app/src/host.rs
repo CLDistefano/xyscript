@@ -3659,7 +3659,9 @@ impl AppHost {
             true,
             sink,
         );
-        Ok(Value::str(format!("fetching headers — job {id}; results in *Shell Output*")))
+        Ok(Value::str(format!(
+            "fetching headers — job {id}; results in *Shell Output* (WAIT, then $RC; 0 = ok)"
+        )))
     }
 
     /// `SAVEMAIL <range> [<path>]` — download each raw message in `range` to `MSG<nnn>.TXT` (named by
@@ -3708,7 +3710,9 @@ impl AppHost {
             self.mail_debug,
             JobSink::ShellTab,
         );
-        Ok(Value::str(format!("saving {n} message(s) to {dir_disp} — job {id} ($RC when done)")))
+        Ok(Value::str(format!(
+            "saving {n} message(s) to {dir_disp} — job {id} (WAIT, then $RC; 0 = ok)"
+        )))
     }
 
     /// `SAVEMAIL all` — count the mailbox with a FETCH-headers job (the proven `LISTMAIL` path), then
@@ -3733,7 +3737,10 @@ impl AppHost {
             JobSink::MailSearchSave,
         );
         self.mail_save_all.push((id, dir));
-        Ok(Value::str(format!("counting messages — job {id}; download follows in *Shell Output*")))
+        Ok(Value::str(format!(
+            "counting messages — job {id}; download follows in *Shell Output* \
+             (bare WAIT covers both phases, then $RC; 0 = ok)"
+        )))
     }
 
     /// `DELMAIL <range>` — mark the messages in `range` (`1-3,6-8` or `all`) `\Deleted`, then EXPUNGE
@@ -3758,7 +3765,9 @@ impl AppHost {
             self.mail_debug,
             JobSink::ShellTab,
         );
-        Ok(Value::str(format!("deleting {seqset} — job {id} ($RC when done; 0 = deleted)")))
+        Ok(Value::str(format!(
+            "deleting {seqset} — job {id} (WAIT, then $RC; 0 = deleted)"
+        )))
     }
 
     /// Build the RFC822 message + recipient list for [`send_mail`](Self::send_mail). With `to_arg`

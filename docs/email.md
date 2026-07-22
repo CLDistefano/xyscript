@@ -247,8 +247,21 @@ DELMAIL all
 > re-read current numbers before a second `SAVEMAIL`/`DELMAIL`, and delete highest-first if you're
 > working from one listing.
 
-As with sending, `$RC` is curl's exit code (`0` = success), `$XO` its output, and `$LJ` the job id for
-`WAIT/J`.
+As with sending, these run as **background jobs**: `$RC` (curl's exit code, `0` = success) and `$XO`
+(its output) are set only when the job **finishes**, so a script must wait before reading them —
+otherwise `$RC` still holds the *previous* command's code. The simplest wait is a **bare `WAIT`** (it
+blocks until every job is done), then read `$RC`:
+
+```
+DELMAIL 3
+WAIT
+IF $RC != 0 ; MSG "delete failed (RC $RC)" ; EI
+```
+
+For `SAVEMAIL all` use a **bare `WAIT`** specifically: it runs in two phases (a count, then the
+download), and each is a separate job — `WAIT/J $LJ` would return after only the count, whereas a bare
+`WAIT` spans both. Interactively, the editor keeps polling while a job runs, so `$RC` updates on its own
+within a moment of completion.
 
 ## Troubleshooting
 
