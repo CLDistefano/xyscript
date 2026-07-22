@@ -1730,6 +1730,9 @@ mod tests {
             (14, "Backspace"), (28, "Enter"), (1, "Esc"), (15, "Tab"), (57, "Space"),
             (59, "F1"), (68, "F10"), (87, "F11"), (88, "F12"),
             (91, "Ins"), (92, "Home"), (95, "Del"), (100, "Up"), (103, "Right"),
+            // Numpad cluster, lock keys, and Pause — named even though READKEY itself skips them.
+            (55, "Numpad *"), (71, "Numpad 7"), (82, "Numpad 0"), (83, "Numpad ."),
+            (94, "Numpad /"), (58, "CapsLock"), (69, "NumLock"), (70, "ScrLock"), (90, "Pause/Bk"),
         ] {
             check(&mut e, scc, want);
         }
