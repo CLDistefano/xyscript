@@ -759,6 +759,9 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "KEY", "GETKEY", "GETPATH", "EXISTS", "ISDIR", "ISFILE", "READFILE", "RF",
     // date / time (masked)
     "DATE", "TIME",
+    // date arithmetic (Julian Day Number pivot, proleptic Gregorian)
+    "DATE2JDN", "JDN2DATE", "DOW", "DATEDIFF", "DATEADD", "TODAY", "LEAP", "DAYSINMONTH",
+    "DAYOFYEAR", "ISDATE",
 ];
 
 /// `true` if `chars[i..]` begins with the ASCII `pat`.
@@ -767,8 +770,69 @@ fn mask_at(chars: &[char], i: usize, pat: &str) -> bool {
     i + p.len() <= chars.len() && chars[i..i + p.len()] == p[..]
 }
 
-/// Format `now` by a DATE mask: `yyyy`/`yy`, `mm`/`m`, `dd`/`d`; everything else is a literal.
+/// Proleptic-Gregorian leap year: divisible by 4, except centuries not divisible by 400.
+fn is_leap_year(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+/// Number of days in `month` (1–12) of `year`, proleptic Gregorian (`0` for an invalid month).
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => if is_leap_year(year) { 29 } else { 28 },
+        _ => 0,
+    }
+}
+
+/// `true` if `(y, m, d)` is a real proleptic-Gregorian date (month 1–12, day 1–days-in-month). Any
+/// year is accepted; the day count uses the Gregorian leap rule for every year (no 1582 switch).
+fn valid_ymd(y: i64, m: i64, d: i64) -> bool {
+    (1..=12).contains(&m) && d >= 1 && d <= days_in_month(y, m)
+}
+
+/// Date → Julian Day Number (Fliegel & Van Flandern), proleptic Gregorian. The result is the standard
+/// integer JDN: it advances by 1 each calendar day and `.rem_euclid(7)` gives the weekday (0 = Monday).
+/// `div_euclid` (floor division) keeps it correct for negative/ancient years. Assumes a valid date.
+fn ymd_to_jdn(y: i64, m: i64, d: i64) -> i64 {
+    let a = (14 - m).div_euclid(12);
+    let yy = y + 4800 - a;
+    let mm = m + 12 * a - 3;
+    d + (153 * mm + 2).div_euclid(5) + 365 * yy + yy.div_euclid(4) - yy.div_euclid(100)
+        + yy.div_euclid(400)
+        - 32045
+}
+
+/// Julian Day Number → `(year, month, day)`, proleptic Gregorian. Exact inverse of [`ymd_to_jdn`].
+fn jdn_to_ymd(jdn: i64) -> (i64, u32, u32) {
+    let a = jdn + 32044;
+    let b = (4 * a + 3).div_euclid(146097);
+    let c = a - (146097 * b).div_euclid(4);
+    let d = (4 * c + 3).div_euclid(1461);
+    let e = c - (1461 * d).div_euclid(4);
+    let m = (5 * e + 2).div_euclid(153);
+    let day = e - (153 * m + 2).div_euclid(5) + 1;
+    let month = m + 3 - 12 * m.div_euclid(10);
+    let year = 100 * b + d - 4800 + m.div_euclid(10);
+    (year, month as u32, day as u32)
+}
+
+/// Format `now` by a DATE mask. Tokens: `yyyy`/`yy` (year), `mmmm`/`mmm` (month name, full / abbr),
+/// `mm`/`m` (month number, padded / bare), `dddd`/`ddd` (weekday name, full / abbr), `dd`/`d` (day
+/// number). Longest token wins, so a name token is tried before the numeric one. Everything else is a
+/// literal. The weekday comes from the proleptic-Gregorian JDN, so it is correct for any date.
 fn format_date(mask: &str, now: &DateParts) -> String {
+    const WD_FULL: [&str; 7] =
+        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const WD_ABBR: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const MO_FULL: [&str; 12] = [
+        "January", "February", "March", "April", "May", "June", "July", "August", "September",
+        "October", "November", "December",
+    ];
+    const MO_ABBR: [&str; 12] =
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let dow = ymd_to_jdn(now.year, now.month as i64, now.day as i64).rem_euclid(7) as usize; // 0 = Mon
+    let mo = (now.month as usize).clamp(1, 12) - 1;
     let chars: Vec<char> = mask.chars().collect();
     let mut out = String::new();
     let mut i = 0;
@@ -779,12 +843,24 @@ fn format_date(mask: &str, now: &DateParts) -> String {
         } else if mask_at(&chars, i, "yy") {
             out.push_str(&format!("{:02}", now.year.rem_euclid(100)));
             i += 2;
+        } else if mask_at(&chars, i, "mmmm") {
+            out.push_str(MO_FULL[mo]);
+            i += 4;
+        } else if mask_at(&chars, i, "mmm") {
+            out.push_str(MO_ABBR[mo]);
+            i += 3;
         } else if mask_at(&chars, i, "mm") {
             out.push_str(&format!("{:02}", now.month));
             i += 2;
         } else if chars[i] == 'm' {
             out.push_str(&now.month.to_string());
             i += 1;
+        } else if mask_at(&chars, i, "dddd") {
+            out.push_str(WD_FULL[dow]);
+            i += 4;
+        } else if mask_at(&chars, i, "ddd") {
+            out.push_str(WD_ABBR[dow]);
+            i += 3;
         } else if mask_at(&chars, i, "dd") {
             out.push_str(&format!("{:02}", now.day));
             i += 2;
@@ -1091,6 +1167,95 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             expect(1)?;
             let now = ctx.now().ok_or_else(|| ExprError::new("TIME: no clock in this context"))?;
             Ok(Value::str(format_time(&s(0), &now)))
+        }
+        // Date arithmetic (proleptic Gregorian, day resolution). The Julian Day Number is the pivot:
+        // `DATE2JDN(y,m,d)` encodes a date to an integer, `JDN2DATE(jdn[,mask])` decodes it back, and
+        // everything else is integer math on the JDN. A malformed date (bad month, or a day past the
+        // month's length) is a *trappable* error (sets `$ERROR` instead of halting); use `ISDATE` to
+        // pre-check. `DOW` numbers the week ISO-style, 1 = Monday … 7 = Sunday.
+        "DATE2JDN" => {
+            expect(3)?;
+            let (y, m, d) =
+                (int_arg(&vals[0], "DATE2JDN")?, int_arg(&vals[1], "DATE2JDN")?, int_arg(&vals[2], "DATE2JDN")?);
+            if !valid_ymd(y, m, d) {
+                return Err(ExprError::trappable(format!("DATE2JDN: invalid date {y}-{m}-{d}")));
+            }
+            Ok(Value::Int(ymd_to_jdn(y, m, d)))
+        }
+        "JDN2DATE" => {
+            if argc != 1 && argc != 2 {
+                return Err(ExprError::new(format!("JDN2DATE: expected 1 or 2 args, got {argc}")));
+            }
+            let (y, month, day) = jdn_to_ymd(int_arg(&vals[0], "JDN2DATE")?);
+            let parts = DateParts { year: y, month, day, hour: 0, minute: 0, second: 0 };
+            let mask = if argc == 2 { s(1) } else { "yyyy-mm-dd".to_string() };
+            Ok(Value::str(format_date(&mask, &parts)))
+        }
+        "DOW" => {
+            expect(3)?;
+            let (y, m, d) = (int_arg(&vals[0], "DOW")?, int_arg(&vals[1], "DOW")?, int_arg(&vals[2], "DOW")?);
+            if !valid_ymd(y, m, d) {
+                return Err(ExprError::trappable(format!("DOW: invalid date {y}-{m}-{d}")));
+            }
+            Ok(Value::Int(ymd_to_jdn(y, m, d).rem_euclid(7) + 1)) // 1 = Monday … 7 = Sunday
+        }
+        "DATEDIFF" => {
+            expect(6)?;
+            let a = (int_arg(&vals[0], "DATEDIFF")?, int_arg(&vals[1], "DATEDIFF")?, int_arg(&vals[2], "DATEDIFF")?);
+            let b = (int_arg(&vals[3], "DATEDIFF")?, int_arg(&vals[4], "DATEDIFF")?, int_arg(&vals[5], "DATEDIFF")?);
+            if !valid_ymd(a.0, a.1, a.2) {
+                return Err(ExprError::trappable(format!("DATEDIFF: invalid date {}-{}-{}", a.0, a.1, a.2)));
+            }
+            if !valid_ymd(b.0, b.1, b.2) {
+                return Err(ExprError::trappable(format!("DATEDIFF: invalid date {}-{}-{}", b.0, b.1, b.2)));
+            }
+            Ok(Value::Int(ymd_to_jdn(b.0, b.1, b.2) - ymd_to_jdn(a.0, a.1, a.2))) // days from date1 to date2
+        }
+        "DATEADD" => {
+            if argc != 4 && argc != 5 {
+                return Err(ExprError::new(format!("DATEADD: expected 4 or 5 args, got {argc}")));
+            }
+            let (y, m, d) =
+                (int_arg(&vals[0], "DATEADD")?, int_arg(&vals[1], "DATEADD")?, int_arg(&vals[2], "DATEADD")?);
+            let n = int_arg(&vals[3], "DATEADD")?;
+            if !valid_ymd(y, m, d) {
+                return Err(ExprError::trappable(format!("DATEADD: invalid date {y}-{m}-{d}")));
+            }
+            let (yy, month, day) = jdn_to_ymd(ymd_to_jdn(y, m, d) + n);
+            let parts = DateParts { year: yy, month, day, hour: 0, minute: 0, second: 0 };
+            let mask = if argc == 5 { s(4) } else { "yyyy-mm-dd".to_string() };
+            Ok(Value::str(format_date(&mask, &parts)))
+        }
+        "TODAY" => {
+            expect(0)?;
+            let now = ctx.now().ok_or_else(|| ExprError::new("TODAY: no clock in this context"))?;
+            Ok(Value::Int(ymd_to_jdn(now.year, now.month as i64, now.day as i64)))
+        }
+        "LEAP" => {
+            expect(1)?;
+            Ok(Value::Int(if is_leap_year(int_arg(&vals[0], "LEAP")?) { 1 } else { 0 }))
+        }
+        "DAYSINMONTH" => {
+            expect(2)?;
+            let (y, m) = (int_arg(&vals[0], "DAYSINMONTH")?, int_arg(&vals[1], "DAYSINMONTH")?);
+            if !(1..=12).contains(&m) {
+                return Err(ExprError::trappable(format!("DAYSINMONTH: invalid month {m}")));
+            }
+            Ok(Value::Int(days_in_month(y, m)))
+        }
+        "DAYOFYEAR" => {
+            expect(3)?;
+            let (y, m, d) =
+                (int_arg(&vals[0], "DAYOFYEAR")?, int_arg(&vals[1], "DAYOFYEAR")?, int_arg(&vals[2], "DAYOFYEAR")?);
+            if !valid_ymd(y, m, d) {
+                return Err(ExprError::trappable(format!("DAYOFYEAR: invalid date {y}-{m}-{d}")));
+            }
+            Ok(Value::Int(ymd_to_jdn(y, m, d) - ymd_to_jdn(y, 1, 1) + 1))
+        }
+        "ISDATE" => {
+            expect(3)?;
+            let (y, m, d) = (int_arg(&vals[0], "ISDATE")?, int_arg(&vals[1], "ISDATE")?, int_arg(&vals[2], "ISDATE")?);
+            Ok(Value::Int(if valid_ymd(y, m, d) { 1 } else { 0 }))
         }
         "LOWER" => {
             expect(1)?;
@@ -1752,6 +1917,81 @@ mod tests {
         assert_eq!(ev_ctx(r#"DATE("mm.dd.yy")"#, &ctx).to_str(), "06.07.26");
         // No clock → a trappable error rather than a panic.
         assert!(eval(&parse("DATE(yyyy)").unwrap(), &Ctx::new()).is_err());
+    }
+
+    #[test]
+    fn jdn_conversions_and_roundtrip() {
+        // Anchor values (standard integer JDN, proleptic Gregorian).
+        assert_eq!(ev("DATE2JDN(2000, 1, 1)"), Value::Int(2451545));
+        assert_eq!(ev("DATE2JDN(1, 1, 1)"), Value::Int(1721426)); // proleptic 0001-01-01
+        assert_eq!(ev("JDN2DATE(2451545)").to_str(), "2000-01-01"); // default ISO mask
+        // Round-trip over a spread of dates, including a leap day and a pre-Gregorian-switch year
+        // (proleptic — no 1582 gap) to exercise the floor-division path.
+        for (y, m, d) in [(2026, 7, 23), (2000, 2, 29), (1969, 12, 31), (1582, 10, 4), (1, 3, 1)] {
+            let j = ymd_to_jdn(y, m, d);
+            assert_eq!(jdn_to_ymd(j), (y, m as u32, d as u32), "roundtrip {y}-{m}-{d}");
+        }
+    }
+
+    #[test]
+    fn day_of_week_is_iso_numbered() {
+        // 1 = Monday … 7 = Sunday.
+        assert_eq!(ev("DOW(2000, 1, 1)"), Value::Int(6)); // a Saturday
+        assert_eq!(ev("DOW(2026, 7, 23)"), Value::Int(4)); // a Thursday
+        assert_eq!(ev("DOW(2026, 7, 26)"), Value::Int(7)); // a Sunday
+        // Named forms via the mask (JDN2DATE reuses the DATE formatter).
+        assert_eq!(ev(r#"JDN2DATE(DATE2JDN(2000, 1, 1), "dddd")"#).to_str(), "Saturday");
+        assert_eq!(ev(r#"JDN2DATE(DATE2JDN(2026, 7, 23), "ddd mmm d, yyyy")"#).to_str(), "Thu Jul 23, 2026");
+        assert_eq!(ev(r#"JDN2DATE(DATE2JDN(2026, 7, 23), "mmmm")"#).to_str(), "July");
+    }
+
+    #[test]
+    fn date_diff_add_and_calendar_helpers() {
+        // DATEDIFF is date2 − date1 in days (2000 is a leap year → 366 days across a full year).
+        assert_eq!(ev("DATEDIFF(2000, 1, 1, 2000, 12, 31)"), Value::Int(365));
+        assert_eq!(ev("DATEDIFF(2000, 1, 1, 2001, 1, 1)"), Value::Int(366));
+        assert_eq!(ev("DATEDIFF(2000, 12, 31, 2000, 1, 1)"), Value::Int(-365)); // negative going backwards
+        // DATEADD returns a date string (default ISO, optional mask), n may be negative.
+        assert_eq!(ev("DATEADD(2000, 1, 1, 31)").to_str(), "2000-02-01");
+        assert_eq!(ev("DATEADD(2000, 1, 1, 365)").to_str(), "2000-12-31");
+        assert_eq!(ev(r#"DATEADD(2000, 3, 1, -1, "mmmm d")"#).to_str(), "February 29"); // leap-day step back
+        // Leap year, days-in-month, day-of-year.
+        assert_eq!(ev("LEAP(2000)"), Value::Int(1));
+        assert_eq!(ev("LEAP(1900)"), Value::Int(0));
+        assert_eq!(ev("LEAP(2024)"), Value::Int(1));
+        assert_eq!(ev("DAYSINMONTH(2000, 2)"), Value::Int(29));
+        assert_eq!(ev("DAYSINMONTH(2001, 2)"), Value::Int(28));
+        assert_eq!(ev("DAYSINMONTH(2026, 4)"), Value::Int(30));
+        assert_eq!(ev("DAYOFYEAR(2000, 3, 1)"), Value::Int(61)); // 31 + 29 + 1
+        assert_eq!(ev("DAYOFYEAR(2001, 3, 1)"), Value::Int(60)); // 31 + 28 + 1
+    }
+
+    #[test]
+    fn is_date_predicate_and_trappable_errors() {
+        // ISDATE never traps — it just reports validity.
+        assert_eq!(ev("ISDATE(2000, 2, 29)"), Value::Int(1));
+        assert_eq!(ev("ISDATE(2001, 2, 29)"), Value::Int(0)); // 2001 not a leap year
+        assert_eq!(ev("ISDATE(2026, 13, 1)"), Value::Int(0)); // bad month
+        assert_eq!(ev("ISDATE(2026, 4, 31)"), Value::Int(0)); // April has 30 days
+        // The arithmetic functions REJECT a malformed date with a trappable error (not a panic).
+        for call in ["DATE2JDN(2001, 2, 29)", "DOW(2026, 13, 1)", "DATEADD(2026, 4, 31, 1)",
+            "DATEDIFF(2000, 1, 1, 2026, 2, 30)", "DAYSINMONTH(2026, 0)"]
+        {
+            let e = eval(&parse(call).unwrap(), &Ctx::new());
+            assert!(e.is_err(), "{call} should be a trappable error");
+            assert!(e.unwrap_err().trappable, "{call} error should be trappable");
+        }
+    }
+
+    #[test]
+    fn today_needs_a_clock() {
+        let ctx = Ctx::new()
+            .with_now(DateParts { year: 2026, month: 7, day: 23, hour: 0, minute: 0, second: 0 });
+        // TODAY() is today's JDN; anchoring "days until" arithmetic.
+        assert_eq!(ev_ctx("TODAY()", &ctx), Value::Int(2461245));
+        assert_eq!(ev_ctx("DATE2JDN(2026, 12, 25) - TODAY()", &ctx), Value::Int(155)); // days to Christmas
+        // No clock → a plain (non-trappable) error, like DATE()/TIME().
+        assert!(eval(&parse("TODAY()").unwrap(), &Ctx::new()).is_err());
     }
 
     #[test]

@@ -973,8 +973,21 @@ Each returns `1` (true) or `0`. Every one is `0` for an empty string. The charac
 
 The mask is taken literally (no quotes needed): #func("DATE", "m-d-yyyy") → `6-27-2026`, #func("DATE", "mm-dd-yy") → `06-27-26`. Letters are format codes; any other character (`-` `/` `:` space `.`) passes through. Quote the mask (`DATE("m.d.yy")`) only if it contains characters the expression lexer would reject.
 
-/ #func("DATE", "mask"): the current local date by `mask` — `yyyy`/`yy` (year), `mm`/`m` (month, padded / bare), `dd`/`d` (day).
+/ #func("DATE", "mask"): the current local date by `mask` — `yyyy`/`yy` (year), `mmmm`/`mmm` (month name, full / abbreviated: `July` / `Jul`), `mm`/`m` (month number, padded / bare), `dddd`/`ddd` (weekday name, full / abbreviated: `Wednesday` / `Wed`), `dd`/`d` (day). The longest matching code wins, so a name code is tried before the numeric one.
 / #func("TIME", "mask"): the current local time by `mask` — `hh`/`h`, `mm`/`m`, `ss`/`s`. Appending an `am`/`pm` (lowercase) or `AM`/`PM` (uppercase) marker switches to 12-hour and appends the correct meridiem in that case: `TIME(h:mm PM)` → `3:05 PM`, `TIME(h:mm am)` → `3:05 pm`.
+
+Date arithmetic works in the *proleptic Gregorian* calendar (today's leap rules for every year, no 1582 gap) at day resolution. The Julian Day Number — a single integer that counts calendar days — is the pivot: convert a date to a JDN, do ordinary integer math (`+`, `-`), and convert back. A malformed date (a bad month, or a day past the month's length) is a *trappable* error (it sets `$ERROR` rather than halting); #func("ISDATE") checks validity without erroring. Where these functions take a `mask` it is a normal *quoted* argument (unlike `DATE`/`TIME`, whose whole argument is the mask), using the same format codes as #func("DATE").
+
+/ #func("DATE2JDN", "y, m, d"): the Julian Day Number of date `y`-`m`-`d`. The result increases by exactly 1 per calendar day, so differences and offsets are plain integer arithmetic. #ex("PR $(DATE2JDN(2000, 1, 1))", "2451545")
+/ #func("JDN2DATE", "jdn, [mask]"): a Julian Day Number back to a date string — ISO `yyyy-mm-dd` with no `mask`, or formatted by a quoted `mask`. #ex("PR $(JDN2DATE(2451545))", "2000-01-01") #ex("PR $(JDN2DATE(2451545, \"dddd\"))", "Saturday")
+/ #func("DOW", "y, m, d"): the day of the week, numbered ISO-style `1` = Monday … `7` = Sunday. #ex("PR $(DOW(2000, 1, 1))", "6")
+/ #func("DATEDIFF", "y1, m1, d1, y2, m2, d2"): the whole days from the first date to the second — negative if the second is earlier (it is just `DATE2JDN(date2) - DATE2JDN(date1)`). #ex("PR $(DATEDIFF(2000, 1, 1, 2000, 12, 31))", "365")
+/ #func("DATEADD", "y, m, d, n, [mask]"): the date `n` days after `y`-`m`-`d` (`n` may be negative), as a string — ISO by default, or by a quoted `mask`. #ex("PR $(DATEADD(2000, 1, 1, 31))", "2000-02-01")
+/ #func("TODAY"): today's Julian Day Number, from the same clock as #func("DATE") — the anchor for "days until / since" sums, e.g. `DATE2JDN(2026, 12, 25) - TODAY()`. Like `DATE`, it errors in a context with no clock.
+/ #func("LEAP", "y"): `1` if `y` is a leap year, else `0`. #ex("PR $(LEAP(2000))", "1")
+/ #func("DAYSINMONTH", "y, m"): the number of days in month `m` of year `y`, `28`–`31`. #ex("PR $(DAYSINMONTH(2000, 2))", "29")
+/ #func("DAYOFYEAR", "y, m, d"): the ordinal day within the year, `1`–`366` (January 1 is `1`). #ex("PR $(DAYOFYEAR(2000, 3, 1))", "61")
+/ #func("ISDATE", "y, m, d"): `1` if `y`-`m`-`d` is a real calendar date, else `0`. It never traps, so use it to validate input before calling the functions that do. #ex("PR $(ISDATE(2001, 2, 29))", "0")
 
 = Operators
 
