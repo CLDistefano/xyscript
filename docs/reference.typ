@@ -988,6 +988,7 @@ Date arithmetic works in the *proleptic Gregorian* calendar (today's leap rules 
 / #func("DAYSINMONTH", "y, m"): the number of days in month `m` of year `y`, `28`–`31`. #ex("PR $(DAYSINMONTH(2000, 2))", "29")
 / #func("DAYOFYEAR", "y, m, d"): the ordinal day within the year, `1`–`366` (January 1 is `1`). #ex("PR $(DAYOFYEAR(2000, 3, 1))", "61")
 / #func("ISDATE", "y, m, d"): `1` if `y`-`m`-`d` is a real calendar date, else `0`. It never traps, so use it to validate input before calling the functions that do. #ex("PR $(ISDATE(2001, 2, 29))", "0")
+/ #func("DATEPARSE", "str, mask"): read the date string `str` into its parts — the inverse of #func("JDN2DATE"). Returns a 3-element array `[year, month, day]`; index it (`[0]`/`[1]`/`[2]`) or hand the parts to #func("DATE2JDN"). The quoted `mask` uses the same codes as #func("DATE"): `yyyy`, or `yy` (read with a 1969–2068 window); `mmmm`/`mmm` (month name / abbreviation); `mm`/`m` (month number); a weekday `dddd`/`ddd` (matched in the string but ignored); and `dd`/`d` (day). A padded code (`mm`, `dd`) wants exactly two digits, a bare one (`m`, `d`) one or two; every other mask character must appear literally. A string that doesn't fit the mask, has text left over, omits the year, month, or day, or spells an unreal date is a *trappable* error. #ex("PR $(DATEPARSE(\"07/23/2026\", \"mm/dd/yyyy\"))", "[2026, 7, 23]")
 
 = Operators
 

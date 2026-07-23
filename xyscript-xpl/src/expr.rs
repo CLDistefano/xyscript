@@ -761,7 +761,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "DATE", "TIME",
     // date arithmetic (Julian Day Number pivot, proleptic Gregorian)
     "DATE2JDN", "JDN2DATE", "DOW", "DATEDIFF", "DATEADD", "TODAY", "LEAP", "DAYSINMONTH",
-    "DAYOFYEAR", "ISDATE",
+    "DAYOFYEAR", "ISDATE", "DATEPARSE",
 ];
 
 /// `true` if `chars[i..]` begins with the ASCII `pat`.
@@ -817,20 +817,118 @@ fn jdn_to_ymd(jdn: i64) -> (i64, u32, u32) {
     (year, month as u32, day as u32)
 }
 
+/// Weekday names indexed by `JDN.rem_euclid(7)` (0 = Monday). Shared by [`format_date`]/[`parse_date`].
+const WD_FULL: [&str; 7] =
+    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const WD_ABBR: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/// Month names indexed by `month - 1`.
+const MO_FULL: [&str; 12] = [
+    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+    "November", "December",
+];
+const MO_ABBR: [&str; 12] =
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/// Read at least `min` and at most `max` ASCII digits from `chars[*i..]`, advancing `*i` past them and
+/// returning their value. `Err` (with the offending position) if fewer than `min` digits are present.
+fn take_uint(chars: &[char], i: &mut usize, min: usize, max: usize) -> Result<i64, String> {
+    let start = *i;
+    while *i < chars.len() && *i - start < max && chars[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    if *i - start < min {
+        return Err(format!("expected a number at position {start}"));
+    }
+    chars[start..*i].iter().collect::<String>().parse::<i64>().map_err(|e| e.to_string())
+}
+
+/// If any entry of `names` matches `chars[*i..]` case-insensitively, advance `*i` past the match and
+/// return its index; else `None`. The longest matching name wins, so a name that is a prefix of a
+/// longer one never shadows it.
+fn match_name(chars: &[char], i: &mut usize, names: &[&str]) -> Option<usize> {
+    let mut best: Option<(usize, usize)> = None; // (index, char-length)
+    for (idx, nm) in names.iter().enumerate() {
+        let nc: Vec<char> = nm.chars().collect();
+        let fits = *i + nc.len() <= chars.len()
+            && chars[*i..*i + nc.len()].iter().zip(&nc).all(|(a, b)| a.eq_ignore_ascii_case(b));
+        if fits && best.is_none_or(|(_, l)| nc.len() > l) {
+            best = Some((idx, nc.len()));
+        }
+    }
+    best.map(|(idx, len)| {
+        *i += len;
+        idx
+    })
+}
+
+/// Parse `input` against a DATE `mask`, returning `(year, month, day)`. Mask tokens consume the
+/// matching text: `yyyy` (up to 4 digits) / `yy` (2 digits, POSIX pivot: 69–99 → 1900s, 00–68 →
+/// 2000s); `mmmm`/`mmm` (month name, full / abbreviated, case-insensitive); `mm` (exactly 2 digits) /
+/// `m` (1–2 digits) month number; `dddd`/`ddd` (weekday name — matched then IGNORED); `dd` (exactly 2
+/// digits) / `d` (1–2 digits) day. Any other mask character must appear literally in the input. `Err`
+/// on a mismatch, leftover input, an incomplete mask (missing year, month, or day), or an unreal date.
+fn parse_date(mask: &str, input: &str) -> Result<(i64, u32, u32), String> {
+    let mc: Vec<char> = mask.chars().collect();
+    let ic: Vec<char> = input.chars().collect();
+    let (mut mi, mut ii) = (0usize, 0usize);
+    let (mut y, mut mo, mut d): (Option<i64>, Option<i64>, Option<i64>) = (None, None, None);
+    while mi < mc.len() {
+        if mask_at(&mc, mi, "yyyy") {
+            y = Some(take_uint(&ic, &mut ii, 1, 4)?);
+            mi += 4;
+        } else if mask_at(&mc, mi, "yy") {
+            let v = take_uint(&ic, &mut ii, 2, 2)?;
+            y = Some(if v >= 69 { 1900 + v } else { 2000 + v }); // POSIX two-digit-year window
+            mi += 2;
+        } else if mask_at(&mc, mi, "mmmm") {
+            mo = Some(match_name(&ic, &mut ii, &MO_FULL).ok_or("expected a month name")? as i64 + 1);
+            mi += 4;
+        } else if mask_at(&mc, mi, "mmm") {
+            mo = Some(match_name(&ic, &mut ii, &MO_ABBR).ok_or("expected a month abbreviation")? as i64 + 1);
+            mi += 3;
+        } else if mask_at(&mc, mi, "mm") {
+            mo = Some(take_uint(&ic, &mut ii, 2, 2)?);
+            mi += 2;
+        } else if mc[mi] == 'm' {
+            mo = Some(take_uint(&ic, &mut ii, 1, 2)?);
+            mi += 1;
+        } else if mask_at(&mc, mi, "dddd") {
+            match_name(&ic, &mut ii, &WD_FULL).ok_or("expected a weekday name")?;
+            mi += 4;
+        } else if mask_at(&mc, mi, "ddd") {
+            match_name(&ic, &mut ii, &WD_ABBR).ok_or("expected a weekday abbreviation")?;
+            mi += 3;
+        } else if mask_at(&mc, mi, "dd") {
+            d = Some(take_uint(&ic, &mut ii, 2, 2)?);
+            mi += 2;
+        } else if mc[mi] == 'd' {
+            d = Some(take_uint(&ic, &mut ii, 1, 2)?);
+            mi += 1;
+        } else {
+            if ii >= ic.len() || ic[ii] != mc[mi] {
+                return Err(format!("expected {:?} at position {ii}", mc[mi]));
+            }
+            ii += 1;
+            mi += 1;
+        }
+    }
+    if ii != ic.len() {
+        return Err(format!("trailing text {:?}", ic[ii..].iter().collect::<String>()));
+    }
+    let (Some(y), Some(mo), Some(d)) = (y, mo, d) else {
+        return Err("mask must specify year, month, and day".to_string());
+    };
+    if !valid_ymd(y, mo, d) {
+        return Err(format!("invalid date {y}-{mo}-{d}"));
+    }
+    Ok((y, mo as u32, d as u32))
+}
+
 /// Format `now` by a DATE mask. Tokens: `yyyy`/`yy` (year), `mmmm`/`mmm` (month name, full / abbr),
 /// `mm`/`m` (month number, padded / bare), `dddd`/`ddd` (weekday name, full / abbr), `dd`/`d` (day
 /// number). Longest token wins, so a name token is tried before the numeric one. Everything else is a
 /// literal. The weekday comes from the proleptic-Gregorian JDN, so it is correct for any date.
 fn format_date(mask: &str, now: &DateParts) -> String {
-    const WD_FULL: [&str; 7] =
-        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    const WD_ABBR: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const MO_FULL: [&str; 12] = [
-        "January", "February", "March", "April", "May", "June", "July", "August", "September",
-        "October", "November", "December",
-    ];
-    const MO_ABBR: [&str; 12] =
-        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let dow = ymd_to_jdn(now.year, now.month as i64, now.day as i64).rem_euclid(7) as usize; // 0 = Mon
     let mo = (now.month as usize).clamp(1, 12) - 1;
     let chars: Vec<char> = mask.chars().collect();
@@ -1256,6 +1354,17 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             expect(3)?;
             let (y, m, d) = (int_arg(&vals[0], "ISDATE")?, int_arg(&vals[1], "ISDATE")?, int_arg(&vals[2], "ISDATE")?);
             Ok(Value::Int(if valid_ymd(y, m, d) { 1 } else { 0 }))
+        }
+        // `DATEPARSE(str, mask)` — read a date STRING back into components, the inverse of `JDN2DATE`.
+        // Returns a 3-element array `[year, month, day]` (index it, or feed `DATE2JDN`). The `mask` is a
+        // normal quoted argument using the same codes as `DATE`; a weekday token (`dddd`/`ddd`) in the
+        // mask is matched in the string but does not set a component. A string that doesn't fit the mask
+        // — or that spells an unreal date — is a trappable error.
+        "DATEPARSE" => {
+            expect(2)?;
+            let (y, m, d) =
+                parse_date(&s(1), &s(0)).map_err(|e| ExprError::trappable(format!("DATEPARSE: {e}")))?;
+            Ok(Value::Array(vec![Value::Int(y), Value::Int(m as i64), Value::Int(d as i64)]))
         }
         "LOWER" => {
             expect(1)?;
@@ -1992,6 +2101,50 @@ mod tests {
         assert_eq!(ev_ctx("DATE2JDN(2026, 12, 25) - TODAY()", &ctx), Value::Int(155)); // days to Christmas
         // No clock → a plain (non-trappable) error, like DATE()/TIME().
         assert!(eval(&parse("TODAY()").unwrap(), &Ctx::new()).is_err());
+    }
+
+    #[test]
+    fn dateparse_reads_components() {
+        // Numeric masks, padded and variable-width. The result is [year, month, day].
+        assert_eq!(ev(r#"DATEPARSE("07/23/2026", "mm/dd/yyyy")"#).to_str(), "[2026, 7, 23]");
+        assert_eq!(ev(r#"DATEPARSE("2026-07-23", "yyyy-mm-dd")"#).to_str(), "[2026, 7, 23]");
+        assert_eq!(ev(r#"DATEPARSE("7/3/2026", "m/d/yyyy")"#).to_str(), "[2026, 7, 3]");
+        // Name tokens; a weekday in the string is matched, then ignored.
+        assert_eq!(
+            ev(r#"DATEPARSE("Thursday, July 23, 2026", "dddd, mmmm d, yyyy")"#).to_str(),
+            "[2026, 7, 23]"
+        );
+        assert_eq!(ev(r#"DATEPARSE("Jul 5, 26", "mmm d, yy")"#).to_str(), "[2026, 7, 5]"); // yy 00–68 → 2000s
+        assert_eq!(ev(r#"DATEPARSE("12/25/99", "mm/dd/yy")"#).to_str(), "[1999, 12, 25]"); // yy 69–99 → 1900s
+        // A normal array — index a component directly.
+        assert_eq!(ev(r#"DATEPARSE("2026-07-23", "yyyy-mm-dd")[1]"#), Value::Int(7));
+    }
+
+    #[test]
+    fn dateparse_round_trips_with_the_formatter() {
+        // format_date then parse_date recovers the same (y, m, d) across assorted dates and masks.
+        for &(y, m, d) in &[(2026i64, 7u32, 23u32), (2000, 2, 29), (1969, 12, 31), (2001, 1, 1)] {
+            let now = DateParts { year: y, month: m, day: d, hour: 0, minute: 0, second: 0 };
+            for mask in ["yyyy-mm-dd", "m/d/yyyy", "dddd, mmmm d, yyyy", "ddd mmm d, yyyy"] {
+                let s = format_date(mask, &now);
+                assert_eq!(parse_date(mask, &s), Ok((y, m, d)), "round-trip {mask:?} on {s:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn dateparse_rejects_bad_input() {
+        for call in [
+            r#"DATEPARSE("2026-07-23", "mm/dd/yyyy")"#, // separators / order don't match
+            r#"DATEPARSE("2026-02-30", "yyyy-mm-dd")"#, // parses, but Feb 30 isn't a real date
+            r#"DATEPARSE("07-23", "mm-dd")"#,           // mask has no year
+            r#"DATEPARSE("2026-07-23x", "yyyy-mm-dd")"#, // trailing text
+            r#"DATEPARSE("13/01/2026", "mm/dd/yyyy")"#, // month 13
+        ] {
+            let e = eval(&parse(call).unwrap(), &Ctx::new());
+            assert!(e.is_err(), "{call} should error");
+            assert!(e.unwrap_err().trappable, "{call} error should be trappable");
+        }
     }
 
     #[test]
