@@ -261,3 +261,42 @@ fn injection_is_deterministic() {
     // A poke carrying the SHIFT bit resolves in the shifted layer.
     assert_eq!(r.resolve(KeyEvent::inject(130, shift_bit)), Disposition::Dispatch("shifted".into()));
 }
+
+// ----- KBDDOC annotations: an annotated .kbd still loads (LOADKBD tolerance) --
+#[test]
+fn kbddoc_annotated_file_loads_like_the_plain_one() {
+    // KBDDOC prepends a `<layer> <keyname>   :` documentation column before each key code, and a
+    // `;Comment ` marker on comment lines. Loading must ignore both and yield identical bindings.
+    let plain = "\
+KEYS=104
+SHIFT=42,54
+TABLE=
+1=KF
+21=y
+39=;
+13==
+TABLE=SHIFT
+21=Y
+";
+    // The `=` key names itself, so its annotation contains a literal `=` BEFORE the key code — the
+    // stripper must anchor on `:<digits>=`, not the first `=`.
+    let annotated = "\
+KEYS=104
+SHIFT=42,54
+;Comment        ; a decorative note
+TABLE=
+unmod Esc       :1=KF
+unmod Y         :21=y
+unmod ;         :39=;
+unmod =         :13==
+TABLE=SHIFT
+shift Y         :21=Y
+";
+    let a = parser::parse(plain, None).expect("plain parses");
+    let b = parser::parse(annotated, None).expect("annotated parses");
+    assert_eq!(a.tables, b.tables, "annotated file yields the same bindings");
+    // The value after '=' is verbatim, so a literal `;` / `=` assignment survives annotation.
+    assert_eq!(b.resolve(0, 39), Some(&Assignment::Xpl(";".into())));
+    assert_eq!(b.resolve(0, 13), Some(&Assignment::Xpl("=".into())));
+    assert_eq!(b.resolve(0, 1), Some(&Assignment::Flip));
+}

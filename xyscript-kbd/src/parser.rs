@@ -99,13 +99,22 @@ pub fn parse(input: &str, virtual_base: Option<KeyCode>) -> Result<Keymap, Parse
             continue;
         }
 
+        // A KBDDOC-annotated table row carries a `<layer> <keyname>  :` documentation column before the
+        // key code (`unmod Esc  :1=KF`). Strip it so the `key=value` split below sees the real content:
+        // the annotation can itself contain `=` (the `=` key names itself, `unmod =  :13==`), so we
+        // can't just split on the first `=`. A plain row starts with its digit key code and is untouched.
+        let line = if in_tables && !trimmed.starts_with(|c: char| c.is_ascii_digit()) {
+            strip_kbddoc_annotation(raw_line)
+        } else {
+            raw_line
+        };
         // Split on the FIRST '=' only; the remainder is verbatim.
-        let eq = match raw_line.find('=') {
+        let eq = match line.find('=') {
             Some(p) => p,
             None => return Err(err(lineno, format!("expected `key=value`: {raw_line:?}"))),
         };
-        let key_part = raw_line[..eq].trim();
-        let value = &raw_line[eq + 1..];
+        let key_part = line[..eq].trim();
+        let value = &line[eq + 1..];
 
         if !in_tables {
             // Header region.
@@ -135,7 +144,7 @@ pub fn parse(input: &str, virtual_base: Option<KeyCode>) -> Result<Keymap, Parse
             continue;
         }
 
-        // Table row.
+        // Table row (annotation, if any, already stripped above).
         let key = parse_u8(key_part, lineno, "key code")?;
         current_rows.push((lineno, key, value.to_string()));
     }
@@ -258,6 +267,22 @@ fn parse_table_header(rest: &str) -> Vec<Vec<String>> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// Strip a `KBDDOC` documentation column from a table-row line, returning the real `key=value` tail.
+/// The column is `<layer> <keyname>  :` before the key code; its delimiter is the `:` immediately
+/// followed by the decimal key code and `=` (`unmod Esc  :1=KF` → `1=KF`). Key/layer names never
+/// contain `:`, and this anchors on `:<digits>=`, so it won't trip over a `:` inside a binding value.
+/// Returns the whole line unchanged when no such column is present.
+fn strip_kbddoc_annotation(line: &str) -> &str {
+    for (i, _) in line.match_indices(':') {
+        let after = &line[i + 1..];
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 && after.as_bytes().get(digits) == Some(&b'=') {
+            return after;
+        }
+    }
+    line
 }
 
 fn parse_u8(s: &str, line: usize, what: &str) -> Result<u8, ParseError> {

@@ -507,7 +507,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 == Keyboard files and binders
 
-/ #cmd("LOADKBD") / #cmd("SAVEKBD") / #cmd("CLEARKBD"): load / save / reset the keyboard map.
+/ #cmd("LOADKBD") / #cmd("SAVEKBD") / #cmd("CLEARKBD"): load / save / reset the keyboard map. #cmd("KBDDOC"): annotate a KBD file with a key-name column.
 / #cmd("LDTX") / #cmd("LDSC", "LDPM"): load a text / script binder register.
 / #cmd("SAVELDTX") / #cmd("SAVELDSC", "SAVELDPM"): save the text / script binder registers as a runnable program.
 
@@ -710,6 +710,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 == K
 
 / #cmd("KBCHART"): show the loaded keymap's chart in a scrollable text box — one section per modifier table (Normal / SHIFT / CTRL / …) listing each table's `scan → command` bindings. Under `CAPTURE`, the text goes to the variable instead.
+/ #cmd("KBDDOC"): annotate a `.kbd` file in place with a key-NAME column — each table row gains a `<layer> <keyname>  :` prefix (from #func("GETKEY")), so `1=KF` reads `unmod Esc  :1=KF` and you can see at a glance which physical key each scan code is. `KBDDOC` (no argument) annotates the KBD file in the current tab; `KBDDOC <file>` opens it (blind-editing and saving it if it isn't already open). It refuses a non-KBD file, and is a no-op on an already-annotated one. #cmd("LOADKBD") ignores the annotations, so an annotated file still loads.
 
 == L
 
@@ -719,7 +720,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("LC") / #cmd("UC"): lower-case / upper-case the selection — or, with no selection, the character under the caret, then step one character right (so you can sweep along the text).
 / #cmd("LEADING", "LSP"): set the line spacing (percent).
 / #cmd("LOADAR"): load `key=replacement` pairs into the auto-replace map (used by `AR`); a `replacement` starting with `#` is run as XPL (e.g. `pd=#DA;PW`). #cmd("SAVEAR") writes it back, #cmd("CLEARAR") empties it.
-/ #cmd("LOADCFG"): run a saved config script. #cmd("LOADCM"): load a saved command-history list. #cmd("LOADCLOSED"): load a saved reopen list (recently-closed files). #cmd("LOADKBD"): load a keyboard map. #cmd("LOADLIB"): load a `.lib` library (replacing the current one).
+/ #cmd("LOADCFG"): run a saved config script. #cmd("LOADCM"): load a saved command-history list. #cmd("LOADCLOSED"): load a saved reopen list (recently-closed files). #cmd("LOADKBD"): load a keyboard map (a `.kbd` file annotated by #cmd("KBDDOC") loads fine — the key-name column is ignored). #cmd("LOADLIB"): load a `.lib` library (replacing the current one).
 / #cmd("LDTX"): load a text binder slot (`@slot`) — `LDTX <A-Z|0-9> [<source>]`, where the source is the current selection (no argument), a quoted literal (`LDTX A "some text"`, escapes processed, `$`/`@`/`&` kept verbatim), or a file path. #cmd("LDSC") / #cmd("LDPM") load a script binder slot (`&slot`) the same way. Save all text registers with #cmd("SAVELDTX").
 / #cmd("LISTLIB"): list the loaded library routines (name and description, in a two-column scrollable dialog; or into a `CAPTURE` variable). #cmd("LISTSPECIALS"): insert a `$NAME: |$NAME|` line for every special variable (a `PRINTEX`-able template).
 / #cmd("LISTMAIL"): list the IMAP mailbox — fetch each message's Date/From/Subject into a numbered listing in the *Shell Output* tab, so you can see what's there and pick numbers for #cmd("SAVEMAIL")/#cmd("DELMAIL"). Message numbers are IMAP sequence numbers (1 = oldest). Needs #cmd("IMAPURL") and #cmd("MAILUSER")/#cmd("MAILPASS") (and #cmd("MAILBOX"), default `INBOX`). With #cmd("MAILDEBUG") on it streams the raw server exchange instead of the parsed listing. Runs as a background curl job; #sv("RC") (curl's exit code) and #sv("XO") are set on completion, so `WAIT` before reading them, or use `LISTMAIL/W` to run synchronously (blocks until done, so #sv("RC") is set on return).

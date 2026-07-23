@@ -54,6 +54,11 @@ const NO_ERROR_TOUCH: &[&str] = &[
 /// a fraction of a frame; large enough that per-slice setup is negligible.
 pub const PREEMPT_SLICE: u32 = 65_536;
 
+/// The body of the built-in `KBDDOC` command — an XPL script (embedded, not on disk) that annotates a
+/// KBD file with a `GETKEY` key-name column. The `KBDDOC` verb runs it via [`run_source_sync`], seeding
+/// `$1` with the optional file argument.
+const KBDDOC_SRC: &str = include_str!("kbddoc.xpl");
+
 /// A persistent interpreter: owns the script-global [`Env`] and the [`Library`]
 /// so user variables and loaded routines survive across `run()` calls (the
 /// app-global behavior QN has — a key press can set a var or load a library that
@@ -1338,6 +1343,16 @@ impl Vm<'_, '_> {
             "CLEARKBD" => {
                 self.host_op(EditorOp::ClearKbd)?;
                 Ok(Flow::Next)
+            }
+            // `KBDDOC [<file>]` — annotate a KBD file with a GETKEY key-name column (`unmod Esc :1=KF`),
+            // so its scan codes read at a glance; `LOADKBD` ignores the annotations. Runs the embedded
+            // script (kbddoc.xpl): no arg annotates the current tab; `<file>` opens/blind-edits + saves.
+            "KBDDOC" => {
+                let arg = args.trim();
+                let arg = arg.strip_prefix('"').and_then(|a| a.strip_suffix('"')).unwrap_or(arg);
+                let sub_args: Vec<Value> =
+                    if arg.is_empty() { Vec::new() } else { vec![Value::str(arg)] };
+                self.run_source_sync(KBDDOC_SRC, &sub_args)
             }
             // Dump the currently-loaded keymap to a KBD file (inverse of LOADKBD); no path = default.
             "SAVEKBD" => {

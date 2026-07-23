@@ -54,7 +54,7 @@ pub struct Routine {
 
 /// Built-in verb names a library routine may not shadow.
 pub const BUILTIN_VERBS: &[&str] = &[
-    "LOADKBD", "CLEARKBD", "SAVEKBD", "INSERT", "WRITE", "WR", "WRITELN", "WRL", "PUT", "WRITEFILE", "WF", "PRINTEX", "MERGE", "ME", "PR", "MSG", "MESSAGE", "CHECK", "SPELLING", "SP", "GRAMMAR", "GR", "SPELLNEXT", "SPELLPREV", "GRAMMARNEXT", "GRAMMARPREV", "LINTFIX", "DIALECT", "LEARN", "UNLEARN", "SV", "SETERR", "CLERR", "QUIET",
+    "LOADKBD", "CLEARKBD", "SAVEKBD", "KBDDOC", "INSERT", "WRITE", "WR", "WRITELN", "WRL", "PUT", "WRITEFILE", "WF", "PRINTEX", "MERGE", "ME", "PR", "MSG", "MESSAGE", "CHECK", "SPELLING", "SP", "GRAMMAR", "GR", "SPELLNEXT", "SPELLPREV", "GRAMMARNEXT", "GRAMMARPREV", "LINTFIX", "DIALECT", "LEARN", "UNLEARN", "SV", "SETERR", "CLERR", "QUIET",
     "NOP", "CALL", "EXIT", "EX", "EXITALL", "EX1", "LOADLIB", "ADDLIB", "RELOADLIB",
     "UNLOADLIB", "SAVELIB", "LISTLIB", "LISTSPECIALS", "KBCHART", "RUN", "RUNCODE", "HELP", "?", "MENU",
     // Rich motion (B2): word / sentence / paragraph / line-start + char/line
