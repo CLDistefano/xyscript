@@ -8540,6 +8540,7 @@ mod tests {
             (include_str!("../../grammars/shell.xpl"), "shell", "x.sh", "if true; then echo hi; fi # c\n"),
             (include_str!("../../grammars/xpl.xpl"), "xpl", "x.xpl", "IF $x  # check\n  PR \"hi\"\n"),
             (include_str!("../../grammars/typst.xpl"), "typst", "x.typ", "#let s = \"hi\" // c\n"),
+            (include_str!("../../grammars/html.xpl"), "html", "x.html", "<!-- c --><a href=\"x\">hi</a>\n"),
         ];
         for (src, name, file, sample) in cases {
             let mut e = Editor::new(typing_keymap());

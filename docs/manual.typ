@@ -1635,6 +1635,7 @@ the #raw("grammars") folder beside the program:
   [#raw("rust.xpl")], [Rust], [#raw(".rs")],
   [#raw("python.xpl")], [Python], [#raw(".py .pyw")],
   [#raw("javascript.xpl")], [JavaScript / TypeScript], [#raw(".js .mjs .cjs .ts .jsx .tsx")],
+  [#raw("html.xpl")], [HTML], [#raw(".html .htm .xhtml")],
   [#raw("shell.xpl")], [Shell], [#raw(".sh .bash .zsh .ksh")],
   [#raw("toml.xpl")], [TOML], [#raw(".toml")],
   [#raw("typst.xpl")], [Typst], [#raw(".typ")],
