@@ -15,9 +15,12 @@
 //!   indentation/line-start-sensitive shorthand, so generated output is
 //!   well-formed regardless of content.
 //!
-//! Scope is GFM's element set. Known first-cut gaps (refine later): task-list
+//! Scope is GFM's element set. A raw HTML **block** is handed to [`crate::html`],
+//! the same structural converter `DOCTYPE html` uses, so an HTML table or figure
+//! embedded in Markdown renders. Known first-cut gaps (refine later): task-list
 //! checkboxes are rendered as plain items; images render as a link to their src
-//! (typst `#image` needs a readable path); raw HTML is emitted as escaped text.
+//! (typst `#image` needs a readable path); INLINE raw HTML is still escaped text,
+//! because comrak delivers it as separate open/close fragments.
 
 use crate::typst_esc::{escape_text, typst_str};
 use comrak::nodes::{AstNode, ListType, NodeValue};
@@ -142,11 +145,21 @@ fn emit<'a>(node: &'a AstNode<'a>, out: &mut String) {
             out.push_str(")\n\n");
         }
 
-        // Raw HTML: emit as escaped text so content is not silently lost.
+        // A raw HTML BLOCK is a self-contained run of markup, so hand it to the same structural
+        // converter `DOCTYPE html` uses: a table or figure written in HTML inside a Markdown file
+        // RENDERS instead of showing up as escaped source. An empty result — the block was a comment,
+        // or a `<script>`/`<style>` the converter drops — contributes nothing rather than a blank gap.
         NodeValue::HtmlBlock(h) => {
-            out.push_str(&escape_text(&h.literal));
-            out.push_str("\n\n");
+            let converted = crate::html::to_typst(&h.literal);
+            if !converted.trim().is_empty() {
+                out.push_str(&converted);
+                out.push_str("\n\n");
+            }
         }
+        // INLINE raw HTML can't get the same treatment: comrak delivers it as separate fragment nodes
+        // (`<b>`, the text, and `</b>` are three siblings), so there is no self-contained element to
+        // convert — feeding `<b>` alone to an HTML parser yields an empty `#strong[]` that swallows
+        // the text that follows. Left as escaped text until there's a fragment accumulator.
         NodeValue::HtmlInline(h) => out.push_str(&escape_text(h)),
 
         // TableRow/TableCell/Item are handled by their parents; anything else
@@ -243,5 +256,48 @@ mod tests {
         assert_eq!(to_typst("one\n\ntwo"), "one\n\ntwo");
         // A soft break within a paragraph becomes a space.
         assert_eq!(to_typst("one\ntwo"), "one two");
+    }
+}
+
+
+#[cfg(test)]
+mod html_block_tests {
+    use super::*;
+
+    #[test]
+    fn raw_html_blocks_render_instead_of_showing_as_source() {
+        // The payoff: a table written in HTML inside a Markdown file becomes a real table.
+        let md = "before\n\n<table><tr><th>H</th></tr><tr><td>1</td></tr></table>\n\nafter";
+        assert_eq!(to_typst(md), "before\n\n#table(columns: 1, [#strong[H]], [1], )\n\nafter");
+        // Structure survives; presentation-only wrappers are transparent.
+        assert_eq!(
+            to_typst("a\n\n<div class=\"x\"><p>Hi <em>there</em></p></div>\n\nb"),
+            "a\n\nHi #emph[there]\n\nb"
+        );
+    }
+
+    #[test]
+    fn html_blocks_that_carry_no_content_leave_no_gap() {
+        // A comment or a dropped script/style contributes nothing — not a blank block.
+        assert_eq!(to_typst("a\n\n<!-- note -->\n\nb"), "a\n\nb");
+        assert_eq!(to_typst("a\n\n<script>var x=1;</script>\n\nb"), "a\n\nb");
+    }
+
+    #[test]
+    fn inline_raw_html_is_still_escaped() {
+        // Documented gap: comrak splits inline HTML into open/close fragments, so there is no
+        // self-contained element to convert. It stays visible as text rather than silently
+        // swallowing the content between the tags.
+        assert_eq!(to_typst("text with <b>inline</b> html"), r"text with \<b\>inline\</b\> html");
+    }
+
+    #[test]
+    fn native_markdown_constructs_are_unaffected() {
+        // Guard against the HTML path capturing things it shouldn't.
+        assert_eq!(
+            to_typst("| md | table |\n|---|---|\n| 1 | 2 |"),
+            "#table(columns: 2, [#strong[md]], [#strong[table]], [1], [2], )"
+        );
+        assert_eq!(to_typst("# Heading\n\ntext"), "= Heading\n\ntext");
     }
 }

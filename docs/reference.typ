@@ -488,11 +488,30 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 / #cmd("ENCODING"): set (or convert) the file's text encoding. #cmd("NEWLINE"): convert line endings to `lf` / `crlf`.
 
-== Markdown and Typst preview and export
+== Markdown, HTML, and Typst preview and export
+
+A document is rendered by its `DOCTYPE`: Markdown (GFM) and HTML are each translated to
+typst markup and typeset by XyScript's own renderer, while an authored `.typ` document is
+compiled as-is. Under `auto` the extension picks: `.typ` → typst, `.html` / `.htm` /
+`.xhtml` → HTML, everything else → Markdown.
+
+HTML is converted *structurally*. Headings, paragraphs, bold/italic, lists, blockquotes,
+links, images, tables, and `<pre>` code blocks become their typst equivalents; `<script>`,
+`<style>`, and `<head>` are dropped; unknown or layout-only elements (`<div>`, `<span>`)
+simply contribute their contents. What is *not* interpreted is presentation: `class`,
+`style`, and stylesheets are ignored. So an HTML document renders as a readable document —
+but a web page whose appearance comes from CSS (a marketing email built out of nested
+layout tables, say) renders as its content, not as a copy of the page.
+
+The same converter handles a raw HTML *block* inside a Markdown file, so a table or figure
+written in HTML in the middle of Markdown renders instead of appearing as its own source.
+Raw HTML written *inline* in a line of Markdown (`a <b>word</b> here`) is still shown as
+text — Markdown hands those to us as separate opening and closing fragments, with no
+self-contained element to convert.
 
 / #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `auto`).
-/ #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE") / #cmd("PVFONTS") / #cmd("PVCODES"): the Markdown body / code fonts (and their pickers).
-/ #cmd("PVMARGIN") / #cmd("PVMARGINL") / #cmd("PVMARGINR") / #cmd("PVMARGINT") / #cmd("PVMARGINB"): the Markdown page margins — all sides / left / right / top / bottom.
+/ #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE") / #cmd("PVFONTS") / #cmd("PVCODES"): the body / code fonts for the Markdown and HTML renderers (and their pickers). An authored typst document sets its own fonts instead.
+/ #cmd("PVMARGIN") / #cmd("PVMARGINL") / #cmd("PVMARGINR") / #cmd("PVMARGINT") / #cmd("PVMARGINB"): the page margins for the Markdown and HTML renderers — all sides / left / right / top / bottom.
 
 == Language checking
 
