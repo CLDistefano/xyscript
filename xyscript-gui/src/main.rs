@@ -2483,13 +2483,20 @@ impl GuiApp {
         let rel = self.pane_view.scroll_line.saturating_sub(win.start_line);
         buffer.set_scroll(Scroll::new(rel, self.pane_view.scroll_vertical, 0.0));
         buffer.shape_until_scroll(&mut self.font_system, false);
+        // `WRAPINDENT`/`WRAPHANG`: narrow the indented lines + build the offset tables so EVERY consumer
+        // of the windowed buffer (vertical motion, visual line-edge, hit-test) reads the same wrapped
+        // layout that gets drawn. `raster` re-runs this after its follow-refine reshape too.
+        self.refresh_wrap_indent(&mut buffer, &win, w as f32);
+        // The `shape_until_scroll` above normalized the scroll against the UN-narrowed layout; the
+        // narrowing just now wraps hanging-indent lines into MORE rows, so the scroll must be re-clamped
+        // against the FINAL (narrowed, cached) layout — otherwise the drawn caret drifts off-screen at
+        // the file's end (`refresh_wrap_indent` also rebuilds `wi_rows` for the settled scroll). When no
+        // line is narrowed this second pass is a cheap no-op (nothing dirty, nothing to rebuild).
+        buffer.set_scroll(Scroll::new(rel, self.pane_view.scroll_vertical, 0.0));
+        buffer.shape_until_scroll(&mut self.font_system, false);
         let s = buffer.scroll();
         self.pane_view.scroll_line = win.start_line + s.line;
         self.pane_view.scroll_vertical = s.vertical;
-        // `WRAPINDENT`: narrow the indented lines + build the offset tables so EVERY consumer of the
-        // windowed buffer (vertical motion, visual line-edge, hit-test) reads the same wrapped layout
-        // that gets drawn. `raster` re-runs this after its follow-refine reshape (which would otherwise
-        // un-narrow the lines); callers with no follow-refine get their final layout right here.
         self.refresh_wrap_indent(&mut buffer, &win, w as f32);
         (buffer, win)
     }
@@ -2552,11 +2559,21 @@ impl GuiApp {
                 if ws_len == 0 {
                     continue;
                 }
-                if let Some((x, _y)) = buffer.cursor_position(&Cursor::new(li, ws_len)) {
-                    let ind = (x as f32).clamp(0.0, w * 0.5);
-                    if ind > 0.5 {
-                        self.wi_indent[li] = ind;
-                    }
+                // Content-start x = the hang width. Read it from the line's OWN shaped layout (row 0,
+                // first glyph at/after the leading whitespace) rather than `cursor_position`, which
+                // clips to the visible viewport and returns None — hence indent 0 — for any off-screen
+                // line. That mattered: a follow scroll to the file's end reveals long indented lines
+                // that were below the fold, and if those are left un-narrowed the scroll is computed on
+                // a shorter layout than the one drawn, shoving the caret off-screen. Measuring straight
+                // from the layout narrows EVERY window line, so scroll and render agree.
+                let ind = buffer
+                    .line_layout(&mut self.font_system, li)
+                    .and_then(|rows| rows.first())
+                    .and_then(|row0| row0.glyphs.iter().find(|g| g.start >= ws_len))
+                    .map_or(0.0, |g| g.x)
+                    .clamp(0.0, w * 0.5);
+                if ind > 0.5 {
+                    self.wi_indent[li] = ind;
                 }
             }
         }
@@ -2971,8 +2988,11 @@ impl GuiApp {
             }
             self.pane_view.follow = false;
         }
-        // `WRAPINDENT`: narrow the indented lines and build the offset tables NOW — after the follow
-        // refine's reshape, so this is the final layout that the caret/rects/draw below all read.
+        // `WRAPINDENT`/`WRAPHANG`: rebuild the hanging-indent offset tables for the settled scroll —
+        // after the follow refine, so `wi_rows` matches the final layout the caret/rects/draw below read.
+        // The follow refine ran `shape_until_cursor` on the already-narrowed lines `windowed_buffer` left
+        // cached, so the caret scroll was computed against the SAME narrowed layout that gets drawn; the
+        // narrowing here is idempotent (lines already narrowed) and just refreshes `wi_rows`.
         self.refresh_wrap_indent(&mut buffer, &win, w as f32);
         // Feed the viewport hint (top line, visible rows) to the host so the KBD viewport
         // motions (HM/BS, and PD/PU when routed through the resolver) have the page size.
