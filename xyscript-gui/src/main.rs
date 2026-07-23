@@ -4729,6 +4729,7 @@ impl GuiApp {
         let tabindent_on = ed.special_str("TABINDENT") == "1";
         let tabspaces_on = ed.special_str("TABSPACES") == "1";
         let wrapindent_on = ed.special_str("WRAPINDENT") == "1";
+        let wrap_on = ed.special_str("WRAP") == "1";
         let balpairs_on = ed.special_str("BALPAIRS") == "1";
         let typepairs_on = ed.special_str("TYPEPAIRS") == "1";
         let spelling_on = ed.special_str("SPELLING") == "1";
@@ -4804,6 +4805,7 @@ impl GuiApp {
                 m_tog("Paragraph marks", para_on, "TVR"),
                 m_tog("Whitespace", ws_on, "TWS"),
                 m_tog("Line numbers", lnum_on, "TLN"),
+                m_tog("Word wrap", wrap_on, "WRAP"),
                 MenuNode::Sep,
                 m_act(format!("{}Preview pane", tick(preview_on)), TogglePreview),
                 m_tog("Shell pane", shell_on, "SH"),
