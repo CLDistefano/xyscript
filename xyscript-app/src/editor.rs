@@ -342,7 +342,11 @@ impl Editor {
     pub fn preview_visible(&self) -> bool {
         self.host.preview_visible()
     }
-    /// Whether the active document renders as Typst (vs GFM) — the GUI preview routes on this.
+    /// The active document's effective render kind — the GUI preview routes its rasterizer on this.
+    pub fn active_render_kind(&self) -> crate::document::RenderKind {
+        self.host.active_render_kind()
+    }
+    /// Whether the active document renders as authored Typst (the Save-As format default).
     pub fn active_render_is_typst(&self) -> bool {
         self.host.active_render_is_typst()
     }
@@ -8428,6 +8432,44 @@ mod tests {
         assert!(e.host_mut().files.contains_key("out.pdf"), "GFM should escape # and write a PDF");
         e.run_command("DOCTYPE typst\nTOPDF out2.pdf");
         assert!(!e.host_mut().files.contains_key("out2.pdf"), "typst compile error → nothing written");
+    }
+
+    #[test]
+    fn doctype_html_renders_and_routes_by_extension() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // `DOCTYPE html` is accepted and reads back.
+        e.run_command("DOCTYPE html\nPR $DOCTYPE");
+        assert_eq!(e.output().last().map(String::as_str), Some("html"));
+        // An unknown kind is rejected and changes nothing.
+        e.run_command("DOCTYPE nonsense");
+        e.run_command("PR $DOCTYPE");
+        assert_eq!(e.output().last().map(String::as_str), Some("html"), "a rejected kind changes nothing");
+
+        // Routing proof: markup that is HTML *structure* renders as a heading, not as literal text.
+        // (`#` in the text would also be a typst compile error, so this proves the HTML path ran.)
+        e.run_command("DOCTYPE html");
+        e.run_command(r##"insert "<h1>Title # here</h1><p>Body</p>""##);
+        e.run_command("TOPDF page.pdf");
+        assert!(e.host_mut().files.contains_key("page.pdf"), "HTML should convert and write a PDF");
+    }
+
+    #[test]
+    fn html_extension_auto_routes_to_the_html_renderer() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.run_command("NEW page.html");
+        e.run_command("PR $DOCTYPE");
+        assert_eq!(
+            e.output().last().map(String::as_str),
+            Some("html"),
+            "a .html file should auto-route to the HTML renderer"
+        );
+        // `auto` is still the state — an explicit override then wins, and clearing returns to html.
+        e.run_command("DOCTYPE gfm\nPR $DOCTYPE");
+        assert_eq!(e.output().last().map(String::as_str), Some("gfm"));
+        e.run_command("DOCTYPE auto\nPR $DOCTYPE");
+        assert_eq!(e.output().last().map(String::as_str), Some("html"));
     }
 
     #[test]

@@ -328,6 +328,15 @@ fn compile_gfm(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<Pag
     compile_markup(format!("{preamble}{}\n", crate::gfm::to_typst(source)), blobs, doc_dir)
 }
 
+/// Compile an HTML document the same way: [`crate::html`] translates it to a typst body, which gets
+/// the SAME preamble as GFM — the document's own `style`/`class` are ignored (a structural
+/// conversion), so the user's [`PreviewFonts`] choice governs its appearance just as it does for
+/// Markdown.
+fn compile_html(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<PagedDocument, String> {
+    let (preamble, blobs) = gfm_preamble(fonts);
+    compile_markup(format!("{preamble}{}\n", crate::html::to_typst(source)), blobs, doc_dir)
+}
+
 /// Compile a document whose source IS typst markup (authored typst, not GFM): verbatim, no preamble.
 /// The document controls its own fonts via `#set text(font: …)`, so the global `PreviewFonts` setting
 /// doesn't apply — but we DO resolve the families it names from the system (on top of the bundled
@@ -390,6 +399,22 @@ pub fn gfm_to_image(
     fonts: &PreviewFonts,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     to_raster(&compile_gfm(source, fonts, doc_dir)?, scale)
+}
+
+/// Render an HTML document to PDF bytes, styled per `fonts` (structural conversion — see
+/// [`crate::html`]). Errors are returned as a message so the caller can surface them trappably.
+pub fn html_to_pdf(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
+    to_pdf_bytes(&compile_html(source, fonts, doc_dir)?)
+}
+
+/// Render an HTML document (all pages, stacked) to a raster RGBA image — the GUI live-preview path.
+pub fn html_to_image(
+    source: &str,
+    doc_dir: &Path,
+    scale: f32,
+    fonts: &PreviewFonts,
+) -> Result<(Vec<u8>, u32, u32), String> {
+    to_raster(&compile_html(source, fonts, doc_dir)?, scale)
 }
 
 /// Render an authored-typst document (the buffer is typst markup) to PDF bytes. `doc_dir` roots

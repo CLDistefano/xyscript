@@ -490,7 +490,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 == Markdown and Typst preview and export
 
-/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `auto`).
+/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `auto`).
 / #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE") / #cmd("PVFONTS") / #cmd("PVCODES"): the Markdown body / code fonts (and their pickers).
 / #cmd("PVMARGIN") / #cmd("PVMARGINL") / #cmd("PVMARGINR") / #cmd("PVMARGINT") / #cmd("PVMARGINB"): the Markdown page margins — all sides / left / right / top / bottom.
 
@@ -659,7 +659,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("DIRWCLOSE"): `DIRWCLOSE on|off` — whether the `DIR/W` window CLOSES once you open a file from it (`on`), or stays open so you can carry on picking (`off`, the default — how `DIR/W` has always behaved). Independent of #cmd("DIRWNW"), which chooses the TAB the file lands in; the two answer different questions. Descending into a subdirectory never closes the window — only opening a file does.
 / #cmd("DIRSET"): `DIRSET <switches>` — the default sort/filter/view switches applied to a `DIR`/`LS` that doesn't override them, e.g. `DIRSET /OD/R` to sort every listing by date, reversed. A command switch overrides the default with the SAME leading letter and no other: `DIR /ON` replaces the `/OD` order but keeps the `/R`; `DIR /AH` adds a filter and leaves both defaults alone (for `/A`, any command `/A…` replaces the whole `/A` default). Only the how-it-looks switches are allowed — `/O` (order), `/A` (attributes/filter), `/R` (reverse), `/S` (recurse), `/B` (bare); the where-it-opens switches (`/W`, `/H`, `/V`) are rejected, but the defaults still apply to a `DIR/W` or split-pane listing. `DIRSET off` (or `none`/`clear`) clears it; bare `DIRSET` reports the current value. Read back via #sv("DIRSET"); persists in the config.
 / #cmd("DIRRT"): `DIRRT on|off` — whether a `DIR` reuses an already-open listing tab (`on`) instead of spawning a new one each time (`off`, the default).
-/ #cmd("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, or `auto` (by extension); bare reports the effective kind.
+/ #cmd("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, `html`, or `auto`; bare reports the effective kind. Under `auto` the extension decides: `.typ` is typst, `.html`/`.htm`/`.xhtml` are HTML, everything else is GFM. HTML is converted *structurally* — headings, lists, tables, links, and code become their typst equivalents, while `class`, `style`, and stylesheets are ignored, so a page laid out with CSS renders as readable content rather than as a copy of the page.
 / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `DIR/W` window's text / background color (`…S` opens a picker; unset inherits the editor).
 / #cmd("DWFAMILY") / #cmd("DWSTYLE") / #cmd("DWFONT", "DWFONTS") / #cmd("DWSCALE"): the `DIR/W` window's font family / style / size / zoom. #cmd("DWRESET"): clear all `DW…` overrides.
 
@@ -1059,7 +1059,7 @@ plain alphabetical index.
 / #sv("TC") / #sv("CT"): the number of open tabs / the active tab's index (1-based).
 / #sv("TX"): `1` if the focus is in the document text, `0` if it's on the command line.
 / #sv("TB"): the tab width in spaces.
-/ #sv("DOCTYPE"): how the document renders to PDF — `typst` or `gfm`.
+/ #sv("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, or `html`.
 / #sv("AU"): the autosave interval in seconds (`0` = off).
 / #sv("DECIMALS"): the fixed number of decimal places floats display with (or `off`).
 / #sv("AR"): the full path of the file most recently loaded with `LoadAR` (empty if none).
@@ -1197,7 +1197,7 @@ Every special variable in one list, for quick lookup.
 / #sv("DIRSET"): default DIR sort/filter/view switches (e.g. `/OD/R`).
 / #sv("DIRRT"): reuse the listing tab for `DIR`.
 / #sv("DN"): selection end offset.
-/ #sv("DOCTYPE"): PDF render kind (typst/gfm).
+/ #sv("DOCTYPE"): PDF render kind (typst/gfm/html).
 / #sv("DP"): directory-listing path + mask.
 / #sv("DR"): file under the listing caret.
 / #sv("DS"): selection start offset.

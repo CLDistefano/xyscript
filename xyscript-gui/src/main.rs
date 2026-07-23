@@ -121,6 +121,7 @@ fn editor_cosmic_style(style: FontStyle) -> (cosmic_text::Weight, cosmic_text::S
     (weight, slant)
 }
 
+use xyscript_app::document::RenderKind;
 use xyscript_app::highlight::{Token, TokenKind};
 use xyscript_app::host::{
     CaretShape, CloseAnswer, ColorTarget, FontPickerKind, FontStyle, OpenAnswer, VerifyChoice,
@@ -1820,7 +1821,7 @@ struct GuiApp {
     preview_src: String,
     preview_err: Option<String>,
     preview_was_visible: bool,
-    preview_was_typst: bool,
+    preview_was_kind: RenderKind,
     /// The Preview/TOPDF font choice (`PVFAMILY`/`PVSIZE`/`PVCODE`) the cached raster was rendered
     /// with — re-render when it changes so a font switch shows immediately in the GFM preview.
     preview_font_sig: String,
@@ -1996,7 +1997,7 @@ impl GuiApp {
             preview_font_sig: String::new(),
             preview_err: None,
             preview_was_visible: false,
-            preview_was_typst: false,
+            preview_was_kind: RenderKind::Gfm,
             preview_pane_w: 0.0,
             preview_seen_w: 0.0,
             preview_synced_line: usize::MAX, // force an initial sync
@@ -7104,9 +7105,15 @@ impl GuiApp {
         }
         self.preview_was_visible = preview_on;
         if preview_on {
-        let is_typst = self.editor.active_render_is_typst();
+        let kind = self.editor.active_render_kind();
+        // Authored typst styles itself; GFM and HTML both take the user's Preview font settings.
+        let is_typst = matches!(kind, RenderKind::Typst);
         egui::Panel::right("preview").resizable(true).default_size(380.0).show_inside(ui, |ui| {
-            ui.label(if is_typst { "preview — typst" } else { "preview — gfm" });
+            ui.label(match kind {
+                RenderKind::Typst => "preview — typst",
+                RenderKind::Gfm => "preview — gfm",
+                RenderKind::Html => "preview — html",
+            });
             ui.separator();
             let pane_w = ui.available_size().x.max(50.0);
             let now = ctx.input(|i| i.time);
@@ -7128,7 +7135,7 @@ impl GuiApp {
                 fonts.family, fonts.size, fonts.code, m.left, m.right, m.top, m.bottom
             );
             let font_stale = !is_typst && font_sig != self.preview_font_sig;
-            let kind_changed = is_typst != self.preview_was_typst;
+            let kind_changed = kind != self.preview_was_kind;
             // The cached texture is stale if the text, the render kind, the chosen font, OR the width
             // it was rendered at changed — so resizing the pane (or its first-frame settle) re-rasters.
             let width_stale = (pane_w - self.preview_pane_w).abs() > 2.0;
@@ -7136,10 +7143,14 @@ impl GuiApp {
                 if now - self.last_change_time >= 0.4 || kind_changed || font_stale {
                     let scale = (pane_w / 595.0).clamp(0.4, 3.0); // page width ≈ 595 pt
                     let doc_dir = self.editor.host().typst_doc_dir(); // roots #image/#read resolution
-                    let res = if is_typst {
-                        xyscript_app::typst_to_image(&cur, &doc_dir, scale)
-                    } else {
-                        xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts)
+                    let res = match kind {
+                        RenderKind::Typst => xyscript_app::typst_to_image(&cur, &doc_dir, scale),
+                        RenderKind::Gfm => {
+                            xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts)
+                        }
+                        RenderKind::Html => {
+                            xyscript_app::html_to_image(&cur, &doc_dir, scale, &fonts)
+                        }
                     };
                     match res {
                         Ok((rgba, w, h)) => {
@@ -7154,7 +7165,7 @@ impl GuiApp {
                         Err(e) => self.preview_err = Some(e),
                     }
                     self.preview_src = cur;
-                    self.preview_was_typst = is_typst;
+                    self.preview_was_kind = kind;
                     self.preview_font_sig = font_sig;
                     self.preview_pane_w = pane_w;
                 } else {

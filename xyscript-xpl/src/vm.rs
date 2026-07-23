@@ -2094,17 +2094,19 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetDecimals(dp))?;
                 Ok(Flow::Next)
             }
-            // `DOCTYPE [typst|gfm|auto]` — how the active doc renders to PDF/preview. Bare = report
-            // the effective kind; `auto` clears the override (decide by extension). `$DOCTYPE` reads it.
+            // `DOCTYPE [typst|gfm|html|auto]` — how the active doc renders to PDF/preview. Bare =
+            // report the effective kind; `auto` clears the override (decide by extension). `$DOCTYPE`
+            // reads it.
             "DOCTYPE" => {
                 let req = match args.trim().to_ascii_lowercase().as_str() {
                     "" => DocTypeReq::Query,
                     "auto" => DocTypeReq::Auto,
                     "gfm" => DocTypeReq::Gfm,
                     "typst" => DocTypeReq::Typst,
+                    "html" => DocTypeReq::Html,
                     other => {
                         return Err(XplError::trappable(format!(
-                            "DOCTYPE: expected typst, gfm, or auto, got {other:?}"
+                            "DOCTYPE: expected typst, gfm, html, or auto, got {other:?}"
                         )))
                     }
                 };

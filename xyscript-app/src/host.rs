@@ -3319,9 +3319,16 @@ impl AppHost {
         self.preview_visible
     }
 
-    /// Whether the active document renders as Typst (vs GFM) — routes the GUI preview's rasterizer.
+    /// The active document's effective render kind (`DOCTYPE` override, else by extension) — routes
+    /// the GUI preview's rasterizer and `TOPDF`.
+    pub fn active_render_kind(&self) -> crate::document::RenderKind {
+        self.docs[self.active].render_kind()
+    }
+
+    /// Whether the active document renders as authored Typst. Narrower than [`Self::active_render_kind`]
+    /// and kept separate because it answers a different question — the Save-As format default.
     pub fn active_render_is_typst(&self) -> bool {
-        matches!(self.docs[self.active].render_kind(), crate::document::RenderKind::Typst)
+        matches!(self.active_render_kind(), crate::document::RenderKind::Typst)
     }
 
     /// The shell pane's scrollback text (read by the GUI to render the pane).
@@ -4219,11 +4226,15 @@ impl AppHost {
     /// hits to the current selection span (like `/S`). Empty pattern or a bad regex → no hits.
     /// Read-only (never moves the caret). Capped so a pathological pattern can't run away.
     /// The markup-aware harper parser for the active document (Typst via harper-typst, else GFM).
+    /// HTML has no harper parser of its own, but Markdown's already skips raw HTML tags and checks
+    /// the prose around them — which is exactly what we want for an HTML source buffer.
     #[cfg(feature = "lint")]
     fn lint_flavor(&self) -> crate::lint::Flavor {
         match self.docs[self.active].render_kind() {
             crate::document::RenderKind::Typst => crate::lint::Flavor::Typst,
-            crate::document::RenderKind::Gfm => crate::lint::Flavor::Markdown,
+            crate::document::RenderKind::Gfm | crate::document::RenderKind::Html => {
+                crate::lint::Flavor::Markdown
+            }
         }
     }
 
@@ -5031,11 +5042,9 @@ impl AppHost {
             let active = if i == self.active { "1" } else { "0" };
             let caret = doc.buffer().cursor();
             let anchor = doc.buffer().anchor().map(|a| a.to_string()).unwrap_or_else(|| "-".to_string());
-            let doctype = match doc.render_override() {
-                None => "auto",
-                Some(crate::document::RenderKind::Gfm) => "gfm",
-                Some(crate::document::RenderKind::Typst) => "typst",
-            };
+            // `as_str` is the single source of truth for these names, so a new RenderKind can't be
+            // silently dropped from the session manifest.
+            let doctype = doc.render_override().map_or("auto", |k| k.as_str());
             let enc = doc.encoding_name();
             // The reference (path or untitled label) is LAST, so it may itself contain tabs safely.
             let reff = if untitled {
@@ -5144,6 +5153,7 @@ impl AppHost {
             doc.set_render_override(match doctype {
                 "gfm" => Some(crate::document::RenderKind::Gfm),
                 "typst" => Some(crate::document::RenderKind::Typst),
+                "html" => Some(crate::document::RenderKind::Html),
                 _ => None,
             });
             let len = doc.buffer().len();
@@ -8456,6 +8466,9 @@ impl Host for AppHost {
                     crate::document::RenderKind::Gfm => {
                         crate::pdf::gfm_to_pdf(&source, &doc_dir, &self.preview_fonts())
                     }
+                    crate::document::RenderKind::Html => {
+                        crate::pdf::html_to_pdf(&source, &doc_dir, &self.preview_fonts())
+                    }
                 }
                 .map_err(XplError::trappable)?;
                 self.write_doc_bytes(&path.to_string_lossy(), &pdf)?;
@@ -8473,6 +8486,7 @@ impl Host for AppHost {
                     DocTypeReq::Auto => doc.set_render_override(None),
                     DocTypeReq::Gfm => doc.set_render_override(Some(RenderKind::Gfm)),
                     DocTypeReq::Typst => doc.set_render_override(Some(RenderKind::Typst)),
+                    DocTypeReq::Html => doc.set_render_override(Some(RenderKind::Html)),
                 }
                 let kind = self.docs[self.active].render_kind().as_str();
                 let how = if matches!(req, DocTypeReq::Query | DocTypeReq::Auto) {

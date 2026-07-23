@@ -238,12 +238,14 @@ fn fresh_doc_id() -> crate::panes::DocId {
     crate::panes::DocId(NEXT_DOC_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
-/// How a document is rendered to PDF / preview: as GitHub-Flavored Markdown (translated to typst) or
-/// as authored typst markup (compiled verbatim). Chosen per document — see [`Document::render_kind`].
+/// How a document is rendered to PDF / preview: as GitHub-Flavored Markdown or as HTML (each
+/// translated to typst markup), or as authored typst markup (compiled verbatim). Chosen per document
+/// — see [`Document::render_kind`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderKind {
     Gfm,
     Typst,
+    Html,
 }
 
 impl RenderKind {
@@ -252,6 +254,7 @@ impl RenderKind {
         match self {
             RenderKind::Gfm => "gfm",
             RenderKind::Typst => "typst",
+            RenderKind::Html => "html",
         }
     }
 }
@@ -541,15 +544,23 @@ impl Document {
     }
 
     /// The effective render kind for `TOPDF`/preview: the `DOCTYPE` override if set, else by file
-    /// extension (`.typ` → Typst, everything else → GFM).
+    /// extension (`.typ` → Typst, `.html`/`.htm`/`.xhtml` → HTML, everything else → GFM).
     pub fn render_kind(&self) -> RenderKind {
         self.render_override.unwrap_or_else(|| self.render_kind_from_ext())
     }
 
-    /// The extension-driven render kind (ignores any override): `.typ` → Typst, else GFM.
+    /// The extension-driven render kind (ignores any override): `.typ` → Typst, `.html`/`.htm`/
+    /// `.xhtml` → Html, else GFM.
     fn render_kind_from_ext(&self) -> RenderKind {
         match self.path.as_deref().and_then(|p| p.extension()).and_then(|e| e.to_str()) {
             Some(e) if e.eq_ignore_ascii_case("typ") => RenderKind::Typst,
+            Some(e)
+                if e.eq_ignore_ascii_case("html")
+                    || e.eq_ignore_ascii_case("htm")
+                    || e.eq_ignore_ascii_case("xhtml") =>
+            {
+                RenderKind::Html
+            }
             _ => RenderKind::Gfm,
         }
     }
@@ -2096,6 +2107,18 @@ mod tests {
         assert_eq!(d.render_kind(), RenderKind::Typst);
         d.set_path(PathBuf::from("notes.md"));
         assert_eq!(d.render_kind(), RenderKind::Gfm);
+        // `.html`/`.htm`/`.xhtml` route to the HTML converter, case-insensitively.
+        d.set_path(PathBuf::from("page.html"));
+        assert_eq!(d.render_kind(), RenderKind::Html);
+        d.set_path(PathBuf::from("page.htm"));
+        assert_eq!(d.render_kind(), RenderKind::Html);
+        d.set_path(PathBuf::from("page.XHTML"));
+        assert_eq!(d.render_kind(), RenderKind::Html);
+        // An override still wins, and clearing it returns to the extension.
+        d.set_render_override(Some(RenderKind::Gfm));
+        assert_eq!(d.render_kind(), RenderKind::Gfm);
+        d.set_render_override(None);
+        assert_eq!(d.render_kind(), RenderKind::Html);
         // A DOCTYPE override wins over the extension; `None` (auto) restores extension-driven.
         d.set_path(PathBuf::from("x.typ"));
         d.set_render_override(Some(RenderKind::Gfm));

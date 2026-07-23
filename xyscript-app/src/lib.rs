@@ -42,7 +42,9 @@ pub use editor::Editor;
 pub use encoding::{cp437, latin1, utf8, Charset, Encoding};
 pub use gfm::to_typst;
 pub use highlight::{Highlighter, Token, TokenKind};
-pub use pdf::{gfm_to_image, gfm_to_pdf, typst_to_image, typst_to_pdf, PreviewFonts};
+pub use pdf::{
+    gfm_to_image, gfm_to_pdf, html_to_image, html_to_pdf, typst_to_image, typst_to_pdf, PreviewFonts,
+};
 pub use style::{Color, Span, Style, StyledLine};
 pub use host::AppHost;
 pub use kbd_sugar::desugar_keymap;
