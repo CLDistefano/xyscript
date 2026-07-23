@@ -378,6 +378,10 @@ impl Editor {
     pub fn wrap(&self) -> bool {
         self.host.wrap()
     }
+    /// `WRAPHANG` — hanging indent (spaces) for wrapped continuation rows (WRAP on, WRAPINDENT off).
+    pub fn wrap_hang(&self) -> usize {
+        self.host.wrap_hang()
+    }
     /// Drain pending `MU`/`MD` viewport scroll (visual rows; + toward end / − toward start).
     /// The GUI applies it to its scroll offset each frame.
     pub fn take_scroll_rows(&mut self) -> i32 {
@@ -3378,6 +3382,28 @@ mod tests {
         e.run_command("SAVECFG wrap.cfg");
         let cfg = e.host_mut().files.get("wrap.cfg").unwrap().clone();
         assert!(cfg.contains("WRAP off"), "config carries WRAP: {cfg}");
+    }
+
+    #[test]
+    fn wraphang_sets_reports_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("WRAPHANG"), "0"); // default 0 (flush wrap)
+        assert_eq!(e.wrap_hang(), 0);
+        e.run_command("WRAPHANG 4");
+        assert_eq!(e.special_str("WRAPHANG"), "4");
+        assert_eq!(e.wrap_hang(), 4);
+        e.run_command("WRAPHANG 0"); // back to flush
+        assert_eq!(e.wrap_hang(), 0);
+        // Bad value errors; read-only special; SaveCfg carries it.
+        e.run_command("WRAPHANG lots");
+        assert!(e.last_error().is_some());
+        e.run_command("SET WRAPHANG = 2");
+        assert!(e.last_error().is_some(), "WRAPHANG is read-only");
+        e.run_command("WRAPHANG 4");
+        e.run_command("SAVECFG wh.cfg");
+        let cfg = e.host_mut().files.get("wh.cfg").unwrap().clone();
+        assert!(cfg.contains("WRAPHANG 4"), "config carries WRAPHANG: {cfg}");
     }
 
     #[test]

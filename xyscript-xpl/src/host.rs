@@ -387,6 +387,9 @@ pub enum EditorOp {
     /// Toggle line wrapping (`WRAP on|off`; `None` toggles). On (default) wraps long lines to the
     /// window; off lets them run past the right edge, with a horizontal scrollbar. `$WRAP`.
     SetWrap(Option<bool>),
+    /// Hanging indent for wrapped continuation rows, in spaces (`WRAPHANG <n>`; 0 = flush, the default).
+    /// Applies only when `WRAP` is on and `WRAPINDENT` is off. `$WRAPHANG`.
+    SetWrapHang(usize),
     /// Toggle whether the pristine "Untitled" scratch tab is auto-closed when a document is opened
     /// (`UNTITLEDTAB on|off`; `None` toggles). On (default) closes it, and prunes any leftover empty
     /// untitled tabs, so a blank scratch never lingers beside real files; it reappears when the last

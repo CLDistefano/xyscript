@@ -2501,9 +2501,22 @@ impl GuiApp {
     fn refresh_wrap_indent(&mut self, buffer: &mut Buffer, win: &DocWindow, w: f32) {
         // Hanging-indent only makes sense while wrapping; `WRAP off` has no continuation rows, and
         // re-narrowing the width here would re-introduce wrapping — so treat it as off.
-        if self.editor.wrap_indent() && self.editor.wrap() {
-            self.build_wrap_indent(buffer, win, w);
-        } else if !self.wi_rows.is_empty() || !self.wi_indent.is_empty() {
+        if self.editor.wrap() {
+            if self.editor.wrap_indent() {
+                // WRAPINDENT: hang continuation rows under each line's OWN measured indent.
+                self.build_wrap_indent(buffer, win, w, None);
+                return;
+            }
+            let hang = self.editor.wrap_hang();
+            if hang > 0 {
+                // WRAPHANG <n>: a FIXED n-space hang for every line (n spaces → px via the monospace
+                // cell advance, the same convention margins/caret use).
+                let cell = self.font_size * self.render_scale * 0.6;
+                self.build_wrap_indent(buffer, win, w, Some(hang as f32 * cell));
+                return;
+            }
+        }
+        if !self.wi_rows.is_empty() || !self.wi_indent.is_empty() {
             self.wi_rows.clear();
             self.wi_indent.clear();
         }
@@ -2515,26 +2528,35 @@ impl GuiApp {
     /// [`wi_indent`](Self::wi_indent). The indent width is measured from cosmic's own layout (the pixel
     /// x where content begins on the first row), so it's exact and tab-aware. Deep indents are clamped
     /// to half the width so a continuation row always has room.
-    fn build_wrap_indent(&mut self, buffer: &mut Buffer, win: &DocWindow, w: f32) {
+    fn build_wrap_indent(&mut self, buffer: &mut Buffer, win: &DocWindow, w: f32, fixed_hang: Option<f32>) {
         self.wi_indent.clear();
         self.wi_rows.clear();
         let line_count = win.nl.len() + 1;
         self.wi_indent.resize(line_count, 0.0);
-        // Phase 1 — indent pixels per line, measured at the current (full-width) layout. `ws_len` is
-        // the leading-whitespace byte length (spaces/tabs are ASCII → one byte each); the content's
-        // start x on row 0 is exactly the hang width.
-        for li in 0..line_count {
-            let ls = if li > 0 { win.nl[li - 1] + 1 } else { 0 };
-            let le = win.nl.get(li).copied().unwrap_or(win.display.len());
-            let text = &win.display[ls..le];
-            let ws_len = text.len() - text.trim_start_matches([' ', '\t']).len();
-            if ws_len == 0 {
-                continue;
+        // Phase 1 — indent pixels per line. `WRAPHANG` (fixed_hang) uses the SAME n-space hang for every
+        // line; `WRAPINDENT` (None) MEASURES each line's own leading-whitespace width from cosmic's
+        // layout (`ws_len` is the leading-ws byte length — spaces/tabs are ASCII → one byte each — and
+        // the content's start x on row 0 is exactly the hang width). Both clamp to half the width so a
+        // continuation row always has room.
+        if let Some(px) = fixed_hang {
+            let ind = px.clamp(0.0, w * 0.5);
+            if ind > 0.5 {
+                self.wi_indent.iter_mut().for_each(|v| *v = ind);
             }
-            if let Some((x, _y)) = buffer.cursor_position(&Cursor::new(li, ws_len)) {
-                let ind = (x as f32).clamp(0.0, w * 0.5);
-                if ind > 0.5 {
-                    self.wi_indent[li] = ind;
+        } else {
+            for li in 0..line_count {
+                let ls = if li > 0 { win.nl[li - 1] + 1 } else { 0 };
+                let le = win.nl.get(li).copied().unwrap_or(win.display.len());
+                let text = &win.display[ls..le];
+                let ws_len = text.len() - text.trim_start_matches([' ', '\t']).len();
+                if ws_len == 0 {
+                    continue;
+                }
+                if let Some((x, _y)) = buffer.cursor_position(&Cursor::new(li, ws_len)) {
+                    let ind = (x as f32).clamp(0.0, w * 0.5);
+                    if ind > 0.5 {
+                        self.wi_indent[li] = ind;
+                    }
                 }
             }
         }

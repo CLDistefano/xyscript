@@ -3200,6 +3200,19 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetWrap(want))?;
                 Ok(Flow::Next)
             }
+            // `WRAPHANG <n>` — hang wrapped continuation rows `n` spaces (when WRAP is on and WRAPINDENT
+            // is off). Bare reports the current value; 0 (default) = flush wrap.
+            "WRAPHANG" => {
+                if args.trim().is_empty() {
+                    *self.ctx.status = Some(format!("wrap hang: {}", self.special_str("WRAPHANG")));
+                    return Ok(Flow::Next);
+                }
+                let n: usize = args.trim().parse().map_err(|_| {
+                    XplError::trappable(format!("WRAPHANG: expected a number, got {:?}", args.trim()))
+                })?;
+                self.host_op(EditorOp::SetWrapHang(n))?;
+                Ok(Flow::Next)
+            }
             // `UNTITLEDTAB on|off` (bare = toggle) — whether the blank "Untitled" scratch tab is closed
             // when a document is opened (and reappears when the last document is closed). On (default).
             // `$UNTITLEDTAB`.

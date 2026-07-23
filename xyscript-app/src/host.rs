@@ -1908,6 +1908,9 @@ pub struct AppHost {
     /// Whether long lines word-wrap to the window (`WRAP`; `$WRAP`). On (default) wraps; off lets lines
     /// run past the right edge, and the GUI shows a horizontal scrollbar to reach the overflow.
     wrap: bool,
+    /// Hanging indent (in spaces) for wrapped continuation rows (`WRAPHANG`; `$WRAPHANG`). 0 (default) =
+    /// flush wrap. Applies only when `WRAP` is on and `WRAPINDENT` is off (which auto-hangs instead).
+    wrap_hang: usize,
     /// Whether the blank "Untitled" scratch tab is auto-closed when a document is opened — and any
     /// leftover empty untitled tab pruned — so a scratch never lingers beside real files (it reappears
     /// when the last document closes). On (default). (`UNTITLEDTAB`; `$UNTITLEDTAB`.)
@@ -2280,6 +2283,7 @@ impl AppHost {
             cmline_blank: false,
             show_one_tab: false,
             wrap: true,
+            wrap_hang: 0,
             untitled_auto_close: true,
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -2601,6 +2605,11 @@ impl AppHost {
     /// GUI shows a horizontal scrollbar.
     pub fn wrap(&self) -> bool {
         self.wrap
+    }
+    /// Hanging indent (spaces) for wrapped continuation rows (`WRAPHANG`/`$WRAPHANG`). Effective only
+    /// when `WRAP` is on and `WRAPINDENT` is off.
+    pub fn wrap_hang(&self) -> usize {
+        self.wrap_hang
     }
 
     /// Whether the blank untitled tab is auto-closed on open (`UNTITLEDTAB`/`$UNTITLEDTAB`).
@@ -6449,6 +6458,7 @@ impl AppHost {
         put(&mut s, "Blank the command line after a command runs from it — on | off", format!("CMBLANK {}", if self.cmline_blank { "on" } else { "off" }));
         put(&mut s, "Show the tab strip when only one file is open — on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
         put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
+        put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -8980,6 +8990,10 @@ impl Host for AppHost {
                 self.wrap = opt.unwrap_or(!self.wrap);
                 return Ok(Value::str(format!("WRAP {}", if self.wrap { "on" } else { "off" })));
             }
+            EditorOp::SetWrapHang(n) => {
+                self.wrap_hang = n;
+                return Ok(Value::str(format!("wrap hang: {}", self.wrap_hang)));
+            }
             EditorOp::SetUntitledTab(opt) => {
                 self.untitled_auto_close = opt.unwrap_or(!self.untitled_auto_close);
                 // Turning it on should immediately tidy up any scratch tab already lingering.
@@ -9686,6 +9700,7 @@ impl Host for AppHost {
             "CMBLANK" => Some(Value::Int(if self.cmline_blank { 1 } else { 0 })),
             "SHOWONETAB" => Some(Value::Int(if self.show_one_tab { 1 } else { 0 })),
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
+            "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),
