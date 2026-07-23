@@ -3184,6 +3184,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetShowOneTab(want))?;
                 Ok(Flow::Next)
             }
+            // `WRAP on|off` (bare = toggle) — word-wrap long lines to the window (on, default) or let
+            // them run past the right edge with a horizontal scrollbar (off).
+            "WRAP" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "WRAP: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetWrap(want))?;
+                Ok(Flow::Next)
+            }
             // `UNTITLEDTAB on|off` (bare = toggle) — whether the blank "Untitled" scratch tab is closed
             // when a document is opened (and reappears when the last document is closed). On (default).
             // `$UNTITLEDTAB`.

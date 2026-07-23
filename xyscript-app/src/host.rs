@@ -1905,6 +1905,9 @@ pub struct AppHost {
     /// Whether the tab strip is shown when only ONE file is open (`SHOWONETAB`; `$SHOWONETAB`).
     /// Off (default) keeps a single-document view uncluttered.
     show_one_tab: bool,
+    /// Whether long lines word-wrap to the window (`WRAP`; `$WRAP`). On (default) wraps; off lets lines
+    /// run past the right edge, and the GUI shows a horizontal scrollbar to reach the overflow.
+    wrap: bool,
     /// Whether the blank "Untitled" scratch tab is auto-closed when a document is opened — and any
     /// leftover empty untitled tab pruned — so a scratch never lingers beside real files (it reappears
     /// when the last document closes). On (default). (`UNTITLEDTAB`; `$UNTITLEDTAB`.)
@@ -2276,6 +2279,7 @@ impl AppHost {
             path_len: 45,
             cmline_blank: false,
             show_one_tab: false,
+            wrap: true,
             untitled_auto_close: true,
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -2592,6 +2596,11 @@ impl AppHost {
     /// Whether the tab strip shows when only one file is open (`SHOWONETAB`/`$SHOWONETAB`).
     pub fn show_one_tab(&self) -> bool {
         self.show_one_tab
+    }
+    /// Whether long lines wrap to the window (`WRAP`/`$WRAP`). Off → lines run past the edge and the
+    /// GUI shows a horizontal scrollbar.
+    pub fn wrap(&self) -> bool {
+        self.wrap
     }
 
     /// Whether the blank untitled tab is auto-closed on open (`UNTITLEDTAB`/`$UNTITLEDTAB`).
@@ -6439,6 +6448,7 @@ impl AppHost {
         put(&mut s, "Command-line placement — top | bottom | hidden", format!("CMPLACE {}", self.cmline_placement.name()));
         put(&mut s, "Blank the command line after a command runs from it — on | off", format!("CMBLANK {}", if self.cmline_blank { "on" } else { "off" }));
         put(&mut s, "Show the tab strip when only one file is open — on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
+        put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -8966,6 +8976,10 @@ impl Host for AppHost {
                     if self.show_one_tab { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetWrap(opt) => {
+                self.wrap = opt.unwrap_or(!self.wrap);
+                return Ok(Value::str(format!("WRAP {}", if self.wrap { "on" } else { "off" })));
+            }
             EditorOp::SetUntitledTab(opt) => {
                 self.untitled_auto_close = opt.unwrap_or(!self.untitled_auto_close);
                 // Turning it on should immediately tidy up any scratch tab already lingering.
@@ -9671,6 +9685,7 @@ impl Host for AppHost {
             "CMPLACE" => Some(Value::str(self.cmline_placement.name())),
             "CMBLANK" => Some(Value::Int(if self.cmline_blank { 1 } else { 0 })),
             "SHOWONETAB" => Some(Value::Int(if self.show_one_tab { 1 } else { 0 })),
+            "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),

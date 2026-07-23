@@ -455,6 +455,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("SVR", "CVR", "TVR") / #cmd("SWS", "CWS", "TWS") / #cmd("SLN", "CLN", "TLN"): paragraph marks / whitespace / the line-number gutter — on / off / toggle.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
 / #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / remember the window geometry / auto-save-and-restore the open tabs across runs.
+/ #cmd("WRAP"): word-wrap long lines to the window (`on`, default) or let them run past the edge with a horizontal scrollbar (`off`).
 
 == Colors and appearance
 
@@ -625,6 +626,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("CMH"): stash a command at the top of the history without running it — bare uses the command line, `CMH "command"` uses that string.
 / #cmd("CMBLANK"): whether the command line is blanked after a command runs from it — `CMBLANK on|off` (bare toggles). Off (the default) keeps the command on the line for re-running or editing (XyWrite-style); `on` clears it after each command (via Enter or `XC`). Read back via `$CMBLANK`; persists in the config.
 / #cmd("SHOWONETAB"): whether the tab strip shows when only one file is open — `SHOWONETAB on|off` (bare toggles). Off (the default) hides the strip for a lone document to keep it uncluttered; `on` always shows it. Read back via `$SHOWONETAB`; persists in the config.
+/ #cmd("WRAP"): whether long lines word-wrap to the window — `WRAP on|off` (bare toggles). On (the default) wraps each line to the text width; `off` lays every line on one row that runs past the right edge, and a horizontal scrollbar appears along the bottom to reach the overflow (the caret stays in view as you type or move, and Shift+wheel pans sideways). Read back via `$WRAP`; persists in the config.
 / #cmd("UNTITLEDTAB"): whether the blank *Untitled* scratch tab is closed when you open a document — `UNTITLEDTAB on|off` (bare toggles). On (the default) closes it and prunes any leftover empty untitled tab, so a scratch never lingers beside real files; the Untitled tab reappears when the last document is closed. `off` keeps the Untitled tab as its own tab. Read back via `$UNTITLEDTAB`; persists in the config.
 / #cmd("CMLINE"): move focus to the command line (synonym #cmd("GH")).
 / #cmd("CMPLACE"): where the command line is drawn — `CMPLACE top|bottom|hidden` (bare reports it). `hidden` keeps it out of the way until you focus it. Read back via `$CMPLACE`; persists in the config.
@@ -1154,6 +1156,7 @@ Every special variable in one list, for quick lookup.
 / #sv("CMH"): full command history (newest first).
 / #sv("CMBLANK"): `1` if the command line is blanked after each command (set with `CMBLANK`).
 / #sv("SHOWONETAB"): `1` if the tab strip shows for a single open file (set with `SHOWONETAB`).
+/ #sv("WRAP"): `1` if long lines wrap to the window, `0` if they run past the edge with a horizontal scrollbar (set with `WRAP`).
 / #sv("UNTITLEDTAB"): `1` if the blank Untitled tab is auto-closed when a document is opened (set with `UNTITLEDTAB`).
 / #sv("CMPLACE"): command-line placement (top / bottom / hidden).
 / #sv("CP"): caret's character offset.

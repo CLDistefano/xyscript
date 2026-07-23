@@ -384,6 +384,9 @@ pub enum EditorOp {
     /// Toggle whether the tab strip is shown when only ONE file is open (`SHOWONETAB on|off`;
     /// `None` toggles). Off (default) hides the strip for a single doc. `$SHOWONETAB`.
     SetShowOneTab(Option<bool>),
+    /// Toggle line wrapping (`WRAP on|off`; `None` toggles). On (default) wraps long lines to the
+    /// window; off lets them run past the right edge, with a horizontal scrollbar. `$WRAP`.
+    SetWrap(Option<bool>),
     /// Toggle whether the pristine "Untitled" scratch tab is auto-closed when a document is opened
     /// (`UNTITLEDTAB on|off`; `None` toggles). On (default) closes it, and prunes any leftover empty
     /// untitled tabs, so a blank scratch never lingers beside real files; it reappears when the last

@@ -16,7 +16,7 @@
 
 use std::rc::Rc;
 
-use cosmic_text::{Attrs, Buffer, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, Metrics, Scroll, Selection, Shaping, SwashCache};
+use cosmic_text::{Attrs, Buffer, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, Metrics, Scroll, Selection, Shaping, SwashCache, Wrap};
 
 mod runtime;
 
@@ -1498,6 +1498,13 @@ struct PaneView {
     scroll_vertical: f32,
     /// This frame, snap the caret back into view (set after edits/motion; cleared after a free scroll).
     follow: bool,
+    /// Horizontal scroll offset in PIXELS (device space), used only when `WRAP off`. The raster shifts
+    /// every glyph/caret/highlight left by this much, and the bottom scrollbar drives it. `0` while
+    /// wrapping (there is no horizontal overflow to reach).
+    scroll_h: f32,
+    /// The widest visible line in pixels this frame (device space), from `layout_runs`. Feeds the
+    /// horizontal scrollbar's thumb ratio and clamps `scroll_h`. Only meaningful when `WRAP off`.
+    content_w: f32,
     /// Canvas size in PHYSICAL PIXELS (the cosmic/raster layer works in pixels; layout in points).
     canvas_px: (usize, usize),
 }
@@ -1594,6 +1601,51 @@ fn draw_vscrollbar(
                 view.scroll_line =
                     ((target_visual / ratio).round() as usize).min((total_logical as usize).saturating_sub(1));
                 view.scroll_vertical = 0.0;
+                view.follow = false;
+            }
+        }
+    }
+}
+
+/// Draw + handle a HORIZONTAL scrollbar in `track` (points) for a `WRAP off` viewport. `content_w` is
+/// the widest visible line and `visible_w` the text area, both in DEVICE PIXELS (matching `view.scroll_h`);
+/// the thumb and drag map through their ratio so the point/pixel spaces cancel. Draws nothing when the
+/// content fits. Mirrors [`draw_vscrollbar`]; mutates `view.scroll_h` (and clears `follow`) on drag.
+fn draw_hscrollbar(
+    ui: &egui::Ui,
+    id_salt: u32,
+    track: egui::Rect,
+    content_w: f32,
+    visible_w: f32,
+    fg: (u8, u8, u8),
+    view: &mut PaneView,
+) {
+    let total = content_w.max(1.0);
+    let visible = visible_w.max(1.0);
+    let track_w = track.width();
+    let (fr, fgc, fb) = fg;
+    let painter = ui.painter();
+    painter.rect_filled(track, 0.0, egui::Color32::from_rgba_unmultiplied(fr, fgc, fb, 28));
+    // Thumb: fraction of the content that's visible. Min 24px so it stays grabbable.
+    let thumb_w = (track_w * (visible / total).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_w), track_w);
+    let denom = (total - visible).max(1.0);
+    let pos_frac = (view.scroll_h / denom).clamp(0.0, 1.0);
+    let thumb_left = track.min.x + pos_frac * (track_w - thumb_w);
+    painter.rect_filled(
+        egui::Rect::from_min_size(
+            egui::pos2(thumb_left, track.min.y + 2.0),
+            egui::vec2(thumb_w, (track.height() - 4.0).max(1.0)),
+        ),
+        3.0,
+        egui::Color32::from_rgba_unmultiplied(fr, fgc, fb, 120),
+    );
+    // Click / drag — only when the content overflows the view.
+    if total > visible + 0.5 && track_w - thumb_w > 0.5 {
+        let sb = ui.interact(track, ui.id().with(("hscrollbar", id_salt)), egui::Sense::click_and_drag());
+        if sb.dragged() || sb.clicked() {
+            if let Some(p) = sb.interact_pointer_pos() {
+                let f = ((p.x - track.min.x - thumb_w / 2.0) / (track_w - thumb_w)).clamp(0.0, 1.0);
+                view.scroll_h = f * denom;
                 view.follow = false;
             }
         }
@@ -1922,7 +1974,7 @@ impl GuiApp {
             message_box: None,
             capture_keymap: Some(capture_keymap),
             pending_save_as: false,
-            pane_view: PaneView { scroll_line: 0, scroll_vertical: 0.0, follow: true, canvas_px: (0, 0) },
+            pane_view: PaneView { scroll_line: 0, scroll_vertical: 0.0, follow: true, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0) },
             pane_views: std::collections::HashMap::new(),
             last_focus: None,
             pending_pane_click: None,
@@ -2192,6 +2244,7 @@ impl GuiApp {
     fn reset_view(&mut self) {
         self.pane_view.scroll_line = 0;
         self.pane_view.scroll_vertical = 0.0;
+        self.pane_view.scroll_h = 0.0;
         self.pane_view.follow = true;
         self.preedit.clear();
         self.preview_src.clear();
@@ -2399,7 +2452,16 @@ impl GuiApp {
             &mut self.font_system,
             Metrics::new(self.font_size * s, self.line_height * s),
         );
-        buffer.set_size(Some(w as f32), Some(h as f32));
+        // `WRAP off` — lay each logical line out on ONE visual row (no width clamp), so it runs past
+        // the right edge; the horizontal scrollbar reaches the overflow. `WRAP on` (default) wraps to
+        // the text width. cosmic's default is `WordOrGlyph`, set explicitly so a toggle takes effect.
+        if self.editor.wrap() {
+            buffer.set_wrap(Wrap::WordOrGlyph);
+            buffer.set_size(Some(w as f32), Some(h as f32));
+        } else {
+            buffer.set_wrap(Wrap::None);
+            buffer.set_size(None, Some(h as f32));
+        }
         if spans.is_empty() {
             buffer.set_text(&win.display, &mono().color(fg_c), Shaping::Advanced, None);
         } else {
@@ -2437,7 +2499,9 @@ impl GuiApp {
     /// follow-refine), so the narrowed per-line layout the geometry reads is the one that gets drawn —
     /// otherwise a later reshape silently un-narrows the lines and the offsets no longer match.
     fn refresh_wrap_indent(&mut self, buffer: &mut Buffer, win: &DocWindow, w: f32) {
-        if self.editor.wrap_indent() {
+        // Hanging-indent only makes sense while wrapping; `WRAP off` has no continuation rows, and
+        // re-narrowing the width here would re-introduce wrapping — so treat it as off.
+        if self.editor.wrap_indent() && self.editor.wrap() {
             self.build_wrap_indent(buffer, win, w);
         } else if !self.wi_rows.is_empty() || !self.wi_indent.is_empty() {
             self.wi_rows.clear();
@@ -2805,6 +2869,9 @@ impl GuiApp {
         let scale = self.render_scale;
         let lh_px = self.line_height * scale;
         let visible_rows = ((h as f32 / lh_px).floor() as usize).max(1);
+        // Capture `follow` up front: the vertical-follow block below CONSUMES it (sets it false), but the
+        // horizontal caret-follow (for `WRAP off`, further down) needs the same signal.
+        let following = self.pane_view.follow;
 
         // Follow: nudge `scroll_line` toward the caret BEFORE we window, so the window
         // contains the caret and shape_until_cursor can find it. (A far jump — go-to-end
@@ -2932,7 +2999,7 @@ impl GuiApp {
         // Paint the caret ourselves at the real cursor (cosmic's built-in caret draw was
         // unreliable beyond the first line). `None` ⇒ caret scrolled off-window, none drawn.
         // `WRAPINDENT`: shift by the caret row's hanging-indent offset so it sits with its text.
-        let caret_px =
+        let mut caret_px =
             cursor.and_then(|c| buffer.cursor_position(&c)).map(|(x, y)| (x + self.wi_offset_at_y(y), y));
 
         // Publish the caret's VISUAL position (wrap-aware screen coords, in cells) for `$CX`/`$CY`.
@@ -2945,6 +3012,36 @@ impl GuiApp {
             let row = (cy / lh_px).round().max(0.0) as i64;
             self.editor.host_mut().set_cursor_visual(col, row);
         }
+
+        // `WRAP off` — horizontal scrolling. Everything below is drawn shifted left by `hshift` px so a
+        // window into a long line is visible; the bottom scrollbar (and Shift+wheel) drive `scroll_h`,
+        // and typing/motion (`follow`) keeps the caret on-screen. `content_w` is the widest visible line
+        // (for the scrollbar thumb + the scroll clamp). A no-op while wrapping (`hshift` 0, offsets skip).
+        let hshift: i32 = if self.editor.wrap() {
+            self.pane_view.scroll_h = 0.0;
+            self.pane_view.content_w = 0.0;
+            0
+        } else {
+            let content_w = buffer.layout_runs().map(|r| r.line_w).fold(0.0_f32, f32::max);
+            let cell = (self.font_size * self.render_scale * 0.6).max(1.0);
+            let mut sh = self.pane_view.scroll_h;
+            if following {
+                if let Some((cx, _)) = caret_px {
+                    // Keep the caret one cell inside each edge (so you see context past it as you type).
+                    if cx < sh + cell {
+                        sh = (cx - cell).max(0.0);
+                    } else if cx > sh + w as f32 - cell {
+                        sh = cx - w as f32 + cell;
+                    }
+                }
+            }
+            sh = sh.clamp(0.0, (content_w - w as f32).max(0.0));
+            self.pane_view.scroll_h = sh;
+            self.pane_view.content_w = content_w;
+            let hshift = sh.round() as i32;
+            caret_px = caret_px.map(|(x, y)| (x - hshift as f32, y)); // caret draws in shifted space
+            hshift
+        };
 
         // FIND "highlight all" rects — computed while `buffer` is still freely borrowable, before
         // `ed` takes it mutably below. Empty unless the Find dialog is driving `find_highlights`.
@@ -2990,6 +3087,21 @@ impl GuiApp {
                 let o = self.wi_offset_at_y(r.1 as f32) as i32;
                 r.0 += o;
                 r.2 += o;
+            }
+        }
+        // `WRAP off` horizontal offset: slide the highlight/underline bands left with the glyphs.
+        if hshift != 0 {
+            for r in &mut find_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
+            for r in &mut lint_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
+            for r in &mut bal_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
             }
         }
 
@@ -3039,7 +3151,9 @@ impl GuiApp {
                 CColor::rgba(0, 0, 0, 0), // caret painted manually below
                 sel_c,
                 seltxt_c,
-                |x, y, cw, ch, color| blend_cell(&mut canvas, w, h, x, y, cw, ch, color),
+                // `hshift` (0 unless `WRAP off`) slides glyphs + the selection band left into the
+                // horizontal window; `blend_cell` clips anything off either edge.
+                |x, y, cw, ch, color| blend_cell(&mut canvas, w, h, x - hshift, y, cw, ch, color),
             );
         } else {
             // WRAPINDENT path: draw each visual row shifted right by its hanging-indent offset.
@@ -3184,7 +3298,7 @@ impl GuiApp {
                     let last_of_line = runs.get(k + 1).map_or(true, |&(nli, ..)| nli != li);
                     last_of_line && li + 1 < line_count
                 })
-                .map(|(_, &(_, top, wd))| (wd as i32, top as i32))
+                .map(|(_, &(_, top, wd))| (wd as i32 - hshift, top as i32))
                 .collect();
             if !marks.is_empty() {
                 const PIL: CColor = CColor::rgb(120, 150, 210);
@@ -3243,8 +3357,8 @@ impl GuiApp {
                 for g in run.glyphs {
                     match run.text.get(g.start..g.end) {
                         Some(" ") => {
-                            // 2×2 dot centered in the cell.
-                            let cx = (g.x + g.w * 0.5) as i32;
+                            // 2×2 dot centered in the cell (shifted into the horizontal window).
+                            let cx = (g.x + g.w * 0.5) as i32 - hshift;
                             for dx in -1..=0 {
                                 for dy in -1..=0 {
                                     put(&mut canvas, cx + dx, cy + dy);
@@ -3253,8 +3367,8 @@ impl GuiApp {
                         }
                         Some("\t") => {
                             // A shaft across the tab cell with a `>` chevron at the right.
-                            let x0 = (g.x + 2.0) as i32;
-                            let x1 = (g.x + g.w - 2.0) as i32;
+                            let x0 = (g.x + 2.0) as i32 - hshift;
+                            let x1 = (g.x + g.w - 2.0) as i32 - hshift;
                             for px in x0..x1 {
                                 put(&mut canvas, px, cy);
                             }
@@ -3584,8 +3698,9 @@ impl GuiApp {
         let (w, h) = self.pane_view.canvas_px; // PIXELS
         let (buffer, win) = self.windowed_buffer(w, h);
         // WRAPINDENT: a continuation row is drawn shifted right by its indent, so undo that on the
-        // click x before hit-testing (no-op when the mode is off / the row is a first row).
-        let x = x - self.wi_offset_at_y(y);
+        // click x before hit-testing (no-op when the mode is off / the row is a first row). `WRAP off`
+        // draws glyphs shifted LEFT by `scroll_h`, so add it back to map the click into cosmic space.
+        let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
         buffer.hit(x, y).map(|cur| self.win_rope_at(&win, cur))
     }
 
@@ -3600,7 +3715,8 @@ impl GuiApp {
         let (w, h) = self.pane_view.canvas_px; // PIXELS
         let (buffer, win) = self.windowed_buffer(w, h);
         // WRAPINDENT: undo the continuation row's draw shift before matching against its glyphs.
-        let x = x - self.wi_offset_at_y(y);
+        // `WRAP off`: also add back the horizontal scroll so the click maps into cosmic space.
+        let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
         if let Some(cur) = leading_glyph_cursor(&buffer, x, y) {
             return Some(self.win_rope_at(&win, cur));
         }
@@ -4226,7 +4342,7 @@ impl GuiApp {
         self.pane_views.clear();
         for (pid, _doc) in self.editor.host().panes().panes() {
             if let Some((sl, sv, f)) = self.editor.host().pane_scroll(pid) {
-                let pv = PaneView { scroll_line: sl, scroll_vertical: sv, follow: f, canvas_px: (0, 0) };
+                let pv = PaneView { scroll_line: sl, scroll_vertical: sv, follow: f, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0) };
                 if pid == focused {
                     self.pane_view = pv;
                 } else {
@@ -6334,12 +6450,21 @@ impl GuiApp {
             .input(|i| i.pointer.interact_pos())
             .and_then(|pos| ctx.layer_id_at(pos))
             .is_some_and(|layer| layer.order != egui::Order::Background);
-        let wheel = ctx.input(|i| i.smooth_scroll_delta.y);
-        if wheel.abs() > 0.0 && !over_floating {
-            // Scroll by pixels in VISUAL space; the next shape folds the offset into
-            // (line, residual) and clamps at the buffer ends. Wheel up (positive y)
-            // scrolls the content up, i.e. moves the view toward the top.
-            self.pane_view.scroll_vertical -= wheel * self.render_scale; // wheel is points; scroll is pixels
+        let (wheel, hwheel, shift) =
+            ctx.input(|i| (i.smooth_scroll_delta.y, i.smooth_scroll_delta.x, i.modifiers.shift));
+        if !over_floating {
+            // `WRAP off`: a horizontal wheel/trackpad swipe, or Shift+wheel, PANS horizontally (and then
+            // owns the scroll — no vertical move). The raster clamps the upper bound to the content width.
+            if !self.editor.wrap() && (hwheel.abs() > 0.0 || (shift && wheel.abs() > 0.0)) {
+                let d = if hwheel.abs() > 0.0 { hwheel } else { wheel };
+                self.pane_view.scroll_h = (self.pane_view.scroll_h - d * self.render_scale).max(0.0);
+                self.pane_view.follow = false;
+            } else if wheel.abs() > 0.0 {
+                // Scroll by pixels in VISUAL space; the next shape folds the offset into
+                // (line, residual) and clamps at the buffer ends. Wheel up (positive y)
+                // scrolls the content up, i.e. moves the view toward the top.
+                self.pane_view.scroll_vertical -= wheel * self.render_scale; // wheel is points; scroll is pixels
+            }
         }
 
         // --- Tab strip: one tab per open buffer, shown when more than one is VISIBLE — or, with
@@ -7045,8 +7170,11 @@ impl GuiApp {
         let margin_l = if multi { 0.0 } else { (self.editor.margin_left() * cell_w).round() };
         let margin_r = if multi { 0.0 } else { (self.editor.margin_right() * cell_w).round() };
         let left = gutter_w + margin_l;
+        // `WRAP off` reserves a bottom strip (single pane) for the horizontal scrollbar, mirroring the
+        // vertical strip's `sb_w`. Zero while wrapping, so the layout is unchanged there.
+        let hb_h = if !multi && !self.editor.wrap() { 12.0_f32 } else { 0.0 };
         let w = (((size.x - left - margin_r - sb_w).max(1.0)) as usize).clamp(1, 4000);
-        let h = (size.y as usize).clamp(1, 4000);
+        let h = (((size.y - hb_h).max(1.0)) as usize).clamp(1, 4000);
         // `MU`/`MD` viewport scroll (caret unmoved): shift the scroll offset by N visual rows
         // before rendering; cosmic folds it wrap-aware and clamps on the next shape. `follow`
         // off so the render doesn't snap back to the caret.
@@ -7354,6 +7482,15 @@ impl GuiApp {
             let (wrap, lh, rs, fg) =
                 (self.wrap_ratio, self.line_height, self.render_scale, self.editor.ui_fg_color());
             draw_vscrollbar(ui, 0, track, line_count, wrap, lh, rs, fg, &mut self.pane_view);
+            // `WRAP off`: horizontal scrollbar along the reserved bottom strip, spanning the text width.
+            if !self.editor.wrap() {
+                let htrack = egui::Rect::from_min_size(
+                    egui::pos2(resp.rect.min.x, resp.rect.max.y),
+                    egui::vec2(resp.rect.width(), hb_h),
+                );
+                let (content_w, visible_w) = (self.pane_view.content_w, self.pane_view.canvas_px.0 as f32);
+                draw_hscrollbar(ui, 0, htrack, content_w, visible_w, fg, &mut self.pane_view);
+            }
         } else {
             let origin = resp.rect.min;
             let (lh, rs, fg) = (self.line_height, self.render_scale, self.editor.ui_fg_color());

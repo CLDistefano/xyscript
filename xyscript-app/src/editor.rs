@@ -373,6 +373,11 @@ impl Editor {
     pub fn wrap_indent(&self) -> bool {
         self.host.wrap_indent()
     }
+    /// `WRAP` — whether long lines word-wrap to the window (off → lines run past the edge; the GUI
+    /// then shows a horizontal scrollbar).
+    pub fn wrap(&self) -> bool {
+        self.host.wrap()
+    }
     /// Drain pending `MU`/`MD` viewport scroll (visual rows; + toward end / − toward start).
     /// The GUI applies it to its scroll offset each frame.
     pub fn take_scroll_rows(&mut self) -> i32 {
@@ -3351,6 +3356,28 @@ mod tests {
         e.run_command("SAVECFG sot.cfg");
         let cfg = e.host_mut().files.get("sot.cfg").unwrap().clone();
         assert!(cfg.contains("SHOWONETAB on"), "config carries SHOWONETAB: {cfg}");
+    }
+
+    #[test]
+    fn wrap_toggles_reports_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("WRAP"), "1"); // default on (wrapping)
+        assert!(e.wrap());
+        e.run_command("WRAP off");
+        assert_eq!(e.special_str("WRAP"), "0");
+        assert!(!e.wrap());
+        e.run_command("WRAP"); // bare toggles
+        assert!(e.wrap());
+        // Bad value errors; read-only special; SaveCfg carries it.
+        e.run_command("WRAP maybe");
+        assert!(e.last_error().is_some());
+        e.run_command("SET WRAP = 0");
+        assert!(e.last_error().is_some(), "WRAP is read-only");
+        e.run_command("WRAP off");
+        e.run_command("SAVECFG wrap.cfg");
+        let cfg = e.host_mut().files.get("wrap.cfg").unwrap().clone();
+        assert!(cfg.contains("WRAP off"), "config carries WRAP: {cfg}");
     }
 
     #[test]
