@@ -44,6 +44,14 @@ typst-as-lib = "0.15.5"
 typst-pdf = "0.14.2"
 typst-render = "0.14.2" # GFM → raster for the GUI live preview (8d)
 typst-assets = { version = "0.14.2", features = ["fonts"] }
+# HTML → typst markup (`html.rs`), for `DOCTYPE html` preview/print and for rendering the raw-HTML
+# blocks GFM allows. `html5ever` is the spec-compliant HTML5 parser — it recovers from the malformed
+# real-world markup (unclosed tags, stray `<`) that a hand-rolled parser would choke on; it is ALREADY
+# compiled in the `lint` build as a transitive dep of harper-core (via ammonia), so it costs little
+# there. `markup5ever_rcdom` is its reference DOM sink — html5ever itself only provides the tokenizer
+# and the `TreeSink` trait, not a tree to walk.
+html5ever = "0.39"
+markup5ever_rcdom = "0.39"
 # Language checking — behind the OPTIONAL `lint` feature (below). harper-core is a pure-Rust, fully
 # offline grammar/spell checker. NOT lightweight: its neural POS tagger pulls in `burn` (an ML
 # framework, CPU/ndarray backend — no GPU) as a REQUIRED transitive dep, adding ~14 MB to the binary

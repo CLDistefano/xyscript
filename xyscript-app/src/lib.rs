@@ -21,6 +21,7 @@ pub mod encoding;
 pub mod gfm;
 pub mod help;
 pub mod highlight;
+pub mod html;
 pub mod pdf;
 pub mod host;
 pub mod kbd_dump;
@@ -31,6 +32,7 @@ pub mod panes;
 pub mod sort;
 pub mod style;
 pub mod text;
+mod typst_esc;
 pub mod viewport;
 
 pub use byte_rope::ByteRope;

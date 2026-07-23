@@ -19,6 +19,7 @@
 //! checkboxes are rendered as plain items; images render as a link to their src
 //! (typst `#image` needs a readable path); raw HTML is emitted as escaped text.
 
+use crate::typst_esc::{escape_text, typst_str};
 use comrak::nodes::{AstNode, ListType, NodeValue};
 use comrak::{parse_document, Arena, Options};
 
@@ -175,40 +176,8 @@ fn block_children<'a>(node: &'a AstNode<'a>) -> String {
     s
 }
 
-/// Backslash-escape the typst markup-significant characters in text content.
-/// Critically includes `#` (code) and `$` (math) so document text can never
-/// inject typst. Over-escaping the line-start markers (`= - +`) is harmless
-/// (typst renders `\-` as `-`).
-fn escape_text(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        if matches!(
-            ch,
-            '\\' | '#' | '$' | '*' | '_' | '`' | '<' | '>' | '@' | '~' | '[' | ']' | '=' | '+' | '-'
-        ) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
-/// Build a typst string literal (`"…"`) with `\`, `"`, newlines, and tabs escaped.
-fn typst_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            _ => out.push(ch),
-        }
-    }
-    out.push('"');
-    out
-}
+// Text/string escaping lives in `typst_esc` — shared with the HTML converter, which faces the same
+// typst-injection boundary.
 
 #[cfg(test)]
 mod tests {
