@@ -4752,6 +4752,7 @@ impl GuiApp {
         let tabspaces_on = ed.special_str("TABSPACES") == "1";
         let wrapindent_on = ed.special_str("WRAPINDENT") == "1";
         let wrap_on = ed.special_str("WRAP") == "1";
+        let wrap_hang = ed.special_str("WRAPHANG"); // current n (string), for the value-entry item
         let balpairs_on = ed.special_str("BALPAIRS") == "1";
         let typepairs_on = ed.special_str("TYPEPAIRS") == "1";
         let spelling_on = ed.special_str("SPELLING") == "1";
@@ -4828,6 +4829,9 @@ impl GuiApp {
                 m_tog("Whitespace", ws_on, "TWS"),
                 m_tog("Line numbers", lnum_on, "TLN"),
                 m_tog("Word wrap", wrap_on, "WRAP"),
+                // Not a toggle — a value. Stage `WRAPHANG <current>` on the command line and focus it
+                // (via `BC … ;CMLINE`, like the Email "…" items) so you edit the number and press Enter.
+                m_item(format!("Wrap hang ({wrap_hang})…"), format!("BC WRAPHANG {wrap_hang} ;CMLINE")),
                 MenuNode::Sep,
                 m_act(format!("{}Preview pane", tick(preview_on)), TogglePreview),
                 m_tog("Shell pane", shell_on, "SH"),
