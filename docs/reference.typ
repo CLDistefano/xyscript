@@ -842,7 +842,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SUB", "ENDSUB", "ES"): define a routine, ending at `ENDSUB`/`ES`.
 / #cmd("SUBMIT"): run the command line's contents. #cmd("XC"): run them but keep the focus and text.
 / #cmd("SV"): save the selection's text into a variable.
-/ #cmd("SWITCH", "CASE", "DEFAULT", "ENDSWITCH", "ESW"): a multi-way branch — `SWITCH <expr>`, then `CASE <values>` arms (no fall-through), an optional last `DEFAULT`, closed at `ENDSWITCH`/`ESW`.
+/ #cmd("SWITCH", "CASE", "DEFAULT", "ENDSWITCH", "ESW"): a multi-way branch — `SWITCH <expr>`, then `CASE <value>[, <value>…]` arms (no fall-through), an optional last `DEFAULT`, closed at `ENDSWITCH`/`ESW`. A `CASE` matches when `<expr>` equals ANY of its values, so `CASE 75, 101` fires for either. The values are a *comma* list, not an expression: write `CASE 75, 101`, never `CASE 75 or 101` — the latter is silently accepted but wrong, because `75 or 101` is evaluated as a boolean (both non-zero, so it means `CASE 1`).
 / #cmd("SMB", "CMB", "TMB"): the menu bar — on / off / toggle.
 / #cmd("SVR", "CVR", "TVR"): visible paragraph marks — on / off / toggle.
 / #cmd("SWS", "CWS", "TWS"): visible whitespace — on / off / toggle.
