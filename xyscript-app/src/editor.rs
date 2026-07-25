@@ -6179,6 +6179,33 @@ mod tests {
     }
 
     #[test]
+    fn rename_updates_and_resorts_the_dir_listing() {
+        let base = std::env::temp_dir().join(format!("xyscript-rename-list-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("banana.txt"), b"b").unwrap();
+        std::fs::write(base.join("cherry.txt"), b"c").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR"); // sorted: .., banana.txt, cherry.txt
+        e.run_command("SE /banana/"); // caret on banana
+        e.run_command("RENAME banana.txt zulu.txt");
+
+        assert!(base.join("zulu.txt").exists() && !base.join("banana.txt").exists(), "renamed on disk");
+        let text = e.document().text();
+        assert!(!text.contains("banana"), "old name gone from the listing");
+        assert!(text.contains("zulu.txt"), "new name shown");
+        // Re-sorted: cherry now precedes the renamed zulu.
+        assert!(text.find("cherry").unwrap() < text.find("zulu").unwrap(), "listing re-sorted");
+        // The caret followed the renamed file to its new row.
+        assert!(
+            e.host().point_and_shoot_file().is_some_and(|p| p.ends_with("zulu.txt")),
+            "caret follows the renamed file"
+        );
+    }
+
+    #[test]
     fn point_and_shoot_only_fires_on_a_listing_with_no_arg() {
         let mut e = ed();
         // Not a listing → no target, even for a file verb.

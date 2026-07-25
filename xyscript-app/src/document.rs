@@ -1426,6 +1426,42 @@ impl Document {
         true
     }
 
+    /// After a file is renamed, update its entry's name + path in this listing (when it IS one and
+    /// the old path is present), re-sort with the listing's OWN order/reverse/group options, re-render,
+    /// and keep the caret on the SAME entry — which is the renamed file if the caret was on it, so it
+    /// follows the rename to its new sorted row. Returns whether an entry was updated.
+    pub fn listing_rename_path(&mut self, from: &std::path::Path, to: &std::path::Path) -> bool {
+        let Some(idx) = self.dir.as_ref().and_then(|d| d.entries.iter().position(|e| e.path == from))
+        else {
+            return false;
+        };
+        let row = self.buffer.cursor_line();
+        let (text, caret_row) = {
+            let dir = self.dir.as_mut().unwrap();
+            // Track the entry the caret is on so it can follow the re-sort (→ the renamed file if the
+            // caret was pointing at it).
+            let mut caret_path = dir.entries.get(row).map(|e| e.path.clone());
+            let new_name = to
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| to.to_string_lossy().into_owned());
+            dir.entries[idx].name = new_name;
+            dir.entries[idx].path = to.to_path_buf();
+            if caret_path.as_deref() == Some(from) {
+                caret_path = Some(to.to_path_buf());
+            }
+            crate::dir::sort_entries(&mut dir.entries, dir.opts.order, dir.opts.reverse, !dir.opts.recurse);
+            let caret_row = caret_path
+                .and_then(|p| dir.entries.iter().position(|e| e.path == p))
+                .unwrap_or(row);
+            (crate::dir::render_listing(&dir.entries, dir.opts.bare), caret_row)
+        };
+        self.gen = next_content_gen();
+        self.buffer = Buffer::from_str(&text);
+        self.dir_goto_row(caret_row);
+        true
+    }
+
 
     /// Move the caret to the first entry whose name STARTS WITH the express-key buffer
     /// (case-insensitive) — a user typing in a listing wants the file beginning with what they type.

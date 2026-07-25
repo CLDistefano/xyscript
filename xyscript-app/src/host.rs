@@ -5412,6 +5412,14 @@ impl AppHost {
         }
     }
 
+    /// After a file is renamed, update its entry in every open in-tab listing (matched by the old
+    /// absolute path) — the row shows the new name and re-sorts into place, with the caret following.
+    fn refresh_listings_after_rename(&mut self, from: &Path, to: &Path) {
+        for doc in &mut self.docs {
+            doc.listing_rename_path(from, to);
+        }
+    }
+
     fn resolve_path(&self, path: &str) -> PathBuf {
         let p = path.trim();
         if p.is_empty() {
@@ -7566,6 +7574,8 @@ impl Host for AppHost {
                     self.files.insert(to.clone(), content);
                     // Retarget an open tab showing the old name so its tab label follows the rename.
                     self.retarget_open_tab(Path::new(&from), PathBuf::from(&to));
+                    let (f, t) = (self.resolve_path(&from), self.resolve_path(&to));
+                    self.refresh_listings_after_rename(&f, &t);
                     return Ok(Value::str(format!("renamed {from} -> {to}")));
                 }
                 let f = self.resolve_path(&from);
@@ -7579,6 +7589,7 @@ impl Host for AppHost {
                 // If the renamed file is open in a tab, update its path so the tab label (derived
                 // from the file name) follows the rename instead of showing the old name.
                 self.retarget_open_tab(&f, t.clone());
+                self.refresh_listings_after_rename(&f, &t);
                 return Ok(Value::str(format!("renamed {} -> {}", f.display(), t.display())));
             }
             EditorOp::Save(opt_path) => {
