@@ -813,6 +813,11 @@ pub struct SearchSpec {
     pub scope: bool,
     /// Treat the pattern as a regular expression (`R`).
     pub regex: bool,
+    /// `/K` — recase each replacement to match the case of the text it replaces: lower, Capitalized,
+    /// or UPPER. So `CH/K /alligator/crocodile/` maps `alligator`→`crocodile`, `Alligator`→`Crocodile`,
+    /// and `ALLIGATOR`→`CROCODILE`. Uses the same classification as `AR` auto-replace; a mixed-case
+    /// match (`aLLIGATOR`) takes the replacement verbatim. Replace-only (meaningless for a bare `SE`).
+    pub keep_case: bool,
     /// Extend the current selection to the match (`X`) instead of replacing it: keep the existing
     /// anchor (e.g. a `DF` define) and move only the active edge to the match, so the selection grows
     /// from the anchor through the match. Find-only (meaningless for replace); mutually exclusive with

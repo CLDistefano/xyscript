@@ -1824,13 +1824,22 @@ impl Pattern {
     /// Replace matches at/after byte offset `from`. `limit = Some(n)` stops after `n` replacements
     /// (`CH/n`); `None` replaces all. Returns `(first_start, last_end, replaced_region, count)`, or
     /// `None` if there are no matches.
+    /// With `keep_case`, each replacement is recased to match the CASE of the text it replaces (lower /
+    /// Capitalized / UPPER), via [`crate::host::key_case`]/[`crate::host::apply_key_case`] — the `/K`
+    /// switch. For a regex, captures are expanded first and the whole result is recased to the whole
+    /// match's case.
     pub fn replace_all(
         &self,
         text: &str,
         replacement: &str,
         from: usize,
         limit: Option<usize>,
+        keep_case: bool,
     ) -> Option<(usize, usize, String, usize)> {
+        // Recase `replacement` (or an already-expanded regex result) to match `matched`'s case.
+        let cased = |matched: &str, repl: &str| -> String {
+            crate::host::apply_key_case(crate::host::key_case(matched), repl)
+        };
         let cap = limit.unwrap_or(usize::MAX);
         match self {
             Pattern::Literal { .. } => {
@@ -1841,7 +1850,11 @@ impl Pattern {
                 let mut pos = fs;
                 for &(s, e) in &matches {
                     region.push_str(&text[pos..s]);
-                    region.push_str(replacement);
+                    if keep_case {
+                        region.push_str(&cased(&text[s..e], replacement));
+                    } else {
+                        region.push_str(replacement);
+                    }
                     pos = e;
                 }
                 Some((fs, le, region, matches.len()))
@@ -1859,7 +1872,13 @@ impl Pattern {
                 for c in &caps {
                     let m = c.get(0).unwrap();
                     region.push_str(&text[pos..m.start()]);
-                    c.expand(replacement, &mut region); // $1, ${name}, $$ → $
+                    if keep_case {
+                        let mut expanded = String::new();
+                        c.expand(replacement, &mut expanded); // $1, ${name}, $$ → $
+                        region.push_str(&cased(m.as_str(), &expanded));
+                    } else {
+                        c.expand(replacement, &mut region);
+                    }
                     pos = m.end();
                 }
                 Some((fs, le, region, caps.len()))

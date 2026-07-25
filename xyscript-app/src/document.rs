@@ -1135,6 +1135,7 @@ impl Document {
         from_top: bool,
         scope: Option<(usize, usize)>,
         limit: Option<usize>,
+        keep_case: bool,
     ) -> usize {
         self.buffer.commit_define();
         let text = self.buffer.text();
@@ -1149,7 +1150,7 @@ impl Document {
             let e_dec = self.buffer.decoded_offset(e);
             // Replace within just the scope slice, then map the offsets back to whole-document space.
             let Some((fs, le, region, count)) =
-                pattern.replace_all(&text[start_dec..e_dec], replace, 0, limit)
+                pattern.replace_all(&text[start_dec..e_dec], replace, 0, limit, keep_case)
             else {
                 return 0;
             };
@@ -1171,7 +1172,8 @@ impl Document {
             if from_top { 0 } else { self.buffer.decoded_offset(self.buffer.cursor()) };
         // The engine builds the transformed region (with regex capture expansion);
         // we splice it in as one recorded byte edit spanning [first, last) match.
-        let Some((fs, le, region, count)) = pattern.replace_all(&text, replace, start_dec, limit)
+        let Some((fs, le, region, count)) =
+            pattern.replace_all(&text, replace, start_dec, limit, keep_case)
         else {
             return 0;
         };
@@ -2294,7 +2296,7 @@ mod tests {
         d.set_caret(2, Some(6)); // span (2,6): 'a's at 2 and 4; 'a' at 0 and 6 are outside
         let pat = Pattern::build("a", false, false, false).unwrap();
         let scope = d.buffer().selection_span();
-        let n = d.replace_all(&pat, "Q", false, scope, None);
+        let n = d.replace_all(&pat, "Q", false, scope, None, false);
         assert_eq!(n, 2);
         assert_eq!(d.buffer().text(), "aXQXQXaz"); // a@0 and a@6 untouched
         assert_eq!(d.buffer().selection_span(), Some((2, 6)), "scope re-selected over the result");

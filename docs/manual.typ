@@ -679,6 +679,7 @@ Switches attach to the verb, before the separator, and combine in any order:
 / #raw("/R"): treat the search half as a *regular expression* (see Appendix B). The replacement half is still taken literally except for its backreferences.
 / #raw("/T"): from the *top* — start the sweep at the beginning of the file (or the end, for a backward search) rather than at the cursor.
 / #raw("/S"): confine the search or replace to the current *selection*.
+/ #raw("/K"): *keep case* (change only) — recase each replacement to match the text it replaces, so #raw("CH/K /alligator/crocodile/") turns `alligator`, `Alligator`, and `ALLIGATOR` into `crocodile`, `Crocodile`, and `CROCODILE`. A mixed-case match takes the replacement exactly as written.
 
 #ex("SE/W /the/
 SEA/W/T /TODO/

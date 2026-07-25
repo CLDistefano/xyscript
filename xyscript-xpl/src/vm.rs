@@ -4811,6 +4811,7 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
     let mut regex = false;
     let mut scope = false;
     let mut extend = false;
+    let mut keep_case = false;
     for f in letters.chars() {
         match f.to_ascii_uppercase() {
             'W' => whole_word = true,
@@ -4819,10 +4820,16 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
             'R' => regex = true,
             'S' => scope = true,
             'X' => extend = true,
+            'K' => keep_case = true,
             'B' if !is_replace => backward = true,
             'B' => {} // backward is meaningless for replace-all; ignore
             other => return Err(XplError::trappable(format!("unknown search flag '{other}'"))),
         }
+    }
+    // `/K` (case-match the replacement) only makes sense for a replace — there's nothing to recase in
+    // a plain find.
+    if keep_case && !is_replace {
+        return Err(XplError::trappable("/K (keep case) applies to CH, not SE"));
     }
     // `/X` (extend the selection to the match) is find-only and is the opposite of `/S` (which keeps
     // the selection fixed as a scope) — reject the nonsensical combinations rather than guess.
@@ -4851,6 +4858,7 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
         from_top,
         scope,
         regex,
+        keep_case,
         extend,
         verify,
         count,

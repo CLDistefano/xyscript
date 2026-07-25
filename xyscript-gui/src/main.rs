@@ -1466,6 +1466,9 @@ struct FindDialog {
     whole_word: bool,
     regex: bool,
     in_selection: bool,
+    /// `/K` — recase each replacement to match the case of the text it replaces (Replace / Replace
+    /// all only). See `xyscript_app::host::recase_to_match`.
+    keep_case: bool,
     /// One-shot: focus the Find field on the next frame (set on open via "Find…").
     focus_find: bool,
     /// One-shot: focus the Replace field on the next frame (set on open via "Replace…").
@@ -1756,7 +1759,7 @@ struct GuiApp {
     /// an OS window move (`window.drag_window`).
     start_window_drag: bool,
     /// Last-used Find dialog options, remembered across opens: (case, whole word, regex, in selection).
-    find_opts: (bool, bool, bool, bool),
+    find_opts: (bool, bool, bool, bool, bool),
     /// The open colour-picker dialog: its target + the colour currently chosen in it (`None` =
     /// closed). On OK the matching `*COLOR`/`HLCOLOR` setter is run.
     color_picker: Option<(ColorTarget, egui::Color32)>,
@@ -1970,7 +1973,7 @@ impl GuiApp {
             pending_dialog: None,
             save_as_for_quit: false,
             start_window_drag: false,
-            find_opts: (false, false, false, false),
+            find_opts: (false, false, false, false, false),
             color_picker: None,
             message_box: None,
             capture_keymap: Some(capture_keymap),
@@ -4267,7 +4270,7 @@ impl GuiApp {
         } else {
             self.editor.last_search()
         };
-        let (case, whole_word, regex, in_selection) = self.find_opts;
+        let (case, whole_word, regex, in_selection, keep_case) = self.find_opts;
         self.find_dialog = Some(FindDialog {
             find: seed.clone(),
             replace: String::new(),
@@ -4275,6 +4278,7 @@ impl GuiApp {
             whole_word,
             regex,
             in_selection,
+            keep_case,
             focus_find: !replace,
             focus_replace: replace,
             prev_find: seed,
@@ -4512,6 +4516,12 @@ impl GuiApp {
                     ui.checkbox(&mut d.regex, "Regular expression");
                     ui.checkbox(&mut d.in_selection, "In selection");
                 });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut d.keep_case, "Keep case").on_hover_text(
+                        "Replace / Replace all: recase each replacement to match the case of the \
+                         text it replaces (lower / Capitalized / UPPER).",
+                    );
+                });
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {
                     // The F3 / Shift+F3 hints match the universal shortcuts (runtime.rs) — they work
@@ -4537,26 +4547,33 @@ impl GuiApp {
             });
 
         // Apply (now `self.editor` is borrowable; the `d` borrow ended at its last use above).
-        let (find, replace, case, whole, regex, scope) = {
+        let (find, replace, case, whole, regex, scope, keep_case) = {
             let d = self.find_dialog.as_ref().unwrap();
-            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection)
+            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.keep_case)
         };
         // Remember the options so reopening the dialog restores them.
-        self.find_opts = (case, whole, regex, scope);
+        self.find_opts = (case, whole, regex, scope, keep_case);
         if !find.is_empty() && (do_find_next || do_find_prev || do_replace || do_replace_all) {
             let r = if do_find_prev {
-                self.editor.search_spec(&find, None, true, case, whole, regex, scope)
+                self.editor.search_spec(&find, None, true, case, whole, regex, scope, false)
             } else if do_replace_all {
-                self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope)
+                self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case)
             } else if do_replace {
                 // Single replace: overwrite the selected match (if any) literally, then find next.
                 // Literal insert bypasses TYPEPAIRS so replacing a selection with `(` overwrites it.
+                // `Keep case` recases the replacement to the selected match's case before inserting
+                // (the engine's per-match rule can't reach this one-off overwrite).
                 if self.editor.has_selection() {
-                    self.editor.insert_literal(&replace);
+                    let repl = if keep_case {
+                        xyscript_app::host::recase_to_match(&self.editor.selection_text(), &replace)
+                    } else {
+                        replace.clone()
+                    };
+                    self.editor.insert_literal(&repl);
                 }
-                self.editor.search_spec(&find, None, false, case, whole, regex, scope)
+                self.editor.search_spec(&find, None, false, case, whole, regex, scope, false)
             } else {
-                self.editor.search_spec(&find, None, false, case, whole, regex, scope)
+                self.editor.search_spec(&find, None, false, case, whole, regex, scope, false)
             };
             self.note(r);
             self.pane_view.follow = true;

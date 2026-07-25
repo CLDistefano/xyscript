@@ -1425,6 +1425,13 @@ pub(crate) fn key_case(word: &str) -> KeyCase {
     }
 }
 
+/// Recase `replacement` to match the case (lower / Capitalized / UPPER) of `matched` — the `/K`
+/// keep-case rule. Exposed for the GUI's single-Replace path, which recases outside the search
+/// engine; `Pattern::replace_all` applies the same rule per match for `CH/K` / Replace-all.
+pub fn recase_to_match(matched: &str, replacement: &str) -> String {
+    apply_key_case(key_case(matched), replacement)
+}
+
 /// Recase an auto-replace expansion to match how its key was typed.
 pub(crate) fn apply_key_case(case: KeyCase, val: &str) -> String {
     match case {
@@ -4813,7 +4820,9 @@ impl AppHost {
             Some(replace) => {
                 // `/n` caps the replace at n changes; with a cap, fewer than n (including zero) is NOT
                 // an error — only an uncapped `CH` treats zero matches as a trappable failure.
-                let n = self.active().replace_all(&pattern, &replace, spec.from_top, scope, spec.count);
+                let n = self
+                    .active()
+                    .replace_all(&pattern, &replace, spec.from_top, scope, spec.count, spec.keep_case);
                 self.change_count = n as i64;
                 if n == 0 && spec.count.is_none() {
                     Err(XplError::trappable(format!("not found: {find}")))

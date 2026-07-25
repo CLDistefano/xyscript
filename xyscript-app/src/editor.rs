@@ -804,6 +804,7 @@ impl Editor {
         whole_word: bool,
         regex: bool,
         scope: bool,
+        keep_case: bool,
     ) -> Result<String, String> {
         let spec = xyscript_xpl::SearchSpec {
             find: find.to_string(),
@@ -814,6 +815,7 @@ impl Editor {
             from_top: false,
             scope,
             regex,
+            keep_case,
             extend: false,
             verify: false,
             count: None,
@@ -3070,6 +3072,37 @@ mod tests {
     }
 
     #[test]
+    fn change_keep_case_recases_the_replacement_per_match() {
+        let mut e = ed();
+        e.run_command("INSERT \"alligator ALLIGATOR Alligator aLLIGATOR\"");
+        e.run_command("TF");
+        // /K recases the replacement to each match's case: lower → lower, UPPER → UPPER, Capitalized →
+        // Capitalized; a mixed-case match (`aLLIGATOR`) takes the replacement verbatim.
+        e.run_command("CH/K /alligator/crocodile/");
+        assert_eq!(e.document().text(), "crocodile CROCODILE Crocodile crocodile");
+        assert_eq!(e.status_message(), Some("4 changes"));
+    }
+
+    #[test]
+    fn change_keep_case_works_with_regex() {
+        let mut e = ed();
+        e.run_command("INSERT \"Foobar FOOBAR foobar\"");
+        e.run_command("TF");
+        // Regex /K: the expanded result is recased to the whole match's case.
+        e.run_command("CH/KR /foo\\w+/baz/");
+        assert_eq!(e.document().text(), "Baz BAZ baz");
+    }
+
+    #[test]
+    fn keep_case_is_rejected_on_a_plain_search() {
+        let mut e = ed();
+        e.run_command("INSERT \"text\"");
+        // `/K` has nothing to recase in a find — a usage error, not a silent no-op.
+        e.run_command("SE/K /x/");
+        assert!(e.last_error().is_some_and(|m| m.contains("/K")), "SE/K should be rejected: {:?}", e.last_error());
+    }
+
+    #[test]
     fn cv_count_stops_after_n_changes() {
         use crate::host::VerifyChoice;
         let mut e = ed();
@@ -5242,7 +5275,7 @@ mod tests {
         e.run_command("SET x = 99");
         e.insert_str("price is $x dollars");
         e.run_command("TF");
-        assert!(e.search_spec("$x", None, false, false, false, false, false).is_ok());
+        assert!(e.search_spec("$x", None, false, false, false, false, false, false).is_ok());
         assert_eq!(e.selection_text(), "$x");
     }
 
@@ -5252,9 +5285,31 @@ mod tests {
         e.insert_str("a-a-a");
         e.run_command("TF");
         assert!(e
-            .search_spec("a", Some("X".to_string()), false, false, false, false, false)
+            .search_spec("a", Some("X".to_string()), false, false, false, false, false, false)
             .is_ok());
         assert_eq!(e.document().text(), "X-X-X");
+    }
+
+    #[test]
+    fn search_spec_keep_case_recases_replacements() {
+        // The path the FIND dialog's "Replace all" + "Keep case" checkbox drives.
+        let mut e = ed();
+        e.insert_str("cat CAT Cat cAt");
+        e.run_command("TF");
+        assert!(e
+            .search_spec("cat", Some("dog".to_string()), false, false, false, false, false, true)
+            .is_ok());
+        assert_eq!(e.document().text(), "dog DOG Dog dog"); // mixed-case cAt → verbatim
+    }
+
+    #[test]
+    fn recase_to_match_follows_the_matched_case() {
+        // The helper the FIND dialog's single "Replace" button uses to recase one overwrite.
+        use crate::host::recase_to_match;
+        assert_eq!(recase_to_match("cat", "dog"), "dog");
+        assert_eq!(recase_to_match("CAT", "dog"), "DOG");
+        assert_eq!(recase_to_match("Cat", "dog"), "Dog");
+        assert_eq!(recase_to_match("cAt", "dog"), "dog"); // mixed → verbatim
     }
 
     #[test]
@@ -5265,7 +5320,7 @@ mod tests {
         let mut e = ed();
         e.insert_str("abc ABC abc ABC");
         e.run_command("TF");
-        assert!(e.search_spec("ABC", None, false, true, false, false, false).is_ok());
+        assert!(e.search_spec("ABC", None, false, true, false, false, false, false).is_ok());
         assert_eq!(e.selection_text(), "ABC");
         e.run_command("SE"); // bare repeat
         // If options were dropped, this case-insensitive repeat would match the lowercase "abc".
