@@ -738,6 +738,18 @@ impl Editor {
     pub fn show_titlebar(&self) -> bool {
         self.host.special("TITLEBAR").map(|v| v.to_str() == "1").unwrap_or(true)
     }
+    /// Whether Writer's View is on (`WV`/`$WV`): the GUI hides all chrome, and the runtime drops the
+    /// OS title bar. Read every frame by the GUI.
+    pub fn writer_view(&self) -> bool {
+        self.host.writer_view()
+    }
+    /// Turn Writer's View off (the GUI's `Esc`-exits-WV). Returns whether it WAS on (so the caller
+    /// knows to consume the `Esc`).
+    pub fn exit_writer_view(&mut self) -> bool {
+        let was = self.host.writer_view();
+        self.host.set_writer_view(false);
+        was
+    }
     /// Whether the GUI remembers the main window's size + position across runs (`$WINGEO`). The
     /// runtime gates both restore (`resumed`) and save (`exiting`) on this.
     pub fn remember_window_geometry(&self) -> bool {
@@ -5887,6 +5899,27 @@ mod tests {
         assert_eq!(e.output().last().map(String::as_str), Some("0"));
         e.run_command("TITLEBAR"); // bare = toggle
         assert!(e.show_titlebar());
+    }
+
+    #[test]
+    fn writer_view_toggles_reads_back_and_exits() {
+        let mut e = ed();
+        assert!(!e.writer_view()); // default: off (transient, never persisted)
+        e.run_command("WV on");
+        assert!(e.writer_view());
+        e.run_command("PR $WV");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        e.run_command("WV"); // bare = toggle → off
+        assert!(!e.writer_view());
+        // `exit_writer_view` (the GUI's Esc path) turns it off and reports whether it WAS on.
+        e.run_command("WV on");
+        assert!(e.exit_writer_view(), "was on → returns true");
+        assert!(!e.writer_view());
+        assert!(!e.exit_writer_view(), "already off → returns false");
+        // A bad argument is a trappable error, leaving the state unchanged.
+        e.run_command("WV on");
+        e.run_command("WV sideways");
+        assert!(e.writer_view(), "a rejected WV arg changes nothing");
     }
 
     #[test]

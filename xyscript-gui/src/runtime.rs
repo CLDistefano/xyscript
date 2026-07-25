@@ -404,6 +404,17 @@ impl Handler {
             self.request_redraw();
             return true;
         }
+        // Writer's View: `Esc` exits the distraction-free mode (restoring the previous view). It takes
+        // priority over the editor's ordinary Esc, but NOT over a parked READKEY (handled above), so a
+        // script waiting on a key still receives Esc.
+        if matches!(ev.state, ElementState::Pressed)
+            && matches!(ev.logical_key, Key::Named(NamedKey::Escape))
+            && self.app.writer_view()
+        {
+            self.app.exit_writer_view();
+            self.request_redraw();
+            return true;
+        }
         // While the keyboard menu is open it owns navigation (modal): divert nav keys to it and
         // swallow everything else, BEFORE the keymap runs — so menu keys never reach the editor.
         if self.app.menu_active() {
@@ -2164,9 +2175,11 @@ impl ApplicationHandler for Handler {
         // A `LOADKBD` (via Ctrl+L or the cmline) swaps the keymap on the editor; mirror it
         // onto the capture resolver the GUI actually intercepts with.
         self.sync_capture_keymap();
-        // `TITLEBAR on|off` toggles the OS decorations live; apply on change.
+        // `TITLEBAR on|off` toggles the OS decorations live; apply on change. Writer's View (`WV`)
+        // additionally drops the title bar while it's on — so the effective state is titlebar AND not
+        // Writer's View, and turning WV off restores the user's TITLEBAR preference.
         if let Some(window) = self.window.as_ref() {
-            let want = self.app.show_titlebar();
+            let want = self.app.show_titlebar() && !self.app.writer_view();
             if want != self.decorations {
                 window.set_decorations(want);
                 self.decorations = want;

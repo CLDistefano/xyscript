@@ -65,7 +65,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     // editor state/flags (EN = active document's encoding-view name)
     "FB", "FE", "RE", "MO", "EN", "FS", "LC", "TL", "WC", "CC", "CH", "TB", "GC", "MB",
     "AU", "PS", "VR", "TC", "CT", "TX", "DIRNW", "DIRWNW", "DIRWCLOSE", "DIRRT", "DIRSET", "LNS", "WS", "RO", "HLAUTO", "DECIMALS", "SW", "SH", "AR", "TABSPACES", "TABINDENT", "INDENTED", "BALPAIRS", "BALPAIRSCOLOR", "TYPEPAIRS", "WRAPINDENT",
-    "DOCTYPE", "PV", "TITLEBAR", "WINGEO", "SESSION",
+    "DOCTYPE", "PV", "TITLEBAR", "WV", "WINGEO", "SESSION",
     // lock keys (full names; $CL/$NL freed for other specials)
     "CAPSLOCK", "NUMLOCK", "SCROLLLOCK",
     // command line: CL = last issued command, CM = current content, CMH = full history (OS newlines)

@@ -4316,6 +4316,17 @@ impl GuiApp {
         self.editor.show_titlebar()
     }
 
+    /// Whether Writer's View is on — the runtime reads it (with `show_titlebar`) to drop the OS title
+    /// bar, and `Esc` handling checks it to exit the mode.
+    fn writer_view(&self) -> bool {
+        self.editor.writer_view()
+    }
+
+    /// Turn Writer's View off (the runtime's `Esc`-exits-WV path). Returns whether it WAS on.
+    fn exit_writer_view(&mut self) -> bool {
+        self.editor.exit_writer_view()
+    }
+
     /// Whether to remember the main window's size + position across runs (the runtime gates both
     /// restore and save on this; `$WINGEO`).
     fn remember_window_geometry(&self) -> bool {
@@ -4770,6 +4781,7 @@ impl GuiApp {
         let shellout_on = ed.shell_output_visible();
         let menubar_on = ed.menu_bar_shown();
         let titlebar_on = ed.show_titlebar();
+        let wv_on = ed.writer_view();
         let wingeo_on = ed.remember_window_geometry();
         let ps_on = ed.special_str("PS") == "1";
         let trusted = ed.trusted();
@@ -4887,6 +4899,7 @@ impl GuiApp {
                 MenuNode::Sep,
                 m_tog("Menu bar", menubar_on, "TMB"),
                 m_tog("Title bar", titlebar_on, "TITLEBAR"),
+                m_tog("Writer's View (Esc to exit)", wv_on, "WV"),
                 m_sub("Command line", vec![
                     m_tog("Pop-up", popup_on, "TGC"),
                     m_sub("Position", vec![
@@ -5928,11 +5941,14 @@ impl GuiApp {
         // --- Menu bar (File / View). Collect an action; apply it below so we
         //     never mutate `self` inside egui's nested menu closures. ---
         let titlebar_on = self.editor.show_titlebar();
+        // Writer's View (`WV`): hide ALL chrome — the drag strip, menu bar, tab strip, command line,
+        // and status line — leaving only the text window. Each chrome block below is gated on this.
+        let writer_view = self.editor.writer_view();
         let mut act: Option<Act> = None;
         // Title-bar replacement: when the OS title bar is hidden (`TITLEBAR off`), draw a thin
         // draggable strip at the very top so the window can still be moved (XyWrite-DOS-in-a-window
         // muscle memory). Grabbing it asks the runtime to start an OS window move.
-        if !titlebar_on {
+        if !titlebar_on && !writer_view {
             // Fill the strip with the UI chrome background so it blends with the user's scheme
             // (rather than a stark default). The Grab cursor on hover signals it's draggable.
             let (sr, sg, sb) = self.editor.ui_bg_color();
@@ -5969,9 +5985,11 @@ impl GuiApp {
         }
         // Unified menu system (mouse + keyboard, one `menu_nav` state): the top bar plus cascading
         // dropdowns. One renderer for both input methods — replaces egui's built-in MenuBar and the
-        // old floating keyboard overlay.
-        if let Some(ma) = self.render_menus(ui) {
-            act = self.perform_menu_act(ma);
+        // old floating keyboard overlay. Suppressed entirely in Writer's View.
+        if !writer_view {
+            if let Some(ma) = self.render_menus(ui) {
+                act = self.perform_menu_act(ma);
+            }
         }
         // The keyboard navigator chose an item on a prior frame (in the runtime key path) — run it
         // now, through the same dispatch as the mouse menus.
@@ -6541,7 +6559,7 @@ impl GuiApp {
         let shell_visible = self.editor.shell_output_visible();
         let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Shell Output*";
         let visible_tabs = tabs.iter().filter(|t| !is_hidden(t)).count();
-        if visible_tabs > 1 || (self.editor.show_one_tab() && visible_tabs == 1) {
+        if !writer_view && (visible_tabs > 1 || (self.editor.show_one_tab() && visible_tabs == 1)) {
             let active = self.editor.active_index();
             let mut switch_to: Option<usize> = None;
             let mut close: Option<usize> = None;
@@ -6637,7 +6655,7 @@ impl GuiApp {
         let cmline_focused = self.editor.cmline_open();
         let placement = self.editor.special_str("CMPLACE"); // "top" | "bottom" | "hidden" (CMPLACE)
         let show_top = placement == "top" || (placement == "hidden" && cmline_focused);
-        if show_top {
+        if show_top && !writer_view {
             // `cmline_row` applies focus + caret + selection itself; it returns whether the mouse
             // interacted so we can wake a repaint.
             let interacted =
@@ -6704,6 +6722,7 @@ impl GuiApp {
         // empty keymap (`CLEARKBD`) without putting a binding outside the KBD-file model.
         let status_opens_cmline =
             plain_status && placement == "hidden" && !self.editor.cmline_open();
+        if !writer_view {
         egui::Panel::bottom("status").show_inside(ui, |ui| {
             if status.contains('\n') {
                 // Multiline status (e.g. `PR $CMH` or any PR output with real newlines): stack the
@@ -6754,6 +6773,7 @@ impl GuiApp {
                 ctx.request_repaint();
             }
         }
+        } // Writer's View: end of the hidden status + bottom-command-line block
 
         // Interactive shell pane (`SH`/`SHELL`): a resizable bottom pane (≤10 lines) with scrollback
         // + a command input line. Enter runs the command into the pane; Shift+Enter pipes its output

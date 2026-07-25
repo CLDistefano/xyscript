@@ -464,7 +464,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("SMB", "CMB", "TMB"): the menu bar — on / off / toggle. #cmd("MENU"): keyboard control of the menu bar.
 / #cmd("SVR", "CVR", "TVR") / #cmd("SWS", "CWS", "TWS") / #cmd("SLN", "CLN", "TLN"): paragraph marks / whitespace / the line-number gutter — on / off / toggle.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
-/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / remember the window geometry / auto-save-and-restore the open tabs across runs.
+/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WV") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / Writer's View (hide all chrome; `Esc` exits) / remember the window geometry / auto-save-and-restore the open tabs across runs.
 / #cmd("WRAP"): word-wrap long lines to the window (`on`, default) or let them run past the edge with a horizontal scrollbar (`off`).
 / #cmd("WRAPHANG"): hanging indent (spaces) for wrapped continuation rows — `WRAPHANG <n>` (0 = flush; ignored when #cmd("WRAPINDENT") is on).
 
@@ -882,6 +882,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("TRV"): swap the two panes of the current split (the focused buffer trades places with its neighbor).
 / #cmd("TZ"): toggle *zoom* — show the focused pane full-window, hiding the others; press again to restore the split. The layout is untouched, so nothing is lost.
 / #cmd("TITLEBAR"): `TITLEBAR on|off` (bare = toggle) — show/hide the OS window title bar; when off, a thin draggable strip at the top moves the window.
+/ #cmd("WV"): `WV on|off` (bare = toggle) — *Writer's View*, a distraction-free mode that hides ALL chrome (title bar, menu bar, tab strip, command line, and status line), leaving just the text window. `Esc` turns it off, restoring the previous view. Transient — it is never saved, so you can't launch stuck in it. Read back via #sv("WV"); on the `View` menu.
 / #cmd("TABBGCOLOR", "TABBGCOLORS"): a GUI tab's background color for a state — `TABBGCOLOR <active|hover|inactive> <r g b>` (`…S` opens a picker).
 / #cmd("TABXCOLOR", "TABXCOLORS"): the tab close-× glyph color — `TABXCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `TABXCOLOR default` resets it to the UI foreground.
 / #cmd("TOPDF", "PRINT"): export the document to PDF, rendered per its `DOCTYPE` (`TOPDF <path>`, or bare derives the name).
@@ -1314,6 +1315,7 @@ Every special variable in one list, for quick lookup.
 / #sv("TB"): tab width in spaces.
 / #sv("TC"): total tab count.
 / #sv("TITLEBAR"): OS window title bar visible.
+/ #sv("WV"): Writer's View on (all chrome hidden).
 / #sv("TL"): total line count.
 / #sv("TM"): current time.
 / #sv("TR"): `1` if shell-out is enabled.

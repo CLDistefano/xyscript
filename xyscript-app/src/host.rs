@@ -1702,6 +1702,10 @@ pub struct AppHost {
     /// `TITLEBAR` — whether the OS window title bar is shown (default true). The GUI runtime applies
     /// it via `set_decorations`; read back via `$TITLEBAR`. Persisted by SAVECFG.
     show_titlebar: bool,
+    /// `WV` — Writer's View: a distraction-free mode where the GUI hides ALL chrome (title bar, menu
+    /// bar, tab strip, command line, status line), leaving only the text. Transient (NOT persisted —
+    /// you never launch stuck in it); `Esc` turns it off. Read back via `$WV`.
+    writer_view: bool,
     /// `WINGEO` — whether the GUI remembers the main window's size + position across runs (default
     /// true). When off, the runtime neither restores nor saves `window.txt` (each launch uses the
     /// default size). Useful on mixed-DPI multi-monitor setups where a remembered physical size is
@@ -2141,6 +2145,7 @@ impl AppHost {
             session_snapshot_revs: std::collections::HashMap::new(),
             last_session_manifest: None,
             show_titlebar: true,
+            writer_view: false,
             remember_window_geometry: true,
             pending_delete: None,
             shell_trusted: false,
@@ -2633,6 +2638,14 @@ impl AppHost {
     /// GUI view flags (read each frame by the GUI). See `EditorOp::SetView`.
     pub fn menu_bar(&self) -> bool {
         self.menu_bar
+    }
+    /// Whether Writer's View is on (`WV`/`$WV`) — the GUI hides all chrome when it is.
+    pub fn writer_view(&self) -> bool {
+        self.writer_view
+    }
+    /// Turn Writer's View off directly (for the GUI's `Esc`-exits-WV path), without routing a command.
+    pub fn set_writer_view(&mut self, on: bool) {
+        self.writer_view = on;
     }
     pub fn visible_returns(&self) -> bool {
         self.visible_returns
@@ -7299,6 +7312,13 @@ impl Host for AppHost {
                     if self.show_titlebar { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetWriterView(opt) => {
+                self.writer_view = opt.unwrap_or(!self.writer_view);
+                return Ok(Value::str(format!(
+                    "Writer's View {}",
+                    if self.writer_view { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetRememberGeometry(opt) => {
                 self.remember_window_geometry = opt.unwrap_or(!self.remember_window_geometry);
                 return Ok(Value::str(format!(
@@ -9570,6 +9590,7 @@ impl Host for AppHost {
             "DIRRT" => Some(Value::Int(if self.dir_reuse { 1 } else { 0 })),
             "DIRSET" => Some(Value::str(self.dir_defaults_string())),
             "TITLEBAR" => Some(Value::Int(if self.show_titlebar { 1 } else { 0 })),
+            "WV" => Some(Value::Int(if self.writer_view { 1 } else { 0 })),
             "WINGEO" => Some(Value::Int(if self.remember_window_geometry { 1 } else { 0 })),
             "SESSION" => Some(Value::Int(if self.session_restore { 1 } else { 0 })),
             // GUI view flags (see EditorOp::SetView).

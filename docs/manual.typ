@@ -238,6 +238,11 @@ the *Shell Output* tab (#raw("SW")), *line numbers* (#raw("SLN")), visible *para
 (#raw("SVR")) and *whitespace* (#raw("SWS")), and the menu bar itself (#raw("SMB")). A separate movable
 *directory window* opens with #raw("DIR/W").
 
+For distraction-free writing, #raw("WV") — *Writer's View* — hides everything at once: the title bar,
+menu bar, tab strip, command line, and status line, leaving just the text. Press #raw("Esc") to bring
+them all back. It is a passing mode, never saved, so you always start a session with your normal
+layout.
+
 == The menu bar
 
 A one-line orientation to each of the eight menus. Every item simply runs an ordinary XyScript command —

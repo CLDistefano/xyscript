@@ -375,6 +375,10 @@ pub enum EditorOp {
     /// Show/hide the OS window title bar (`TITLEBAR on|off`; `None` toggles). The runtime applies it
     /// via `set_decorations`; read back via `$TITLEBAR`.
     SetTitlebar(Option<bool>),
+    /// Writer's View (`WV on|off`; `None` toggles): a distraction-free mode where the GUI hides all
+    /// chrome — title bar, menu bar, tab strip, command line, and status line — leaving just the text.
+    /// Transient (not persisted); `Esc` turns it off. Read back via `$WV`.
+    SetWriterView(Option<bool>),
     /// Toggle whether the GUI remembers the main window's size + position across runs
     /// (`WINGEO on|off`; `None` toggles). The runtime gates both restore and save on it; `$WINGEO`.
     SetRememberGeometry(Option<bool>),

@@ -2256,6 +2256,20 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetTitlebar(want))?;
                 Ok(Flow::Next)
             }
+            // `WV on|off` (bare = toggle) — Writer's View: hide ALL chrome (title/menu/tabs/cmline/
+            // status), leaving just the text window. Transient; `Esc` exits. `$WV` reads it.
+            "WV" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None, // toggle
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!("WV: expected on or off, got {other:?}")))
+                    }
+                };
+                self.host_op(EditorOp::SetWriterView(want))?;
+                Ok(Flow::Next)
+            }
             // `WINGEO on|off` (bare = toggle) — whether the GUI remembers the main window's size +
             // position across runs. `$WINGEO` reads it; off is handy on mixed-DPI multi-monitor setups.
             "WINGEO" => {
