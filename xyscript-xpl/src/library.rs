@@ -165,6 +165,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "SPELLSTYLE", "GRAMMARSTYLE", // live-check underline style: dotted|solid|squiggle
     "PANECOLOR", "PANECOLORS", // active-pane border colour (split panes)
     "BALPAIRS", "BALPAIRSCOLOR", "BALPAIRSCOLORS", // matching-bracket highlight
+    "EMPH", "EMPHFGCOLOR", "EMPHFGCOLORS", "EMPHBGCOLOR", "EMPHBGCOLORS", // EMPH emphasis highlight
     "TYPEPAIRS", // auto-close typed brackets/quotes
     "WRAPINDENT", // hanging indent for soft-wrapped lines
     // Binder loaders: text binder `@slot` (LDTX), script binder `&slot` (LDSC/LDPM).

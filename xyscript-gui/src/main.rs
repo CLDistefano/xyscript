@@ -1699,6 +1699,12 @@ struct GuiApp {
     find_current: Option<(usize, usize)>,
     /// Cache key for `find_highlights` = (text, case, whole-word, regex, in-selection, doc revision).
     find_hl_key: Option<(String, bool, bool, bool, bool, u64)>,
+    /// `EMPH` emphasis matches for the ACTIVE document (rope offsets) — a persistent, host-driven
+    /// highlight (unlike `find_highlights`, which the Find dialog drives). Painted behind + over the
+    /// glyphs with `EMPHBGCOLOR`/`EMPHFGCOLOR`. Cached via `emph_key`.
+    emph_highlights: Vec<(usize, usize)>,
+    /// Cache key for `emph_highlights` = (active index, doc revision, phrase). `None` = no emphasis.
+    emph_key: Option<(usize, u64, String)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -1951,6 +1957,8 @@ impl GuiApp {
             find_dialog: None,
             find_refocus: false,
             find_highlights: Vec::new(),
+            emph_highlights: Vec::new(),
+            emph_key: None,
             bal_last: None,
             wi_indent: Vec::new(),
             wi_rows: Vec::new(),
@@ -2325,6 +2333,7 @@ impl GuiApp {
     /// (tokens overlapping the window, rebased to window-local display offsets). Cheap —
     /// the window is only a few dozen `BufferLine`s, not the whole document.
     fn build_window_cosmic(&mut self, w: usize, h: usize, win: &DocWindow) -> Buffer {
+        self.refresh_emph(); // keep the active tab's EMPH match set current before drawing
         let lo = win.start_decoded;
         let hi = win.start_decoded + win.decoded_len;
         let wt: Vec<Token> = self
@@ -2385,6 +2394,29 @@ impl GuiApp {
                 (sd < ed).then(|| (sd, ed, CColor::rgb(r, g, b)))
             })
             .collect();
+        // EMPH emphasis match text: every occurrence's glyph colour (`EMPHFGCOLOR`, default
+        // `SELFGCOLOR`). Like `find_spans` but host-driven and persistent; painted UNDER FIND (a live
+        // search wins over standing emphasis). `emph_highlights` are ROPE offsets.
+        let emph_spans: Vec<(usize, usize, CColor)> = if self.emph_highlights.is_empty() {
+            Vec::new()
+        } else {
+            let doc = self.editor.doc(self.editor.active_index());
+            let (er, eg, eb) = self.editor.emph_fg_color();
+            let emph_c = CColor::rgb(er, eg, eb);
+            self.emph_highlights
+                .iter()
+                .filter_map(|&(ms_rope, me_rope)| {
+                    let s = doc.decoded_offset(ms_rope).max(lo);
+                    let e = doc.decoded_offset(me_rope).min(hi);
+                    if s >= e {
+                        return None;
+                    }
+                    let sd = decoded_to_display(s - lo, &win.cr);
+                    let ed = decoded_to_display(e - lo, &win.cr);
+                    (sd < ed).then_some((sd, ed, emph_c))
+                })
+                .collect()
+        };
         // FIND-highlight match text: the glyph colour of highlighted matches — `FINDFGCOLOR` for
         // ordinary hits, `SELFGCOLOR` for the current (Enter/F3 target). `find_highlights` are ROPE
         // offsets, so convert to decoded before rebasing to window-local display (like `manual`).
@@ -2421,6 +2453,9 @@ impl GuiApp {
             colors[a..b.min(n)].iter_mut().for_each(|slot| *slot = c);
         }
         for &(s, e, cc) in &manual {
+            colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
+        }
+        for &(s, e, cc) in &emph_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &find_spans {
@@ -2738,8 +2773,38 @@ impl GuiApp {
     /// Pixel rects `(x0,y0,x1,y1,is_current)` for the visible portions of the FIND matches
     /// (`self.find_highlights`), for `raster` to paint. Offsets clamp to the window, so matches
     /// off-screen contribute nothing; a match wrapped across visual rows yields one rect per row.
+    /// Refresh the `EMPH` emphasis match set for the active document (cached on `emph_key`, so we
+    /// only re-search when the active tab, its text, or its phrase changes). Cheap when unchanged.
+    fn refresh_emph(&mut self) {
+        let ai = self.editor.active_index();
+        let phrase = self.editor.active_emph();
+        let key = phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone()));
+        if key != self.emph_key {
+            self.emph_highlights = match &phrase {
+                Some(p) => self.editor.find_all(p, false, false, false, false),
+                None => Vec::new(),
+            };
+            self.emph_key = key;
+        }
+    }
+
+    /// Convenience wrapper: FIND "highlight all" rects (the current match flagged).
     fn find_highlight_rects(
         &self,
+        buffer: &Buffer,
+        win: &DocWindow,
+        w_px: i32,
+        lh_px: i32,
+    ) -> Vec<(i32, i32, i32, i32, bool)> {
+        self.highlight_rects(&self.find_highlights, self.find_current, buffer, win, w_px, lh_px)
+    }
+
+    /// Rects (per visual row) for a set of rope-offset match `spans`, clamped to the visible window;
+    /// the trailing `bool` flags the `current` match (FIND's Enter/F3 target — `None` for `EMPH`).
+    fn highlight_rects(
+        &self,
+        spans: &[(usize, usize)],
+        current: Option<(usize, usize)>,
         buffer: &Buffer,
         win: &DocWindow,
         w_px: i32,
@@ -2754,7 +2819,7 @@ impl GuiApp {
         let win_lo = doc.rope_offset(win.start_decoded);
         let win_hi = doc.rope_offset(win.start_decoded + win.decoded_len);
         let mut rects = Vec::new();
-        for &(ms, me) in &self.find_highlights {
+        for &(ms, me) in spans {
             if me <= ms || me < win_lo || ms > win_hi {
                 continue; // zero-width, or entirely outside the visible window
             }
@@ -2766,7 +2831,7 @@ impl GuiApp {
                 continue;
             };
             let (sx, sy, ex, ey) = (sxf as i32, syf as i32, exf as i32, eyf as i32);
-            let current = self.find_current == Some((ms, me));
+            let current = current == Some((ms, me));
             if sy == ey {
                 if ex > sx {
                     rects.push((sx, sy, ex, sy + lh_px, current));
@@ -3096,6 +3161,13 @@ impl GuiApp {
         } else {
             self.find_highlight_rects(&buffer, &win, w as i32, lh_px as i32)
         };
+        // EMPH "emphasis" rects — same borrow window as `find_rects`; drawn behind the glyphs (below),
+        // under FIND. No "current" match, so the flag is always false.
+        let mut emph_rects = if self.emph_highlights.is_empty() {
+            Vec::new()
+        } else {
+            self.highlight_rects(&self.emph_highlights, None, &buffer, &win, w as i32, lh_px as i32)
+        };
         // Record the visible byte window so the live checker can scope to it (bounded work on huge
         // files). Decoded-byte offsets, matching what `recheck_lints`/`compute_lints` expect.
         self.lint_visible = Some((win.start_decoded, win.start_decoded + win.decoded_len));
@@ -3124,6 +3196,11 @@ impl GuiApp {
                 r.0 += o;
                 r.2 += o;
             }
+            for r in &mut emph_rects {
+                let o = self.wi_offset_at_y(r.1 as f32) as i32;
+                r.0 += o;
+                r.2 += o;
+            }
             for r in &mut lint_rects {
                 let o = self.wi_offset_at_y(r.1 as f32) as i32;
                 r.0 += o;
@@ -3138,6 +3215,10 @@ impl GuiApp {
         // `WRAP off` horizontal offset: slide the highlight/underline bands left with the glyphs.
         if hshift != 0 {
             for r in &mut find_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
+            for r in &mut emph_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
@@ -3159,6 +3240,14 @@ impl GuiApp {
         let mut canvas = vec![0u8; w * h * 4];
         for px in canvas.chunks_exact_mut(4) {
             px.copy_from_slice(&[br, bg_, bb, 255]);
+        }
+        // Paint EMPH emphasis BEHIND the glyphs (and under FIND): an opaque band in EMPHBGCOLOR
+        // (default: the selection background) so the emphasis text (EMPHFGCOLOR) reads as configured.
+        if !emph_rects.is_empty() {
+            let (ebr, ebg, ebb) = self.editor.emph_bg_color();
+            for &(x0, y0, x1, y1, _) in &emph_rects {
+                fill_blend(&mut canvas, w, h, x0, y0, x1, y1, ebr, ebg, ebb, 1.0);
+            }
         }
         // Paint FIND matches BEHIND the glyphs: non-current hits get the translucent FINDBGCOLOR band
         // (default yellow); the current match (the Enter/F3 target) reuses the SELECTION background,
@@ -5571,6 +5660,9 @@ impl GuiApp {
             ColorTarget::PathBg => {
                 self.editor.host().path_bg_color().unwrap_or(self.editor.ui_bg_color())
             }
+            // EMPH emphasis colours default to the selection colours when unset — seed with those.
+            ColorTarget::EmphFg => self.editor.emph_fg_override().unwrap_or(self.editor.sel_fg_color()),
+            ColorTarget::EmphBg => self.editor.emph_bg_override().unwrap_or(self.editor.sel_bg_color()),
         };
         self.color_picker = Some((target, egui::Color32::from_rgb(r, g, b)));
     }

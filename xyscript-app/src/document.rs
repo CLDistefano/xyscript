@@ -225,6 +225,10 @@ pub struct Document {
     render_override: Option<RenderKind>,
     /// The nine `C1`..`C9` counters (XyWrite-style). Per-document and session-only (not persisted).
     counters: [crate::counter::Counter; 9],
+    /// `EMPH` emphasis phrase: every case-insensitive occurrence is highlighted (a visual overlay,
+    /// never an edit — so it works in read-only / `*Shell Output*` tabs). Per-document, session-only.
+    /// `None` = no emphasis. Colours come from the host's `EMPHFGCOLOR`/`EMPHBGCOLOR`.
+    emph: Option<String>,
     /// A stable per-buffer handle for the split-pane layout tree. Tab indices shift when tabs close,
     /// so the pane tree references buffers by this id. Assigned once in [`Document::default`] (the
     /// single choke point all constructors route through), never reused. See [`crate::panes`].
@@ -283,6 +287,7 @@ impl Clone for Document {
             grammars: self.grammars.clone(),
             render_override: self.render_override,
             counters: self.counters.clone(),
+            emph: self.emph.clone(),
             id: fresh_doc_id(),
         }
     }
@@ -308,6 +313,7 @@ impl Default for Document {
             dir: None,
             grammars: Rc::new(RefCell::new(GrammarRegistry::default())),
             render_override: None, // auto: decide by extension
+            emph: None,
             counters: std::array::from_fn(|_| crate::counter::Counter::default()),
             id: fresh_doc_id(),
         }
@@ -575,6 +581,17 @@ impl Document {
     /// records exactly what the user chose rather than the effective kind.
     pub fn render_override(&self) -> Option<RenderKind> {
         self.render_override
+    }
+
+    /// The `EMPH` emphasis phrase for this document (`None` = none). Every case-insensitive
+    /// occurrence is highlighted by the GUI as a visual overlay.
+    pub fn emph(&self) -> Option<&str> {
+        self.emph.as_deref()
+    }
+
+    /// Set (or clear, with `None`) the `EMPH` emphasis phrase for this document.
+    pub fn set_emph(&mut self, phrase: Option<String>) {
+        self.emph = phrase.filter(|p| !p.is_empty());
     }
 
     /// Force the buffer to report as modified (`is_modified()` → true) without editing it. Used by

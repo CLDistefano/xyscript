@@ -379,6 +379,16 @@ pub enum EditorOp {
     /// chrome — title bar, menu bar, tab strip, command line, and status line — leaving just the text.
     /// Transient (not persisted); `Esc` turns it off. Read back via `$WV`.
     SetWriterView(Option<bool>),
+    /// `EMPH <phrase>` sets the active tab's persistent emphasis phrase (all occurrences are
+    /// highlighted, case-insensitively); `None` (bare `EMPH`) clears it. Per-document, session-only,
+    /// works in read-only / `*Shell Output*` tabs (it is a visual overlay, not an edit).
+    SetEmph(Option<String>),
+    /// `EMPHFGCOLOR <r g b>` / `default` — the `EMPH` emphasis glyph colour (`None` = follow the
+    /// selected-text colour). `$EMPHFGCOLOR`.
+    SetEmphFgColor(Option<(u8, u8, u8)>),
+    /// `EMPHBGCOLOR <r g b>` / `default` — the `EMPH` emphasis background band colour (`None` = follow
+    /// the selection background). `$EMPHBGCOLOR`.
+    SetEmphBgColor(Option<(u8, u8, u8)>),
     /// Toggle whether the GUI remembers the main window's size + position across runs
     /// (`WINGEO on|off`; `None` toggles). The runtime gates both restore and save on it; `$WINGEO`.
     SetRememberGeometry(Option<bool>),
@@ -1027,6 +1037,12 @@ pub enum ColorGround {
     /// `PANECOLOR` — the border colour drawn around the FOCUSED (active) split pane. Inactive panes
     /// use the separator colour. `$PANECOLOR`.
     PaneBorder,
+    /// `EMPHFGCOLOR` — the `EMPH` emphasis foreground (glyph) colour (`None`/default = the
+    /// selected-text colour, `SELFGCOLOR`). `$EMPHFGCOLOR`.
+    EmphFg,
+    /// `EMPHBGCOLOR` — the `EMPH` emphasis background band colour (`None`/default = the selection
+    /// background, `SELBGCOLOR`). `$EMPHBGCOLOR`.
+    EmphBg,
 }
 
 /// The text-caret shape (`CRSHAPE`). Read back via `$CRSHAPE`.

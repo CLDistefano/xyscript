@@ -474,6 +474,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("UIFGCOLOR", "UIFGCOLORS") / #cmd("UIBGCOLOR", "UIBGCOLORS") / #cmd("SEPCOLOR", "SEPCOLORS"): the UI chrome's text / background / separator color.
 / #cmd("SELFGCOLOR", "SELFGCOLORS") / #cmd("SELBGCOLOR", "SELBGCOLORS"): the selected text's color / highlight.
 / #cmd("FINDFGCOLOR", "FINDFGCOLORS") / #cmd("FINDBGCOLOR", "FINDBGCOLORS"): the FIND "highlight all" color / background.
+/ #cmd("EMPH") / #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): emphasize a word/phrase in the current tab / its text color / its background.
 / #cmd("CRCOLOR", "CRCOLORS") / #cmd("CRSHAPE") / #cmd("CMCRCOLOR", "CMCRCOLORS") / #cmd("CMCRSHAPE"): the text / command-line caret color and shape.
 / #cmd("TABBGCOLOR", "TABBGCOLORS") / #cmd("TABXCOLOR", "TABXCOLORS") / #cmd("PANECOLOR", "PANECOLORS"): the tab background / close-× / focused-pane border color.
 / #cmd("TXTFGCOLOR", "TXTFGCOLORS") / #cmd("TXTBGCOLOR", "TXTBGCOLORS") / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `TXT` and `DIR/W` window text / background colors.
@@ -696,6 +697,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("END", "ER"): move to the end of the line (`ER` is the "Express Right" name).
 / #cmd("EDFAMILY") / #cmd("EDSTYLE") / #cmd("EDFONT", "EDFONTS"): the editor font's family / style / size (`EDFONT +n` adjusts; `…S` opens a picker).
+/ #cmd("EMPH"): `EMPH <word|phrase>` — highlight every occurrence of the word or phrase in the current tab (case-insensitive, literal), a persistent visual overlay that works even in read-only and `*Shell Output*` tabs. Bare `EMPH` clears it. Per-tab and session-only (each tab keeps its own emphasis).
+/ #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): the `EMPH` emphasis text / background color — `EMPHFGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `EMPHFGCOLOR default` clears it so the emphasis follows the selection colors (`SELFGCOLOR`/`SELBGCOLOR`). Read back via #sv("EMPHFGCOLOR") / #sv("EMPHBGCOLOR"); persist in the config.
 / #cmd("ENCODING"): set the file's text encoding view (re-decodes the same bytes). `ENCODING/C <name> [outfile]` *converts* instead — re-encodes the text to `<name>` (lossy → `?`), in place or to a new file.
 / #cmd("ENTER"): insert a newline in the document's line-ending style (bind it to the Enter key).
 / #cmd("ET"): insert the stopwatch's elapsed time.
@@ -1126,6 +1129,7 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 / #sv("UIFGCOLOR") / #sv("UIBGCOLOR") / #sv("SEPCOLOR"): the UI chrome's text, background, and separator colors. #sv("TABXCOLOR"): the tab close-× color (empty = follows the UI text color).
 / #sv("SELFGCOLOR") / #sv("SELBGCOLOR"): the selected text's color and its highlight.
 / #sv("FINDFGCOLOR") / #sv("FINDBGCOLOR"): the FIND "highlight all" matched-text color and its highlight background.
+/ #sv("EMPHFGCOLOR") / #sv("EMPHBGCOLOR"): the effective `EMPH` emphasis text / background color (the override if set, else the selection color).
 / #sv("SPELLCOLOR") / #sv("GRAMMARCOLOR"): the underline colors for live language-check spelling / grammar issues.
 / #sv("CRCOLOR") / #sv("CRSHAPE"): the caret's color and shape (bar / block / underline).
 / #sv("TABACTIVE") / #sv("TABHOVER") / #sv("TABINACTIVE"): the tab-strip colors (empty when at the theme default).
@@ -1243,6 +1247,8 @@ Every special variable in one list, for quick lookup.
 / #sv("EDFAMILY"): editor font family.
 / #sv("EDFONT"): editor font size.
 / #sv("EDSTYLE"): editor font style.
+/ #sv("EMPHBGCOLOR"): effective EMPH emphasis background color.
+/ #sv("EMPHFGCOLOR"): effective EMPH emphasis text color.
 / #sv("EN"): active document's encoding-view name.
 / #sv("ERROR"): trappable-error flag.
 / #sv("ET"): stopwatch elapsed (formatted).

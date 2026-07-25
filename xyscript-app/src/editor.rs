@@ -505,6 +505,29 @@ impl Editor {
     pub fn find_fg_color(&self) -> (u8, u8, u8) {
         self.host.find_fg_color()
     }
+    /// Effective `EMPH` emphasis glyph colour (`EMPHFGCOLOR`, or `SELFGCOLOR` when unset).
+    pub fn emph_fg_color(&self) -> (u8, u8, u8) {
+        self.host.emph_fg_color()
+    }
+    /// Effective `EMPH` emphasis background colour (`EMPHBGCOLOR`, or `SELBGCOLOR` when unset).
+    pub fn emph_bg_color(&self) -> (u8, u8, u8) {
+        self.host.emph_bg_color()
+    }
+    /// The `EMPH` emphasis colours as SET (`None` = follow selection) — for the colour-picker seed.
+    pub fn emph_fg_override(&self) -> Option<(u8, u8, u8)> {
+        self.host.emph_fg_override()
+    }
+    pub fn emph_bg_override(&self) -> Option<(u8, u8, u8)> {
+        self.host.emph_bg_override()
+    }
+    /// The active document's `EMPH` phrase (`None` = none) — the GUI keys its highlight cache on this.
+    pub fn active_emph(&self) -> Option<String> {
+        self.host.active_doc().emph().map(|s| s.to_string())
+    }
+    /// Rope-offset spans of every occurrence of the active document's `EMPH` phrase (case-insensitive).
+    pub fn emph_highlights(&self) -> Vec<(usize, usize)> {
+        self.host.emph_highlights()
+    }
     /// Spelling-issue underline colour (`SPELLCOLOR`).
     pub fn spell_color(&self) -> (u8, u8, u8) {
         self.host.spell_color()
@@ -5944,6 +5967,56 @@ mod tests {
         e.run_command("WV on");
         e.run_command("WV sideways");
         assert!(e.writer_view(), "a rejected WV arg changes nothing");
+    }
+
+    #[test]
+    fn emph_sets_and_clears_the_active_tabs_phrase_and_finds_it_case_insensitively() {
+        let mut e = ed();
+        e.insert_str("The cat sat. A CAT ran. cAt.");
+        assert!(e.active_emph().is_none(), "no emphasis by default");
+        assert!(e.emph_highlights().is_empty());
+        e.run_command("EMPH cat");
+        assert_eq!(e.active_emph().as_deref(), Some("cat"));
+        // Three occurrences, case-insensitive ("cat", "CAT", "cAt").
+        assert_eq!(e.emph_highlights().len(), 3, "case-insensitive literal matches");
+        // Bare EMPH clears it.
+        e.run_command("EMPH");
+        assert!(e.active_emph().is_none());
+        assert!(e.emph_highlights().is_empty());
+    }
+
+    #[test]
+    fn emph_is_per_tab() {
+        let mut e = ed();
+        e.insert_str("alpha alpha");
+        e.run_command("EMPH alpha"); // tab 1 gets an emphasis
+        assert_eq!(e.active_emph().as_deref(), Some("alpha"));
+        e.run_command("NEW"); // fresh tab — its own (absent) emphasis
+        assert!(e.active_emph().is_none(), "a new tab starts with no emphasis");
+        assert!(e.emph_highlights().is_empty());
+    }
+
+    #[test]
+    fn emph_colors_default_to_selection_and_are_overridable() {
+        let mut e = ed();
+        e.run_command("SELFGCOLOR 10 20 30");
+        e.run_command("SELBGCOLOR 40 50 60");
+        // Unset EMPH colours follow the selection colours.
+        e.run_command("PR $EMPHFGCOLOR");
+        assert_eq!(e.output().last().map(String::as_str), Some("10 20 30"));
+        e.run_command("PR $EMPHBGCOLOR");
+        assert_eq!(e.output().last().map(String::as_str), Some("40 50 60"));
+        assert_eq!(e.emph_fg_color(), (10, 20, 30));
+        assert_eq!(e.emph_bg_color(), (40, 50, 60));
+        // Overriding EMPHFGCOLOR wins; `default` restores the follow-selection behaviour.
+        e.run_command("EMPHFGCOLOR 200 100 50");
+        assert_eq!(e.emph_fg_color(), (200, 100, 50));
+        assert_eq!(e.emph_fg_override(), Some((200, 100, 50)));
+        e.run_command("PR $EMPHFGCOLOR");
+        assert_eq!(e.output().last().map(String::as_str), Some("200 100 50"));
+        e.run_command("EMPHFGCOLOR default");
+        assert_eq!(e.emph_fg_override(), None);
+        assert_eq!(e.emph_fg_color(), (10, 20, 30), "cleared → follows selection again");
     }
 
     #[test]

@@ -2270,6 +2270,15 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetWriterView(want))?;
                 Ok(Flow::Next)
             }
+            // `EMPH <phrase>` — highlight every occurrence of <phrase> in the active tab
+            // (case-insensitive, literal); bare `EMPH` clears it. Per-tab, session-only; colours from
+            // `EMPHFGCOLOR`/`EMPHBGCOLOR` (default: the selection colours). Works in read-only tabs.
+            "EMPH" => {
+                let t = args.trim();
+                let phrase = if t.is_empty() { None } else { Some(t.to_string()) };
+                self.host_op(EditorOp::SetEmph(phrase))?;
+                Ok(Flow::Next)
+            }
             // `WINGEO on|off` (bare = toggle) — whether the GUI remembers the main window's size +
             // position across runs. `$WINGEO` reads it; off is handy on mixed-DPI multi-monitor setups.
             "WINGEO" => {
@@ -2441,6 +2450,24 @@ impl Vm<'_, '_> {
                     Some(parse_color("BALPAIRSCOLOR", t, hsl)?)
                 };
                 self.host_op(EditorOp::SetBalColor(color))?;
+                Ok(Flow::Next)
+            }
+            // `EMPHFGCOLOR`/`EMPHBGCOLOR <r g b>` / `default` — the `EMPH` emphasis glyph / background
+            // colour (`/HSL`); bare or `… default` follows the selection colours. `EMPHFGCOLORS`/
+            // `EMPHBGCOLORS` open the picker. `$EMPHFGCOLOR`/`$EMPHBGCOLOR`.
+            "EMPHFGCOLOR" | "EMPHBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(if base == "EMPHFGCOLOR" {
+                    EditorOp::SetEmphFgColor(color)
+                } else {
+                    EditorOp::SetEmphBgColor(color)
+                })?;
                 Ok(Flow::Next)
             }
             // `PAFGCOLOR`/`PABGCOLOR <r g b>` — the `$CWD` path-display foreground/background colour
@@ -3018,11 +3045,14 @@ impl Vm<'_, '_> {
             "FGCOLORS" | "BGCOLORS" | "UIFGCOLORS" | "UIBGCOLORS" | "CRCOLORS" | "CMCRCOLORS"
             | "SEPCOLORS" | "TXTFGCOLORS" | "TXTBGCOLORS" | "DWFGCOLORS" | "DWBGCOLORS"
             | "SELBGCOLORS" | "SELFGCOLORS" | "FINDBGCOLORS" | "FINDFGCOLORS"
-            | "SPELLCOLORS" | "GRAMMARCOLORS" | "TABXCOLORS" | "PANECOLORS" | "BALPAIRSCOLORS" => {
+            | "SPELLCOLORS" | "GRAMMARCOLORS" | "TABXCOLORS" | "PANECOLORS" | "BALPAIRSCOLORS"
+            | "EMPHFGCOLORS" | "EMPHBGCOLORS" => {
                 let ground = match base {
                     "FGCOLORS" => ColorGround::Fg,
                     "PANECOLORS" => ColorGround::PaneBorder,
                     "BALPAIRSCOLORS" => ColorGround::BalPairs,
+                    "EMPHFGCOLORS" => ColorGround::EmphFg,
+                    "EMPHBGCOLORS" => ColorGround::EmphBg,
                     "BGCOLORS" => ColorGround::Bg,
                     "UIFGCOLORS" => ColorGround::UiFg,
                     "UIBGCOLORS" => ColorGround::UiBg,
@@ -4767,7 +4797,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
-        | "PANECOLOR" | "BALPAIRSCOLOR" => &["HSL"], // triple as H S L
+        | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR" => &["HSL"], // triple as H S L
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
         "AB" => &["V"], // `/V` — verify (ask to save) before closing
         "ABD" => &["V"], // `/V` — verify (confirm) before deleting + closing

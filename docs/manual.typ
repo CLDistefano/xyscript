@@ -481,6 +481,14 @@ paired. This applies to what you type by hand — the scripted #raw("INSERT") ve
 #raw("TABINDENT on"), #raw("WRAPINDENT on"), #raw("BALPAIRS on"), #raw("TYPEPAIRS on") — and they greet
 you every launch. #raw("SaveCfg") writes the current set into your config file.]
 
+*Emphasis.* #raw("EMPH cat") paints every occurrence of _cat_ in the current tab — matched
+case-insensitively, so #raw("CAT") and #raw("cAt") light up too. It is a standing highlight, not an edit,
+so it works even where you cannot type: a read-only tab, or the #raw("*Shell Output*") pane. Each tab
+keeps its own emphasis, and a bare #raw("EMPH") clears the current tab's. The colors default to your
+selection colors; #raw("EMPHFGCOLOR") and #raw("EMPHBGCOLOR") (or their #raw("EMPHFGCOLORS") /
+#raw("EMPHBGCOLORS") pickers) give the emphasis a look of its own, and #raw("… default") hands it back to
+the selection colors. Read the effective colors as #raw("$EMPHFGCOLOR") / #raw("$EMPHBGCOLOR").
+
 == Deleting
 
 XyScript keeps two independent stashes: the system *clipboard* (Cut / Copy / Paste) and the XyWrite

@@ -1121,6 +1121,8 @@ pub enum ColorTarget {
     BalPairs,
     PathFg,
     PathBg,
+    EmphFg,
+    EmphBg,
 }
 
 impl ColorTarget {
@@ -1151,6 +1153,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => "Matched-bracket highlight colour".into(),
             ColorTarget::PathFg => "$CWD path text colour".into(),
             ColorTarget::PathBg => "$CWD path background colour".into(),
+            ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
+            ColorTarget::EmphBg => "EMPH emphasis background colour".into(),
         }
     }
     /// The setter command to run (with the chosen `R G B`) when the user accepts the picker.
@@ -1180,6 +1184,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => return format!("BALPAIRSCOLOR {r} {g} {b}"),
             ColorTarget::PathFg => "PAFGCOLOR",
             ColorTarget::PathBg => "PABGCOLOR",
+            ColorTarget::EmphFg => "EMPHFGCOLOR",
+            ColorTarget::EmphBg => "EMPHBGCOLOR",
         };
         format!("{verb} {r} {g} {b}")
     }
@@ -1767,6 +1773,10 @@ pub struct AppHost {
     /// The matched-bracket highlight colour (`BALPAIRSCOLOR`; `None` = use the selection colour).
     /// `$BALPAIRSCOLOR`.
     bal_color: Option<(u8, u8, u8)>,
+    /// The `EMPH` emphasis glyph / background colours (`EMPHFGCOLOR`/`EMPHBGCOLOR`; `None` = follow
+    /// the selection colours, `SELFGCOLOR`/`SELBGCOLOR`). `$EMPHFGCOLOR`/`$EMPHBGCOLOR`.
+    emph_fg: Option<(u8, u8, u8)>,
+    emph_bg: Option<(u8, u8, u8)>,
     /// Auto-close typed pairs (`TYPEPAIRS`): typing a left `()[]{}"'` inserts the partner; Backspace
     /// deletes an empty pair. Interactive typing only (not the scripted `INSERT`). `$TYPEPAIRS`.
     type_pairs: bool,
@@ -2174,6 +2184,8 @@ impl AppHost {
             type_pairs: false,
             wrap_indent: false,
             bal_color: None,
+            emph_fg: None,
+            emph_bg: None,
             float_decimals: None, // default precision
             viewport_top: 0,
             cursor_vis: None,
@@ -3205,6 +3217,34 @@ impl AppHost {
     /// `BALPAIRSCOLOR` — the highlight colour, or `None` to follow the selection colour.
     pub fn bal_pairs_color(&self) -> Option<(u8, u8, u8)> {
         self.bal_color
+    }
+    /// The `EMPH` emphasis colours as SET (`None` = follow the selection colour) — for SaveCfg / the
+    /// picker seed. `emph_fg_color`/`emph_bg_color` give the EFFECTIVE colour used for drawing.
+    pub fn emph_fg_override(&self) -> Option<(u8, u8, u8)> {
+        self.emph_fg
+    }
+    pub fn emph_bg_override(&self) -> Option<(u8, u8, u8)> {
+        self.emph_bg
+    }
+    /// The EFFECTIVE `EMPH` emphasis glyph colour: the `EMPHFGCOLOR` override, or the selected-text
+    /// colour (`SELFGCOLOR`) when unset.
+    pub fn emph_fg_color(&self) -> (u8, u8, u8) {
+        self.emph_fg.unwrap_or(self.sel_fg_color)
+    }
+    /// The EFFECTIVE `EMPH` emphasis background colour: the `EMPHBGCOLOR` override, or the selection
+    /// background (`SELBGCOLOR`) when unset.
+    pub fn emph_bg_color(&self) -> (u8, u8, u8) {
+        self.emph_bg.unwrap_or(self.sel_bg_color)
+    }
+    /// The rope-offset spans of every case-insensitive occurrence of the ACTIVE document's `EMPH`
+    /// phrase (empty when no emphasis is set). The GUI paints these as a persistent highlight.
+    pub fn emph_highlights(&self) -> Vec<(usize, usize)> {
+        let phrase = match self.docs[self.active].emph() {
+            Some(p) if !p.is_empty() => p.to_string(),
+            _ => return Vec::new(),
+        };
+        // Case-insensitive, literal (not whole-word, not regex), whole document.
+        self.find_all(&phrase, false, false, false, false)
     }
     /// The bracket match at the active document's caret, for the GUI to highlight. Returns
     /// [`BalMatch::None`] when `BALPAIRS` is off (so the GUI can skip all bracket work in one check).
@@ -6656,6 +6696,12 @@ impl AppHost {
         if let Some((r, g, b)) = self.bal_color {
             put(&mut s, "Matched-bracket highlight colour — R G B, 0-255", format!("BALPAIRSCOLOR {r} {g} {b}"));
         }
+        if let Some((r, g, b)) = self.emph_fg {
+            put(&mut s, "EMPH emphasis text colour — R G B, 0-255", format!("EMPHFGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.emph_bg {
+            put(&mut s, "EMPH emphasis background colour — R G B, 0-255", format!("EMPHBGCOLOR {r} {g} {b}"));
+        }
         if let Some(n) = self.float_decimals {
             put(&mut s, "Fixed decimal places for float display", format!("DECIMALS {n}"));
         }
@@ -7837,6 +7883,8 @@ impl Host for AppHost {
                     ColorGround::TxtBg => ColorTarget::TxtBg,
                     ColorGround::DwFg => ColorTarget::DwFg,
                     ColorGround::DwBg => ColorTarget::DwBg,
+                    ColorGround::EmphFg => ColorTarget::EmphFg,
+                    ColorGround::EmphBg => ColorTarget::EmphBg,
                 });
                 return Ok(Value::str(""));
             }
@@ -8362,6 +8410,27 @@ impl Host for AppHost {
                 return Ok(Value::str(match color {
                     Some((r, g, b)) => format!("bracket highlight colour = {r} {g} {b}"),
                     None => "bracket highlight colour = selection colour".to_string(),
+                }));
+            }
+            EditorOp::SetEmph(phrase) => {
+                self.docs[self.active].set_emph(phrase.clone());
+                return Ok(Value::str(match phrase {
+                    Some(p) if !p.is_empty() => format!("emphasis: {p:?}"),
+                    _ => "emphasis cleared".to_string(),
+                }));
+            }
+            EditorOp::SetEmphFgColor(color) => {
+                self.emph_fg = color;
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("emphasis text colour = {r} {g} {b}"),
+                    None => "emphasis text colour = selection colour".to_string(),
+                }));
+            }
+            EditorOp::SetEmphBgColor(color) => {
+                self.emph_bg = color;
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("emphasis background colour = {r} {g} {b}"),
+                    None => "emphasis background colour = selection colour".to_string(),
                 }));
             }
             EditorOp::SetTypePairs(on) => {
@@ -8949,6 +9018,16 @@ impl Host for AppHost {
                     ColorGround::BalPairs => {
                         self.bal_color = Some(rgb);
                         "bracket highlight"
+                    }
+                    // `EMPHFGCOLOR`/`EMPHBGCOLOR` set via dedicated ops (they're optional); these arms
+                    // keep the match exhaustive and store a concrete pick coherently (picker → OK).
+                    ColorGround::EmphFg => {
+                        self.emph_fg = Some(rgb);
+                        "emphasis text"
+                    }
+                    ColorGround::EmphBg => {
+                        self.emph_bg = Some(rgb);
+                        "emphasis background"
                     }
                 };
                 return Ok(Value::str(format!("{name} colour = {r} {g} {b}")));
@@ -9727,6 +9806,15 @@ impl Host for AppHost {
             }
             "SELFGCOLOR" => {
                 let (r, g, b) = self.sel_fg_color;
+                Some(Value::str(format!("{r} {g} {b}")))
+            }
+            // The EFFECTIVE emphasis colours (the override if set, else the selection colour).
+            "EMPHFGCOLOR" => {
+                let (r, g, b) = self.emph_fg_color();
+                Some(Value::str(format!("{r} {g} {b}")))
+            }
+            "EMPHBGCOLOR" => {
+                let (r, g, b) = self.emph_bg_color();
                 Some(Value::str(format!("{r} {g} {b}")))
             }
             "FINDBGCOLOR" => {
