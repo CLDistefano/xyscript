@@ -1181,7 +1181,18 @@ impl Document {
         let inserted = self.buffer.encode(&region);
         let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
         self.buffer.replace_range_bytes(rfs, rle - rfs, &inserted);
-        self.buffer.set_caret(rfs + inserted.len(), None);
+        // XyWrite-style: a change leaves the caret where it was rather than dragging it to the last
+        // match. Adjust only for the net text shift — unchanged if the caret was before the edited
+        // span, shifted by the length delta if after it, clamped to the span start if inside it.
+        let delta = inserted.len() as isize - (rle - rfs) as isize;
+        let restored = if cb <= rfs {
+            cb
+        } else if cb >= rle {
+            (cb as isize + delta).max(0) as usize
+        } else {
+            rfs
+        };
+        self.buffer.set_caret(restored.min(self.buffer.len()), None);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
         self.record(Op { at: rfs, removed, inserted }, Kind::Other, cb, ab, ca, aa);
         count

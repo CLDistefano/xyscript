@@ -3041,6 +3041,35 @@ mod tests {
     }
 
     #[test]
+    fn change_keeps_the_caret_put_and_reports_the_count() {
+        let mut e = ed();
+        e.run_command("INSERT \"x a a a\""); // x@0 a@2 a@4 a@6
+        e.run_command("TF"); // caret to the top (offset 0)
+        // CH replaces from the cursor forward; the caret must stay at the command point, NOT jump to
+        // the last change, and the tally lands on the status line.
+        e.run_command("CH /a/Z/");
+        assert_eq!(e.document().text(), "x Z Z Z");
+        assert_eq!(e.document().cursor(), 0, "the caret stays at the command point");
+        assert_eq!(e.status_message(), Some("3 changes"));
+        // A single change reports the singular form.
+        e.run_command("TF");
+        e.run_command("CH /x/y/");
+        assert_eq!(e.status_message(), Some("1 change"));
+    }
+
+    #[test]
+    fn change_before_the_caret_shifts_it_with_the_text() {
+        let mut e = ed();
+        e.run_command("INSERT \"aa aa aa\""); // 8 bytes; INSERT leaves the caret at the end (offset 8)
+        // `/T` changes from the TOP, so the edits fall BEFORE the caret. Each "aa" → "b" shrinks the
+        // text by 1 (3 matches → −3); the caret must shift left with it and rest at the new end.
+        e.run_command("CH/T /aa/b/");
+        assert_eq!(e.document().text(), "b b b"); // 5 bytes
+        assert_eq!(e.document().cursor(), 5, "the caret tracked the text shift and stayed at the end");
+        assert_eq!(e.status_message(), Some("3 changes"));
+    }
+
+    #[test]
     fn cv_count_stops_after_n_changes() {
         use crate::host::VerifyChoice;
         let mut e = ed();

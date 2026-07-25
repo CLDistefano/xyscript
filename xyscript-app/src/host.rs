@@ -4818,7 +4818,9 @@ impl AppHost {
                 if n == 0 && spec.count.is_none() {
                     Err(XplError::trappable(format!("not found: {find}")))
                 } else {
-                    Ok(Value::str(""))
+                    // XyWrite-style: the caret stayed put, so report the tally on the status line.
+                    let msg = if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
+                    Ok(Value::str(msg))
                 }
             }
         }

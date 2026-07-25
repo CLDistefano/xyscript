@@ -1256,6 +1256,9 @@ impl Vm<'_, '_> {
                     spec.replace = Some(self.subst(&r));
                 }
             }
+            // A replace (`CH`/`CI` family) returns a "N changes" tally, which `host_op` surfaces on the
+            // status line (the caret stayed put, so the count is the only feedback). A plain search
+            // returns "" and shows nothing.
             self.host_op(EditorOp::Search(spec))?;
             return Ok(Flow::Next);
         }
