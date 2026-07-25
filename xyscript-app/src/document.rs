@@ -427,9 +427,10 @@ impl Document {
     /// Append `text` at the end as a programmatic log entry (e.g. background-job output): inserts
     /// past the read-only gate, keeps the buffer "clean" (no save-on-close prompt), and locks it.
     pub fn append_log(&mut self, text: &str) {
-        // Append at the end, but KEEP the caret where it was. For the shell-output log the host
-        // pins the caret to the start of the current job's output, so streamed chunks grow below
-        // it and the view rests at the top of the new output instead of chasing the bottom.
+        // Append at the end, but KEEP the caret where it was — each caller sets its own resting
+        // position afterward (the shell-output log lands it at the end to follow the tail; the
+        // *Language Check* report leaves it at the top). `truncate_log_front` shifts a pinned caret
+        // with any trimmed front so it tracks the content.
         let saved = self.buffer.cursor();
         let end = self.buffer.len();
         self.buffer.set_caret(end, None);

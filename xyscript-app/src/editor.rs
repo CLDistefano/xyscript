@@ -7585,6 +7585,26 @@ mod tests {
     }
 
     #[test]
+    fn shell_output_caret_lands_at_the_end_of_the_output() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("TRUST 1");
+        e.run_command("X/BG echo hi");
+        let mut waited = 0;
+        while e.job_count() > 0 && waited < 400 {
+            let _ = e.poll_jobs();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            waited += 1;
+        }
+        assert_eq!(e.job_count(), 0, "background job did not finish in time");
+        // The caret rests at the very end of the *Shell Output* buffer (the newest text), so the
+        // view follows the tail rather than pinning to the top of the run.
+        let i = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("Shell Output tab");
+        e.set_active_buffer(i);
+        let len = e.document().text().len();
+        assert_eq!(e.document().cursor(), len, "caret should be at the end of the output");
+    }
+
+    #[test]
     fn sw_toggles_shell_output_visibility_reads_back_and_persists() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

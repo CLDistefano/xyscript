@@ -3232,6 +3232,10 @@ impl AppHost {
         let idx = self.shell_output_doc_index();
         self.docs[idx].append_log(text);
         self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP); // bound the scrollback
+        // Land the caret at the END of the output: the view follows the caret, so it rests on the
+        // newest text as the job streams — a tail-follow console rather than a pinned-at-top log.
+        let end = self.docs[idx].buffer().len();
+        self.docs[idx].set_caret(end, None);
     }
 
     /// Put a `CHECK` report into a dedicated read-only `*Language Check*` tab (replacing any prior
@@ -3421,13 +3425,9 @@ impl AppHost {
     /// at job launch only; the per-line streaming in `poll_jobs` uses the plain append so it never
     /// steals focus.
     fn start_shell_output_log(&mut self, header: &str) {
-        // Pin the caret to the START of this job's output (just before its header) so the user
-        // reads from the top of the new output rather than the bottom. `append_log` preserves the
-        // caret and `truncate_log_front` shifts it with any trimmed front, so it stays put as the
-        // job's output streams in below it.
+        // The header — and the output streamed after it — lands the caret at the END of the buffer
+        // (see `append_shell_output_text`), so the view follows the newest output as it arrives.
         let idx = self.shell_output_doc_index();
-        let start = self.docs[idx].buffer().len();
-        self.docs[idx].set_caret(start, None);
         self.append_shell_output_text(header);
         if self.shell_output_visible {
             self.active = idx;
