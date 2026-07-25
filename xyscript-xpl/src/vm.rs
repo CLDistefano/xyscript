@@ -4989,9 +4989,18 @@ fn split_switch_names(s: &str) -> Vec<String> {
 /// each default whose LEADING LETTER isn't already present in the command — coarse per-letter
 /// override: a command `/O…` supersedes a default `/O…`, while an unrelated command `/A…` leaves an
 /// `/O…` default in place (the reported intent). Command switches come last so they win on any tie.
+///
+/// A sort order on the command line (`/O…`) additionally supersedes a default `/R` (reverse), not
+/// just the default `/O…`. `/R` is a modifier on a sort order with no "off" form, so a `DIRSET /OD/R`
+/// would otherwise force reverse onto every listing: typing `/ON` alone would silently stay reversed,
+/// with no way back to ascending short of clearing `DIRSET`. Re-specifying the order is a complete
+/// ordering directive; the caller can still say `/ON/R` to reverse explicitly (their own `/R` wins).
 fn merge_dir_defaults(cmd: &[String], defaults: &[String]) -> Vec<String> {
     let letter = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase());
-    let cmd_letters: std::collections::HashSet<Option<char>> = cmd.iter().map(|s| letter(s)).collect();
+    let mut cmd_letters: std::collections::HashSet<Option<char>> = cmd.iter().map(|s| letter(s)).collect();
+    if cmd_letters.contains(&Some('O')) {
+        cmd_letters.insert(Some('R')); // an explicit order overrides a default reverse too
+    }
     let mut out: Vec<String> =
         defaults.iter().filter(|d| !cmd_letters.contains(&letter(d))).cloned().collect();
     out.extend(cmd.iter().cloned());
@@ -5265,9 +5274,19 @@ mod tests {
         let def = vec!["OD".to_string(), "R".to_string()];
         // No command switches → the defaults apply as-is.
         assert_eq!(merge_dir_defaults(&[], &def), vec!["OD", "R"]);
-        // A command /O overrides the /O default; /R (a different letter) survives.
+        // A command /O overrides BOTH the /O default AND the default /R: re-specifying the order is a
+        // complete directive, so it can't leave the listing stuck in reverse.
         let m = merge_dir_defaults(&["ON".to_string()], &def);
+        assert!(m.contains(&"ON".to_string()) && !m.contains(&"R".to_string()) && !m.contains(&"OD".to_string()));
+        // …but the command's OWN /R still applies — an explicit reverse wins over the override.
+        let m = merge_dir_defaults(&["ON".to_string(), "R".to_string()], &def);
         assert!(m.contains(&"ON".to_string()) && m.contains(&"R".to_string()) && !m.contains(&"OD".to_string()));
+        // An explicit order cancels a default /R even when /R is the only default.
+        let m = merge_dir_defaults(&["OS".to_string()], &vec!["R".to_string()]);
+        assert!(m.contains(&"OS".to_string()) && !m.contains(&"R".to_string()));
+        // A command /R with no /O leaves a default order in place (adds reverse to it).
+        let m = merge_dir_defaults(&["R".to_string()], &vec!["OD".to_string()]);
+        assert!(m.contains(&"OD".to_string()) && m.contains(&"R".to_string()));
         // An unrelated command switch leaves BOTH defaults in place.
         let m = merge_dir_defaults(&["AD".to_string()], &def);
         assert!(m.contains(&"OD".to_string()) && m.contains(&"R".to_string()) && m.contains(&"AD".to_string()));

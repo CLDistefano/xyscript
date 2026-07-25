@@ -6096,6 +6096,19 @@ mod tests {
             lst["LST"].lines().filter(|l| l.ends_with(".txt")).collect();
         assert_eq!(files, vec!["c.txt", "b.txt", "a.txt"], "the /R default reversed the listing");
 
+        // BUT an explicit order on the CMline overrides the default /R too — otherwise `DIRSET /ON/R`
+        // forces reverse onto every listing, with no way back to ascending. `DIR/B/ON` sorts by name
+        // ASCENDING despite the DIRSET /R.
+        e.run_command("CAPTURE asc DIR/B/ON");
+        let asc = e.breakpoint_vars().into_iter().collect::<std::collections::HashMap<_, _>>();
+        let asc_files: Vec<&str> = asc["ASC"].lines().filter(|l| l.ends_with(".txt")).collect();
+        assert_eq!(asc_files, vec!["a.txt", "b.txt", "c.txt"], "a CMline /O cancels the DIRSET /R");
+        // …and the user can still force reverse explicitly — their own /R wins.
+        e.run_command("CAPTURE rev DIR/B/ON/R");
+        let rev = e.breakpoint_vars().into_iter().collect::<std::collections::HashMap<_, _>>();
+        let rev_files: Vec<&str> = rev["REV"].lines().filter(|l| l.ends_with(".txt")).collect();
+        assert_eq!(rev_files, vec!["c.txt", "b.txt", "a.txt"], "an explicit /R still reverses");
+
         // Validation: /W (where it opens) and an unknown switch are rejected; state is unchanged.
         e.run_command("DIRSET /W");
         assert!(e.last_error().unwrap().contains("not a default"));
