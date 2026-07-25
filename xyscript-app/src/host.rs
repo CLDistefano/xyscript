@@ -9579,6 +9579,9 @@ impl Host for AppHost {
             "LI" => Some(Value::str(b.line_text(b.cursor_line()))),
             // The word under the caret (no surrounding whitespace); empty off a word.
             "WD" => Some(Value::str(b.word_at())),
+            // The ENTIRE text of the active buffer (or the blind-edit buffer during `BEDIT`) — every
+            // character, newlines included. `SET all = $DOC` grabs the whole tab at once.
+            "DOC" => Some(Value::str(b.text())),
             // Whole-document word count (selection word count is via the WORDCOUNT verb).
             "WC" => Some(Value::Int(b.word_count() as i64)),
             // Replacement count from the most recent `CH` (replace-all).

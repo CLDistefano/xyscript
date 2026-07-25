@@ -1066,6 +1066,7 @@ plain alphabetical index.
 / #sv("LN") / #sv("LC"): the caret's line and column, both 1-based.
 / #sv("CX") / #sv("CY"): the caret's visual column (0-based, wrap-aware) / its visual row from the top of the view.
 / #sv("LI") / #sv("WD"): the text of the line / the word under the caret.
+/ #sv("DOC"): the ENTIRE text of the active buffer (every character, newlines included) — the whole tab in one read. `SET all = $DOC`.
 / #sv("CH"): the character just to the right of the caret (a line break reads as `\n`).
 / #sv("TL"): the document's total line count.
 / #sv("FB") / #sv("FE"): `1` if the caret is at the very start / end of the buffer.
@@ -1227,6 +1228,7 @@ Every special variable in one list, for quick lookup.
 / #sv("DIRSET"): default DIR sort/filter/view switches (e.g. `/OD/R`).
 / #sv("DIRRT"): reuse the listing tab for `DIR`.
 / #sv("DN"): selection end offset.
+/ #sv("DOC"): the entire text of the active buffer.
 / #sv("DOCTYPE"): PDF render kind (typst/gfm/html).
 / #sv("DP"): directory-listing path + mask.
 / #sv("DR"): file under the listing caret.

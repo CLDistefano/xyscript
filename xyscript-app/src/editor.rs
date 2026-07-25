@@ -3994,6 +3994,30 @@ mod tests {
     }
 
     #[test]
+    fn doc_special_returns_the_whole_buffer() {
+        let mut e = ed();
+        e.run_command(r#"insert "alpha""#);
+        e.run_command("ENTER");
+        e.run_command(r#"insert "beta""#);
+        e.run_command("ENTER");
+        e.run_command(r#"insert "gamma""#); // "alpha<nl>beta<nl>gamma", caret at the end
+        // $DOC is the ENTIRE buffer, independent of caret position (put it at the top to prove it).
+        e.run_command("TOP");
+        e.run_command("SET all = $DOC");
+        let all = e
+            .breakpoint_vars()
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>()
+            .get("ALL")
+            .cloned();
+        // Equals the buffer's own text verbatim — three lines joined by the doc's newline (CRLF on
+        // Windows), so compare to the live text rather than a hard-coded newline.
+        let doc_text = e.document().text();
+        assert_eq!(all.as_deref(), Some(doc_text.as_str()));
+        assert!(doc_text.contains("alpha") && doc_text.contains("gamma")); // sanity: all lines present
+    }
+
+    #[test]
     fn enter_inserts_the_documents_newline_and_newline_special_reads_it() {
         use crate::document::LineEnding;
         let mut e = ed();

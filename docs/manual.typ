@@ -392,6 +392,10 @@ selection's text is available two ways: the variable #raw("$SE") substitutes it 
 for short, simple selections), and the expression function #raw("SEL()") returns the same text as a
 proper string value, so it survives selections that contain quotes or backslashes.
 
+To capture a whole tab at once — no selecting required — read #raw("$DOC"), which returns the entire
+buffer: #raw("SET all = $DOC"). Alongside it, #raw("$LI") is the current line, #raw("$WD") the word at
+the caret, and #raw("$CH") the character just to the right.
+
 == Inserting text
 
 Most text you simply type. But XyScript also has verbs that *put* text into the document at the cursor

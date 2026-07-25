@@ -59,7 +59,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     // directory listing (DIR/LS): D1 = is-a-listing flag; DP = listing path + mask; DR = entry under cursor
     "D1", "DP", "DR",
     // cursor/offset
-    "CP", "CX", "CY", "LN", "OF", "LI", "WD",
+    "CP", "CX", "CY", "LN", "OF", "LI", "WD", "DOC",
     // selection
     "SE", "SEL", "SL", "DF", "DS", "DN", "CS",
     // editor state/flags (EN = active document's encoding-view name)
