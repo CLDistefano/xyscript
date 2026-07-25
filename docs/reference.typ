@@ -413,6 +413,14 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 == Directories and listings
 
+*Point-and-shoot.* In a `DIR`/`LS` listing, a file command typed with NO argument acts on the file
+on the caret's row — so parking the caret on a name and typing `OPEN`, `DEL`, `RUN`, `ED`, `BEDIT`,
+`LOADKBD`/`LOADLIB`/`LOADAR`/`LOADVARS`, or `NE` operates on that file, as if you had typed its path.
+It applies only when the argument is empty and the caret is on a real entry (not the `..` parent);
+give an explicit path and that always wins. Two-argument commands (`COPY`, `RENAME`) and the
+save-to-a-path verbs (`ST`, `SAAS`) are excluded — their argument isn't a file to read but a
+destination.
+
 / #cmd("CD"): change the working directory (or switch drive).
 / #cmd("DIR", "LS"): open a directory-listing browser.
 / #cmd("DIRNW") / #cmd("DIRWNW") / #cmd("DIRWCLOSE") / #cmd("DIRRT"): open-in-new-tab modes for an in-tab listing / the `DIR/W` window, whether `DIR/W` closes after opening a file, and reuse-the-listing-tab mode.

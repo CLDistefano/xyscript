@@ -6106,6 +6106,66 @@ mod tests {
     }
 
     #[test]
+    fn point_and_shoot_opens_the_file_under_the_caret() {
+        let base = std::env::temp_dir().join(format!("xyscript-pns-open-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("alpha.txt"), b"ALPHA").unwrap();
+        std::fs::write(base.join("beta.txt"), b"BETA").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        assert!(e.active_is_dir_listing(), "DIR opened a listing tab");
+
+        // Park the caret on the beta.txt row, then OPEN with NO argument — point-and-shoot opens it.
+        e.run_command("SE /beta/");
+        assert!(e.host().point_and_shoot_file().is_some_and(|p| p.ends_with("beta.txt")));
+        e.run_command("OPEN");
+        assert!(!e.active_is_dir_listing(), "OPEN switched to the file's tab");
+        assert_eq!(e.document().text(), "BETA");
+    }
+
+    #[test]
+    fn point_and_shoot_deletes_the_file_under_the_caret() {
+        let base = std::env::temp_dir().join(format!("xyscript-pns-del-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("keep.txt"), b"k").unwrap();
+        std::fs::write(base.join("gone.txt"), b"g").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        // Caret on gone.txt, then ERNV (delete-no-verify) with no argument deletes THAT file.
+        e.run_command("SE /gone/");
+        e.run_command("ERNV");
+        assert!(!base.join("gone.txt").exists(), "point-and-shoot ERNV deleted the caret's file");
+        assert!(base.join("keep.txt").exists(), "the other file is untouched");
+    }
+
+    #[test]
+    fn point_and_shoot_only_fires_on_a_listing_with_no_arg() {
+        let mut e = ed();
+        // Not a listing → no target, even for a file verb.
+        e.insert_str("ordinary document");
+        assert!(e.host().point_and_shoot_file().is_none(), "a normal doc is not a listing");
+        // An explicit argument is never overridden — proven by DEL/RUN elsewhere; here just confirm
+        // the parent `..` (top of a listing) yields no target.
+        let base = std::env::temp_dir().join(format!("xyscript-pns-dotdot-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("f.txt"), b"f").unwrap();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        e.run_command("TF"); // top of the listing — the synthesized `..`
+        assert!(
+            e.host().point_and_shoot_file().is_none_or(|p| !p.ends_with("..")),
+            "the `..` parent row is not a point-and-shoot target"
+        );
+    }
+
+    #[test]
     fn dirrt_reuses_the_listing_tab() {
         let base = std::env::temp_dir().join(format!("xyscript-dirrt-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);

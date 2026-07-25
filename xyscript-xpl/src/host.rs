@@ -1379,6 +1379,14 @@ pub trait Host {
         String::new()
     }
 
+    /// Point-and-shoot target: the path of the file/dir under the caret when the active buffer is a
+    /// `DIR`/`LS` listing and the caret is on a real entry (not the `..` parent). `None` otherwise.
+    /// The dispatcher uses this to fill an EMPTY file argument for the file commands (`OPEN`, `DEL`,
+    /// `RUN`, …), so `DEL` alone on a listing line deletes that line's file — XyWrite point-and-shoot.
+    fn point_and_shoot_file(&self) -> Option<String> {
+        None
+    }
+
     /// A random integer in the inclusive range `[min, max]` from the host's seedable generator, for
     /// the `RANDOM(min, max)` function. `None` where there is no generator (the bare/stub host).
     /// Args are swapped if `min > max`.

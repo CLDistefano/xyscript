@@ -44,6 +44,15 @@ const NO_ERROR_TOUCH: &[&str] = &[
     "HLKINDS",
 ];
 
+/// Verbs whose single argument IS a file to act upon. When one of these is issued with NO argument
+/// while the caret is on a file in a `DIR`/`LS` listing, the argument is filled from that file
+/// (point-and-shoot — see `exec_command`). Two-argument commands (`COPY`, `RENAME`) and destination
+/// verbs that write the active buffer (`ST`, `SAAS`) are deliberately excluded.
+const POINT_AND_SHOOT_VERBS: &[&str] = &[
+    "OPEN", "CA", "ED", "EDIT", "READ", "DEL", "ERNV", "RUN", "BEDIT", "LOADKBD", "LOADLIB",
+    "LOADAR", "LOADVARS", "NEW", "NE",
+];
+
 /// Instruction budget for one cooperative-preemption slice. The foreground editor runs scripts
 /// through [`Interpreter::run_sliced`]/[`resume_yield`](Interpreter::resume_yield) with this
 /// granularity and time-boxes the per-frame work; the WAIT/INPUT resume path
@@ -1234,7 +1243,17 @@ impl Vm<'_, '_> {
         // Substitute `$`-variables in the args *before* clearing `$ERROR`, so a
         // command that reads `$ERROR` (e.g. `PR $ERROR`) sees the value as it was
         // on entry. (Search parses from `raw_args` instead — see below.)
-        let args = self.subst(raw_args);
+        let mut args = self.subst(raw_args);
+
+        // Point-and-shoot: a file-argument command with NO argument, issued while the caret sits on a
+        // file in a DIR listing, operates on THAT file (XyWrite-style). The host returns a path only
+        // when the active buffer is a listing and the caret is on a real entry; the file commands all
+        // take the whole trimmed args as the path, so the raw (unquoted) path drops straight in.
+        if args.trim().is_empty() && POINT_AND_SHOOT_VERBS.iter().any(|v| v.eq_ignore_ascii_case(base)) {
+            if let Some(path) = self.ctx.host.point_and_shoot_file() {
+                args = path;
+            }
+        }
 
         // Action verbs clear $ERROR on entry; exempt verbs manage it themselves. A bare library-
         // routine invocation (`foo` ≡ `CALL foo`) is exempt too, so it matches `CALL` (which is in

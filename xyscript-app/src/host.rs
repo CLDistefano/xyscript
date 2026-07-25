@@ -9941,6 +9941,20 @@ impl Host for AppHost {
         doc.buffer().text()
     }
 
+    fn point_and_shoot_file(&self) -> Option<String> {
+        // The on-screen active buffer (blind-edit never applies to a listing). `dir_entry_at_cursor`
+        // is line-based, so the caret anywhere on an entry's row counts (whole-row, per the design).
+        let doc = &self.docs[self.active];
+        if !doc.is_dir_listing() {
+            return None;
+        }
+        let entry = doc.dir_entry_at_cursor()?;
+        if entry.name == ".." {
+            return None; // the synthesized parent — operating on it makes no sense
+        }
+        Some(entry.path.to_string_lossy().into_owned())
+    }
+
     fn help(&self, query: Option<&str>) -> HelpResponse {
         match query {
             // Bare `HELP` — a short overview.
