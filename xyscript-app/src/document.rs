@@ -1402,6 +1402,30 @@ impl Document {
         self.buffer.move_line_start(false);
     }
 
+    /// Remove the entry for `path` from this listing (when it IS one and the path is present),
+    /// re-render, and keep the caret on the same ROW — now showing the entry that followed. Returns
+    /// whether a row was removed. Used after a delete so the file's line vanishes from an open
+    /// listing (`line N → entries[N]` is preserved).
+    pub fn listing_remove_path(&mut self, path: &std::path::Path) -> bool {
+        let Some(idx) = self.dir.as_ref().and_then(|d| d.entries.iter().position(|e| e.path == path))
+        else {
+            return false;
+        };
+        let row = self.buffer.cursor_line();
+        let bare = self.dir.as_ref().is_some_and(|d| d.opts.bare);
+        let text = {
+            let dir = self.dir.as_mut().unwrap();
+            dir.entries.remove(idx);
+            crate::dir::render_listing(&dir.entries, bare)
+        };
+        self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
+        self.buffer = Buffer::from_str(&text);
+        // Keep the caret on the same visual row (the entry that shifted up into the gap); a deletion
+        // at or before it moves it up one. `dir_goto_row` clamps to the new last entry.
+        self.dir_goto_row(if row > idx { row - 1 } else { row });
+        true
+    }
+
 
     /// Move the caret to the first entry whose name STARTS WITH the express-key buffer
     /// (case-insensitive) — a user typing in a listing wants the file beginning with what they type.

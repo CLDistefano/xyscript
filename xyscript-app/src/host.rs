@@ -5403,6 +5403,15 @@ impl AppHost {
     /// drive-qualified path (`D:`, `D:rel`) always switches to that drive (so `CD` acts
     /// like `CD/D`); a single in-process `cwd` means a drive-relative path roots on the
     /// drive rather than that drive's own remembered directory.
+    /// After a file is deleted, drop its row from every open in-tab `DIR`/`LS` listing that shows it
+    /// (matched by absolute path). Each listing re-renders and keeps its caret on the row, so the
+    /// entry that followed the deleted one is now selected — natural after a point-and-shoot delete.
+    fn refresh_listings_after_delete(&mut self, deleted: &Path) {
+        for doc in &mut self.docs {
+            doc.listing_remove_path(deleted);
+        }
+    }
+
     fn resolve_path(&self, path: &str) -> PathBuf {
         let p = path.trim();
         if p.is_empty() {
@@ -5977,7 +5986,10 @@ impl AppHost {
                         std::fs::remove_file(&path)
                     };
                     match res {
-                        Ok(()) => Some(format!("deleted {name}")),
+                        Ok(()) => {
+                            self.refresh_listings_after_delete(&path);
+                            Some(format!("deleted {name}"))
+                        }
                         Err(e) => Some(format!("delete failed: {e}")),
                     }
                 }
@@ -7514,6 +7526,8 @@ impl Host for AppHost {
                     if self.files.remove(&path).is_none() {
                         return Err(XplError::trappable(format!("DEL: {path}: not found")));
                     }
+                    let p = self.resolve_path(&path);
+                    self.refresh_listings_after_delete(&p);
                     return Ok(Value::str(format!("deleted {path}")));
                 }
                 let p = self.resolve_path(&path);
@@ -7521,6 +7535,7 @@ impl Host for AppHost {
                 let res =
                     if p.is_dir() { std::fs::remove_dir(&p) } else { std::fs::remove_file(&p) };
                 res.map_err(|e| XplError::trappable(format!("DEL: {}: {e}", p.display())))?;
+                self.refresh_listings_after_delete(&p);
                 return Ok(Value::str(format!("deleted {}", p.display())));
             }
             EditorOp::FileDeleteConfirm(path) => {

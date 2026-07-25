@@ -6142,6 +6142,40 @@ mod tests {
         e.run_command("ERNV");
         assert!(!base.join("gone.txt").exists(), "point-and-shoot ERNV deleted the caret's file");
         assert!(base.join("keep.txt").exists(), "the other file is untouched");
+        // The deleted file's row is gone from the listing; the survivor stays; the caret lands on a
+        // real entry (so a follow-up point-and-shoot still resolves).
+        assert!(e.active_is_dir_listing(), "still the listing");
+        assert!(!e.document().text().contains("gone.txt"), "the deleted row was removed from the listing");
+        assert!(e.document().text().contains("keep.txt"), "the surviving row stays");
+        assert!(
+            e.host().point_and_shoot_file().is_some_and(|p| p.ends_with("keep.txt")),
+            "the caret followed onto the surviving entry"
+        );
+    }
+
+    #[test]
+    fn confirmed_delete_also_removes_the_row_from_the_listing() {
+        use crate::host::CloseAnswer;
+        let base = std::env::temp_dir().join(format!("xyscript-pns-confirm-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("doomed.txt"), b"x").unwrap();
+        std::fs::write(base.join("safe.txt"), b"y").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        e.run_command("SE /doomed/");
+        // Bare DEL (point-and-shoot) arms the confirm; answering Yes deletes AND updates the listing.
+        e.run_command("DEL");
+        assert!(
+            e.close_prompt().is_some_and(|m| m.contains("doomed.txt")),
+            "DEL armed the confirm for the caret's file"
+        );
+        e.resolve_close(CloseAnswer::Yes);
+        assert!(!base.join("doomed.txt").exists(), "confirmed delete removed the file");
+        assert!(!e.document().text().contains("doomed.txt"), "and its row left the listing");
+        assert!(e.document().text().contains("safe.txt"), "the survivor stays");
     }
 
     #[test]

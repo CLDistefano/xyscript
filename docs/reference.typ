@@ -419,7 +419,8 @@ on the caret's row — so parking the caret on a name and typing `OPEN`, `DEL`, 
 It applies only when the argument is empty and the caret is on a real entry (not the `..` parent);
 give an explicit path and that always wins. Two-argument commands (`COPY`, `RENAME`) and the
 save-to-a-path verbs (`ST`, `SAAS`) are excluded — their argument isn't a file to read but a
-destination.
+destination. Deleting a file (`DEL`/`ERNV`, however the path was given) also drops its row from any
+open listing, and the caret follows onto the entry that came next.
 
 / #cmd("CD"): change the working directory (or switch drive).
 / #cmd("DIR", "LS"): open a directory-listing browser.
