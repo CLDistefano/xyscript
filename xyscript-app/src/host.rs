@@ -3243,8 +3243,8 @@ impl AppHost {
             Some(p) if !p.is_empty() => p.to_string(),
             _ => return Vec::new(),
         };
-        // Case-insensitive, literal (not whole-word, not regex), whole document.
-        self.find_all(&phrase, false, false, false, false)
+        // Case-insensitive, whole-word (not regex), whole document.
+        self.find_all(&phrase, false, true, false, false)
     }
     /// The bracket match at the active document's caret, for the GUI to highlight. Returns
     /// [`BalMatch::None`] when `BALPAIRS` is off (so the GUI can skip all bracket work in one check).

@@ -5972,13 +5972,15 @@ mod tests {
     #[test]
     fn emph_sets_and_clears_the_active_tabs_phrase_and_finds_it_case_insensitively() {
         let mut e = ed();
-        e.insert_str("The cat sat. A CAT ran. cAt.");
+        // Whole-word matches only: "concatenate", "category", "scat" must NOT count.
+        e.insert_str("The cat sat. A CAT ran. cAt. concatenate category scat");
         assert!(e.active_emph().is_none(), "no emphasis by default");
         assert!(e.emph_highlights().is_empty());
         e.run_command("EMPH cat");
         assert_eq!(e.active_emph().as_deref(), Some("cat"));
-        // Three occurrences, case-insensitive ("cat", "CAT", "cAt").
-        assert_eq!(e.emph_highlights().len(), 3, "case-insensitive literal matches");
+        // Three WHOLE-WORD occurrences, case-insensitive ("cat", "CAT", "cAt"); the "cat" inside
+        // "concatenate"/"category"/"scat" is a substring, so it is excluded.
+        assert_eq!(e.emph_highlights().len(), 3, "case-insensitive whole-word matches only");
         // Bare EMPH clears it.
         e.run_command("EMPH");
         assert!(e.active_emph().is_none());

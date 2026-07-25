@@ -2780,10 +2780,10 @@ impl GuiApp {
         let phrase = self.editor.active_emph();
         let key = phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone()));
         if key != self.emph_key {
-            self.emph_highlights = match &phrase {
-                Some(p) => self.editor.find_all(p, false, false, false, false),
-                None => Vec::new(),
-            };
+            // Delegate to the host's `emph_highlights` so the match semantics (case-insensitive,
+            // whole-word) live in ONE place — never re-spell the flags here.
+            self.emph_highlights =
+                if phrase.is_some() { self.editor.emph_highlights() } else { Vec::new() };
             self.emph_key = key;
         }
     }
