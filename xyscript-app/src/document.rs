@@ -229,6 +229,8 @@ pub struct Document {
     /// never an edit — so it works in read-only / `*Shell Output*` tabs). Per-document, session-only.
     /// `None` = no emphasis. Colours come from the host's `EMPHFGCOLOR`/`EMPHBGCOLOR`.
     emph: Option<String>,
+    /// Whether [`emph`](Self::emph) is a regular expression (`EMPH/R`) rather than a whole-word literal.
+    emph_regex: bool,
     /// A stable per-buffer handle for the split-pane layout tree. Tab indices shift when tabs close,
     /// so the pane tree references buffers by this id. Assigned once in [`Document::default`] (the
     /// single choke point all constructors route through), never reused. See [`crate::panes`].
@@ -288,6 +290,7 @@ impl Clone for Document {
             render_override: self.render_override,
             counters: self.counters.clone(),
             emph: self.emph.clone(),
+            emph_regex: self.emph_regex,
             id: fresh_doc_id(),
         }
     }
@@ -314,6 +317,7 @@ impl Default for Document {
             grammars: Rc::new(RefCell::new(GrammarRegistry::default())),
             render_override: None, // auto: decide by extension
             emph: None,
+            emph_regex: false,
             counters: std::array::from_fn(|_| crate::counter::Counter::default()),
             id: fresh_doc_id(),
         }
@@ -589,9 +593,16 @@ impl Document {
         self.emph.as_deref()
     }
 
-    /// Set (or clear, with `None`) the `EMPH` emphasis phrase for this document.
-    pub fn set_emph(&mut self, phrase: Option<String>) {
+    /// Whether this document's `EMPH` phrase is a regular expression (`EMPH/R`) vs a whole-word literal.
+    pub fn emph_is_regex(&self) -> bool {
+        self.emph.is_some() && self.emph_regex
+    }
+
+    /// Set (or clear, with `None`) the `EMPH` emphasis phrase for this document. `regex` marks it as a
+    /// regular expression (`EMPH/R`); it is irrelevant (and reset) when the phrase is cleared.
+    pub fn set_emph(&mut self, phrase: Option<String>, regex: bool) {
         self.emph = phrase.filter(|p| !p.is_empty());
+        self.emph_regex = self.emph.is_some() && regex;
     }
 
     /// Force the buffer to report as modified (`is_modified()` → true) without editing it. Used by

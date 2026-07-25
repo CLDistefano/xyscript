@@ -2270,13 +2270,15 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetWriterView(want))?;
                 Ok(Flow::Next)
             }
-            // `EMPH <phrase>` — highlight every occurrence of <phrase> in the active tab
-            // (case-insensitive, literal); bare `EMPH` clears it. Per-tab, session-only; colours from
-            // `EMPHFGCOLOR`/`EMPHBGCOLOR` (default: the selection colours). Works in read-only tabs.
+            // `EMPH <phrase>` — highlight every whole-word occurrence of <phrase> in the active tab
+            // (case-insensitive); `EMPH/R <regex>` matches a regular expression instead. Bare `EMPH`
+            // clears it. Per-tab, session-only; colours from `EMPHFGCOLOR`/`EMPHBGCOLOR` (default: the
+            // selection colours). Works in read-only tabs.
             "EMPH" => {
+                let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
                 let t = args.trim();
                 let phrase = if t.is_empty() { None } else { Some(t.to_string()) };
-                self.host_op(EditorOp::SetEmph(phrase))?;
+                self.host_op(EditorOp::SetEmph { phrase, regex })?;
                 Ok(Flow::Next)
             }
             // `WINGEO on|off` (bare = toggle) — whether the GUI remembers the main window's size +
@@ -4784,6 +4786,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "SAAS" | "SAVEAS" => &["NV"], // `/NV` — `SAAS/NV <path>` overwrites without confirming
         "SAD" => &["NV"], // `/NV` — `SAD/NV <path>` overwrites without confirming
         "DEL" => &["NV"], // `/NV` — delete without the confirmation prompt
+        "EMPH" => &["R"], // `/R` — treat the phrase as a regular expression (vs whole-word literal)
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V"],

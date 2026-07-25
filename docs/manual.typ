@@ -483,7 +483,9 @@ you every launch. #raw("SaveCfg") writes the current set into your config file.]
 
 *Emphasis.* #raw("EMPH cat") paints every whole-word occurrence of _cat_ in the current tab — matched
 case-insensitively, so #raw("CAT") and #raw("cAt") light up too, while the _cat_ buried in _concatenate_
-is left alone. It is a standing highlight, not an edit,
+is left alone. Need more reach than a plain word? #raw("EMPH/R <regex>") emphasizes everything a regular
+expression matches — #raw("EMPH/R \\d+") lights up every run of digits — and a malformed pattern is
+reported rather than quietly matching nothing. It is a standing highlight, not an edit,
 so it works even where you cannot type: a read-only tab, or the #raw("*Shell Output*") pane. Each tab
 keeps its own emphasis, and a bare #raw("EMPH") clears the current tab's. The colors default to your
 selection colors; #raw("EMPHFGCOLOR") and #raw("EMPHBGCOLOR") (or their #raw("EMPHFGCOLORS") /

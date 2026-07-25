@@ -524,6 +524,11 @@ impl Editor {
     pub fn active_emph(&self) -> Option<String> {
         self.host.active_doc().emph().map(|s| s.to_string())
     }
+    /// Whether the active document's `EMPH` phrase is a regular expression (`EMPH/R`) — part of the
+    /// GUI's highlight cache key, so toggling `/R` on the same phrase re-searches.
+    pub fn active_emph_is_regex(&self) -> bool {
+        self.host.active_doc().emph_is_regex()
+    }
     /// Rope-offset spans of every occurrence of the active document's `EMPH` phrase (case-insensitive).
     pub fn emph_highlights(&self) -> Vec<(usize, usize)> {
         self.host.emph_highlights()
@@ -5985,6 +5990,32 @@ mod tests {
         e.run_command("EMPH");
         assert!(e.active_emph().is_none());
         assert!(e.emph_highlights().is_empty());
+    }
+
+    #[test]
+    fn emph_regex_matches_a_pattern_and_a_bad_regex_is_reported() {
+        let mut e = ed();
+        e.insert_str("cat cot cut cart");
+        // `EMPH/R c.t` matches cat/cot/cut (three) but not "cart" (c-a-r-t is 4 chars).
+        e.run_command("EMPH/R c.t");
+        assert_eq!(e.active_emph().as_deref(), Some("c.t"));
+        assert!(e.active_emph_is_regex(), "the /R flag is recorded");
+        assert_eq!(e.emph_highlights().len(), 3, "regex c.t matches cat, cot, cut");
+        // Without /R the same text is a whole-word literal — "c.t" appears literally nowhere.
+        e.run_command("EMPH c.t");
+        assert!(!e.active_emph_is_regex());
+        assert!(e.emph_highlights().is_empty(), "literal c.t is not present");
+        // A malformed regex is reported (trappable) and leaves the current emphasis untouched.
+        e.run_command("EMPH cat"); // a known-good literal emphasis
+        e.run_command("EMPH/R c(t"); // unbalanced paren
+        e.run_command("PR $ERROR");
+        assert_eq!(
+            e.output().last().map(String::as_str),
+            Some("1"),
+            "a bad EMPH/R regex sets the trappable-error flag"
+        );
+        assert_eq!(e.active_emph().as_deref(), Some("cat"), "bad regex leaves emphasis unchanged");
+        assert!(!e.active_emph_is_regex());
     }
 
     #[test]

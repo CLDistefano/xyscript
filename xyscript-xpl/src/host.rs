@@ -380,9 +380,10 @@ pub enum EditorOp {
     /// Transient (not persisted); `Esc` turns it off. Read back via `$WV`.
     SetWriterView(Option<bool>),
     /// `EMPH <phrase>` sets the active tab's persistent emphasis phrase (all occurrences are
-    /// highlighted, case-insensitively); `None` (bare `EMPH`) clears it. Per-document, session-only,
-    /// works in read-only / `*Shell Output*` tabs (it is a visual overlay, not an edit).
-    SetEmph(Option<String>),
+    /// highlighted, case-insensitively); `None` (bare `EMPH`) clears it. `regex` (from `EMPH/R`)
+    /// matches the phrase as a regular expression instead of a whole-word literal. Per-document,
+    /// session-only, works in read-only / `*Shell Output*` tabs (a visual overlay, not an edit).
+    SetEmph { phrase: Option<String>, regex: bool },
     /// `EMPHFGCOLOR <r g b>` / `default` — the `EMPH` emphasis glyph colour (`None` = follow the
     /// selected-text colour). `$EMPHFGCOLOR`.
     SetEmphFgColor(Option<(u8, u8, u8)>),

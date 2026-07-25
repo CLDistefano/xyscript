@@ -1703,8 +1703,9 @@ struct GuiApp {
     /// highlight (unlike `find_highlights`, which the Find dialog drives). Painted behind + over the
     /// glyphs with `EMPHBGCOLOR`/`EMPHFGCOLOR`. Cached via `emph_key`.
     emph_highlights: Vec<(usize, usize)>,
-    /// Cache key for `emph_highlights` = (active index, doc revision, phrase). `None` = no emphasis.
-    emph_key: Option<(usize, u64, String)>,
+    /// Cache key for `emph_highlights` = (active index, doc revision, phrase, is-regex). `None` = no
+    /// emphasis. The regex flag is in the key so toggling `EMPH/R` on the same phrase re-searches.
+    emph_key: Option<(usize, u64, String, bool)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -2778,7 +2779,8 @@ impl GuiApp {
     fn refresh_emph(&mut self) {
         let ai = self.editor.active_index();
         let phrase = self.editor.active_emph();
-        let key = phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone()));
+        let regex = self.editor.active_emph_is_regex();
+        let key = phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone(), regex));
         if key != self.emph_key {
             // Delegate to the host's `emph_highlights` so the match semantics (case-insensitive,
             // whole-word) live in ONE place — never re-spell the flags here.

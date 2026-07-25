@@ -3239,12 +3239,15 @@ impl AppHost {
     /// The rope-offset spans of every case-insensitive occurrence of the ACTIVE document's `EMPH`
     /// phrase (empty when no emphasis is set). The GUI paints these as a persistent highlight.
     pub fn emph_highlights(&self) -> Vec<(usize, usize)> {
-        let phrase = match self.docs[self.active].emph() {
+        let doc = &self.docs[self.active];
+        let phrase = match doc.emph() {
             Some(p) if !p.is_empty() => p.to_string(),
             _ => return Vec::new(),
         };
-        // Case-insensitive, whole-word (not regex), whole document.
-        self.find_all(&phrase, false, true, false, false)
+        // Regex (`EMPH/R`): match as a regular expression. Otherwise case-insensitive whole-word
+        // literal. Either way, whole document; `find_all` yields nothing for an invalid regex.
+        let regex = doc.emph_is_regex();
+        self.find_all(&phrase, false, !regex, regex, false)
     }
     /// The bracket match at the active document's caret, for the GUI to highlight. Returns
     /// [`BalMatch::None`] when `BALPAIRS` is off (so the GUI can skip all bracket work in one check).
@@ -8412,9 +8415,21 @@ impl Host for AppHost {
                     None => "bracket highlight colour = selection colour".to_string(),
                 }));
             }
-            EditorOp::SetEmph(phrase) => {
-                self.docs[self.active].set_emph(phrase.clone());
+            EditorOp::SetEmph { phrase, regex } => {
+                // A bad `EMPH/R` regex is reported rather than silently matching nothing; the emphasis
+                // is left unchanged so the user can correct it.
+                if regex {
+                    if let Some(p) = phrase.as_deref().filter(|p| !p.is_empty()) {
+                        if Pattern::build(p, false, false, true).is_err() {
+                            return Err(XplError::trappable(format!(
+                                "EMPH/R: invalid regular expression: {p}"
+                            )));
+                        }
+                    }
+                }
+                self.docs[self.active].set_emph(phrase.clone(), regex);
                 return Ok(Value::str(match phrase {
+                    Some(p) if !p.is_empty() && regex => format!("emphasis (regex): {p:?}"),
                     Some(p) if !p.is_empty() => format!("emphasis: {p:?}"),
                     _ => "emphasis cleared".to_string(),
                 }));
