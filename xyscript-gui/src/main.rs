@@ -4515,7 +4515,7 @@ impl GuiApp {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.regex, "Regular expression");
                     ui.checkbox(&mut d.in_selection, "In selection");
-                    ui.checkbox(&mut d.keep_case, "Keep case").on_hover_text(
+                    ui.checkbox(&mut d.keep_case, "Keep case in replacement").on_hover_text(
                         "Replace / Replace all: recase each replacement to match the case of the \
                          text it replaces (lower / Capitalized / UPPER).",
                     );
