@@ -1821,6 +1821,8 @@ struct GuiApp {
     /// The open Run-command dialog (`None` = closed).
     run_dialog: Option<RunCmdDialog>,
     grep_dialog: Option<GrepDialog>,
+    pending_page: i32,
+    pending_page_extend: bool,
     /// Whether the Document ▸ Properties info box is showing.
     properties_open: bool,
     /// Whether the Help ▸ About box is showing.
@@ -2051,6 +2053,8 @@ impl GuiApp {
             spell_menu_frames: 0,
             run_dialog: None,
             grep_dialog: None,
+            pending_page: 0,
+            pending_page_extend: false,
             properties_open: false,
             about_open: false,
             menu_nav: None,
@@ -6826,8 +6830,13 @@ impl GuiApp {
                         && matches!(key, egui::Key::PageUp | egui::Key::PageDown)
                     {
                         // Page motion scrolls the view as well as moving the caret, so
-                        // it's handled here rather than via the KBD's PD/PU verbs.
-                        self.page_move(matches!(key, egui::Key::PageDown), modifiers.shift);
+                        // it's handled here rather than via the KBD's PD/PU verbs. Coalesce
+                        // the net delta and apply it ONCE after the event loop: holding
+                        // PageUp/Down queues many key-repeats into a single frame, and doing
+                        // a full window-build+shape per event freezes the frame (measured:
+                        // 60 queued PgDn = 60 reshapes = ~24ms in one frozen frame).
+                        self.pending_page += if matches!(key, egui::Key::PageDown) { 1 } else { -1 };
+                        self.pending_page_extend = modifiers.shift;
                     } else {
                         // Prefer the physical key (KBD-as-layout); fall back to the
                         // logical key so numpad nav (NumLock off → logical ArrowLeft/
@@ -6868,6 +6877,21 @@ impl GuiApp {
                     egui::ImeEvent::Enabled | egui::ImeEvent::Disabled => self.preedit.clear(),
                 },
                 _ => {}
+            }
+        }
+        // Apply the frame's coalesced page motion. The window margin is only one
+        // screen, so each `page_move` advances ~one page and must rebuild+reshape;
+        // we cap the per-frame steps so a heavy key-repeat burst can't wedge the
+        // frame (a hold still flies — up to CAP pages per repaint is far more than
+        // the OS key-repeat rate delivers).
+        if self.pending_page != 0 {
+            const PAGE_STEP_CAP: u32 = 4;
+            let down = self.pending_page > 0;
+            let extend = self.pending_page_extend;
+            let steps = self.pending_page.unsigned_abs().min(PAGE_STEP_CAP);
+            self.pending_page = 0;
+            for _ in 0..steps {
+                self.page_move(down, extend);
             }
         }
         }
