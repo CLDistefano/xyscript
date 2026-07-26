@@ -231,6 +231,9 @@ pub struct Document {
     emph: Option<String>,
     /// Whether [`emph`](Self::emph) is a regular expression (`EMPH/R`) rather than a whole-word literal.
     emph_regex: bool,
+    /// When set, this buffer is a `GREP` results listing (read-only) rather than an editable document;
+    /// holds the hits (line N → `hits[N]`) so `GJ` resolves the hit under the caret. Session-only.
+    grep: Option<crate::grep::GrepState>,
     /// A stable per-buffer handle for the split-pane layout tree. Tab indices shift when tabs close,
     /// so the pane tree references buffers by this id. Assigned once in [`Document::default`] (the
     /// single choke point all constructors route through), never reused. See [`crate::panes`].
@@ -291,6 +294,7 @@ impl Clone for Document {
             counters: self.counters.clone(),
             emph: self.emph.clone(),
             emph_regex: self.emph_regex,
+            grep: self.grep.clone(),
             id: fresh_doc_id(),
         }
     }
@@ -318,6 +322,7 @@ impl Default for Document {
             render_override: None, // auto: decide by extension
             emph: None,
             emph_regex: false,
+            grep: None,
             counters: std::array::from_fn(|_| crate::counter::Counter::default()),
             id: fresh_doc_id(),
         }
@@ -1403,6 +1408,46 @@ impl Document {
     /// Whether this buffer is a directory listing (vs an editable document).
     pub fn is_dir_listing(&self) -> bool {
         self.dir.is_some()
+    }
+
+    // ---- GREP results listing --------------------------------------------------
+
+    /// Turn this buffer into a `GREP` results listing: the text becomes `render_hits` (line N →
+    /// `hits[N]`), the caret goes to the top, undo history is dropped, and it is marked read-only so
+    /// the results can't be accidentally edited. `GJ` reads the hit under the caret.
+    pub fn open_grep_listing(
+        &mut self,
+        base: PathBuf,
+        hits: Vec<crate::grep::GrepHit>,
+        pattern: String,
+        regex: bool,
+        capped: bool,
+    ) {
+        self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
+        self.buffer = Buffer::from_str(&crate::grep::render_hits(&hits, &base));
+        self.buffer.set_caret(0, None);
+        self.undo.clear();
+        self.redo.clear();
+        self.coalescing = false;
+        self.saved_len = Some(0);
+        self.path = None;
+        self.line_ending = LineEnding::Lf;
+        self.read_only = true;
+        self.highlighter = None;
+        self.tokens.clear();
+        self.label = Some(format!("grep {pattern}"));
+        self.grep = Some(crate::grep::GrepState { base, pattern, regex, capped, hits });
+    }
+
+    /// Whether this buffer is a `GREP` results listing.
+    pub fn is_grep_listing(&self) -> bool {
+        self.grep.is_some()
+    }
+
+    /// The `GREP` hit on the caret's line, if this is a results listing.
+    pub fn grep_hit_at_cursor(&self) -> Option<&crate::grep::GrepHit> {
+        let grep = self.grep.as_ref()?;
+        grep.hits.get(self.buffer.cursor_line())
     }
 
     /// The listing's browser state, if this is a directory listing.

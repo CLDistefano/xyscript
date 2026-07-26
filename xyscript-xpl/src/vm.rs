@@ -1330,6 +1330,27 @@ impl Vm<'_, '_> {
             return Ok(Flow::Next);
         }
 
+        // GREP: ripgrep-style recursive search of `$CWD` into a results tab. Custom argument parsing
+        // (a pattern plus an optional file-name mask, the pattern quotable for spaces), like DIR, so
+        // it's handled before the generic switch validation. `/R` regex, `/I` case-insensitive,
+        // `/W` whole-word — the same flag letters as the FIND family.
+        if base == "GREP" {
+            let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
+            let case = vswitches.iter().any(|s| s.eq_ignore_ascii_case("I"));
+            let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+            let (pattern, mask) = parse_grep_args(&args);
+            if pattern.is_empty() {
+                return Err(XplError::trappable("GREP: a search pattern is required"));
+            }
+            self.host_op(EditorOp::Grep { pattern, mask, regex, case, whole })?;
+            return Ok(Flow::Next);
+        }
+        // GJ: point-and-shoot on a GREP results tab — open + jump to the hit under the caret.
+        if base == "GJ" {
+            self.host_op(EditorOp::GrepJump)?;
+            return Ok(Flow::Next);
+        }
+
         // Binder refs in command position: `@X` inserts its stored text, `&X` runs its
         // stored XPL (X = A-Z/0-9; `base` is already upper-cased). Any trailing args are
         // ignored. (As a *value* — `PR @A`, `SE @A` — binder-refs are handled by the arg/
@@ -5072,6 +5093,27 @@ fn split_switch_names(s: &str) -> Vec<String> {
 /// would otherwise force reverse onto every listing: typing `/ON` alone would silently stay reversed,
 /// with no way back to ascending short of clearing `DIRSET`. Re-specifying the order is a complete
 /// ordering directive; the caller can still say `/ON/R` to reverse explicitly (their own `/R` wins).
+/// Split a `GREP` argument into `(pattern, mask)`. The pattern is a `"double-quoted"` run (so it can
+/// contain spaces) or the first whitespace-delimited token; whatever follows, trimmed, is the optional
+/// file-name mask (`*.rs`). An empty mask is `None`.
+fn parse_grep_args(args: &str) -> (String, Option<String>) {
+    let s = args.trim();
+    if let Some(rest) = s.strip_prefix('"') {
+        if let Some(end) = rest.find('"') {
+            let mask = rest[end + 1..].trim();
+            return (rest[..end].to_string(), (!mask.is_empty()).then(|| mask.to_string()));
+        }
+        return (rest.to_string(), None); // no closing quote — take the remainder as the pattern
+    }
+    match s.split_once(char::is_whitespace) {
+        Some((p, rest)) => {
+            let mask = rest.trim();
+            (p.to_string(), (!mask.is_empty()).then(|| mask.to_string()))
+        }
+        None => (s.to_string(), None),
+    }
+}
+
 fn merge_dir_defaults(cmd: &[String], defaults: &[String]) -> Vec<String> {
     let letter = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase());
     let mut cmd_letters: std::collections::HashSet<Option<char>> = cmd.iter().map(|s| letter(s)).collect();

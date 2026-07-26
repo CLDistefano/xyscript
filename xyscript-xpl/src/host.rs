@@ -116,6 +116,15 @@ pub enum EditorOp {
     /// `None`/empty = the current working directory; otherwise resolved against the cwd
     /// (its last component may be a glob filespec). `opts` carries the view + sort flags.
     Dir { path: Option<String>, opts: DirOpts },
+    /// `GREP <pattern> [mask]` — ripgrep-style recursive search of `$CWD` into a read-only results
+    /// tab (`path:line:col: text`, one hit per line). `regex` (`/R`) treats the pattern as a regular
+    /// expression, else it is a literal; `case` (`/I`) case-insensitive; `whole` (`/W`) whole-word.
+    /// `mask` is an optional DOS-style file-name glob (`*.rs`). See [`crate::host`] and grep.rs.
+    Grep { pattern: String, mask: Option<String>, regex: bool, case: bool, whole: bool },
+    /// `GJ` — point-and-shoot on a `GREP` results listing: open the file for the hit on the caret's
+    /// line (or switch to it if already open), jump to its `line:col`, and centre it. No-op message
+    /// when the active buffer isn't a results listing / the caret isn't on a hit.
+    GrepJump,
     /// Like `Dir`, but instead of opening a listing buffer, RENDER the listing to text and return
     /// it as the op value — for `CAPTURE … DIR …`, which redirects the listing into a variable.
     DirToString { path: Option<String>, opts: DirOpts },

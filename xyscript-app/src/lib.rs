@@ -19,6 +19,7 @@ pub mod document;
 pub mod editor;
 pub mod encoding;
 pub mod gfm;
+pub mod grep;
 pub mod help;
 pub mod highlight;
 pub mod html;

@@ -97,6 +97,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Filesystem (B10): working directory + directory listing browser + file ops.
     // ERNV = "erase, no verify" — synonym for DEL/NV (DEL itself is in the editing group above).
     "CD", "DIR", "LS", "DIRNW", "DIRWNW", "DIRWCLOSE", "DIRRT", "DIRSET", "RENAME", "REN", "ERNV",
+    "GREP", "GJ", // ripgrep-style recursive search into a results tab + point-and-shoot jump
     // Shell-out (B14, trust-gated): run / insert-stdout / capture-to-var; TRUST gate.
     // `JOBS` lists background jobs launched with `X/BG`; `KILL <id>` terminates one.
     "X", "XY", "XV", "TRUST", "JOBS", "KILL",

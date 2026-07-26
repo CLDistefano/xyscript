@@ -630,6 +630,19 @@ Two toggles tune how a listing behaves, each with a read-back:
 #tip("Right-click copies a path")[In any listing — in-tab or the #raw("DIR/W") window — right-clicking
 an entry copies its full path to the clipboard, the mouse equivalent of the listing's copy-path key.]
 
+=== Searching across files
+
+#raw("GREP cat") searches every file under the current folder (recursively, skipping what your
+#raw(".gitignore") hides and binary files) and drops the matches into a read-only tab, one
+#raw("path:line:col: text") line each. It's a literal search by default; #raw("/R") makes the pattern a
+regular expression, #raw("/I") ignores case, #raw("/W") matches whole words — the same letters as
+#raw("SE") and #raw("FIND"). Add a file-name mask to narrow it (#raw("GREP cat *.rs")), and quote a
+pattern with spaces (#raw("GREP \"foo bar\"")).
+
+To open a result, put the caret on its line and run #raw("GJ") — it opens that file (or switches to it if
+it's already open, without asking) and jumps the caret right onto the match. Think of the results tab as a
+launch pad: #raw("GREP") to gather, #raw("GJ") to pounce.
+
 == Encodings
 
 A file on disk is *bytes*; an *encoding* is the lens that turns those bytes into the characters you see

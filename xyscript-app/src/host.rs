@@ -1336,13 +1336,52 @@ fn is_document_focusing(op: &EditorOp) -> bool {
         | CopySelection | MoveSelection | Define(_) | Sort(_) | Clip(_) | Search(_) | Merge(_)
         | AutoReplace | Revert | Counter { .. } => true,
         // File/tab ops put you in a document.
-        NewDoc | NewNamed { .. } | Open { .. } | OpenReadOnly { .. } | Dir { .. } | CloseBuffer
-        | CloseBufferVerify => true,
+        NewDoc | NewNamed { .. } | Open { .. } | OpenReadOnly { .. } | Dir { .. } | Grep { .. }
+        | GrepJump | CloseBuffer | CloseBufferVerify => true,
         // Focus-management ops that intend the document (must not be overridden back to the cmline).
         FocusText | EnsureDocumentFocus | ToggleFocus => true,
         // Undo/Redo, cmline-meta, settings, view, save, queries, scroll, … → stay in the cmline.
         _ => false,
     }
+}
+
+/// Resolve a 1-based `(line, byte-col)` (as `GREP`/`GJ` report) to a byte offset in `text` (the decoded
+/// buffer). The column is a BYTE offset within the line; it is clamped to the line's content and snapped
+/// to a UTF-8 char boundary so the result is always a valid caret position. Exact for a UTF-8 file; for a
+/// re-decoded non-UTF-8 file the LINE is still right and the column is best-effort.
+fn line_col_to_offset(text: &str, line: usize, col: usize) -> usize {
+    let bytes = text.as_bytes();
+    let line0 = line.saturating_sub(1);
+    // Byte offset of the start of line `line0` (0 for the first line).
+    let mut start = 0usize;
+    if line0 > 0 {
+        let mut seen = 0usize;
+        let mut found = false;
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == b'\n' {
+                seen += 1;
+                if seen == line0 {
+                    start = i + 1;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if !found {
+            return text.len(); // line past EOF → land at the end
+        }
+    }
+    // End of this line (before its newline); clamp the column into it, then to a char boundary.
+    let line_end = bytes[start..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map(|p| start + p)
+        .unwrap_or(text.len());
+    let mut target = (start + col.saturating_sub(1)).min(line_end);
+    while target > start && !text.is_char_boundary(target) {
+        target -= 1;
+    }
+    target
 }
 
 /// Fail fast on a **cloud-only placeholder** (Dropbox/OneDrive "online-only") before a `read` — so
@@ -5614,6 +5653,36 @@ impl AppHost {
         self.docs[self.active].is_dir_listing()
     }
 
+    /// `GJ` — open the file for the `GREP` hit on the caret's line (or switch to it if already open),
+    /// jump to its `line:col`, and centre it. Trappable error when the active buffer isn't a results
+    /// listing or the caret isn't on a hit.
+    fn grep_jump(&mut self) -> VmResult<Value> {
+        let hit = match self.docs[self.active].grep_hit_at_cursor() {
+            Some(h) => h.clone(),
+            None => {
+                return Err(XplError::trappable(
+                    "GJ: no GREP result on this line (run GREP, then put the caret on a result)",
+                ))
+            }
+        };
+        let path_str = hit.path.to_string_lossy().into_owned();
+        // Open, or switch to it if already open — either way, no prompt.
+        if let Some(idx) = self.find_open_tab(&path_str) {
+            self.set_active(idx);
+        } else {
+            self.open_doc(&path_str, false)?;
+        }
+        // Resolve line:col → a rope offset in the (decoded) buffer and place the caret there.
+        let off = {
+            let text = self.active().buffer().text();
+            line_col_to_offset(&text, hit.line, hit.col)
+        };
+        self.set_active_caret(off, None);
+        self.reveal_center = true; // scroll the target to mid-screen, like a search landing
+        self.set_focus(Target::Document);
+        Ok(Value::str(format!("{path_str}:{}", hit.line)))
+    }
+
     /// The active listing's base directory and live express-key buffer, for the footer.
     /// `None` when the active buffer isn't a listing.
     pub fn dir_footer(&self) -> Option<(PathBuf, String)> {
@@ -7317,6 +7386,31 @@ impl Host for AppHost {
                     None => format!("{count} item{s} in {}", base.display()),
                 };
                 return Ok(Value::str(msg));
+            }
+            EditorOp::Grep { pattern, mask, regex, case, whole } => {
+                let base = self.cwd.clone();
+                const CAP: usize = 5000;
+                let result =
+                    crate::grep::run_grep(&base, &pattern, regex, case, whole, mask.as_deref(), CAP)
+                        .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
+                let n = result.hits.len();
+                if n == 0 {
+                    return Ok(Value::str(format!("GREP: no matches for {pattern:?}")));
+                }
+                let (files, capped) = (result.files_searched, result.capped);
+                let mut doc = Document::new();
+                doc.open_grep_listing(base, result.hits, pattern, regex, capped);
+                self.add_or_reuse(doc);
+                self.set_focus(Target::Document); // land the caret in the results, ready for GJ
+                let cap_note = if capped { format!(" (capped at {CAP})") } else { String::new() };
+                return Ok(Value::str(format!(
+                    "GREP: {n} match{} in {files} file{}{cap_note}",
+                    if n == 1 { "" } else { "es" },
+                    if files == 1 { "" } else { "s" },
+                )));
+            }
+            EditorOp::GrepJump => {
+                return self.grep_jump();
             }
             EditorOp::DirToString { path, opts } => {
                 // Same enumeration/filter/sort as `Dir`, but render to text (honouring `/B` etc.)

@@ -390,6 +390,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("SE", "SEB", "SEA", "SEBA"): search (`B` backward, `A` case-sensitive).
 / #cmd("CH", "CHA", "CI", "CIA") / #cmd("CV", "CVA"): replace every match / with a prompt at each.
 / #cmd("FIND"): open the Find/Replace dialog.
+/ #cmd("GREP") / #cmd("GJ"): recursively search `$CWD` for a pattern into a results tab / jump to the hit under the caret.
 
 == Counting
 
@@ -717,6 +718,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("GOFILE", "GOF"): switch to an open tab whose full path contains the given text (case-insensitive) — `GOF report`. With several matches (or several copies of one file), each call moves to the *next* match, cycling; if the only match is the current tab it stays put. No match sets `$ERROR`.
 / #cmd("GOTO"): jump to a `:label` in the script.
+/ #cmd("GREP"): `GREP <pattern> [mask]` — ripgrep-style recursive search of `$CWD` (respecting `.gitignore`, skipping hidden and binary files) into a read-only results tab, one `path:line:col: text` line per match. `/R` treats the pattern as a regular expression (else literal), `/I` case-insensitive, `/W` whole-word — the same flag letters as `SE`/`FIND`. An optional file-name mask (`GREP foo *.rs`) filters by glob; quote a pattern that contains spaces (`GREP "foo bar"`). Results are capped (currently 5000 hits). Use `GJ` to open a hit.
+/ #cmd("GJ"): jump from a `GREP` results tab to the match on the caret's line — opens the file (or switches to it if already open, no prompt), moves the caret to the match's `line:col`, and centres it. Point-and-shoot: put the caret on a result line and run `GJ`.
 / #cmd("GT"): move focus to the document text (the counterpart to `CMLINE`/`GH`).
 
 == H

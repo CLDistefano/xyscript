@@ -26,6 +26,14 @@ ropey = "1"
 # B1 search: the `regex` crate backs the `/R` regex search flag (literal search is
 # hand-rolled in text.rs; regex is opt-in per command).
 regex = "1"
+# GREP (built-in ripgrep-style search): the ripgrep libraries. `grep-regex` wraps the SAME
+# `regex` crate above (identical pattern semantics to FIND/EMPH/HLRULE); `grep-searcher` gives
+# line/column reporting + binary-file skipping + big-file handling; `ignore` is the recursive
+# walker that respects `.gitignore`/hidden. See grep.rs.
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+ignore = "0.4"
 # Stage 3 step 6: the provisional TUI shell. `crossterm` provides terminal size,
 # cursor placement, and conhost/VT compatibility (generic terminal infra; only
 # the binary uses it — the lib's viewport math is dependency-free).
