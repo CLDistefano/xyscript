@@ -487,7 +487,9 @@ is left alone. Need more reach than a plain word? #raw("EMPH/R <regex>") emphasi
 expression matches — #raw("EMPH/R \\d+") lights up every run of digits — and a malformed pattern is
 reported rather than quietly matching nothing. It is a standing highlight, not an edit,
 so it works even where you cannot type: a read-only tab, or the #raw("*Shell Output*") pane. Each tab
-keeps its own emphasis, and a bare #raw("EMPH") clears the current tab's. The colors default to your
+keeps its own emphasis, and a bare #raw("EMPH") clears the current tab's. You can also reach it from
+#raw("Search ▸ Emphasize"), where _Selection_ emphasizes the highlighted word in one click and the
+_Word or phrase…_ / _Regular expression…_ items stage the command for you to finish typing. The colors default to your
 selection colors; #raw("EMPHFGCOLOR") and #raw("EMPHBGCOLOR") (or their #raw("EMPHFGCOLORS") /
 #raw("EMPHBGCOLORS") pickers) give the emphasis a look of its own, and #raw("… default") hands it back to
 the selection colors. Read the effective colors as #raw("$EMPHFGCOLOR") / #raw("$EMPHBGCOLOR").

@@ -6019,6 +6019,22 @@ mod tests {
     }
 
     #[test]
+    fn emph_menu_staging_preserves_the_trailing_space_and_runs() {
+        let mut e = ed();
+        e.insert_str("cat cat cat");
+        // The Search ▸ Emphasize ▸ "Word or phrase…" item stages "EMPH " (trailing space) on the
+        // command line via `load_cmline`. The space MUST survive — otherwise a typed phrase becomes
+        // "EMPHcat" (a bad verb) instead of the argument "cat". This is why the menu uses a direct
+        // cmline stage, not a `BC EMPH ;CMLINE` chain (whose segment the splitter would trim).
+        e.load_cmline("EMPH ");
+        assert_eq!(e.special_str("CM"), "EMPH ", "trailing space preserved on the command line");
+        // Prefilled with the current phrase and submitted (as if the user pressed Enter).
+        e.load_cmline("EMPH cat");
+        e.submit_cmdline();
+        assert_eq!(e.emph_highlights().len(), 3, "the staged EMPH command ran");
+    }
+
+    #[test]
     fn emph_is_per_tab() {
         let mut e = ed();
         e.insert_str("alpha alpha");

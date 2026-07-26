@@ -420,6 +420,9 @@ enum Act {
     /// menu items are just a verb (optionally with a picked path interpolated in); they surface
     /// their own feedback via the status line, exactly as if typed on the command line.
     Run(String),
+    /// Stage text on the command line (focused, unrun) — the menu path for "…" items that need the
+    /// user to finish typing an argument (e.g. Search ▸ Emphasize ▸ Word or phrase…).
+    StageCmdline(String),
     /// Open the Find/Replace dialog (Search ▸ Find… / Replace…). `replace` focuses the Replace field.
     OpenFind { replace: bool },
     /// Open the Run-command dialog (Tools ▸ Shell command…).
@@ -457,6 +460,9 @@ enum PendingDialog {
 enum MenuAct {
     /// Run an XPL command string (the "it's all XPL" path).
     Run(String),
+    /// Stage the given text on the command line (focused, caret at end) without running it — for "…"
+    /// items whose argument the user finishes typing (e.g. `EMPH ` for a word to emphasize).
+    StageCmdline(String),
     New,
     /// Save — to the current path, or prompt for one if untitled.
     Save,
@@ -511,6 +517,12 @@ impl MenuNode {
 // -- Convenience constructors for the tree builder. ------------------------------------------------
 fn m_item(label: impl Into<String>, cmd: impl Into<String>) -> MenuNode {
     MenuNode::Item { label: label.into(), act: MenuAct::Run(cmd.into()) }
+}
+/// A menu leaf that *stages* `text` on the command line (focused, caret at end) without running it —
+/// for "…" items that need the user to finish typing an argument. Unlike a `BC … ;CMLINE` command,
+/// this preserves the exact text (e.g. the trailing space after `EMPH `).
+fn m_stage(label: impl Into<String>, text: impl Into<String>) -> MenuNode {
+    MenuNode::Item { label: label.into(), act: MenuAct::StageCmdline(text.into()) }
 }
 fn m_act(label: impl Into<String>, act: MenuAct) -> MenuNode {
     MenuNode::Item { label: label.into(), act }
@@ -4900,6 +4912,18 @@ impl GuiApp {
         let spell_style = ed.special_str("SPELLSTYLE");
         let grammar_style = ed.special_str("GRAMMARSTYLE");
         let mail_debug = ed.special_str("MAILDEBUG") == "1";
+        // EMPH phrase-entry prefills: seed the "…" items with the current emphasis so re-editing is
+        // one step. Staged via `StageCmdline` → `load_cmline`, which takes the EXACT string (the
+        // trailing space survives, unlike a `BC … ;CMLINE` chain the command splitter would trim).
+        let (cur_emph, cur_emph_rx) = (ed.active_emph(), ed.active_emph_is_regex());
+        let emph_lit_stage = match &cur_emph {
+            Some(p) if !cur_emph_rx => format!("EMPH {p}"),
+            _ => "EMPH ".to_string(),
+        };
+        let emph_rx_stage = match &cur_emph {
+            Some(p) if cur_emph_rx => format!("EMPH/R {p}"),
+            _ => "EMPH/R ".to_string(),
+        };
         use MenuAct::*;
         let txtmd: Option<(&str, &[&str])> = Some(("Text / Markdown", &["md", "markdown", "txt"]));
         let xpl_f: Option<(&str, &[&str])> = Some(("XPL script", &["xpl"]));
@@ -4960,6 +4984,16 @@ impl GuiApp {
                 MenuNode::Sep,
                 m_item("Find next", "SE"),
                 m_item("Find previous", "SEB"),
+                MenuNode::Sep,
+                // EMPH — highlight every occurrence of a word/phrase in the current tab. A sibling of
+                // Find; the "…" items stage the verb on the command line for you to finish typing.
+                m_sub("Emphasize", vec![
+                    m_item("Selection", "EMPH $SE"),
+                    m_stage("Word or phrase…", emph_lit_stage),
+                    m_stage("Regular expression…", emph_rx_stage),
+                    MenuNode::Sep,
+                    m_item("Clear", "EMPH"),
+                ]),
             ]),
             m_sub("View", vec![
                 m_act(format!("{}Highlighting", tick(hl_on)), Highlight(!hl_on)),
@@ -5199,6 +5233,7 @@ impl GuiApp {
     fn perform_menu_act(&mut self, a: MenuAct) -> Option<Act> {
         match a {
             MenuAct::Run(cmd) => Some(Act::Run(cmd)),
+            MenuAct::StageCmdline(text) => Some(Act::StageCmdline(text)),
             MenuAct::New => Some(Act::New),
             // File dialogs are DEFERRED (never run inline mid-frame): record the request; the runtime
             // runs it parented + modal after the frame and applies the result. See [`PendingDialog`].
@@ -6121,6 +6156,11 @@ impl GuiApp {
                     self.editor.run_command(&cmd);
                     self.surface_command_feedback();
                     self.pane_view.follow = true;
+                }
+                Act::StageCmdline(text) => {
+                    // Put the (unrun) text on the command line, focused with the caret at the end, so
+                    // the user finishes typing the argument and presses Enter. See `m_stage`.
+                    self.editor.load_cmline(&text);
                 }
                 Act::OpenFind { replace } => self.open_find_dialog(replace),
                 Act::OpenRunCmd => self.open_run_dialog(),
