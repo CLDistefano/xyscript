@@ -5772,6 +5772,11 @@ impl AppHost {
         self.docs[self.active].is_dir_listing()
     }
 
+    /// Whether the active buffer is a `GREP` results listing.
+    pub fn active_is_grep_listing(&self) -> bool {
+        self.docs[self.active].is_grep_listing()
+    }
+
     /// `GJ` — open the file for the `GREP` hit on the caret's line (or switch to it if already open),
     /// jump to its `line:col`, and centre it. Trappable error when the active buffer isn't a results
     /// listing or the caret isn't on a hit.

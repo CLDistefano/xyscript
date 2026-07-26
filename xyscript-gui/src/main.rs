@@ -2789,6 +2789,16 @@ impl GuiApp {
     /// Refresh the `EMPH` emphasis match set for the active document (cached on `emph_key`, so we
     /// only re-search when the active tab, its text, or its phrase changes). Cheap when unchanged.
     fn refresh_emph(&mut self) {
+        // While a GREP streams into the active results tab, its buffer grows every frame, so its
+        // revision changes every frame — recomputing the whole-buffer emphasis (a `find_all` scan)
+        // each frame would be O(buffer) per frame, i.e. O(n²) over the search, which is what made a
+        // big-tree GREP crawl. Suppress it while streaming (show no match highlight yet); it computes
+        // ONCE when the search settles — `emph_key = None` forces that recompute on the next frame.
+        if self.editor.grep_in_progress() && self.editor.active_is_grep_listing() {
+            self.emph_highlights.clear();
+            self.emph_key = None;
+            return;
+        }
         let ai = self.editor.active_index();
         let phrase = self.editor.active_emph();
         let regex = self.editor.active_emph_is_regex();

@@ -961,6 +961,11 @@ impl Editor {
         self.host.active_is_dir_listing()
     }
 
+    /// Whether the active buffer is a `GREP` results listing.
+    pub fn active_is_grep_listing(&self) -> bool {
+        self.host.active_is_grep_listing()
+    }
+
     /// A footer line for the active listing (base dir + live express-key), if any.
     pub fn dir_footer(&self) -> Option<String> {
         self.host.dir_footer().map(|(base, find)| {
