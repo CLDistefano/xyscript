@@ -2846,20 +2846,31 @@ impl GuiApp {
             };
             let (sx, sy, ex, ey) = (sxf as i32, syf as i32, exf as i32, eyf as i32);
             let current = current == Some((ms, me));
+            // Bake the hanging-indent (`WRAPINDENT`/`WRAPHANG`) x-offset in HERE, from the RAW f32 row
+            // top — not from the i32 `sy`. A row's `line_top` can carry a fractional part; truncating it
+            // first can drop the lookup into the previous row's band (offset 0), shifting the band left
+            // by the whole hang. The caret avoids this the same way (see `caret_px`). `wi_offset_at_y`
+            // returns 0 when the mode is off (`wi_rows` empty), so this is a no-op then.
+            let lh_f = lh_px as f32;
             if sy == ey {
+                let o = self.wi_offset_at_y(syf) as i32;
                 if ex > sx {
-                    rects.push((sx, sy, ex, sy + lh_px, current));
+                    rects.push((sx + o, sy, ex + o, sy + lh_px, current));
                 }
             } else {
                 // Wrapped match: first row to the right margin, full middle rows, last row from the left.
-                rects.push((sx, sy, w_px, sy + lh_px, current));
-                let mut y = sy + lh_px;
+                let o0 = self.wi_offset_at_y(syf) as i32;
+                rects.push((sx + o0, sy, w_px + o0, sy + lh_px, current));
+                let (mut y, mut yf) = (sy + lh_px, syf + lh_f);
                 while y < ey {
-                    rects.push((0, y, w_px, y + lh_px, current));
+                    let o = self.wi_offset_at_y(yf) as i32;
+                    rects.push((o, y, w_px + o, y + lh_px, current));
                     y += lh_px;
+                    yf += lh_f;
                 }
                 if ex > 0 {
-                    rects.push((0, ey, ex, ey + lh_px, current));
+                    let oe = self.wi_offset_at_y(eyf) as i32;
+                    rects.push((oe, ey, ex + oe, ey + lh_px, current));
                 }
             }
         }
@@ -2896,7 +2907,11 @@ impl GuiApp {
             else {
                 continue;
             };
-            let (sx, sy, ex) = (sxf as i32, syf as i32, exf as i32);
+            // Bake the hanging-indent x-offset in from the RAW f32 row top (see `highlight_rects` — a
+            // truncated `sy` can land in the previous row's band and drop the whole hang). A bracket is
+            // one char on a single visual row, so one offset suffices.
+            let off = self.wi_offset_at_y(syf) as i32;
+            let (sx, sy, ex) = ((sxf as i32) + off, syf as i32, (exf as i32) + off);
             if ex > sx {
                 rects.push((sx, sy, ex, sy + lh_px));
             }
@@ -2966,20 +2981,27 @@ impl GuiApp {
                 continue;
             };
             let (sx, sy, ex, ey) = (sxf as i32, syf as i32, exf as i32, eyf as i32);
+            // Bake the hanging-indent x-offset in from the RAW f32 row top (see `highlight_rects`).
+            let lh_f = lh_px as f32;
             if sy == ey {
+                let o = self.wi_offset_at_y(syf) as i32;
                 if ex > sx {
-                    rects.push((sx, sy, ex, sy + lh_px, is_spelling));
+                    rects.push((sx + o, sy, ex + o, sy + lh_px, is_spelling));
                 }
             } else {
                 // Wrapped issue: first row to the right margin, full middle rows, last row from left.
-                rects.push((sx, sy, w_px, sy + lh_px, is_spelling));
-                let mut y = sy + lh_px;
+                let o0 = self.wi_offset_at_y(syf) as i32;
+                rects.push((sx + o0, sy, w_px + o0, sy + lh_px, is_spelling));
+                let (mut y, mut yf) = (sy + lh_px, syf + lh_f);
                 while y < ey {
-                    rects.push((0, y, w_px, y + lh_px, is_spelling));
+                    let o = self.wi_offset_at_y(yf) as i32;
+                    rects.push((o, y, w_px + o, y + lh_px, is_spelling));
                     y += lh_px;
+                    yf += lh_f;
                 }
                 if ex > 0 {
-                    rects.push((0, ey, ex, ey + lh_px, is_spelling));
+                    let oe = self.wi_offset_at_y(eyf) as i32;
+                    rects.push((oe, ey, ex + oe, ey + lh_px, is_spelling));
                 }
             }
         }
@@ -3201,31 +3223,10 @@ impl GuiApp {
         }
         let mut bal_rects = self.bracket_rects(&buffer, &win, lh_px as i32);
 
-        // WRAPINDENT: shift each highlight/underline rect right by its row's hanging-indent offset so
-        // the bands sit under the (indented) continuation text. A no-op when the mode is off (the row
-        // table is empty → `wi_offset_at_y` returns 0).
-        if !self.wi_rows.is_empty() {
-            for r in &mut find_rects {
-                let o = self.wi_offset_at_y(r.1 as f32) as i32;
-                r.0 += o;
-                r.2 += o;
-            }
-            for r in &mut emph_rects {
-                let o = self.wi_offset_at_y(r.1 as f32) as i32;
-                r.0 += o;
-                r.2 += o;
-            }
-            for r in &mut lint_rects {
-                let o = self.wi_offset_at_y(r.1 as f32) as i32;
-                r.0 += o;
-                r.2 += o;
-            }
-            for r in &mut bal_rects {
-                let o = self.wi_offset_at_y(r.1 as f32) as i32;
-                r.0 += o;
-                r.2 += o;
-            }
-        }
+        // NOTE: the `WRAPINDENT`/`WRAPHANG` hanging-indent x-offset is now baked into each rect at
+        // construction (in `highlight_rects`/`bracket_rects`/`lint_underline_rects`) from the RAW f32
+        // row top — NOT re-applied here from the truncated `r.1`, which could land in the wrong row's
+        // band and shift a band left by the whole hang (the "every other paragraph" bracket bug).
         // `WRAP off` horizontal offset: slide the highlight/underline bands left with the glyphs.
         if hshift != 0 {
             for r in &mut find_rects {
