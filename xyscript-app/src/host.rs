@@ -5785,11 +5785,18 @@ impl AppHost {
             }
         };
         let path_str = hit.path.to_string_lossy().into_owned();
+        // Carry the results tab's match highlight (EMPH) onto the file we open, so the same matches
+        // light up there. (The active buffer IS the results tab — `grep_hit_at_cursor` guaranteed it.)
+        let emph = self.docs[self.active].emph().map(str::to_string);
+        let emph_regex = self.docs[self.active].emph_is_regex();
         // Open, or switch to it if already open — either way, no prompt.
         if let Some(idx) = self.find_open_tab(&path_str) {
             self.set_active(idx);
         } else {
             self.open_doc(&path_str, false)?;
+        }
+        if let Some(phrase) = emph {
+            self.active().set_emph(Some(phrase), emph_regex);
         }
         // Resolve line:col → a rope offset in the (decoded) buffer and place the caret there.
         let off = {
@@ -7532,6 +7539,22 @@ impl Host for AppHost {
                 doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, false);
                 let doc_id = doc.id();
                 self.add_or_reuse(doc);
+                // Highlight the matches with EMPH — in the results tab now, and (via `grep_jump`) in
+                // any file opened with `GJ`. Map the GREP pattern to an EMPH phrase so the highlight
+                // covers exactly what GREP matched: a regex GREP → `EMPH/R`; a whole-word GREP → EMPH's
+                // own whole-word literal; a plain literal GREP → `EMPH/R` on the ESCAPED pattern, so
+                // substring matches light up too (EMPH's non-regex mode is whole-word only). EMPH is
+                // always case-insensitive, so a case-sensitive GREP may highlight extra case variants.
+                let (emph_phrase, emph_regex) = if regex {
+                    (pattern.clone(), true)
+                } else if whole {
+                    (pattern.clone(), false)
+                } else {
+                    (regex::escape(&pattern), true)
+                };
+                if let Some(d) = self.docs.iter_mut().find(|d| d.id() == doc_id) {
+                    d.set_emph(Some(emph_phrase), emph_regex);
+                }
                 self.set_focus(Target::Document); // land the caret in the results, ready for GJ
 
                 // Spawn the search on a worker thread; it sends batches of hits over the channel.

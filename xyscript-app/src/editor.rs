@@ -6056,6 +6056,40 @@ mod tests {
     }
 
     #[test]
+    fn grep_emphasizes_matches_on_the_results_tab() {
+        use std::fs;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        // A real temp dir (GREP walks the real filesystem, not the virtual FS).
+        static N: AtomicU32 = AtomicU32::new(0);
+        let d = std::env::temp_dir().join(format!(
+            "xyscript-grepemph-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("a.txt"), "concatenate\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", d.display()));
+        // Plain literal GREP → EMPH highlights via an ESCAPED regex, so substrings light up exactly
+        // like GREP's substring matches (EMPH's own literal mode is whole-word only).
+        e.run_command("GREP cat");
+        assert_eq!(e.active_emph().as_deref(), Some("cat"));
+        assert!(e.active_emph_is_regex(), "literal GREP → escaped-regex EMPH (substring highlight)");
+        // Regex GREP → EMPH/R with the pattern.
+        e.run_command("GREP/R c.t");
+        assert_eq!(e.active_emph().as_deref(), Some("c.t"));
+        assert!(e.active_emph_is_regex());
+        // Whole-word GREP → EMPH's whole-word literal.
+        e.run_command("GREP/W cat");
+        assert_eq!(e.active_emph().as_deref(), Some("cat"));
+        assert!(!e.active_emph_is_regex());
+
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn emph_colors_default_to_selection_and_are_overridable() {
         let mut e = ed();
         e.run_command("SELFGCOLOR 10 20 30");

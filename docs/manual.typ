@@ -642,9 +642,11 @@ regular expression, #raw("/I") ignores case, #raw("/W") matches whole words — 
 a file-name glob over the current folder (#raw("GREP cat *.rs")), or both at once (#raw("GREP cat src/*.rs")) —
 just like a #raw("DIR") filespec; and quote a pattern with spaces (#raw("GREP \"foo bar\" src")).
 
-To open a result, put the caret on its line and run #raw("GJ") — it opens that file (or switches to it if
-it's already open, without asking) and jumps the caret right onto the match. Think of the results tab as a
-launch pad: #raw("GREP") to gather, #raw("GJ") to pounce.
+Every match is highlighted (using the #raw("EMPH") emphasis) right in the results tab, so the hits are easy
+to scan. To open one, put the caret on its line and run #raw("GJ") — it opens that file (or switches to it
+if it's already open, without asking), jumps the caret right onto the match, and carries the same
+highlight along so every occurrence lights up there too. Think of the results tab as a launch pad:
+#raw("GREP") to gather, #raw("GJ") to pounce.
 
 == Encodings
 
