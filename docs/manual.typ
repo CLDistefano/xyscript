@@ -643,9 +643,10 @@ a file-name glob over the current folder (#raw("GREP cat *.rs")), or both at onc
 just like a #raw("DIR") filespec; and quote a pattern with spaces (#raw("GREP \"foo bar\" src")).
 
 Every match is highlighted (using the #raw("EMPH") emphasis) right in the results tab, so the hits are easy
-to scan. To open one, put the caret on its line and run #raw("GJ") — it opens that file (or switches to it
-if it's already open, without asking), jumps the caret right onto the match, and carries the same
-highlight along so every occurrence lights up there too. Think of the results tab as a launch pad:
+to scan. To open one, put the caret on its line and press #kbd("Enter") (or double-click it, or run #raw("GJ")) —
+it opens that file (or switches to it if it's already open, without asking), jumps the caret right onto
+the match, and carries the same highlight along so every occurrence lights up there too. Arrow keys and
+#kbd("PageUp")/#kbd("PageDown") still scroll the results as usual. Think of the results tab as a launch pad:
 #raw("GREP") to gather, #raw("GJ") to pounce.
 
 == Encodings

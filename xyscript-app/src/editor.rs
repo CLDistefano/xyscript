@@ -1066,6 +1066,16 @@ impl Editor {
         }
     }
 
+    /// `GJ` from a key/mouse path (Enter or double-click on a `GREP` results tab): open the hit under
+    /// the caret and jump to it. Surfaces the destination (or the error) on the status line.
+    pub fn grep_jump(&mut self) {
+        let msg = match self.host.grep_jump() {
+            Ok(v) => v.to_str(),
+            Err(e) => e.message().to_string(),
+        };
+        self.interp.set_status(Some(msg));
+    }
+
     /// Whether an interactive change-verify (`CV`) walk is awaiting a choice — the
     /// GUI shows the prompt and routes the next keypress to [`verify_respond`].
     pub fn verify_active(&self) -> bool {

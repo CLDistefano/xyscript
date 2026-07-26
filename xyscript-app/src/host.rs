@@ -5779,8 +5779,8 @@ impl AppHost {
 
     /// `GJ` — open the file for the `GREP` hit on the caret's line (or switch to it if already open),
     /// jump to its `line:col`, and centre it. Trappable error when the active buffer isn't a results
-    /// listing or the caret isn't on a hit.
-    fn grep_jump(&mut self) -> VmResult<Value> {
+    /// listing or the caret isn't on a hit. Public so the GUI can drive it from Enter / a double-click.
+    pub fn grep_jump(&mut self) -> VmResult<Value> {
         let hit = match self.docs[self.active].grep_hit_at_cursor() {
             Some(h) => h.clone(),
             None => {

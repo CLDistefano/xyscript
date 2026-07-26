@@ -6621,6 +6621,18 @@ impl GuiApp {
                                 }
                             }
                         }
+                    } else if self.editor.active_is_grep_listing()
+                        && key == egui::Key::Enter
+                        && !modifiers.ctrl
+                        && !modifiers.alt
+                        && !modifiers.shift
+                    {
+                        // Enter on a GREP results tab opens the hit under the caret and jumps to it
+                        // (the keyboard equivalent of `GJ` / a double-click). Other keys fall through
+                        // to normal navigation, so arrows/PageUp-Down still scroll the results.
+                        self.editor.grep_jump();
+                        self.pane_view.follow = true;
+                        ctx.request_repaint();
                     } else if !modifiers.ctrl
                         && !modifiers.alt
                         && matches!(key, egui::Key::ArrowUp | egui::Key::ArrowDown)
@@ -7776,6 +7788,8 @@ impl GuiApp {
         // A double-click in a DIR/LS listing opens/descends the clicked entry — the
         // mouse equivalent of Enter (matches the `DIR/W` window's behavior).
         let dir_double = resp.double_clicked() && self.editor.active_is_dir_listing();
+        // A double-click on a GREP results tab opens the clicked hit (the mouse equivalent of Enter/GJ).
+        let grep_double = resp.double_clicked() && self.editor.active_is_grep_listing();
         // A right-click in a DIR/LS listing copies the clicked entry's full path to the
         // clipboard (the mouse equivalent of the listing's Ctrl+C).
         let dir_rightclick = resp.secondary_clicked() && self.editor.active_is_dir_listing();
@@ -7859,6 +7873,11 @@ impl GuiApp {
                         // Land the caret on the clicked entry, then activate it like Enter.
                         self.editor.host_mut().click_active_caret(off);
                         self.editor.dir_enter();
+                        self.pane_view.follow = true;
+                    } else if grep_double {
+                        // Land the caret on the clicked result, then jump to it (like Enter / GJ).
+                        self.editor.host_mut().click_active_caret(off);
+                        self.editor.grep_jump();
                         self.pane_view.follow = true;
                     } else if dir_rightclick {
                         // Land the caret on the clicked entry, then copy its full path.
