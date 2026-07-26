@@ -77,6 +77,13 @@ pub struct Buffer {
     /// the result stays exact. Reset on an encoding switch (the decode itself changes).
     dec_hint: std::cell::Cell<(u64, usize, usize)>, // (rev, rope_off, decoded_off)
     rope_hint: std::cell::Cell<(u64, usize, usize)>, // (rev, decoded_off, rope_off)
+    /// Sparse `(rope_off, decoded_off)` checkpoints every ~[`DEC_INDEX_SPACING`] rope bytes,
+    /// built once for a LARGE non-identity buffer so `decoded_offset`/`rope_offset` never walk
+    /// the whole prefix from 0 — the first access at the bottom of a 100+ MB single-byte file was
+    /// otherwise an O(file) decode (a multi-hundred-ms freeze). `(rev, checkpoints)`; the `rev`
+    /// tags which content it describes, so an edit (rev bump) simply retires it (offsets after the
+    /// edit shift) and access falls back to the `dec_hint` walk until the next whole-buffer load.
+    dec_index: std::cell::RefCell<(u64, Vec<(usize, usize)>)>,
     /// True iff the view is UTF-8 **and the bytes are valid UTF-8**, so a rope byte
     /// offset equals its decoded-string offset (the `decoded_offset`/`rope_offset` O(1)
     /// identity). Recomputed only on a whole-buffer load or an encoding switch — edits
@@ -94,6 +101,13 @@ pub struct Buffer {
 /// The "no valid checkpoint" sentinel rev (no real rope rev reaches it).
 const NO_HINT: (u64, usize, usize) = (u64::MAX, 0, 0);
 
+/// Rope bytes between [`Buffer::dec_index`] checkpoints — the worst-case walk for a cold
+/// `decoded_offset`/`rope_offset` once the index is built (a 256 KB decode ≈ sub-millisecond).
+const DEC_INDEX_SPACING: usize = 256 * 1024;
+/// Only large buffers get an index; under this a cold whole-prefix walk is already trivial, and
+/// building/holding the checkpoints isn't worth it (small edited files stay simple).
+const DEC_INDEX_MIN_LEN: usize = 1024 * 1024;
+
 impl Default for Buffer {
     fn default() -> Buffer {
         // New documents default to UTF-8 (the authoring use): every character is
@@ -110,6 +124,7 @@ impl Default for Buffer {
             defined: false,
             dec_hint: std::cell::Cell::new(NO_HINT),
             rope_hint: std::cell::Cell::new(NO_HINT),
+            dec_index: std::cell::RefCell::new((u64::MAX, Vec::new())),
             utf8_identity: true, // empty UTF-8 buffer: offsets coincide
             goal_col: None,
         }
@@ -140,7 +155,9 @@ impl Buffer {
         let utf8_identity = enc.name() == "utf-8" && std::str::from_utf8(&bytes).is_ok();
         let rope = ByteRope::from_bytes(bytes);
         let cursor = rope.len();
-        Buffer { rope, enc, cursor, utf8_identity, ..Buffer::default() }
+        let b = Buffer { rope, enc, cursor, utf8_identity, ..Buffer::default() };
+        b.build_dec_index(); // bound cold offset walks at open (huge single-byte files)
+        b
     }
 
     /// The full buffer contents, decoded through the current encoding. O(n): it
@@ -213,21 +230,92 @@ impl Buffer {
         if self.utf8_identity {
             return off; // rope bytes *are* the (valid) UTF-8 string; offsets coincide
         }
-        // Decode only the delta to the cached checkpoint when it's still valid (same
-        // rev) — forward *or* backward, so paging up is as cheap as paging down. Exact
-        // either way: the decoded length of a byte range is the same regardless of where
-        // we start, and `off`/checkpoint are both char boundaries (cursor offsets).
+        // Decode only the delta from the CLOSEST known (rope, decoded) anchor. The moving
+        // `dec_hint` checkpoint keeps a forward/backward sweep (paging) cheap; the sparse
+        // `dec_index` bounds a COLD or far jump (e.g. the first paint at the bottom of a huge
+        // single-byte file) to one inter-checkpoint span instead of decoding from 0. Exact from
+        // any anchor: the decoded length of a byte range doesn't depend on where the walk starts,
+        // and every anchor/`off` is a char boundary.
         let rev = self.rope.rev();
+        let (mut a_rope, mut a_dec) = (0usize, 0usize); // walk-from-0 fallback
+        let mut best = off; // distance from the current best anchor
         let (h_rev, h_rope, h_dec) = self.dec_hint.get();
-        let result = if h_rev != rev {
-            self.enc.decode(&self.rope.slice_to_vec(0, off)).len()
-        } else if off >= h_rope {
-            h_dec + self.enc.decode(&self.rope.slice_to_vec(h_rope, off)).len()
+        if h_rev == rev && off.abs_diff(h_rope) < best {
+            best = off.abs_diff(h_rope);
+            (a_rope, a_dec) = (h_rope, h_dec);
+        }
+        if let Some((r, d)) = self.dec_index_anchor(rev, off) {
+            if off.abs_diff(r) < best {
+                (a_rope, a_dec) = (r, d);
+            }
+        }
+        let result = if off >= a_rope {
+            a_dec + self.enc.decode(&self.rope.slice_to_vec(a_rope, off)).len()
         } else {
-            h_dec - self.enc.decode(&self.rope.slice_to_vec(off, h_rope)).len()
+            a_dec - self.enc.decode(&self.rope.slice_to_vec(off, a_rope)).len()
         };
         self.dec_hint.set((rev, off, result));
         result
+    }
+
+    /// The `dec_index` checkpoint bracketing `off` most closely (floor or ceil), if the index is
+    /// built and still describes the current `rev`. `None` when there's no usable index (small
+    /// buffer, UTF-8, or retired by an edit), so the caller falls back to the `dec_hint` walk.
+    fn dec_index_anchor(&self, rev: u64, off: usize) -> Option<(usize, usize)> {
+        let idx = self.dec_index.borrow();
+        if idx.0 != rev || idx.1.is_empty() {
+            return None;
+        }
+        let cps = &idx.1;
+        // Largest checkpoint with rope_off <= off (floor); the ceil neighbour may be nearer for a
+        // backward walk. `off` beyond the last checkpoint just uses the last (still bounded, since
+        // checkpoints run to `len`).
+        let i = cps.partition_point(|&(r, _)| r <= off).saturating_sub(1);
+        let floor = cps[i];
+        match cps.get(i + 1) {
+            Some(&ceil) if off.abs_diff(ceil.0) < off.abs_diff(floor.0) => Some(ceil),
+            _ => Some(floor),
+        }
+    }
+
+    /// Like [`dec_index_anchor`](Buffer::dec_index_anchor) but keyed on the DECODED component, for
+    /// [`rope_offset`](Buffer::rope_offset)'s inverse walk. The checkpoints are monotonic in both
+    /// coordinates, so the same table serves both directions.
+    fn rope_index_anchor(&self, rev: u64, decoded_off: usize) -> Option<(usize, usize)> {
+        let idx = self.dec_index.borrow();
+        if idx.0 != rev || idx.1.is_empty() {
+            return None;
+        }
+        let cps = &idx.1;
+        let i = cps.partition_point(|&(_, d)| d <= decoded_off).saturating_sub(1);
+        let floor = cps[i];
+        match cps.get(i + 1) {
+            Some(&ceil) if decoded_off.abs_diff(ceil.1) < decoded_off.abs_diff(floor.1) => Some(ceil),
+            _ => Some(floor),
+        }
+    }
+
+    /// Build the sparse decoded-offset index for the current content, but only for a LARGE
+    /// non-identity buffer (a UTF-8-identity view needs none — offsets coincide). One decode pass
+    /// over the rope in [`DEC_INDEX_SPACING`] steps; called on a whole-buffer load / encoding
+    /// switch, so the O(file) cost lands at open, not on the first scroll to the bottom.
+    fn build_dec_index(&self) {
+        if self.utf8_identity || self.rope.len() < DEC_INDEX_MIN_LEN {
+            *self.dec_index.borrow_mut() = (u64::MAX, Vec::new());
+            return;
+        }
+        let rev = self.rope.rev();
+        let len = self.rope.len();
+        let mut cps: Vec<(usize, usize)> = Vec::with_capacity(len / DEC_INDEX_SPACING + 2);
+        let (mut rope_pos, mut dec_pos) = (0usize, 0usize);
+        cps.push((0, 0));
+        while rope_pos < len {
+            let next = self.snap_boundary((rope_pos + DEC_INDEX_SPACING).min(len)).max(rope_pos + 1).min(len);
+            dec_pos += self.enc.decode(&self.rope.slice_to_vec(rope_pos, next)).len();
+            rope_pos = next;
+            cps.push((rope_pos, dec_pos));
+        }
+        *self.dec_index.borrow_mut() = (rev, cps);
     }
 
     /// Inverse of [`decoded_offset`](Buffer::decoded_offset): map a byte offset in
@@ -242,8 +330,22 @@ impl Buffer {
         // as paging down. The result (the first boundary whose decoded length reaches
         // `decoded_off`) is the same whichever direction we approach from.
         let rev = self.rope.rev();
+        // Start from the CLOSEST known anchor: the warm `rope_hint` (sustained sweep) or the nearest
+        // `dec_index` checkpoint (bounds a cold/far jump to one inter-checkpoint span). Same index as
+        // `decoded_offset` — its `(rope, decoded)` pairs are monotonic, so it's searchable by the
+        // decoded component too.
         let (h_rev, h_dec, h_rope) = self.rope_hint.get();
-        let (mut rope_pos, mut dec_pos) = if h_rev == rev { (h_rope, h_dec) } else { (0, 0) };
+        let (mut rope_pos, mut dec_pos) = (0usize, 0usize);
+        let mut best = decoded_off; // distance (in decoded bytes) from the walk-from-0 fallback
+        if h_rev == rev && decoded_off.abs_diff(h_dec) < best {
+            best = decoded_off.abs_diff(h_dec);
+            (rope_pos, dec_pos) = (h_rope, h_dec);
+        }
+        if let Some((r, d)) = self.rope_index_anchor(rev, decoded_off) {
+            if decoded_off.abs_diff(d) < best {
+                (rope_pos, dec_pos) = (r, d);
+            }
+        }
         if dec_pos <= decoded_off {
             while rope_pos < len && dec_pos < decoded_off {
                 let next = self.next_boundary(rope_pos);
@@ -489,6 +591,7 @@ impl Buffer {
         self.rope_hint.set(NO_HINT);
         self.utf8_identity =
             self.enc.name() == "utf-8" && std::str::from_utf8(&self.rope.to_vec()).is_ok();
+        self.build_dec_index(); // re-index for the new decode (or clear it if now identity/small)
         // A view switch can land the caret mid-character (e.g. CP437→UTF-8); snap
         // both ends back to the nearest preceding boundary.
         self.cursor = self.snap_boundary(self.cursor);
@@ -2410,6 +2513,26 @@ mod tests {
         assert_eq!(b.decoded_offset(6), 6);
         assert_eq!(b.rope_offset(6), 6);
         assert_eq!(b.decoded_offset(1), 1);
+    }
+
+    #[test]
+    fn dec_index_bounds_offset_walks_exactly() {
+        // A >1MB single-byte (CP437) buffer builds the sparse index; every mapping must still equal
+        // the naive whole-prefix decode, from any starting checkpoint, in both directions.
+        let n = 1_200_000usize;
+        let b = Buffer::from_bytes(vec![0xCB; n], cp437()); // each 0xCB → '╦' (3 UTF-8 bytes)
+        assert!(!b.dec_index.borrow().1.is_empty(), "index should be built for a >1MB non-UTF-8 buffer");
+        // Spot-check across the whole range, including far cold jumps that used to walk from 0.
+        for &rope in &[0usize, 1, 500_000, 999_999, n - 1, n] {
+            assert_eq!(b.decoded_offset(rope), rope * 3, "decoded_offset({rope})");
+        }
+        for &dec in &[0usize, 3, 1_500_000, n * 3 - 3, n * 3] {
+            assert_eq!(b.rope_offset(dec), (dec / 3).min(n), "rope_offset({dec})");
+        }
+        // Jump bottom→top→bottom (worst thrash for a single checkpoint) stays exact.
+        assert_eq!(b.decoded_offset(n), n * 3);
+        assert_eq!(b.decoded_offset(0), 0);
+        assert_eq!(b.decoded_offset(n), n * 3);
     }
 
     #[test]
