@@ -634,7 +634,9 @@ an entry copies its full path to the clipboard, the mouse equivalent of the list
 
 #raw("GREP cat") searches every file under the current folder (recursively, skipping what your
 #raw(".gitignore") hides and binary files) and drops the matches into a read-only tab, one
-#raw("path:line:col: text") line each. It's a literal search by default; #raw("/R") makes the pattern a
+#raw("path:line:col: text") line each. The search runs in the background and streams results in as it
+finds them, so even a big tree never freezes the editor — the status line shows a running count, and
+starting another #raw("GREP") (or closing the tab) cancels one still in progress. It's a literal search by default; #raw("/R") makes the pattern a
 regular expression, #raw("/I") ignores case, #raw("/W") matches whole words — the same letters as
 #raw("SE") and #raw("FIND"). Add a file-name mask to narrow it (#raw("GREP cat *.rs")), and quote a
 pattern with spaces (#raw("GREP \"foo bar\"")).

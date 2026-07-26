@@ -419,6 +419,16 @@ impl Editor {
         }
         notices
     }
+    /// Drain the streaming `GREP` worker (append hits to the results tab). Returns `(changed, status)`:
+    /// `changed` → the results buffer grew (repaint); `status` → a status-line message while a search
+    /// is active or just finished. See [`crate::host::AppHost::poll_grep`].
+    pub fn poll_grep(&mut self) -> (bool, Option<String>) {
+        self.host.poll_grep()
+    }
+    /// Whether a streaming `GREP` search is currently running (the GUI keeps polling while true).
+    pub fn grep_in_progress(&self) -> bool {
+        self.host.grep_in_progress()
+    }
     /// Output (`PR`/`LISTLIB`) from the most recent dispatch (the GUI shows it on the status line).
     pub fn output(&self) -> &[String] {
         self.interp.output()

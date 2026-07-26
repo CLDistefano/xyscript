@@ -993,6 +993,36 @@ struct Job {
     is_mail: bool,
 }
 
+/// A streaming `GREP` search running on a worker thread (see `EditorOp::Grep`). The worker sends
+/// batches of hits over `rx` and a final `Done`/`Error`; [`AppHost::poll_grep`] drains it into the
+/// results tab identified by `doc`. `cancel` aborts the walk (a new `GREP`, or the tab being closed).
+struct GrepJob {
+    rx: std::sync::mpsc::Receiver<GrepMsg>,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    doc: crate::panes::DocId,
+    /// The search root (`$CWD` at launch) — the results tab renders paths relative to it.
+    base: PathBuf,
+}
+
+/// A message from the `GREP` worker thread to [`AppHost::poll_grep`].
+enum GrepMsg {
+    /// A batch of matches to append to the results tab.
+    Hits(Vec<crate::grep::GrepHit>),
+    /// The search finished: how many files were searched, and whether the cap was hit.
+    Done { files: usize, capped: bool },
+    /// The search failed to start (e.g. an invalid regex slipped through) — shouldn't normally happen
+    /// since `compile_check` validates up front.
+    Error(String),
+}
+
+/// Total-hit cap for a streaming `GREP` (bounds memory + the results buffer on a pathological tree).
+const GREP_CAP: usize = 50_000;
+/// The worker flushes a batch of hits to the channel every this many matches (responsive without
+/// per-hit channel chatter).
+const GREP_BATCH: usize = 200;
+/// Per-frame cap on how many batches `poll_grep` appends, so a flood can't stall a frame.
+const GREP_DRAIN_BATCHES: usize = 32;
+
 /// Bounded job-channel capacity: the worker blocks on `send` once this many lines are unread,
 /// throttling a flood (e.g. `dir /s C:\`) to the GUI's drain rate so memory + the UI stay bounded.
 const JOB_CHANNEL_CAP: usize = 4096;
@@ -1861,6 +1891,9 @@ pub struct AppHost {
     /// Running background shell jobs (`X/BG`), drained by `poll_jobs`. `$JOBS` = count.
     jobs: Vec<Job>,
     next_job_id: u64,
+    /// The in-flight streaming `GREP` search, if any (drained by `poll_grep`). At most one at a time —
+    /// a new `GREP` cancels the previous.
+    grep_job: Option<GrepJob>,
     /// The id of the most-recently-started background job (`X/BG` or `RUN/BG`); `0` = none yet.
     /// Read as `$LJ` so a script can `WAIT/J $LJ` on the job it just launched.
     last_job_id: u64,
@@ -2239,6 +2272,7 @@ impl AppHost {
             jobs: Vec::new(),
             next_job_id: 1,
             last_job_id: 0,
+            grep_job: None,
             pending_returns: Vec::new(),
             command_history: Vec::new(),
             recently_closed: Vec::new(),
@@ -3563,6 +3597,91 @@ impl AppHost {
             true
         } else {
             false
+        }
+    }
+
+    /// Whether a streaming `GREP` search is currently running.
+    pub fn grep_in_progress(&self) -> bool {
+        self.grep_job.is_some()
+    }
+
+    /// Drain the streaming `GREP` worker: append newly-arrived hit batches to the results tab, and on
+    /// completion finalize it. Returns `(changed, status)` — `changed` = the results buffer grew this
+    /// frame (→ repaint); `status` = a status-line message while a search is active or just finished
+    /// (`None` when idle). Called each frame by the GUI.
+    pub fn poll_grep(&mut self) -> (bool, Option<String>) {
+        use std::sync::atomic::Ordering;
+        use std::sync::mpsc::TryRecvError;
+        let Some(job) = self.grep_job.take() else {
+            return (false, None);
+        };
+        let doc_id = job.doc;
+        // If the results tab was closed, cancel the search and drop the job.
+        if !self.docs.iter().any(|d| d.id() == doc_id) {
+            job.cancel.store(true, Ordering::Relaxed);
+            return (false, None);
+        }
+        let base = job.base.clone();
+        let mut changed = false;
+        let mut finished: Option<Result<(usize, bool), String>> = None;
+        let mut drained = 0usize;
+        loop {
+            match job.rx.try_recv() {
+                Ok(GrepMsg::Hits(hits)) => {
+                    if let Some(d) = self.docs.iter_mut().find(|d| d.id() == doc_id) {
+                        d.append_grep_hits(&hits, &base);
+                        changed = true;
+                    }
+                    drained += 1;
+                    if drained >= GREP_DRAIN_BATCHES {
+                        break; // yield the rest to the next frame so a flood can't stall the UI
+                    }
+                }
+                Ok(GrepMsg::Done { files, capped }) => {
+                    finished = Some(Ok((files, capped)));
+                    break;
+                }
+                Ok(GrepMsg::Error(e)) => {
+                    finished = Some(Err(e));
+                    break;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    finished = Some(Ok((0, false))); // worker vanished — treat as done
+                    break;
+                }
+            }
+        }
+        let n = self.docs.iter().find(|d| d.id() == doc_id).map(|d| d.grep_hit_count()).unwrap_or(0);
+        match finished {
+            Some(res) => {
+                // Done — the job is dropped (not re-stored).
+                let msg = match res {
+                    Ok((files, capped)) => {
+                        if let Some(d) = self.docs.iter_mut().find(|d| d.id() == doc_id) {
+                            d.finalize_grep(capped);
+                        }
+                        if n == 0 {
+                            "GREP: no matches".to_string()
+                        } else {
+                            let cap_note =
+                                if capped { format!(" (capped at {GREP_CAP})") } else { String::new() };
+                            format!(
+                                "GREP: {n} match{} in {files} file{}{cap_note}",
+                                if n == 1 { "" } else { "es" },
+                                if files == 1 { "" } else { "s" },
+                            )
+                        }
+                    }
+                    Err(e) => format!("GREP: {e}"),
+                };
+                (true, Some(msg))
+            }
+            None => {
+                // Still running — put the job back and report progress.
+                self.grep_job = Some(job);
+                (changed, Some(format!("GREP: {n} match{} so far…", if n == 1 { "" } else { "es" })))
+            }
         }
     }
 
@@ -7388,26 +7507,53 @@ impl Host for AppHost {
                 return Ok(Value::str(msg));
             }
             EditorOp::Grep { pattern, mask, regex, case, whole } => {
-                let base = self.cwd.clone();
-                const CAP: usize = 5000;
-                let result =
-                    crate::grep::run_grep(&base, &pattern, regex, case, whole, mask.as_deref(), CAP)
-                        .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
-                let n = result.hits.len();
-                if n == 0 {
-                    return Ok(Value::str(format!("GREP: no matches for {pattern:?}")));
+                use std::sync::atomic::{AtomicBool, Ordering};
+                // Validate the pattern up front so a bad `/R` errors immediately — no tab, no thread.
+                crate::grep::compile_check(&pattern, regex, case, whole)
+                    .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
+                // Supersede any search already running.
+                if let Some(job) = self.grep_job.take() {
+                    job.cancel.store(true, Ordering::Relaxed);
                 }
-                let (files, capped) = (result.files_searched, result.capped);
+                let base = self.cwd.clone();
+                // Open an EMPTY results tab immediately (so the search is visibly under way); the worker
+                // streams hits into it via `poll_grep`.
                 let mut doc = Document::new();
-                doc.open_grep_listing(base, result.hits, pattern, regex, capped);
+                doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, false);
+                let doc_id = doc.id();
                 self.add_or_reuse(doc);
                 self.set_focus(Target::Document); // land the caret in the results, ready for GJ
-                let cap_note = if capped { format!(" (capped at {CAP})") } else { String::new() };
-                return Ok(Value::str(format!(
-                    "GREP: {n} match{} in {files} file{}{cap_note}",
-                    if n == 1 { "" } else { "es" },
-                    if files == 1 { "" } else { "s" },
-                )));
+
+                // Spawn the search on a worker thread; it sends batches of hits over the channel.
+                let cancel = std::sync::Arc::new(AtomicBool::new(false));
+                let (tx, rx) = std::sync::mpsc::channel::<GrepMsg>();
+                {
+                    let (cancel, base, pat, mask) =
+                        (cancel.clone(), base.clone(), pattern.clone(), mask.clone());
+                    std::thread::spawn(move || {
+                        let mut batch: Vec<crate::grep::GrepHit> = Vec::new();
+                        let summary = crate::grep::search(
+                            &base, &pat, regex, case, whole, mask.as_deref(), GREP_CAP, &cancel,
+                            |hit| {
+                                batch.push(hit);
+                                if batch.len() >= GREP_BATCH {
+                                    // A send error means the receiver is gone (tab closed) → stop.
+                                    return tx.send(GrepMsg::Hits(std::mem::take(&mut batch))).is_ok();
+                                }
+                                true
+                            },
+                        );
+                        if !batch.is_empty() {
+                            let _ = tx.send(GrepMsg::Hits(batch));
+                        }
+                        let _ = match summary {
+                            Ok(s) => tx.send(GrepMsg::Done { files: s.files_searched, capped: s.capped }),
+                            Err(e) => tx.send(GrepMsg::Error(e)),
+                        };
+                    });
+                }
+                self.grep_job = Some(GrepJob { rx, cancel, doc: doc_id, base });
+                return Ok(Value::str("GREP: searching…"));
             }
             EditorOp::GrepJump => {
                 return self.grep_jump();

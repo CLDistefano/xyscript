@@ -1439,9 +1439,36 @@ impl Document {
         self.grep = Some(crate::grep::GrepState { base, pattern, regex, capped, hits });
     }
 
+    /// Append a streamed batch of `GREP` hits: push them onto the state and append their rendered
+    /// `path:line:col: text` lines to the buffer (raw, caret-preserving — a results listing isn't
+    /// editable/undoable), keeping **line N → `hits[N]`**. No-op if this isn't a results listing.
+    pub fn append_grep_hits(&mut self, hits: &[crate::grep::GrepHit], base: &std::path::Path) {
+        if self.grep.is_none() || hits.is_empty() {
+            return;
+        }
+        let text = crate::grep::render_hits(hits, base);
+        self.append_log(&text); // end-append, keeps the caret put, sets read-only
+        self.undo.clear(); // a listing isn't undoable — don't accumulate history as it streams
+        self.redo.clear();
+        self.mark_saved(); // re-sync the saved point AFTER clearing undo, else the tab reads modified
+        self.grep.as_mut().unwrap().hits.extend_from_slice(hits);
+    }
+
+    /// Mark a streaming `GREP` search complete (records whether the hit cap was reached).
+    pub fn finalize_grep(&mut self, capped: bool) {
+        if let Some(g) = self.grep.as_mut() {
+            g.capped = capped;
+        }
+    }
+
     /// Whether this buffer is a `GREP` results listing.
     pub fn is_grep_listing(&self) -> bool {
         self.grep.is_some()
+    }
+
+    /// The number of `GREP` hits accumulated so far (0 when this isn't a results listing).
+    pub fn grep_hit_count(&self) -> usize {
+        self.grep.as_ref().map(|g| g.hits.len()).unwrap_or(0)
     }
 
     /// The `GREP` hit on the caret's line, if this is a results listing.

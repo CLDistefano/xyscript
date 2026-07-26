@@ -5,9 +5,10 @@
 //! it. See host.rs (`EditorOp::Grep` / `EditorOp::GrepJump`).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use grep_matcher::Matcher;
-use grep_regex::RegexMatcherBuilder;
+use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_searcher::{BinaryDetection, SearcherBuilder, Sink, SinkMatch};
 use ignore::WalkBuilder;
 
@@ -48,12 +49,37 @@ pub struct GrepResult {
     pub files_searched: usize,
 }
 
-/// Run `GREP` under `base`: recursively walk (respecting `.gitignore` and skipping hidden files via
-/// `ignore`), optionally filter file NAMES by `mask` (a DOS-style glob, e.g. `*.rs`), and collect up
-/// to `cap` matches. The pattern is a regular expression when `regex`, else a literal (escaped);
-/// `case`/`whole` map to the matcher's case-insensitive / word-boundary options — the same knobs as
-/// the FIND family. Phase 1 is synchronous and capped; streaming comes later.
-pub fn run_grep(
+/// A summary of a completed (or cancelled) [`search`].
+pub struct GrepSummary {
+    pub files_searched: usize,
+    /// True if the hit cap was reached (results truncated).
+    pub capped: bool,
+}
+
+/// Build the matcher for a `GREP` (regular expression when `regex`, else a literal — escaped); `case`
+/// is case-insensitive, `whole` adds word boundaries. Separated out so callers can validate a pattern
+/// up front (see [`compile_check`]).
+fn build_matcher(pattern: &str, regex: bool, case: bool, whole: bool) -> Result<RegexMatcher, String> {
+    let body = if regex { pattern.to_string() } else { regex::escape(pattern) };
+    RegexMatcherBuilder::new()
+        .case_insensitive(case)
+        .word(whole)
+        .build(&body)
+        .map_err(|e| format!("invalid pattern: {e}"))
+}
+
+/// Validate a `GREP` pattern without searching — so a bad `/R` regex errors immediately (before a
+/// results tab or worker thread is created).
+pub fn compile_check(pattern: &str, regex: bool, case: bool, whole: bool) -> Result<(), String> {
+    build_matcher(pattern, regex, case, whole).map(|_| ())
+}
+
+/// Streaming recursive search under `base` (respecting `.gitignore`, skipping hidden and binary
+/// files). Each match is handed to `emit`, which returns `false` to STOP early (e.g. the receiver of a
+/// streaming channel went away); `cancel` is checked between files so a new `GREP`/close aborts
+/// promptly; `cap` bounds the total. Same matching semantics as [`run_grep`], which is this plus a
+/// collector. Runs on the caller's thread — the host runs it on a worker (see host.rs).
+pub fn search<F: FnMut(GrepHit) -> bool>(
     base: &Path,
     pattern: &str,
     regex: bool,
@@ -61,23 +87,21 @@ pub fn run_grep(
     whole: bool,
     mask: Option<&str>,
     cap: usize,
-) -> Result<GrepResult, String> {
-    let body = if regex { pattern.to_string() } else { regex::escape(pattern) };
-    let matcher = RegexMatcherBuilder::new()
-        .case_insensitive(case)
-        .word(whole)
-        .build(&body)
-        .map_err(|e| format!("invalid pattern: {e}"))?;
+    cancel: &AtomicBool,
+    mut emit: F,
+) -> Result<GrepSummary, String> {
+    let matcher = build_matcher(pattern, regex, case, whole)?;
     let mut searcher = SearcherBuilder::new()
         .line_number(true)
         .binary_detection(BinaryDetection::quit(0)) // skip binary files (stop at the first NUL byte)
         .build();
 
-    let mut hits: Vec<GrepHit> = Vec::new();
+    let mut emitted = 0usize;
     let mut files_searched = 0usize;
+    let mut stopped = false;
 
     for result in WalkBuilder::new(base).build() {
-        if hits.len() >= cap {
+        if stopped || cancel.load(Ordering::Relaxed) {
             break;
         }
         let entry = match result {
@@ -95,31 +119,61 @@ pub fn run_grep(
             }
         }
         files_searched += 1;
-        let mut sink = HitSink { path, matcher: &matcher, hits: &mut hits, cap };
+        let mut sink = HitSink {
+            path,
+            matcher: &matcher,
+            emit: &mut emit,
+            emitted: &mut emitted,
+            cap,
+            stopped: &mut stopped,
+        };
         // A read error on one file (permissions, vanished mid-walk) isn't fatal — skip it.
         let _ = searcher.search_path(&matcher, path, &mut sink);
     }
-    let capped = hits.len() >= cap;
-    Ok(GrepResult { hits, capped, files_searched })
+    Ok(GrepSummary { files_searched, capped: emitted >= cap })
 }
 
-/// Collects hits from one file's search into the shared `hits` vec, stopping at `cap`.
-struct HitSink<'a> {
-    path: &'a Path,
-    matcher: &'a grep_regex::RegexMatcher,
-    hits: &'a mut Vec<GrepHit>,
+/// Run `GREP` synchronously, collecting every hit into a `GrepResult` (used by tests and any
+/// non-streaming caller). Wraps [`search`] with a never-cancelling flag and a push collector.
+pub fn run_grep(
+    base: &Path,
+    pattern: &str,
+    regex: bool,
+    case: bool,
+    whole: bool,
+    mask: Option<&str>,
     cap: usize,
+) -> Result<GrepResult, String> {
+    let cancel = AtomicBool::new(false);
+    let mut hits: Vec<GrepHit> = Vec::new();
+    let summary = search(base, pattern, regex, case, whole, mask, cap, &cancel, |h| {
+        hits.push(h);
+        true
+    })?;
+    Ok(GrepResult { hits, capped: summary.capped, files_searched: summary.files_searched })
 }
 
-impl Sink for HitSink<'_> {
+/// Emits hits from one file's search via `emit`, stopping (via `stopped`) at `cap` or when `emit`
+/// returns `false`.
+struct HitSink<'a, F: FnMut(GrepHit) -> bool> {
+    path: &'a Path,
+    matcher: &'a RegexMatcher,
+    emit: &'a mut F,
+    emitted: &'a mut usize,
+    cap: usize,
+    stopped: &'a mut bool,
+}
+
+impl<F: FnMut(GrepHit) -> bool> Sink for HitSink<'_, F> {
     type Error = std::io::Error;
     fn matched(
         &mut self,
         _searcher: &grep_searcher::Searcher,
         mat: &SinkMatch<'_>,
     ) -> Result<bool, std::io::Error> {
-        if self.hits.len() >= self.cap {
-            return Ok(false); // stop this file's search — the cap is reached
+        if *self.emitted >= self.cap {
+            *self.stopped = true;
+            return Ok(false);
         }
         let line = mat.line_number().unwrap_or(0) as usize;
         let bytes = mat.bytes();
@@ -127,8 +181,13 @@ impl Sink for HitSink<'_> {
         // on the line; a miss (shouldn't happen on a matched line) falls back to column 1.
         let col = self.matcher.find(bytes).ok().flatten().map(|m| m.start()).unwrap_or(0) + 1;
         let text = String::from_utf8_lossy(bytes).trim_end_matches(['\r', '\n']).to_string();
-        self.hits.push(GrepHit { path: self.path.to_path_buf(), line, col, text });
-        Ok(self.hits.len() < self.cap)
+        let hit = GrepHit { path: self.path.to_path_buf(), line, col, text };
+        *self.emitted += 1;
+        if !(self.emit)(hit) || *self.emitted >= self.cap {
+            *self.stopped = true;
+            return Ok(false);
+        }
+        Ok(true)
     }
 }
 
@@ -206,6 +265,36 @@ mod tests {
         let d = tmpdir();
         fs::write(d.join("a.txt"), "x\n").unwrap();
         assert!(run_grep(&d, "(unclosed", true, false, false, None, 100).is_err());
+        assert!(compile_check("(unclosed", true, false, false).is_err());
+        assert!(compile_check("ok", true, false, false).is_ok());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn search_streams_respects_cancel_and_emit_stop() {
+        let d = tmpdir();
+        fs::write(d.join("a.txt"), "cat\ncat\ncat\ncat\n").unwrap();
+
+        // A cancel flag set before the walk yields nothing.
+        let cancelled = AtomicBool::new(true);
+        let mut got = 0;
+        search(&d, "cat", false, false, false, None, 100, &cancelled, |_| {
+            got += 1;
+            true
+        })
+        .unwrap();
+        assert_eq!(got, 0, "a pre-set cancel flag stops the search before any file");
+
+        // `emit` returning false stops after the first hit.
+        let go = AtomicBool::new(false);
+        let mut got = 0;
+        search(&d, "cat", false, false, false, None, 100, &go, |_| {
+            got += 1;
+            false // stop immediately
+        })
+        .unwrap();
+        assert_eq!(got, 1, "emit=false stops after the first hit");
+
         let _ = fs::remove_dir_all(&d);
     }
 }

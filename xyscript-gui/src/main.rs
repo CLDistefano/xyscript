@@ -6018,6 +6018,20 @@ impl GuiApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(80));
         }
 
+        // Streaming `GREP` (recursive search on a worker thread — never freezes the UI on a big tree).
+        // Drain newly-found hits into the results tab each frame; show progress / the final count on
+        // the status line, and keep repainting while a search is in flight.
+        let (grep_changed, grep_status) = self.editor.poll_grep();
+        if let Some(s) = grep_status {
+            self.status = s;
+        }
+        if grep_changed {
+            ctx.request_repaint();
+        }
+        if self.editor.grep_in_progress() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+
         // `AUTOCFG`: mirror settings to the tracked config file when they change (no-op when off).
         self.editor.poll_config_track();
 
