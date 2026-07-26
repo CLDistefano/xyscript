@@ -9,7 +9,7 @@
 # Embedded CSS/JS inside <style>/<script> isn't separately highlighted. Theme any kind with HLCOLOR
 # (see HLKINDS).
 
-HLLANG html .html,.htm,.xhtml,.HTM,.HTML
+HLLANG html .html,.htm,.xhtml
 
 # Comments — two rules, in order. First a complete single-line `<!-- … -->` (LAZY, so it stops at the
 # first `-->` and doesn't swallow following tags, and two comments on a line stay separate). Then, on a
