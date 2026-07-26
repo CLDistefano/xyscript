@@ -180,7 +180,7 @@ impl<F: FnMut(GrepHit) -> bool> Sink for HitSink<'_, F> {
         // Column = byte offset of the first match within the line (1-based). `find` re-runs the matcher
         // on the line; a miss (shouldn't happen on a matched line) falls back to column 1.
         let col = self.matcher.find(bytes).ok().flatten().map(|m| m.start()).unwrap_or(0) + 1;
-        let text = String::from_utf8_lossy(bytes).trim_end_matches(['\r', '\n']).to_string();
+        let text = clip_line(String::from_utf8_lossy(bytes).trim_end_matches(['\r', '\n']));
         let hit = GrepHit { path: self.path.to_path_buf(), line, col, text };
         *self.emitted += 1;
         if !(self.emit)(hit) || *self.emitted >= self.cap {
@@ -189,6 +189,26 @@ impl<F: FnMut(GrepHit) -> bool> Sink for HitSink<'_, F> {
         }
         Ok(true)
     }
+}
+
+/// Max bytes of a matched line kept for DISPLAY. A grep over data/minified/dictionary files can hit
+/// lines tens of thousands of chars long (e.g. a 25 000-char dictionary entry); rendered verbatim in
+/// a wrapping results tab each one shapes into hundreds of visual rows, so a handful in the viewport
+/// crawl the scroll (measured ~75 ms/frame). We only need enough of the line to see the match in
+/// context — `GJ` still jumps to the exact `line:col` in the real file — so clip the rest.
+const MAX_LINE_DISPLAY: usize = 400;
+
+/// Clip an over-long matched line to [`MAX_LINE_DISPLAY`] bytes on a char boundary, marking the cut
+/// with `…`. Short lines pass through unchanged.
+fn clip_line(line: &str) -> String {
+    if line.len() <= MAX_LINE_DISPLAY {
+        return line.to_string();
+    }
+    let mut end = MAX_LINE_DISPLAY;
+    while end > 0 && !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &line[..end])
 }
 
 /// Render hits as `relpath:line:col: text` lines (one per hit, so **line N → `hits[N]`**). Paths are
@@ -217,6 +237,31 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn clip_line_caps_absurd_lines_on_a_char_boundary() {
+        assert_eq!(clip_line("short line"), "short line"); // under the cap: unchanged
+        let long = "x".repeat(MAX_LINE_DISPLAY + 500);
+        let clipped = clip_line(&long);
+        assert!(clipped.ends_with('…'));
+        assert_eq!(clipped.chars().filter(|&c| c == 'x').count(), MAX_LINE_DISPLAY);
+        // A multi-byte char straddling the cut must not panic / split mid-char.
+        let multi = "é".repeat(MAX_LINE_DISPLAY); // 2 bytes each → 2×MAX bytes
+        let c = clip_line(&multi);
+        assert!(c.ends_with('…') && c.is_char_boundary(c.len() - '…'.len_utf8()));
+    }
+
+    #[test]
+    fn grep_clips_a_very_long_matched_line() {
+        let d = tmpdir();
+        let long = format!("MATCH {}", "the quick brown fox ".repeat(3000)); // ~60 KB line
+        fs::write(d.join("wide.txt"), format!("{long}\n")).unwrap();
+        let r = run_grep(&d, "MATCH", false, false, false, None, 100).unwrap();
+        assert_eq!(r.hits.len(), 1);
+        assert!(r.hits[0].text.len() <= MAX_LINE_DISPLAY + 4, "match text must be clipped");
+        assert!(r.hits[0].text.ends_with('…'));
+        assert_eq!(r.hits[0].col, 1); // exact col preserved for GJ despite the clip
     }
 
     #[test]
