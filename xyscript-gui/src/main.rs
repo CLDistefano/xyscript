@@ -264,18 +264,42 @@ fn decoded_to_display(off: usize, cr: &[usize]) -> usize {
 /// clipped. The per-cell primitive behind both the default `ed.draw` closure and the `WRAPINDENT`
 /// manual glyph draw, so the two paths blend glyph pixels identically.
 fn blend_cell(canvas: &mut [u8], w: usize, h: usize, x: i32, y: i32, cw: u32, ch: u32, color: CColor) {
-    let sa = color.a() as f32 / 255.0;
-    let (sr, sg, sb) = (color.r() as f32, color.g() as f32, color.b() as f32);
-    for py in y..y + ch as i32 {
-        for px in x..x + cw as i32 {
-            if px < 0 || py < 0 || px as usize >= w || py as usize >= h {
-                continue;
+    let sa = color.a();
+    if sa == 0 {
+        return; // fully transparent (glyph background) — nothing to paint
+    }
+    let (sr, sg, sb) = (color.r(), color.g(), color.b());
+    // Clip once, up front, instead of a per-pixel bounds check.
+    let x0 = x.max(0) as usize;
+    let y0 = y.max(0) as usize;
+    let x1 = ((x + cw as i32).max(0) as usize).min(w);
+    let y1 = ((y + ch as i32).max(0) as usize).min(h);
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    if sa == 255 {
+        // Opaque coverage (glyph interiors — the common case): write pixels directly.
+        for py in y0..y1 {
+            let row = (py * w + x0) * 4;
+            for k in 0..(x1 - x0) {
+                let i = row + k * 4;
+                canvas[i] = sr;
+                canvas[i + 1] = sg;
+                canvas[i + 2] = sb;
             }
-            let i = (py as usize * w + px as usize) * 4;
-            for (c, s) in [(0usize, sr), (1, sg), (2, sb)] {
-                let d = canvas[i + c] as f32;
-                canvas[i + c] = (s * sa + d * (1.0 - sa)).round() as u8;
-            }
+        }
+        return;
+    }
+    // Partial coverage (anti-aliased edges): integer blend, no per-pixel f32 multiply + round.
+    let (a, ia) = (sa as u32, 256 - sa as u32);
+    let (ra, ga, ba) = (sr as u32 * a, sg as u32 * a, sb as u32 * a);
+    for py in y0..y1 {
+        let row = (py * w + x0) * 4;
+        for k in 0..(x1 - x0) {
+            let i = row + k * 4;
+            canvas[i] = ((ra + canvas[i] as u32 * ia) >> 8) as u8;
+            canvas[i + 1] = ((ga + canvas[i + 1] as u32 * ia) >> 8) as u8;
+            canvas[i + 2] = ((ba + canvas[i + 2] as u32 * ia) >> 8) as u8;
         }
     }
 }
@@ -289,13 +313,34 @@ fn fill_blend(canvas: &mut [u8], w: usize, h: usize, x0: i32, y0: i32, x1: i32, 
     let y0 = y0.max(0) as usize;
     let x1 = (x1.max(0) as usize).min(w);
     let y1 = (y1.max(0) as usize).min(h);
-    for py in y0..y1 {
-        for px in x0..x1 {
-            let i = (py * w + px) * 4;
-            for (c, s) in [(0usize, r as f32), (1, g as f32), (2, b as f32)] {
-                let d = canvas[i + c] as f32;
-                canvas[i + c] = (s * alpha + d * (1.0 - alpha)).round() as u8;
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    // Opaque fill (the EMPH/selection/current-match bands): write the pixels directly — no per-pixel
+    // float blend. A GREP results tab paints a band on every visible line (each line IS a match), so
+    // this is the hot path there.
+    if alpha >= 1.0 {
+        for py in y0..y1 {
+            let row = (py * w + x0) * 4;
+            for k in 0..(x1 - x0) {
+                let i = row + k * 4;
+                canvas[i] = r;
+                canvas[i + 1] = g;
+                canvas[i + 2] = b;
             }
+        }
+        return;
+    }
+    // Translucent: integer blend (0..=256 weight), avoiding the f32 multiply + round per channel.
+    let a = (alpha.clamp(0.0, 1.0) * 256.0) as u32;
+    let (ia, ra, ga, ba) = (256 - a, r as u32 * a, g as u32 * a, b as u32 * a);
+    for py in y0..y1 {
+        let row = (py * w + x0) * 4;
+        for k in 0..(x1 - x0) {
+            let i = row + k * 4;
+            canvas[i] = ((ra + canvas[i] as u32 * ia) >> 8) as u8;
+            canvas[i + 1] = ((ga + canvas[i + 1] as u32 * ia) >> 8) as u8;
+            canvas[i + 2] = ((ba + canvas[i + 2] as u32 * ia) >> 8) as u8;
         }
     }
 }
