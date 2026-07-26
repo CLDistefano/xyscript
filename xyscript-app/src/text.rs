@@ -768,6 +768,13 @@ impl Buffer {
         (start, self.line_end(start))
     }
 
+    /// The 0-based logical line containing byte offset `byte` (clamped to the buffer). Inverse of
+    /// [`line_byte_range`](Buffer::line_byte_range)'s start; O(chunks). Lets the renderer bound a
+    /// window by a BYTE budget (long-paragraph files) rather than a logical-line count.
+    pub fn line_at_byte(&self, byte: usize) -> usize {
+        self.rope.byte_to_line(byte.min(self.rope.len()))
+    }
+
     // ---- mutation ----------------------------------------------------------
 
     /// Insert text at the cursor, replacing any selection first — **except under

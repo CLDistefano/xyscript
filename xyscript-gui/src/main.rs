@@ -2393,9 +2393,22 @@ impl GuiApp {
         if self.pane_view.scroll_line >= total {
             self.pane_view.scroll_line = total - 1;
         }
-        let start_line = self.pane_view.scroll_line.saturating_sub(margin);
-        let end_line = (self.pane_view.scroll_line + visible + margin).min(total);
+        let mut start_line = self.pane_view.scroll_line.saturating_sub(margin);
+        let mut end_line = (self.pane_view.scroll_line + visible + margin).min(total);
         let doc = self.editor.doc(self.editor.active_index());
+        // Cap the window's BYTE extent, not just its logical-line count. A logical-line margin pulls
+        // MEGABYTES into every frame's shaping on paragraph-formatted files (one "line" can be a
+        // 25 000-char paragraph); bound the span up/down from the scroll anchor by a byte budget.
+        // Whole lines only, so wrapping and caret geometry stay exact. Short-line files never reach
+        // the cap (their logical-line margin spans far fewer bytes than the budget), so their window
+        // is unchanged. The down budget must exceed one screenful of the longest single paragraph so
+        // the visible rows are always covered; the up budget is just smooth-scroll context.
+        const WIN_UP_BYTES: usize = 48 * 1024;
+        const WIN_DOWN_BYTES: usize = 160 * 1024;
+        let anchor = doc.line_byte_range(self.pane_view.scroll_line).0;
+        start_line = start_line.max(doc.line_at_byte(anchor.saturating_sub(WIN_UP_BYTES)));
+        let down = doc.line_at_byte((anchor + WIN_DOWN_BYTES).min(doc.len())) + 1;
+        end_line = end_line.min(down.max(self.pane_view.scroll_line + 1)).min(total);
         let start_byte = doc.line_byte_range(start_line).0;
         let end_byte = if end_line >= total { doc.len() } else { doc.line_byte_range(end_line).0 };
         let decoded = doc.slice(start_byte, end_byte); // window text, decoded (has `\r`)
