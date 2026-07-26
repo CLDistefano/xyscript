@@ -7506,16 +7506,26 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(msg));
             }
-            EditorOp::Grep { pattern, mask, regex, case, whole } => {
+            EditorOp::Grep { pattern, path, regex, case, whole } => {
                 use std::sync::atomic::{AtomicBool, Ordering};
                 // Validate the pattern up front so a bad `/R` errors immediately — no tab, no thread.
                 crate::grep::compile_check(&pattern, regex, case, whole)
                     .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
+                // Resolve the optional path/glob into a search root + file-name mask, exactly like a
+                // `DIR` filespec: a directory searches it; a glob (`*.rs`) filters `$CWD`; `dir/*.rs`
+                // does both; absent = `$CWD`.
+                let (base, mask) = self.resolve_dir_spec(path.as_deref());
+                let base = lexical_abs(&self.cwd, &base);
+                if !base.is_dir() {
+                    return Err(XplError::trappable(format!(
+                        "GREP: {}: not a directory",
+                        base.display()
+                    )));
+                }
                 // Supersede any search already running.
                 if let Some(job) = self.grep_job.take() {
                     job.cancel.store(true, Ordering::Relaxed);
                 }
-                let base = self.cwd.clone();
                 // Open an EMPTY results tab immediately (so the search is visibly under way); the worker
                 // streams hits into it via `poll_grep`.
                 let mut doc = Document::new();

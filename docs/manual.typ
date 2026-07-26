@@ -638,8 +638,9 @@ an entry copies its full path to the clipboard, the mouse equivalent of the list
 finds them, so even a big tree never freezes the editor — the status line shows a running count, and
 starting another #raw("GREP") (or closing the tab) cancels one still in progress. It's a literal search by default; #raw("/R") makes the pattern a
 regular expression, #raw("/I") ignores case, #raw("/W") matches whole words — the same letters as
-#raw("SE") and #raw("FIND"). Add a file-name mask to narrow it (#raw("GREP cat *.rs")), and quote a
-pattern with spaces (#raw("GREP \"foo bar\"")).
+#raw("SE") and #raw("FIND"). Point it somewhere else with a second argument — a folder (#raw("GREP cat src")),
+a file-name glob over the current folder (#raw("GREP cat *.rs")), or both at once (#raw("GREP cat src/*.rs")) —
+just like a #raw("DIR") filespec; and quote a pattern with spaces (#raw("GREP \"foo bar\" src")).
 
 To open a result, put the caret on its line and run #raw("GJ") — it opens that file (or switches to it if
 it's already open, without asking) and jumps the caret right onto the match. Think of the results tab as a

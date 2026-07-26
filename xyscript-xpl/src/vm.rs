@@ -1330,19 +1330,19 @@ impl Vm<'_, '_> {
             return Ok(Flow::Next);
         }
 
-        // GREP: ripgrep-style recursive search of `$CWD` into a results tab. Custom argument parsing
-        // (a pattern plus an optional file-name mask, the pattern quotable for spaces), like DIR, so
-        // it's handled before the generic switch validation. `/R` regex, `/I` case-insensitive,
-        // `/W` whole-word — the same flag letters as the FIND family.
+        // GREP: ripgrep-style recursive search into a results tab. Custom argument parsing (a pattern
+        // plus an optional search path/glob, the pattern quotable for spaces), like DIR, so it's
+        // handled before the generic switch validation. `/R` regex, `/I` case-insensitive, `/W`
+        // whole-word — the same flag letters as the FIND family.
         if base == "GREP" {
             let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
             let case = vswitches.iter().any(|s| s.eq_ignore_ascii_case("I"));
             let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
-            let (pattern, mask) = parse_grep_args(&args);
+            let (pattern, path) = parse_grep_args(&args);
             if pattern.is_empty() {
                 return Err(XplError::trappable("GREP: a search pattern is required"));
             }
-            self.host_op(EditorOp::Grep { pattern, mask, regex, case, whole })?;
+            self.host_op(EditorOp::Grep { pattern, path, regex, case, whole })?;
             return Ok(Flow::Next);
         }
         // GJ: point-and-shoot on a GREP results tab — open + jump to the hit under the caret.
@@ -5093,9 +5093,10 @@ fn split_switch_names(s: &str) -> Vec<String> {
 /// would otherwise force reverse onto every listing: typing `/ON` alone would silently stay reversed,
 /// with no way back to ascending short of clearing `DIRSET`. Re-specifying the order is a complete
 /// ordering directive; the caller can still say `/ON/R` to reverse explicitly (their own `/R` wins).
-/// Split a `GREP` argument into `(pattern, mask)`. The pattern is a `"double-quoted"` run (so it can
+/// Split a `GREP` argument into `(pattern, path)`. The pattern is a `"double-quoted"` run (so it can
 /// contain spaces) or the first whitespace-delimited token; whatever follows, trimmed, is the optional
-/// file-name mask (`*.rs`). An empty mask is `None`.
+/// search path/glob (a directory, a `*.rs` glob, or `dir/*.rs` — resolved like a `DIR` filespec). An
+/// empty path is `None`.
 fn parse_grep_args(args: &str) -> (String, Option<String>) {
     let s = args.trim();
     if let Some(rest) = s.strip_prefix('"') {
