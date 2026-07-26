@@ -266,6 +266,55 @@ impl Buffer {
         rope_pos
     }
 
+    /// Like [`decoded_offset`](Buffer::decoded_offset) but anchored to a CALLER-KNOWN
+    /// (`anchor_rope`, `anchor_decoded`) correspondence instead of the internal moving
+    /// checkpoint. Both must be char boundaries that correspond. Decodes only the delta between
+    /// the anchor and `rope_off` in a single pass, so a caller that already holds a nearby fixed
+    /// point (e.g. a render window's start line) translates in O(delta) — never a document-global
+    /// walk — and neither reads nor disturbs the shared checkpoint (so it can't be thrashed by,
+    /// or thrash, other callers within the same frame).
+    pub fn decoded_offset_from(&self, rope_off: usize, anchor_rope: usize, anchor_decoded: usize) -> usize {
+        let off = rope_off.min(self.rope.len());
+        if self.utf8_identity {
+            return off; // rope bytes *are* the UTF-8 string; offsets coincide
+        }
+        if off >= anchor_rope {
+            anchor_decoded + self.enc.decode(&self.rope.slice_to_vec(anchor_rope, off)).len()
+        } else {
+            anchor_decoded - self.enc.decode(&self.rope.slice_to_vec(off, anchor_rope)).len()
+        }
+    }
+
+    /// Inverse of [`decoded_offset_from`](Buffer::decoded_offset_from): a decoded-string offset →
+    /// rope offset, anchored to a known correspondence. Walks char boundaries from the anchor
+    /// (forward or backward) until the decoded length reaches `decoded_off` — bounded to the
+    /// caller's window, never a document-global walk, and independent of the shared checkpoint.
+    pub fn rope_offset_from(&self, decoded_off: usize, anchor_rope: usize, anchor_decoded: usize) -> usize {
+        if self.utf8_identity {
+            return decoded_off.min(self.rope.len());
+        }
+        let len = self.rope.len();
+        let (mut rope_pos, mut dec_pos) = (anchor_rope.min(len), anchor_decoded);
+        if dec_pos <= decoded_off {
+            while rope_pos < len && dec_pos < decoded_off {
+                let next = self.next_boundary(rope_pos);
+                dec_pos += self.enc.decode(&self.rope.slice_to_vec(rope_pos, next)).len();
+                rope_pos = next;
+            }
+        } else {
+            while rope_pos > 0 {
+                let prev = self.prev_boundary(rope_pos);
+                let prev_dec = dec_pos - self.enc.decode(&self.rope.slice_to_vec(prev, rope_pos)).len();
+                if prev_dec < decoded_off {
+                    break;
+                }
+                rope_pos = prev;
+                dec_pos = prev_dec;
+            }
+        }
+        rope_pos
+    }
+
     /// Read a byte range as a decoded string.
     pub fn slice(&self, start: usize, end: usize) -> String {
         self.enc.decode(&self.rope.slice_to_vec(start, end))
@@ -2361,6 +2410,26 @@ mod tests {
         assert_eq!(b.decoded_offset(6), 6);
         assert_eq!(b.rope_offset(6), 6);
         assert_eq!(b.decoded_offset(1), 1);
+    }
+
+    #[test]
+    fn anchored_offset_from_agrees_with_checkpoint_version() {
+        // A run of CP437 '╦' (byte 0xCB → 3 UTF-8 bytes): rope and decoded offsets diverge by 3×.
+        // The window-anchored translators must give the SAME answer as the checkpoint versions,
+        // regardless of the anchor chosen — that's what lets the GUI anchor on a window start
+        // instead of walking from a document-global checkpoint (O(file) at the bottom of a big doc).
+        let b = Buffer::from_bytes(vec![0xCB; 20], cp437());
+        // Anchor partway in (rope 5 ↔ decoded 15), then translate both directions.
+        for rope in 0..=20 {
+            assert_eq!(b.decoded_offset_from(rope, 5, 15), b.decoded_offset(rope), "rope={rope}");
+        }
+        for dec in (0..=60).step_by(3) {
+            assert_eq!(b.rope_offset_from(dec, 5, 15), b.rope_offset(dec), "dec={dec}");
+        }
+        // UTF-8 identity: anchored variants are the O(1) pass-through too.
+        let u = Buffer::from_str("héllo wörld");
+        assert_eq!(u.decoded_offset_from(6, 0, 0), 6);
+        assert_eq!(u.rope_offset_from(6, 0, 0), 6);
     }
 
     #[test]

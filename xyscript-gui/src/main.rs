@@ -1466,6 +1466,11 @@ mod menu_tests {
 /// decoded offset of the window's first byte) and the window-local `\r`/`\n` indices.
 struct DocWindow {
     start_line: usize,
+    /// Rope byte offset of the window's first line. Paired with `start_decoded`, this is a
+    /// KNOWN (rope, decoded) correspondence the offset translators anchor to — so mapping a
+    /// window-local offset to/from a global rope offset walks only the window (~a page), never
+    /// from a document-global checkpoint (which is O(file) at the bottom of a big non-UTF-8 doc).
+    start_byte: usize,
     start_decoded: usize,
     decoded_len: usize,
     at_eof: bool,
@@ -2402,6 +2407,7 @@ impl GuiApp {
             display.bytes().enumerate().filter(|&(_, b)| b == b'\n').map(|(i, _)| i).collect();
         DocWindow {
             start_line,
+            start_byte,
             start_decoded,
             decoded_len: decoded.len(),
             at_eof: end_line >= total,
@@ -2829,7 +2835,14 @@ impl GuiApp {
     /// Global rope offset → window-local cosmic [`Cursor`] (line is window-relative).
     /// `None` if the offset falls outside the window.
     fn win_cursor_at(&self, win: &DocWindow, rope_off: usize) -> Option<Cursor> {
-        let g = self.editor.doc(self.editor.active_index()).decoded_offset(rope_off);
+        // Anchor the decode on the window's own (start_byte ↔ start_decoded) fixed point, so a
+        // caret near the bottom of a big non-UTF-8 doc translates by walking the window, not the
+        // whole file from a global checkpoint (which was ~186 ms per PageUp).
+        let g = self.editor.doc(self.editor.active_index()).decoded_offset_from(
+            rope_off,
+            win.start_byte,
+            win.start_decoded,
+        );
         let wd = g.checked_sub(win.start_decoded)?;
         if wd > win.decoded_len {
             return None;
@@ -2840,7 +2853,11 @@ impl GuiApp {
     /// Like [`win_cursor_at`] but clamps an out-of-window offset to the window's edge —
     /// for drawing a selection whose end runs off-screen (the highlight reaches the margin).
     fn win_cursor_clamped(&self, win: &DocWindow, rope_off: usize) -> Cursor {
-        let g = self.editor.doc(self.editor.active_index()).decoded_offset(rope_off);
+        let g = self.editor.doc(self.editor.active_index()).decoded_offset_from(
+            rope_off,
+            win.start_byte,
+            win.start_decoded,
+        );
         let wd = g.saturating_sub(win.start_decoded).min(win.decoded_len);
         byte_to_cursor(&win.display, decoded_to_display(wd, &win.cr), &win.nl)
     }
@@ -2849,7 +2866,12 @@ impl GuiApp {
     fn win_rope_at(&self, win: &DocWindow, cur: Cursor) -> usize {
         let disp = cursor_to_byte(&win.display, cur, &win.nl);
         let wd = display_to_decoded(disp, &win.cr, win.decoded_len);
-        self.editor.doc(self.editor.active_index()).rope_offset(win.start_decoded + wd)
+        // Anchored inverse: walk forward from the window start (~a page), never the whole doc.
+        self.editor.doc(self.editor.active_index()).rope_offset_from(
+            win.start_decoded + wd,
+            win.start_byte,
+            win.start_decoded,
+        )
     }
 
     /// Pixel rects `(x0,y0,x1,y1,is_current)` for the visible portions of the FIND matches
