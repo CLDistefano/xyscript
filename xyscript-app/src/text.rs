@@ -1690,18 +1690,17 @@ impl Buffer {
     pub fn find_all(&self, pattern: &Pattern, lo: usize, hi: usize, cap: usize) -> Vec<(usize, usize)> {
         let text = self.text(); // one allocation, reused across every match
         let hi_dec = self.decoded_offset(hi);
-        let mut out = Vec::new();
-        let mut from = self.decoded_offset(lo);
-        while out.len() < cap {
-            match pattern.find_dir(&text, from, true) {
-                Some((s, e)) if e <= hi_dec => {
-                    out.push((self.rope_offset(s), self.rope_offset(e)));
-                    from = if e > from { e } else { from + 1 }; // advance past (or over a zero-width) match
-                }
-                _ => break,
-            }
-        }
-        out
+        let from = self.decoded_offset(lo);
+        // A SINGLE forward pass. `find_all_bounded` walks the matcher once (the regex `find_iter` /
+        // the literal `find_forward` both advance from the previous match) — NOT `find_dir` in a loop,
+        // whose regex arm restarts `find_iter` from offset 0 on every call (O(matches × n) = O(n²);
+        // it froze a big GREP+EMPH results tab for ~0.8 s). Matches come in order, so stop at `hi`.
+        pattern
+            .find_all_bounded(&text, from, cap)
+            .into_iter()
+            .take_while(|&(_, e)| e <= hi_dec)
+            .map(|(s, e)| (self.rope_offset(s), self.rope_offset(e)))
+            .collect()
     }
 }
 
@@ -1792,6 +1791,39 @@ impl Pattern {
             Pattern::Regex(re) => re
                 .find_iter(text)
                 .filter(|m| m.start() >= from)
+                .map(|m| (m.start(), m.end()))
+                .collect(),
+        }
+    }
+
+    /// Up to `cap` non-overlapping matches with start `>= from`, as decoded-string spans, in a SINGLE
+    /// forward pass (both the regex `find_iter` and the literal `find_forward` advance from the last
+    /// match — never restart from 0). This is the O(n) primitive [`Buffer::find_all`] must use;
+    /// calling [`find_dir`](Self::find_dir) per match instead makes the regex path O(n²).
+    pub fn find_all_bounded(&self, text: &str, from: usize, cap: usize) -> Vec<(usize, usize)> {
+        match self {
+            Pattern::Literal { needle, case_sensitive, whole_word } => {
+                if needle.is_empty() {
+                    return Vec::new();
+                }
+                let opts = Self::opts(*case_sensitive, *whole_word);
+                let mut out = Vec::new();
+                let mut pos = from;
+                while out.len() < cap {
+                    match find_forward(text, needle, pos, opts) {
+                        Some((s, e)) => {
+                            out.push((s, e));
+                            pos = if e > s { e } else { e + 1 }; // step over a zero-width match
+                        }
+                        None => break,
+                    }
+                }
+                out
+            }
+            Pattern::Regex(re) => re
+                .find_iter(text)
+                .filter(|m| m.start() >= from)
+                .take(cap)
                 .map(|m| (m.start(), m.end()))
                 .collect(),
         }
@@ -2012,6 +2044,26 @@ pub(crate) fn find_all(
 mod tests {
     use super::*;
     use crate::encoding::{cp437, latin1, Encoding};
+
+    #[test]
+    fn regex_find_all_over_many_matches_is_linear() {
+        // Regression guard for the O(n²) `find_all` (its `find_dir` regex arm restarted `find_iter`
+        // from offset 0 on every match — a big GREP+EMPH results tab froze ~0.8 s). A dense pattern
+        // that hits the cap forces the pathological path: `cap` matches, each of which the old code
+        // re-scanned all preceding matches to reach. With the single-pass fix this is trivially fast;
+        // if the quadratic returns, this test crawls (12.5M match ops for a 5000 cap).
+        let mut s = String::new();
+        for _ in 0..6000 {
+            s.push_str("self here\n");
+        }
+        let buf = Buffer::from_str(&s);
+        let pat = Pattern::build("self", false, false, true).unwrap(); // /R regex, like GREP→EMPH
+        let hits = buf.find_all(&pat, 0, buf.len(), 5000);
+        assert_eq!(hits.len(), 5000, "capped at 5000");
+        // In order, non-overlapping, each spanning exactly the 4-byte match.
+        assert!(hits.windows(2).all(|w| w[0].0 < w[1].0));
+        assert!(hits.iter().all(|&(a, b)| b - a == 4));
+    }
 
     #[test]
     fn encoding_offset_conversions_are_direction_independent() {
