@@ -1340,7 +1340,9 @@ impl Vm<'_, '_> {
             let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
             let (pattern, path) = parse_grep_args(&args);
             if pattern.is_empty() {
-                return Err(XplError::trappable("GREP: a search pattern is required"));
+                // Bare `GREP` (no pattern) opens the GREP dialog — the interactive companion to FIND.
+                self.host_op(EditorOp::OpenGrepDialog)?;
+                return Ok(Flow::Next);
             }
             self.host_op(EditorOp::Grep { pattern, path, regex, case, whole })?;
             return Ok(Flow::Next);

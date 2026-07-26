@@ -750,6 +750,11 @@ impl Editor {
         self.host.take_find_request()
     }
 
+    /// Whether a bare `GREP` requested the GREP dialog (drained each frame by the GUI).
+    pub fn take_grep_dialog_request(&mut self) -> bool {
+        self.host.take_grep_dialog_request()
+    }
+
     /// A search just landed on a match — the GUI centers it if it's off-screen. One-shot.
     pub fn take_reveal_center(&mut self) -> bool {
         self.host.take_reveal_center()
@@ -871,6 +876,26 @@ impl Editor {
             count: None,
         };
         op_status(self.host.editor_op(EditorOp::Search(spec)))
+    }
+
+    /// Run a `GREP` from the GREP dialog (Search ▸ Grep…): dispatches the op DIRECTLY with the literal
+    /// pattern/path — no command parsing or `$`-substitution, so a `$` or space in the pattern is taken
+    /// verbatim. `case` is case-INSENSITIVE (the `/I` flag); `path` is the optional search root/glob.
+    pub fn run_grep(
+        &mut self,
+        pattern: &str,
+        path: Option<String>,
+        regex: bool,
+        case: bool,
+        whole: bool,
+    ) -> Result<String, String> {
+        op_status(self.host.editor_op(EditorOp::Grep {
+            pattern: pattern.to_string(),
+            path,
+            regex,
+            case,
+            whole,
+        }))
     }
     /// All match spans of `find` in the active document (for the FIND dialog's live highlight-all).
     /// Read-only; honors case/whole-word/regex/in-selection exactly like `search_spec`/`SE`.
@@ -6068,6 +6093,32 @@ mod tests {
         e.run_command("NEW"); // fresh tab — its own (absent) emphasis
         assert!(e.active_emph().is_none(), "a new tab starts with no emphasis");
         assert!(e.emph_highlights().is_empty());
+    }
+
+    #[test]
+    fn run_grep_dispatches_a_search_like_the_dialog() {
+        use std::fs;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let d = std::env::temp_dir().join(format!(
+            "xyscript-rungrep-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("a.txt"), "the cat sat\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", d.display()));
+        // The GREP dialog dispatches this directly (literal pattern, no $-expansion). It opens a
+        // results tab; ignore_case=true is the /I flag.
+        let msg = e.run_grep("cat", None, false, false, false).unwrap();
+        assert!(msg.contains("GREP"), "status: {msg}");
+        assert!(e.active_is_grep_listing(), "a results tab is now active");
+        assert_eq!(e.active_emph().as_deref(), Some("cat")); // matches highlighted
+
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

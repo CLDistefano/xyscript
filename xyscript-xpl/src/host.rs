@@ -240,6 +240,9 @@ pub enum EditorOp {
     /// Request the GUI's non-modal Find/Replace dialog (`FIND`). The GUI drains it and opens the
     /// dialog; headless hosts just record the request (it does nothing without a GUI).
     OpenFind,
+    /// Request the GUI's GREP dialog (bare `GREP` with no pattern). The GUI drains it and opens the
+    /// dialog; headless hosts just record it.
+    OpenGrepDialog,
     /// `RUN/BG <script>` — run an XPL script in the BACKGROUND by spawning a child `xyscript`
     /// process (`$ED --run <script>`) as a background job (reusing the `X/BG` machinery: streaming
     /// to *Shell Output*, `JOBS`/`KILL`/`$XO`/`$RC`). The child has its own editor state; its cwd is

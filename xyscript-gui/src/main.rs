@@ -427,6 +427,8 @@ enum Act {
     OpenFind { replace: bool },
     /// Open the Run-command dialog (Tools ▸ Shell command…).
     OpenRunCmd,
+    /// Open the GREP dialog (Search ▸ Grep…).
+    OpenGrep,
     /// Show the Document ▸ Properties info box.
     ShowProperties,
     /// Show the Help ▸ About box.
@@ -479,6 +481,7 @@ enum MenuAct {
     TogglePreview,
     OpenFind { replace: bool },
     OpenRunCmd,
+    OpenGrep,
     ShowProperties,
     ShowAbout,
     ShowReference,
@@ -1502,6 +1505,21 @@ struct RunCmdDialog {
     focus_cmd: bool,
 }
 
+/// The GREP dialog (Search ▸ Grep…), a companion to the FIND window. A thin renderer: Search dispatches
+/// `EditorOp::Grep` DIRECTLY via `editor.run_grep` (the pattern is literal — no command parsing or
+/// `$`-substitution), and the matches stream into a read-only results tab exactly as if `GREP` were
+/// typed. The flags mirror the `GREP` switches: `regex` (`/R`), `ignore_case` (`/I`), `whole` (`/W`).
+struct GrepDialog {
+    pattern: String,
+    /// Optional search root/glob (a directory, `*.rs`, or `dir/*.rs`); blank = `$CWD`.
+    path: String,
+    regex: bool,
+    ignore_case: bool,
+    whole: bool,
+    /// One-shot: focus the pattern field on the next frame (set on open).
+    focus_pattern: bool,
+}
+
 /// Per-pane view state: the scroll anchor + follow flag + canvas size that logically belong to
 /// "one viewport". Today there is exactly one (`GuiApp.pane_view`); split panes (Phase 1+) promote
 /// this to one-per-pane. Holding it in its own field lets the render path read/write a viewport's
@@ -1757,6 +1775,7 @@ struct GuiApp {
     spell_menu_frames: u32,
     /// The open Run-command dialog (`None` = closed).
     run_dialog: Option<RunCmdDialog>,
+    grep_dialog: Option<GrepDialog>,
     /// Whether the Document ▸ Properties info box is showing.
     properties_open: bool,
     /// Whether the Help ▸ About box is showing.
@@ -1986,6 +2005,7 @@ impl GuiApp {
             spell_menu_pos: None,
             spell_menu_frames: 0,
             run_dialog: None,
+            grep_dialog: None,
             properties_open: false,
             about_open: false,
             menu_nav: None,
@@ -4849,6 +4869,111 @@ impl GuiApp {
         }
     }
 
+    fn open_grep_dialog(&mut self) {
+        if let Some(d) = self.grep_dialog.as_mut() {
+            d.focus_pattern = true;
+            return;
+        }
+        self.grep_dialog = Some(GrepDialog {
+            pattern: String::new(),
+            path: String::new(),
+            regex: false,
+            ignore_case: false,
+            whole: false,
+            focus_pattern: true,
+        });
+    }
+
+    /// Render the GREP dialog (Search ▸ Grep…). Search dispatches `EditorOp::Grep` directly (literal
+    /// pattern, no `$`-expansion); results stream into a read-only tab, so the dialog is pure front-end
+    /// and can be closed while the search runs. Open Search ▸ Emphasize / `GJ` still work on the tab.
+    fn render_grep_dialog(&mut self, ctx: &egui::Context) {
+        let Some(d) = self.grep_dialog.as_mut() else {
+            return;
+        };
+        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        let mut open = true;
+        let mut do_search = false;
+        let mut do_close = false;
+        egui::Window::new("Grep")
+            .id(egui::Id::new("grep_dialog"))
+            .open(&mut open)
+            .resizable(true)
+            .default_width(460.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Search for:");
+                    let e = ui.add(
+                        egui::TextEdit::singleline(&mut d.pattern)
+                            .desired_width(340.0)
+                            .hint_text("text (or a regex with Regular expression)"),
+                    );
+                    if d.focus_pattern {
+                        e.request_focus();
+                        d.focus_pattern = false;
+                    }
+                    // Enter in a field = Search (when the pattern is non-empty).
+                    if !d.pattern.trim().is_empty()
+                        && e.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    {
+                        do_search = true;
+                    }
+                });
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.label("In folder:");
+                    let e = ui.add(
+                        egui::TextEdit::singleline(&mut d.path)
+                            .desired_width(340.0)
+                            .hint_text("blank = current folder — or  src  ·  *.rs  ·  src/*.rs"),
+                    );
+                    if !d.pattern.trim().is_empty()
+                        && e.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    {
+                        do_search = true;
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut d.regex, "Regular expression");
+                    ui.checkbox(&mut d.ignore_case, "Ignore case");
+                    ui.checkbox(&mut d.whole, "Whole word");
+                });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(!d.pattern.trim().is_empty(), |ui| {
+                        if ui.button("Search").clicked() {
+                            do_search = true;
+                        }
+                    });
+                    if ui.button("Close").clicked() {
+                        do_close = true;
+                    }
+                });
+            });
+
+        // Apply (self.editor borrowable now).
+        let (pattern, path, regex, ignore_case, whole) = {
+            let d = self.grep_dialog.as_ref().unwrap();
+            (d.pattern.trim().to_string(), d.path.trim().to_string(), d.regex, d.ignore_case, d.whole)
+        };
+        if do_search && !pattern.is_empty() {
+            let path_opt = (!path.is_empty()).then_some(path);
+            // `ignore_case` IS the `/I` (case-insensitive) flag the op expects.
+            match self.editor.run_grep(&pattern, path_opt, regex, ignore_case, whole) {
+                Ok(msg) => self.status = msg,
+                Err(e) => self.status = e,
+            }
+            self.pane_view.follow = true;
+            ctx.request_repaint();
+        }
+        if do_close || esc || !open {
+            self.grep_dialog = None;
+        }
+    }
+
     /// Render the read-only Document ▸ Properties box (live label/value pairs from `editor.doc_info`).
     fn render_properties(&mut self, ctx: &egui::Context) {
         if !self.properties_open {
@@ -4995,6 +5120,9 @@ impl GuiApp {
                 MenuNode::Sep,
                 m_item("Find next", "SE"),
                 m_item("Find previous", "SEB"),
+                MenuNode::Sep,
+                // GREP — recursive search across files into a results tab (a companion to Find).
+                m_act("Grep…", OpenGrep),
                 MenuNode::Sep,
                 // EMPH — highlight every occurrence of a word/phrase in the current tab. A sibling of
                 // Find; the "…" items stage the verb on the command line for you to finish typing.
@@ -5279,6 +5407,7 @@ impl GuiApp {
             MenuAct::TogglePreview => Some(Act::TogglePreview),
             MenuAct::OpenFind { replace } => Some(Act::OpenFind { replace }),
             MenuAct::OpenRunCmd => Some(Act::OpenRunCmd),
+            MenuAct::OpenGrep => Some(Act::OpenGrep),
             MenuAct::ShowProperties => Some(Act::ShowProperties),
             MenuAct::ShowAbout => Some(Act::ShowAbout),
             MenuAct::ShowReference => Some(Act::ShowReference),
@@ -6189,6 +6318,7 @@ impl GuiApp {
                 }
                 Act::OpenFind { replace } => self.open_find_dialog(replace),
                 Act::OpenRunCmd => self.open_run_dialog(),
+                Act::OpenGrep => self.open_grep_dialog(),
                 Act::ShowProperties => self.properties_open = true,
                 Act::ShowAbout => self.about_open = true,
                 Act::ShowReference => {
@@ -6224,6 +6354,10 @@ impl GuiApp {
         // `FIND` requests the non-modal Find/Replace dialog (e.g. a bound key or the command line).
         if self.editor.take_find_request() {
             self.open_find_dialog(false);
+        }
+        // A bare `GREP` (no pattern) requests the GREP dialog — the interactive companion to FIND.
+        if self.editor.take_grep_dialog_request() {
+            self.open_grep_dialog();
         }
 
         // (GUI2) Input — two channels:
@@ -8272,6 +8406,9 @@ impl GuiApp {
         // no longer drawn in the main window's frame. See `find_window_ui`.
         if self.run_dialog.is_some() {
             self.render_run_dialog(&ctx);
+        }
+        if self.grep_dialog.is_some() {
+            self.render_grep_dialog(&ctx);
         }
         if self.properties_open {
             self.render_properties(&ctx);

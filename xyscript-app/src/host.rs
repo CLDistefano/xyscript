@@ -1718,6 +1718,7 @@ pub struct AppHost {
     reveal_center: bool,
     /// `FIND` requested the GUI's Find/Replace dialog; the GUI drains this and opens it.
     find_requested: bool,
+    grep_dialog_requested: bool,
     /// Number of replacements made by the most recent `CH`/`CV` (`$CC`).
     change_count: i64,
     /// Active interactive change-verify walk, if any (`CV`/`CVA`).
@@ -2243,6 +2244,7 @@ impl AppHost {
             save_as_requested: false,
             open_requested: false,
             find_requested: false,
+            grep_dialog_requested: false,
             reveal_center: false,
             font_picker_request: None,
             color_picker_request: None,
@@ -2767,6 +2769,11 @@ impl AppHost {
 
     pub fn take_find_request(&mut self) -> bool {
         std::mem::take(&mut self.find_requested)
+    }
+
+    /// Consume the "open the GREP dialog" request (set by a bare `GREP`). The GUI drains it each frame.
+    pub fn take_grep_dialog_request(&mut self) -> bool {
+        std::mem::take(&mut self.grep_dialog_requested)
     }
 
     /// A one-shot: a search just found a match and the GUI should scroll it to mid-screen (if it's
@@ -8128,6 +8135,10 @@ impl Host for AppHost {
             }
             EditorOp::OpenFind => {
                 self.find_requested = true;
+                return Ok(Value::str(""));
+            }
+            EditorOp::OpenGrepDialog => {
+                self.grep_dialog_requested = true;
                 return Ok(Value::str(""));
             }
             EditorOp::EditorFontPicker => {
