@@ -16,7 +16,7 @@
 
 use std::rc::Rc;
 
-use cosmic_text::{Attrs, Buffer, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, Metrics, Scroll, Selection, Shaping, SwashCache, Wrap};
+use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, LineEnding, Metrics, Scroll, Selection, Shaping, SwashCache, Wrap};
 
 mod runtime;
 
@@ -1828,6 +1828,16 @@ struct GuiApp {
     grep_dialog: Option<GrepDialog>,
     pending_page: i32,
     pending_page_extend: bool,
+    /// Persistent cosmic buffer for the render window: its `lines` ARE the shaped-line cache. Each
+    /// frame `build_window_cosmic` reconciles it against the new window, reusing lines whose content
+    /// + colour signature is unchanged so their (expensive) shaped layout survives — a 25 000-char
+    /// paragraph then shapes ONCE, not every frame. Taken out via `Option::take` while a frame uses
+    /// it, put back at the end of `render_canvas`/`page_move`. `win_sigs` parallels `.lines` (one
+    /// per-line signature each); `win_global_sig` is the shaping-parameter key (width/wrap/font) —
+    /// a change there invalidates every cached layout, so the whole cache is dropped.
+    win_buffer: Option<Buffer>,
+    win_sigs: Vec<u64>,
+    win_global_sig: u64,
     /// Whether the Document ▸ Properties info box is showing.
     properties_open: bool,
     /// Whether the Help ▸ About box is showing.
@@ -2060,6 +2070,9 @@ impl GuiApp {
             grep_dialog: None,
             pending_page: 0,
             pending_page_extend: false,
+            win_buffer: None,
+            win_sigs: Vec::new(),
+            win_global_sig: 0,
             properties_open: false,
             about_open: false,
             menu_nav: None,
@@ -2404,7 +2417,7 @@ impl GuiApp {
         // is unchanged. The down budget must exceed one screenful of the longest single paragraph so
         // the visible rows are always covered; the up budget is just smooth-scroll context.
         const WIN_UP_BYTES: usize = 48 * 1024;
-        const WIN_DOWN_BYTES: usize = 160 * 1024;
+        const WIN_DOWN_BYTES: usize = 64 * 1024;
         let anchor = doc.line_byte_range(self.pane_view.scroll_line).0;
         start_line = start_line.max(doc.line_at_byte(anchor.saturating_sub(WIN_UP_BYTES)));
         let down = doc.line_at_byte((anchor + WIN_DOWN_BYTES).min(doc.len())) + 1;
@@ -2562,39 +2575,113 @@ impl GuiApp {
         for &(s, e, cc) in &find_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
-        // Group consecutive same-colour CHARS into cosmic spans.
-        let mut spans: Vec<(&str, Attrs)> = Vec::new();
-        let mut run_start = 0usize;
-        let mut run_col: Option<CColor> = None;
-        for (i, _) in win.display.char_indices() {
-            let c = colors[i];
-            if run_col != Some(c) {
-                if let Some(rc) = run_col {
-                    spans.push((&win.display[run_start..i], mono().color(rc)));
+        // ---- Incremental per-line build (the shaped-line cache) --------------------------------
+        // Rather than `set_rich_text` the whole window every frame (which RE-SHAPES every line — the
+        // killer on a 25 000-char paragraph), split the window into one `BufferLine` per logical line
+        // and REUSE lines whose text + colours match the persistent buffer's, so their cached shaped
+        // layout survives. A long paragraph then shapes once and scrolling reuses it. We can't call
+        // `set_rich_text` (it resets every line's cache), so its splitting/attrs are replicated here.
+        use std::hash::{Hash, Hasher};
+        let s = self.render_scale;
+        let metrics = Metrics::new(self.font_size * s, self.line_height * s);
+        // Shaping-parameter key: any change here (width, wrap, font face/style/size) invalidates every
+        // cached layout, so the reuse pool is dropped wholesale.
+        let global_sig = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            w.hash(&mut h);
+            self.editor.wrap().hash(&mut h);
+            fam.hash(&mut h);
+            format!("{e_weight:?}{e_style:?}").hash(&mut h);
+            (self.font_size * s).to_bits().hash(&mut h);
+            (self.line_height * s).to_bits().hash(&mut h);
+            h.finish()
+        };
+        let (pool, pool_sigs): (Vec<BufferLine>, Vec<u64>) = match self.win_buffer.take() {
+            Some(b) if self.win_global_sig == global_sig => (b.lines, std::mem::take(&mut self.win_sigs)),
+            _ => (Vec::new(), Vec::new()),
+        };
+        self.win_global_sig = global_sig;
+        // Index the pool by per-line signature (a multimap — identical lines are each reused once).
+        let mut by_sig: std::collections::HashMap<u64, Vec<BufferLine>> = std::collections::HashMap::new();
+        for (line, sig) in pool.into_iter().zip(pool_sigs) {
+            by_sig.entry(sig).or_default().push(line);
+        }
+        // Byte ranges of the window's logical lines (split on '\n'). A mid-document window ends with the
+        // separator '\n'; that trailing empty is an artifact — drop it, EXCEPT at true EOF where cosmic
+        // keeps a trailing empty line so the last line stays reachable.
+        let display: &str = &win.display;
+        let mut segs: Vec<(usize, usize)> = Vec::new();
+        let mut p = 0usize;
+        loop {
+            match display[p..].find('\n') {
+                Some(off) => {
+                    segs.push((p, p + off));
+                    p += off + 1;
                 }
-                run_start = i;
-                run_col = Some(c);
+                None => {
+                    segs.push((p, display.len()));
+                    break;
+                }
             }
         }
-        if let Some(rc) = run_col {
-            spans.push((&win.display[run_start..], mono().color(rc)));
+        if display.ends_with('\n') && !win.at_eof {
+            segs.pop();
         }
-        // Keep the real EOF line reachable: cosmic's line splitter drops the empty line
-        // after a trailing `\n`. Only do this at the document's true end — a mid-document
-        // window's trailing `\n` is just the separator before the next (off-window) line.
-        if win.at_eof && win.display.ends_with('\n') {
-            spans.push(("\n", mono().color(fg_c)));
+        let mut new_lines: Vec<BufferLine> = Vec::with_capacity(segs.len());
+        let mut new_sigs: Vec<u64> = Vec::with_capacity(segs.len());
+        for (li, &(a, b)) in segs.iter().enumerate() {
+            let text = &display[a..b];
+            let lc = &colors[a..b];
+            let sig = {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                text.hash(&mut h);
+                lc.hash(&mut h);
+                h.finish()
+            };
+            let line = by_sig.get_mut(&sig).and_then(|v| v.pop()).unwrap_or_else(|| {
+                // Cache miss: build the line's `AttrsList` by grouping same-colour char runs (line-local
+                // ranges), matching what `set_rich_text` produced from the window-wide spans.
+                let mut al = AttrsList::new(&mono());
+                let (mut rs, mut rc): (usize, Option<CColor>) = (0, None);
+                for (i, _) in text.char_indices() {
+                    let c = lc[i];
+                    if rc != Some(c) {
+                        if let Some(pc) = rc {
+                            al.add_span(rs..i, &mono().color(pc));
+                        }
+                        rs = i;
+                        rc = Some(c);
+                    }
+                }
+                if let Some(pc) = rc {
+                    al.add_span(rs..text.len(), &mono().color(pc));
+                }
+                let mut bl =
+                    BufferLine::new(text.to_string(), LineEnding::default(), al, Shaping::Advanced);
+                bl.set_metadata(win.start_line + li);
+                bl
+            });
+            new_lines.push(line);
+            new_sigs.push(sig);
         }
-        // `w`/`h` are PIXELS; scale the font metrics to match so glyphs rasterize at device
-        // resolution (crisp). All cosmic-space geometry (caret/hit/scroll) is then in pixels.
-        let s = self.render_scale;
-        let mut buffer = Buffer::new(
-            &mut self.font_system,
-            Metrics::new(self.font_size * s, self.line_height * s),
-        );
-        // `WRAP off` — lay each logical line out on ONE visual row (no width clamp), so it runs past
-        // the right edge; the horizontal scrollbar reaches the overflow. `WRAP on` (default) wraps to
-        // the text width. cosmic's default is `WordOrGlyph`, set explicitly so a toggle takes effect.
+        // An empty window still needs one (empty) line, matching cosmic's `set_text`.
+        if new_lines.is_empty() {
+            new_lines.push(BufferLine::new(
+                String::new(),
+                LineEnding::default(),
+                AttrsList::new(&mono()),
+                Shaping::Advanced,
+            ));
+            new_sigs.push(0);
+        }
+        self.win_sigs = new_sigs;
+        // `w`/`h` are PIXELS; scale the font metrics to match so glyphs rasterize at device resolution
+        // (crisp). All cosmic-space geometry (caret/hit/scroll) is then in pixels.
+        let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.lines = new_lines;
+        // `WRAP off` — lay each logical line out on ONE visual row (no width clamp), so it runs past the
+        // right edge; the horizontal scrollbar reaches the overflow. `WRAP on` (default) wraps to text
+        // width. cosmic's default is `WordOrGlyph`, set explicitly so a toggle takes effect.
         if self.editor.wrap() {
             buffer.set_wrap(Wrap::WordOrGlyph);
             buffer.set_size(Some(w as f32), Some(h as f32));
@@ -2602,13 +2689,8 @@ impl GuiApp {
             buffer.set_wrap(Wrap::None);
             buffer.set_size(None, Some(h as f32));
         }
-        if spans.is_empty() {
-            buffer.set_text(&win.display, &mono().color(fg_c), Shaping::Advanced, None);
-        } else {
-            buffer.set_rich_text(spans, &mono(), Shaping::Advanced, None);
-        }
-        // Visual tab stops: render `\t` at the configured width (`TB`/`$TB`). cosmic computes
-        // the stops from the space advance, so caret/hit-testing stay consistent automatically.
+        // Visual tab stops: render `\t` at the configured width (`TB`/`$TB`). cosmic computes the stops
+        // from the space advance, so caret/hit-testing stay consistent automatically.
         let tw = self.editor.tab_width().clamp(1, u16::MAX as usize) as u16;
         buffer.set_tab_width(tw); // reshaped by the later `shape_until_scroll`
         buffer
@@ -3646,6 +3728,10 @@ impl GuiApp {
                 }
             }
         }
+        // Return the shaped buffer to the persistent cache so its per-line layouts survive to next
+        // frame (see `win_buffer`). `win_sigs` already parallels `buffer.lines` (shaping didn't change
+        // the line set), so the pair stays consistent.
+        self.win_buffer = Some(buffer);
         canvas
     }
 
@@ -3812,6 +3898,7 @@ impl GuiApp {
         }
         self.goal_x = Some(goal); // hold the column for the next page / arrow
         self.pane_view.follow = false; // scroll + caret already positioned; don't re-clamp
+        self.win_buffer = Some(buffer); // return the shaped buffer to the cache (see `win_buffer`)
     }
 
     /// Pull an external OS-clipboard change into the editor's `$CB`, so a paste sees
@@ -3885,33 +3972,44 @@ impl GuiApp {
         // clamps to the caret's own row), scroll one row toward it and try once more.
         for attempt in 0..2 {
             let (buffer, win) = self.windowed_buffer(w, h);
-            let Some((cx, cy)) =
-                self.win_cursor_at(&win, doc_cursor).and_then(|c| buffer.cursor_position(&c))
-            else {
-                break; // caret off-window → let the logical fallback move + `follow` reveal it
-            };
-            // Goal is a SCREEN column (content x + the caret row's hanging indent), so it holds its
-            // visual position across rows of differing indentation; converted to the target row's
-            // content x for the hit. With WRAPINDENT off every offset is 0, so this is a plain `cx`.
-            let goal = self.goal_x.unwrap_or(cx + self.wi_offset_at_y(cy));
-            // `cy` is the caret row's top; aim at the vertical center of the adjacent row.
-            let target_y = cy + if down { 1.5 * lh_px } else { -0.5 * lh_px };
-            if target_y >= 0.0 && target_y < h as f32 {
-                let goal_content = goal - self.wi_offset_at_y(target_y);
-                if let Some(off) = buffer.hit(goal_content, target_y).map(|cur| self.win_rope_at(&win, cur)) {
-                    // Accept only a move that actually changes rows; at the very edge `hit` can clamp
-                    // back to the caret's own row, in which case we scroll and retry instead.
-                    if off != doc_cursor {
-                        self.editor.host_mut().move_active_to(off, extend);
-                        self.goal_x = Some(goal);
-                        self.pane_view.follow = true;
-                        return;
+            // Buffer-dependent step: the caret's screen column + the candidate target offset on the
+            // adjacent visual row (`None` off ⇒ off-screen / clamped-to-own-row). Computed before the
+            // buffer is returned to the cache so no `windowed_buffer` result escapes unstashed.
+            let step: Option<(f32, Option<usize>)> = self
+                .win_cursor_at(&win, doc_cursor)
+                .and_then(|c| buffer.cursor_position(&c))
+                .map(|(cx, cy)| {
+                    // Goal is a SCREEN column (content x + the caret row's hanging indent), holding its
+                    // visual position across rows of differing indentation. WRAPINDENT off ⇒ plain `cx`.
+                    let goal = self.goal_x.unwrap_or(cx + self.wi_offset_at_y(cy));
+                    let target_y = cy + if down { 1.5 * lh_px } else { -0.5 * lh_px };
+                    let off = if target_y >= 0.0 && target_y < h as f32 {
+                        buffer
+                            .hit(goal - self.wi_offset_at_y(target_y), target_y)
+                            .map(|cur| self.win_rope_at(&win, cur))
+                            // Accept only a move that changes rows; at the very edge `hit` can clamp
+                            // back to the caret's own row — then we scroll and retry instead.
+                            .filter(|&o| o != doc_cursor)
+                    } else {
+                        None
+                    };
+                    (goal, off)
+                });
+            self.win_buffer = Some(buffer); // return the shaped buffer to the cache
+            match step {
+                None => break, // caret off-window → logical fallback + `follow` reveals it
+                Some((goal, Some(off))) => {
+                    self.editor.host_mut().move_active_to(off, extend);
+                    self.goal_x = Some(goal);
+                    self.pane_view.follow = true;
+                    return;
+                }
+                Some((goal, None)) => {
+                    if attempt == 0 {
+                        self.goal_x = Some(goal); // hold the column across the retry + the fallback
+                        self.pane_view.scroll_vertical += if down { lh_px } else { -lh_px };
                     }
                 }
-            }
-            if attempt == 0 {
-                self.goal_x = Some(goal); // hold the column across the retry + the fallback
-                self.pane_view.scroll_vertical += if down { lh_px } else { -lh_px };
             }
         }
         // No adjacent visual row (first/last line): a one-line LOGICAL move is the reliable last resort
@@ -3935,23 +4033,24 @@ impl GuiApp {
             return;
         }
         let (buffer, win) = self.windowed_buffer(w, h);
-        // The visual row of the ORIGINAL caret (cy = its top, in pixels).
-        let Some((_cx, cy)) =
-            self.win_cursor_at(&win, from).and_then(|c| buffer.cursor_position(&c))
-        else {
-            return;
-        };
         let lh_px = self.line_height * self.render_scale;
-        let target_y = cy + 0.5 * lh_px; // vertical center of that visual row
-        // x far past the right edge → end of the row; x = 0 → start of the row.
-        let target_x = if end { w as f32 * 4.0 } else { 0.0 };
-        let Some(cur) = (target_y >= 0.0).then(|| buffer.hit(target_x, target_y)).flatten() else {
-            return;
-        };
-        let off = self.win_rope_at(&win, cur);
-        self.editor.host_mut().move_active_to(off, extend);
-        self.goal_x = None;
-        self.pane_view.follow = true;
+        // Resolve the visual row edge (None if the caret's row is scrolled off-window), then ALWAYS
+        // return the buffer to the cache before acting on the result.
+        let off = (|| {
+            // The visual row of the ORIGINAL caret (cy = its top, in pixels).
+            let (_cx, cy) = self.win_cursor_at(&win, from).and_then(|c| buffer.cursor_position(&c))?;
+            let target_y = cy + 0.5 * lh_px; // vertical center of that visual row
+            // x far past the right edge → end of the row; x = 0 → start of the row.
+            let target_x = if end { w as f32 * 4.0 } else { 0.0 };
+            let cur = (target_y >= 0.0).then(|| buffer.hit(target_x, target_y)).flatten()?;
+            Some(self.win_rope_at(&win, cur))
+        })();
+        self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
+        if let Some(off) = off {
+            self.editor.host_mut().move_active_to(off, extend);
+            self.goal_x = None;
+            self.pane_view.follow = true;
+        }
     }
 
     /// Pixel (in canvas space) → document **rope** byte offset, via cosmic-text
@@ -3965,7 +4064,9 @@ impl GuiApp {
         // click x before hit-testing (no-op when the mode is off / the row is a first row). `WRAP off`
         // draws glyphs shifted LEFT by `scroll_h`, so add it back to map the click into cosmic space.
         let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
-        buffer.hit(x, y).map(|cur| self.win_rope_at(&win, cur))
+        let r = buffer.hit(x, y).map(|cur| self.win_rope_at(&win, cur));
+        self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
+        r
     }
 
     /// Like [`hit`](Self::hit) but returns the LEADING (logical start) offset of the character whose
@@ -3981,11 +4082,12 @@ impl GuiApp {
         // WRAPINDENT: undo the continuation row's draw shift before matching against its glyphs.
         // `WRAP off`: also add back the horizontal scroll so the click maps into cosmic space.
         let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
-        if let Some(cur) = leading_glyph_cursor(&buffer, x, y) {
-            return Some(self.win_rope_at(&win, cur));
-        }
-        // Point is left/right of the row's glyphs, on an empty row, or off the text → nearest.
-        buffer.hit(x, y).map(|cur| self.win_rope_at(&win, cur))
+        let r = leading_glyph_cursor(&buffer, x, y)
+            // Point is left/right of the row's glyphs, on an empty row, or off the text → nearest.
+            .or_else(|| buffer.hit(x, y))
+            .map(|cur| self.win_rope_at(&win, cur));
+        self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
+        r
     }
 }
 
