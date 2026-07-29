@@ -263,29 +263,51 @@ menu.help.about =                      # About XyScript
 
 
 # =============================================================================
-# 2. DIALOGS  — ILLUSTRATIVE STUB (to be completed in phase 1)
+# 2. DIALOGS  (DONE — Grep, Run, Find, About are wired)
 # =============================================================================
-# Shows how dialog titles, field labels, and buttons fit the same scheme.
 
-# ---- Shared buttons ---------------------------------------------------------
-button.ok =                            # OK
-button.cancel =                        # Cancel
+# ---- Shared ----------------------------------------------------------------
 button.close =                         # Close
 
 # ---- Grep dialog ------------------------------------------------------------
 dialog.grep.title =                    # Grep
-dialog.grep.pattern =                  # Pattern
-dialog.grep.folder =                   # Folder or glob (optional)
+dialog.grep.pattern =                  # Search for:
+dialog.grep.pattern_hint =             # text (or a regex with Regular expression)
+dialog.grep.folder =                   # In folder:
+dialog.grep.folder_hint =              # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
 dialog.grep.regex =                    # Regular expression
 dialog.grep.ignore_case =              # Ignore case
 dialog.grep.whole_word =               # Whole word
 dialog.grep.search =                   # Search
 
-# ---- Find / Replace dialog --------------------------------------------------
-dialog.find.title =                    # Find
-dialog.find.replace_title =            # Replace
-dialog.find.find_what =                # Find what
-dialog.find.replace_with =             # Replace with
+# ---- Run-command dialog -----------------------------------------------------
+dialog.run.title =                     # Run command
+dialog.run.shell_off =                 # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command =                   # Command:
+dialog.run.command_hint =              # a shell command
+dialog.run.background =                # Run in background
+dialog.run.insert_output =             # Insert output at cursor
+dialog.run.run =                       # Run
+
+# ---- Find / Replace window --------------------------------------------------
+dialog.find.find_label =               # Find:
+dialog.find.find_hint =                # text to find
+dialog.find.replace_label =            # Replace:
+dialog.find.replace_hint =             # replacement
+dialog.find.case =                     # Case sensitive
+dialog.find.whole_word =               # Whole word
+dialog.find.regex =                    # Regular expression
+dialog.find.in_selection =             # In selection
+dialog.find.keep_case =                # Keep case in replacement
+dialog.find.keep_case_hint =           # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next =                # Find next (F3)
+dialog.find.find_prev =                # Find prev (Shift+F3)
+dialog.find.replace =                  # Replace
+dialog.find.replace_all =              # Replace all
+
+# ---- About dialog -----------------------------------------------------------
+dialog.about.title =                   # About XyScript
+dialog.about.tagline =                 # A configurable editor in the XyWrite tradition.
 
 
 # =============================================================================

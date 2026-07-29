@@ -229,29 +229,51 @@ menu.help.about = À propos de XyScript   # About XyScript
 
 
 # =============================================================================
-# 2. DIALOGS  — ILLUSTRATIVE STUB (to be completed in phase 1)
+# 2. DIALOGS  (DONE — Grep, Run, Find, About are wired)
 # =============================================================================
-# Shows how dialog titles, field labels, and buttons fit the same scheme.
 
-# ---- Shared buttons ---------------------------------------------------------
-button.ok = OK   # OK
-button.cancel = Annuler   # Cancel
+# ---- Shared ----------------------------------------------------------------
 button.close = Fermer   # Close
 
 # ---- Grep dialog ------------------------------------------------------------
 dialog.grep.title = Grep   # Grep
-dialog.grep.pattern = Motif   # Pattern
-dialog.grep.folder = Dossier ou motif générique (optionnel)   # Folder or glob (optional)
+dialog.grep.pattern = Rechercher :   # Search for:
+dialog.grep.pattern_hint = texte (ou une expression régulière avec Expression régulière)   # text (or a regex with Regular expression)
+dialog.grep.folder = Dans le dossier :   # In folder:
+dialog.grep.folder_hint = vide = dossier courant — ou  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
 dialog.grep.regex = Expression régulière   # Regular expression
 dialog.grep.ignore_case = Ignorer la casse   # Ignore case
 dialog.grep.whole_word = Mot entier   # Whole word
 dialog.grep.search = Rechercher   # Search
 
-# ---- Find / Replace dialog --------------------------------------------------
-dialog.find.title = Rechercher   # Find
-dialog.find.replace_title = Remplacer   # Replace
-dialog.find.find_what = Rechercher   # Find what
-dialog.find.replace_with = Remplacer par   # Replace with
+# ---- Run-command dialog -----------------------------------------------------
+dialog.run.title = Exécuter une commande   # Run command
+dialog.run.shell_off = Les commandes shell sont désactivées — activez-les dans Paramètres ⏵ Autoriser les commandes shell.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Commande :   # Command:
+dialog.run.command_hint = une commande shell   # a shell command
+dialog.run.background = Exécuter en arrière-plan   # Run in background
+dialog.run.insert_output = Insérer la sortie au curseur   # Insert output at cursor
+dialog.run.run = Exécuter   # Run
+
+# ---- Find / Replace window --------------------------------------------------
+dialog.find.find_label = Rechercher :   # Find:
+dialog.find.find_hint = texte à rechercher   # text to find
+dialog.find.replace_label = Remplacer :   # Replace:
+dialog.find.replace_hint = remplacement   # replacement
+dialog.find.case = Respecter la casse   # Case sensitive
+dialog.find.whole_word = Mot entier   # Whole word
+dialog.find.regex = Expression régulière   # Regular expression
+dialog.find.in_selection = Dans la sélection   # In selection
+dialog.find.keep_case = Conserver la casse dans le remplacement   # Keep case in replacement
+dialog.find.keep_case_hint = Remplacer / Remplacer tout : adapte la casse de chaque remplacement à celle du texte remplacé (minuscules / Capitalisé / MAJUSCULES).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Suivant (F3)   # Find next (F3)
+dialog.find.find_prev = Précédent (Maj+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Remplacer   # Replace
+dialog.find.replace_all = Remplacer tout   # Replace all
+
+# ---- About dialog -----------------------------------------------------------
+dialog.about.title = À propos de XyScript   # About XyScript
+dialog.about.tagline = Un éditeur configurable dans la tradition XyWrite.   # A configurable editor in the XyWrite tradition.
 
 
 # =============================================================================

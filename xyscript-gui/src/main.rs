@@ -4782,6 +4782,22 @@ impl GuiApp {
         let mut do_replace = false;
         let mut do_replace_all = false;
         let mut do_close = false;
+        // Localized labels — before the `find_dialog` borrow (see `render_grep_dialog`).
+        let l_find = self.tr("dialog.find.find_label", "Find:");
+        let l_find_hint = self.tr("dialog.find.find_hint", "text to find");
+        let l_replace_label = self.tr("dialog.find.replace_label", "Replace:");
+        let l_replace_hint = self.tr("dialog.find.replace_hint", "replacement");
+        let l_case = self.tr("dialog.find.case", "Case sensitive");
+        let l_whole = self.tr("dialog.find.whole_word", "Whole word");
+        let l_regex = self.tr("dialog.find.regex", "Regular expression");
+        let l_in_sel = self.tr("dialog.find.in_selection", "In selection");
+        let l_keep = self.tr("dialog.find.keep_case", "Keep case in replacement");
+        let l_keep_hint = self.tr("dialog.find.keep_case_hint", "Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).");
+        let l_next = self.tr("dialog.find.find_next", "Find next (F3)");
+        let l_prev = self.tr("dialog.find.find_prev", "Find prev (Shift+F3)");
+        let l_replace = self.tr("dialog.find.replace", "Replace");
+        let l_replace_all = self.tr("dialog.find.replace_all", "Replace all");
+        let l_close = self.tr("button.close", "Close");
         let Some(d) = self.find_dialog.as_mut() else {
             return outcome;
         };
@@ -4802,10 +4818,10 @@ impl GuiApp {
                     .num_columns(2)
                     .spacing([8.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("Find:");
+                        ui.label(&l_find);
                         let mut find_out = egui::TextEdit::singleline(&mut d.find)
                             .desired_width(260.0)
-                            .hint_text("text to find")
+                            .hint_text(&l_find_hint)
                             .show(ui);
                         let find_edit = find_out.response;
                         if d.focus_find {
@@ -4826,11 +4842,11 @@ impl GuiApp {
                             do_find_next = true;
                         }
                         ui.end_row();
-                        ui.label("Replace:");
+                        ui.label(&l_replace_label);
                         let replace_edit = ui.add(
                             egui::TextEdit::singleline(&mut d.replace)
                                 .desired_width(260.0)
-                                .hint_text("replacement"),
+                                .hint_text(&l_replace_hint),
                         );
                         if d.focus_replace {
                             replace_edit.request_focus();
@@ -4840,36 +4856,33 @@ impl GuiApp {
                     });
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.case, "Case sensitive");
-                    ui.checkbox(&mut d.whole_word, "Whole word");
+                    ui.checkbox(&mut d.case, &l_case);
+                    ui.checkbox(&mut d.whole_word, &l_whole);
                 });
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.regex, "Regular expression");
-                    ui.checkbox(&mut d.in_selection, "In selection");
-                    ui.checkbox(&mut d.keep_case, "Keep case in replacement").on_hover_text(
-                        "Replace / Replace all: recase each replacement to match the case of the \
-                         text it replaces (lower / Capitalized / UPPER).",
-                    );
+                    ui.checkbox(&mut d.regex, &l_regex);
+                    ui.checkbox(&mut d.in_selection, &l_in_sel);
+                    ui.checkbox(&mut d.keep_case, &l_keep).on_hover_text(&l_keep_hint);
                 });
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {
                     // The F3 / Shift+F3 hints match the universal shortcuts (runtime.rs) — they work
                     // even while this dialog's field has focus. Wrapped so a narrow window doesn't clip.
-                    if ui.button("Find next (F3)").clicked() {
+                    if ui.button(&l_next).clicked() {
                         do_find_next = true;
                     }
-                    if ui.button("Find prev (Shift+F3)").clicked() {
+                    if ui.button(&l_prev).clicked() {
                         do_find_prev = true;
                     }
                     ui.separator();
-                    if ui.button("Replace").clicked() {
+                    if ui.button(&l_replace).clicked() {
                         do_replace = true;
                     }
-                    if ui.button("Replace all").clicked() {
+                    if ui.button(&l_replace_all).clicked() {
                         do_replace_all = true;
                     }
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(&l_close).clicked() {
                         do_close = true;
                     }
                 });
@@ -4969,6 +4982,15 @@ impl GuiApp {
     /// `XY` (insert output at the caret) when "Insert output" is ticked, else `X` (to the *Shell
     /// Output* tab) with an optional `/BG`. Shell-out is `TRUST`-gated.
     fn render_run_dialog(&mut self, ctx: &egui::Context) {
+        // Localized labels — before the `run_dialog` borrow (see `render_grep_dialog`).
+        let l_title = self.tr("dialog.run.title", "Run command");
+        let l_shell_off = self.tr("dialog.run.shell_off", "Shell commands are off — enable in Settings ⏵ Allow shell commands.");
+        let l_command = self.tr("dialog.run.command", "Command:");
+        let l_command_hint = self.tr("dialog.run.command_hint", "a shell command");
+        let l_background = self.tr("dialog.run.background", "Run in background");
+        let l_insert = self.tr("dialog.run.insert_output", "Insert output at cursor");
+        let l_run = self.tr("dialog.run.run", "Run");
+        let l_close = self.tr("button.close", "Close");
         let Some(d) = self.run_dialog.as_mut() else {
             return;
         };
@@ -4977,27 +4999,24 @@ impl GuiApp {
         let mut open = true;
         let mut do_run = false;
         let mut do_close = false;
-        egui::Window::new("Run command")
+        egui::Window::new(l_title)
             .id(egui::Id::new("run_dialog"))
             .open(&mut open)
             .resizable(true)
             .default_width(420.0)
             .show(ctx, |ui| {
                 if !trusted {
-                    ui.colored_label(
-                        ui.visuals().warn_fg_color,
-                        // `⏵` (U+23F5), not `▸` (U+25B8) — see the submenu marker: only the former
-                        // is in egui's bundled fonts, and this label renders with them.
-                        "Shell commands are off — enable in Settings ⏵ Allow shell commands.",
-                    );
+                    // `⏵` (U+23F5), not `▸` (U+25B8) — see the submenu marker: only the former is in
+                    // egui's bundled fonts, and this label renders with them.
+                    ui.colored_label(ui.visuals().warn_fg_color, &l_shell_off);
                     ui.add_space(2.0);
                 }
                 ui.horizontal(|ui| {
-                    ui.label("Command:");
+                    ui.label(&l_command);
                     let cmd_edit = ui.add(
                         egui::TextEdit::singleline(&mut d.cmd)
                             .desired_width(320.0)
-                            .hint_text("a shell command"),
+                            .hint_text(&l_command_hint),
                     );
                     if d.focus_cmd {
                         cmd_edit.request_focus();
@@ -5016,17 +5035,17 @@ impl GuiApp {
                 // Background is meaningless once output is being inserted at the caret (that needs a
                 // synchronous run), so it's disabled while "Insert output" is on.
                 ui.add_enabled_ui(!d.insert_output, |ui| {
-                    ui.checkbox(&mut d.background, "Run in background");
+                    ui.checkbox(&mut d.background, &l_background);
                 });
-                ui.checkbox(&mut d.insert_output, "Insert output at cursor");
+                ui.checkbox(&mut d.insert_output, &l_insert);
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(trusted && !d.cmd.trim().is_empty(), |ui| {
-                        if ui.button("Run").clicked() {
+                        if ui.button(&l_run).clicked() {
                             do_run = true;
                         }
                     });
-                    if ui.button("Close").clicked() {
+                    if ui.button(&l_close).clicked() {
                         do_close = true;
                     }
                 });
@@ -5074,6 +5093,17 @@ impl GuiApp {
     /// pattern, no `$`-expansion); results stream into a read-only tab, so the dialog is pure front-end
     /// and can be closed while the search runs. Open Search ▸ Emphasize / `GJ` still work on the tab.
     fn render_grep_dialog(&mut self, ctx: &egui::Context) {
+        // Localized labels — computed BEFORE the `grep_dialog` borrow so `tr` can read `self`.
+        let l_title = self.tr("dialog.grep.title", "Grep");
+        let l_pattern = self.tr("dialog.grep.pattern", "Search for:");
+        let l_pattern_hint = self.tr("dialog.grep.pattern_hint", "text (or a regex with Regular expression)");
+        let l_folder = self.tr("dialog.grep.folder", "In folder:");
+        let l_folder_hint = self.tr("dialog.grep.folder_hint", "blank = current folder — or  src  ·  *.rs  ·  src/*.rs");
+        let l_regex = self.tr("dialog.grep.regex", "Regular expression");
+        let l_ignore = self.tr("dialog.grep.ignore_case", "Ignore case");
+        let l_whole = self.tr("dialog.grep.whole_word", "Whole word");
+        let l_search = self.tr("dialog.grep.search", "Search");
+        let l_close = self.tr("button.close", "Close");
         let Some(d) = self.grep_dialog.as_mut() else {
             return;
         };
@@ -5081,18 +5111,18 @@ impl GuiApp {
         let mut open = true;
         let mut do_search = false;
         let mut do_close = false;
-        egui::Window::new("Grep")
+        egui::Window::new(l_title)
             .id(egui::Id::new("grep_dialog"))
             .open(&mut open)
             .resizable(true)
             .default_width(460.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("Search for:");
+                    ui.label(&l_pattern);
                     let e = ui.add(
                         egui::TextEdit::singleline(&mut d.pattern)
                             .desired_width(340.0)
-                            .hint_text("text (or a regex with Regular expression)"),
+                            .hint_text(&l_pattern_hint),
                     );
                     if d.focus_pattern {
                         e.request_focus();
@@ -5108,11 +5138,11 @@ impl GuiApp {
                 });
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
-                    ui.label("In folder:");
+                    ui.label(&l_folder);
                     let e = ui.add(
                         egui::TextEdit::singleline(&mut d.path)
                             .desired_width(340.0)
-                            .hint_text("blank = current folder — or  src  ·  *.rs  ·  src/*.rs"),
+                            .hint_text(&l_folder_hint),
                     );
                     if !d.pattern.trim().is_empty()
                         && e.lost_focus()
@@ -5123,18 +5153,18 @@ impl GuiApp {
                 });
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut d.regex, "Regular expression");
-                    ui.checkbox(&mut d.ignore_case, "Ignore case");
-                    ui.checkbox(&mut d.whole, "Whole word");
+                    ui.checkbox(&mut d.regex, &l_regex);
+                    ui.checkbox(&mut d.ignore_case, &l_ignore);
+                    ui.checkbox(&mut d.whole, &l_whole);
                 });
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(!d.pattern.trim().is_empty(), |ui| {
-                        if ui.button("Search").clicked() {
+                        if ui.button(&l_search).clicked() {
                             do_search = true;
                         }
                     });
-                    if ui.button("Close").clicked() {
+                    if ui.button(&l_close).clicked() {
                         do_close = true;
                     }
                 });
@@ -5959,19 +5989,20 @@ impl GuiApp {
         }
         let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         let info = self.editor.about_info();
+        let l_title = self.tr("dialog.about.title", "About XyScript");
+        let l_tagline = self.tr("dialog.about.tagline", "A configurable editor in the XyWrite tradition.");
+        let l_close = self.tr("button.close", "Close");
         let mut open = true;
         let mut do_close = false;
-        egui::Window::new("About XyScript")
+        egui::Window::new(l_title)
             .id(egui::Id::new("about"))
             .open(&mut open)
             .resizable(false)
             .show(ctx, |ui| {
+                // "XyScript" is the product name — never translated.
                 ui.label(egui::RichText::new("XyScript").strong().size(16.0));
                 // Don't let the tag line wrap — the window auto-sizes wide enough to fit it.
-                ui.add(
-                    egui::Label::new("A configurable editor in the XyWrite tradition.")
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                );
+                ui.add(egui::Label::new(&l_tagline).wrap_mode(egui::TextWrapMode::Extend));
                 ui.add_space(6.0);
                 egui::Grid::new("about_grid").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
                     for (label, value) in &info {
@@ -5982,7 +6013,7 @@ impl GuiApp {
                 });
                 ui.separator();
                 ui.vertical_centered(|ui| {
-                    if ui.button("Close").clicked() {
+                    if ui.button(&l_close).clicked() {
                         do_close = true;
                     }
                 });
