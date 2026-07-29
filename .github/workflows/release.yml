@@ -4,7 +4,8 @@ name: Build binaries
 # macOS builds a single UNIVERSAL binary (Intel + Apple Silicon) on the Apple-Silicon runner, whose
 # Xcode SDK can also cross-compile x86_64 — GitHub's Intel (macos-13) runners are being retired and
 # often never get allocated, so we don't depend on one. Triggered manually, or on a version tag
-# (`git tag v0.1.0 && git push --tags`) which also attaches the binaries to a Release.
+# (`git tag v0.1.0 && git push --tags`) which also attaches the per-platform bundles (binary + UI
+# translation catalogs) to a Release.
 on:
   workflow_dispatch:
   push:
@@ -16,8 +17,24 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Drift gate: the committed UI catalogs (docs/i18n/*.lang) must stay in sync with the
+  # tr()/tr_msg()/tr_fmt() strings in the code, or the bundled translations would ship stale.
+  # `i18n-sync --check` exits nonzero on any drift or unreviewed `#, fuzzy` entry. Gates the builds.
+  i18n-check:
+    name: UI catalogs in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Verify docs/i18n catalogs match the code
+        run: python docs/i18n/i18n-sync.py --check
+
   build:
     name: ${{ matrix.name }}
+    needs: i18n-check
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,11 +43,13 @@ jobs:
           - os: ubuntu-latest
             name: linux-x86_64
             bin: xyscript-gui
+            exe: xyscript
             artifact: xyscript-linux-x86_64
           - os: windows-latest
             name: windows-x86_64
             bin: xyscript-gui.exe
-            artifact: xyscript-windows-x86_64.exe
+            exe: xyscript.exe
+            artifact: xyscript-windows-x86_64
 
     steps:
       - uses: actions/checkout@v7
@@ -71,11 +90,17 @@ jobs:
         working-directory: xyscript-gui
         run: cargo build --release --features lint,email
 
-      - name: Stage binary
+      # Bundle the binary with the UI translation catalogs so `Settings ▸ Language` is populated out
+      # of the box — the app discovers `<exe dir>/lang/*.lang` at runtime. English is built in and the
+      # pseudolocale is a dev-only layout aid, so neither ships.
+      - name: Package (binary + language catalogs)
         shell: bash
         run: |
-          mkdir -p staged
-          cp "xyscript-gui/target/release/${{ matrix.bin }}" "staged/${{ matrix.artifact }}"
+          pkg="staged/${{ matrix.artifact }}"
+          mkdir -p "$pkg/lang"
+          cp "xyscript-gui/target/release/${{ matrix.bin }}" "$pkg/${{ matrix.exe }}"
+          cp docs/i18n/*.lang "$pkg/lang/"
+          rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -88,6 +113,7 @@ jobs:
   # arm64 plus a cross-compiled x86_64, then `lipo` merges them into a universal executable.
   macos:
     name: macos-universal
+    needs: i18n-check
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
@@ -108,14 +134,17 @@ jobs:
           cargo build --release --features lint,email --target aarch64-apple-darwin
           cargo build --release --features lint,email --target x86_64-apple-darwin
 
-      - name: Merge into a universal binary
+      - name: Package (universal binary + language catalogs)
         shell: bash
         run: |
-          mkdir -p staged
-          lipo -create -output staged/xyscript-macos-universal \
+          pkg="staged/xyscript-macos-universal"
+          mkdir -p "$pkg/lang"
+          lipo -create -output "$pkg/xyscript" \
             xyscript-gui/target/aarch64-apple-darwin/release/xyscript-gui \
             xyscript-gui/target/x86_64-apple-darwin/release/xyscript-gui
-          lipo -info staged/xyscript-macos-universal
+          lipo -info "$pkg/xyscript"
+          cp docs/i18n/*.lang "$pkg/lang/"
+          rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -124,7 +153,7 @@ jobs:
           path: staged/xyscript-macos-universal
           if-no-files-found: error
 
-  # On a version tag, gather every platform's binary and attach them to a GitHub Release.
+  # On a version tag, gather every platform's bundle (binary + lang/), zip each, and attach to a Release.
   release:
     name: Publish release
     needs: [build, macos]
@@ -138,8 +167,20 @@ jobs:
         with:
           path: artifacts
 
-      - name: Attach binaries to the release
+      # Each artifact is a platform bundle directory (binary + lang/). Zip each into one release asset
+      # so the catalogs travel with the binary (ubuntu runners ship `zip`).
+      - name: Zip each platform bundle
+        run: |
+          cd artifacts
+          for d in */; do
+            name="${d%/}"
+            zip -r "../$name.zip" "$name"
+          done
+          cd ..
+          ls -la *.zip
+
+      - name: Attach bundles to the release
         uses: softprops/action-gh-release@v3
         with:
-          files: artifacts/**/*
+          files: "*.zip"
           fail_on_unmatched_files: true
