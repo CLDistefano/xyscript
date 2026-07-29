@@ -1479,25 +1479,69 @@ mod menu_tests {
         // budget that comfortably fits a readable column. A submenu item also shows a "    ⏵" marker,
         // so it's charged 5 extra. Counts CHARS (so "…"/"⏵"/"✔" count as one), matching visual width.
         const MAX: usize = 40;
+        let app = GuiApp::new();
+        for (label, width) in menu_label_widths(&app.menu_tree()) {
+            assert!(width <= MAX, "menu label {label:?} is {width} chars (> {MAX}) — it may wrap / over-widen");
+        }
+    }
+
+    /// Collect every menu label with its rendered char-width — an item counts its own chars; a
+    /// submenu is charged +5 for the trailing "    ⏵" marker. Shared by the English and translated
+    /// width guards.
+    fn menu_label_widths(tree: &[MenuNode]) -> Vec<(String, usize)> {
         fn walk(nodes: &[MenuNode], out: &mut Vec<(String, usize)>) {
             for n in nodes {
                 match n {
                     MenuNode::Item { label, .. } => out.push((label.clone(), label.chars().count())),
                     MenuNode::Sub { label, children } => {
-                        out.push((label.clone(), label.chars().count() + 5)); // + "    ⏵"
+                        out.push((label.clone(), label.chars().count() + 5));
                         walk(children, out);
                     }
                     MenuNode::Sep => {}
                 }
             }
         }
-        let app = GuiApp::new();
-        let tree = app.menu_tree();
-        let mut labels = Vec::new();
-        walk(&tree, &mut labels);
-        for (label, width) in labels {
-            assert!(width <= MAX, "menu label {label:?} is {width} chars (> {MAX}) — it may wrap / over-widen");
+        let mut out = Vec::new();
+        walk(tree, &mut out);
+        out
+    }
+
+    #[test]
+    fn translated_menu_labels_stay_within_width() {
+        // Translations run longer than English — German/Dutch compounds especially (e.g. "Klammern und
+        // Anführungszeichen automatisch schließen") — so the column-width budget is looser than the
+        // 40-char English guard. It's still bounded, to catch a runaway label (a bad or comically
+        // verbose translation) before it ships an unusably wide menu column. EVERY shipped catalog is
+        // discovered and checked, so a new <xx>.lang is covered automatically. If a legitimate
+        // translation ever exceeds this, shorten it or raise MAX deliberately.
+        const MAX: usize = 62;
+        let i18n = format!("{}/../docs/i18n", env!("CARGO_MANIFEST_DIR").replace('\\', "/"));
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&i18n).expect("docs/i18n is readable") {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|x| x.to_str()) != Some("lang") {
+                continue;
+            }
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            // Skip the English source and the pseudolocale — same exclusions as the Language menu.
+            if NON_LANGUAGE_LANGS.iter().any(|s| stem.eq_ignore_ascii_case(s)) {
+                continue;
+            }
+            let mut app = GuiApp::new();
+            app.editor.run_command(&format!("LANG {}", path.to_string_lossy().replace('\\', "/")));
+            assert!(
+                app.editor.lang_get("menubar.file").is_some(),
+                "{stem}.lang did not load — the menu would silently fall back to English, hiding width problems"
+            );
+            for (label, width) in menu_label_widths(&app.menu_tree()) {
+                assert!(
+                    width <= MAX,
+                    "{stem}: menu label {label:?} is {width} chars (> {MAX}) — the column would over-widen"
+                );
+            }
+            checked += 1;
         }
+        assert!(checked >= 6, "expected at least the six sample catalogs; only checked {checked}");
     }
 
     #[test]
