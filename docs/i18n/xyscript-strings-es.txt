@@ -1,0 +1,296 @@
+# =============================================================================
+# XyScript UI strings  —  ESPAÑOL (sample translation)
+# =============================================================================
+# A sample Spanish catalog, generated from xyscript-strings.template. Load it:
+#   LANG <path>\xyscript-strings-es.txt
+# Menu labels, dialogs, and the curated status/error messages are all wired
+# (phases 1 & 2). Any untranslated key falls back to English. The ~200 XPL
+# parser diagnostics stay English by design. {placeholders} kept intact.
+# =============================================================================
+
+
+# =============================================================================
+# 1. MENUS
+# =============================================================================
+
+# ---- Menu bar (top-level titles) -------------------------------------------
+menubar.file = Archivo   # File
+menubar.edit = Edición   # Edit
+menubar.search = Buscar   # Search
+menubar.view = Ver   # View
+menubar.document = Documento   # Document
+menubar.tools = Herramientas   # Tools
+menubar.settings = Configuración   # Settings
+menubar.help = Ayuda   # Help
+
+# ---- File -------------------------------------------------------------------
+menu.file.new = Nuevo   # New
+menu.file.open = Abrir…   # Open…
+menu.file.open_readonly = Abrir como solo lectura…   # Open read-only…
+menu.file.revert = Revertir a la versión guardada   # Revert to saved
+menu.file.save = Guardar   # Save
+menu.file.save_as = Guardar como…   # Save as…
+menu.file.save_selection_as = Guardar selección como…   # Save selection as…
+menu.file.save_all = Guardar todo   # Save all
+menu.file.export_pdf = Exportar a PDF…   # Export PDF…
+menu.file.close = Cerrar   # Close
+menu.file.quit = Salir   # Quit
+
+# ---- Edit -------------------------------------------------------------------
+menu.edit.undo = Deshacer   # Undo
+menu.edit.redo = Rehacer   # Redo
+menu.edit.cut = Cortar   # Cut
+menu.edit.copy = Copiar   # Copy
+menu.edit.append_clipboard = Anexar al portapapeles   # Append to clipboard
+menu.edit.prepend_clipboard = Anteponer al portapapeles   # Prepend to clipboard
+menu.edit.paste = Pegar   # Paste
+menu.edit.select_all = Seleccionar todo   # Select all
+menu.edit.delete_selection = Eliminar selección   # Delete selection
+menu.edit.copy_to_cursor = Copiar al cursor   # Copy to cursor
+menu.edit.move_to_cursor = Mover al cursor   # Move to cursor
+menu.edit.case = Cambiar mayúsculas y minúsculas   # Change case            (submenu)
+menu.edit.case.upper = MAYÚSCULAS   # UPPERCASE
+menu.edit.case.lower = minúsculas   # lowercase
+menu.edit.case.swap = Invertir mayúsculas y minúsculas   # Swap case
+menu.edit.text_colour = Color del texto…   # Text colour…
+menu.edit.clear_text_colour = Quitar color del texto   # Clear text colour
+menu.edit.insert_file = Insertar archivo…   # Insert file…
+
+# ---- Search -----------------------------------------------------------------
+menu.search.find = Buscar…   # Find…
+menu.search.replace = Reemplazar…   # Replace…
+menu.search.find_next = Buscar siguiente   # Find next
+menu.search.find_prev = Buscar anterior   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Resaltar   # Emphasize              (submenu)
+menu.search.emphasize.selection = Selección   # Selection
+menu.search.emphasize.word = Palabra o frase…   # Word or phrase…
+menu.search.emphasize.regex = Expresión regular…   # Regular expression…
+menu.search.emphasize.clear = Borrar   # Clear
+
+# ---- View -------------------------------------------------------------------
+menu.view.highlighting = Resaltado de sintaxis   # Highlighting
+menu.view.paragraph_marks = Marcas de párrafo   # Paragraph marks
+menu.view.whitespace = Espacios en blanco   # Whitespace
+menu.view.line_numbers = Números de línea   # Line numbers
+menu.view.word_wrap = Ajuste de línea   # Word wrap
+menu.view.wrap_hang = Sangría francesa ({n})…   # Wrap hang ({n})…       ({n} = current width)
+menu.view.preview_pane = Panel de vista previa   # Preview pane
+menu.view.shell_pane = Panel de shell   # Shell pane
+menu.view.shell_output = Pestaña de salida de shell   # Shell output tab
+menu.view.split = Dividir paneles   # Split panes            (submenu)
+menu.view.split.side_by_side = Dividir en paralelo   # Split side by side
+menu.view.split.top_bottom = Dividir arriba y abajo   # Split top and bottom
+menu.view.split.focus_next = Activar el panel siguiente   # Focus next pane
+menu.view.split.swap = Intercambiar los dos paneles   # Swap the two panes
+menu.view.split.zoom = Ampliar el panel activo (alternar)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Panel activo en pantalla completa   # Active pane full screen
+menu.view.split.remove = Quitar división   # Remove split
+menu.view.menu_bar = Barra de menús   # Menu bar
+menu.view.title_bar = Barra de título   # Title bar
+menu.view.writers_view = Vista de escritor (Esc para salir)   # Writer's View (Esc to exit)
+menu.view.cmdline = Línea de comandos   # Command line           (submenu)
+menu.view.cmdline.popup = Ventana emergente   # Pop-up
+menu.view.cmdline.position = Posición   # Position               (submenu)
+menu.view.cmdline.position.top = Arriba   # Top
+menu.view.cmdline.position.bottom = Abajo   # Bottom
+menu.view.cmdline.position.hidden = Oculta   # Hidden
+
+# ---- Document ---------------------------------------------------------------
+menu.document.doctype = Tipo de documento   # Document type          (submenu)
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automático (por extensión)   # Auto (by extension)
+menu.document.encoding = Codificación de texto   # Text encoding          (submenu)
+menu.document.encoding.display_as = Mostrar como   # Display as             (items are generated)
+menu.document.encoding.convert_to = Convertir a (archivo nuevo)   # Convert to (new file)  (items are generated)
+menu.document.line_endings = Fin de línea   # Line endings           (submenu)
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Solo lectura   # Read-only
+menu.document.word_count = Recuento de palabras   # Word count
+menu.document.char_count = Recuento de caracteres   # Character count
+menu.document.properties = Propiedades…   # Properties…
+
+# ---- Tools ------------------------------------------------------------------
+menu.tools.run_script = Ejecutar script…   # Run script…
+menu.tools.run_script_bg = Ejecutar script en segundo plano…   # Run script in background…
+menu.tools.run_here = Ejecutar el código bajo el cursor   # Run code under cursor
+menu.tools.shell_command = Comando de shell…   # Shell command…
+menu.tools.jobs = Tareas en segundo plano   # Background jobs
+menu.tools.lang = Corrección lingüística   # Language check         (submenu)
+menu.tools.lang.check = Revisar documento   # Check document
+menu.tools.lang.spelling = Subrayar ortografía   # Spelling underlines
+menu.tools.lang.grammar = Subrayar gramática   # Grammar underlines
+menu.tools.lang.spell_next = Siguiente error de ortografía   # Next spelling issue
+menu.tools.lang.spell_prev = Error de ortografía anterior   # Previous spelling issue
+menu.tools.lang.grammar_next = Siguiente error de gramática   # Next grammar issue
+menu.tools.lang.grammar_prev = Error de gramática anterior   # Previous grammar issue
+menu.tools.lang.fix = Corregir el problema en el cursor…   # Fix issue at cursor…
+menu.tools.lang.learn = Aprender las palabras seleccionadas   # Learn selected words
+menu.tools.lang.dialect = Variante lingüística   # Dialect                (submenu)
+menu.tools.lang.dialect.american = Estadounidense   # American
+menu.tools.lang.dialect.british = Británico   # British
+menu.tools.lang.dialect.canadian = Canadiense   # Canadian
+menu.tools.lang.dialect.australian = Australiano   # Australian
+menu.tools.lang.dialect.indian = Indio   # Indian
+menu.tools.lang.spell_style = Estilo de ortografía   # Spelling style         (submenu; items generated)
+menu.tools.lang.grammar_style = Estilo de gramática   # Grammar style          (submenu; items generated)
+menu.tools.email = Correo electrónico   # Email                  (submenu)
+menu.tools.email.list = Listar buzón   # List mailbox
+menu.tools.email.save = Guardar mensajes…   # Save messages…
+menu.tools.email.delete = Eliminar mensajes…   # Delete messages…
+menu.tools.email.send = Enviar…   # Send…
+menu.tools.email.attach = Adjuntar archivo…   # Attach file…
+menu.tools.email.clear_attach = Quitar adjuntos   # Clear attachments
+menu.tools.email.verbose = Registro detallado   # Verbose logging
+menu.tools.library = Biblioteca   # Library                (submenu)
+menu.tools.library.load = Cargar…   # Load…
+menu.tools.library.reload = Volver a cargar   # Reload
+menu.tools.library.unload = Descargar todo   # Unload all
+menu.tools.library.list = Listar rutinas   # List routines
+menu.tools.keyboard_chart = Mapa del teclado   # Keyboard chart
+
+# ---- Settings ---------------------------------------------------------------
+menu.settings.appearance = Apariencia   # Appearance             (submenu)
+menu.settings.appearance.colors = Colores   # Colors                 (submenu)
+menu.settings.appearance.colors.editor_text = Texto del editor…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Fondo del editor…   # Editor background…
+menu.settings.appearance.colors.selection_text = Texto de la selección…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Fondo de la selección…   # Selection background…
+menu.settings.appearance.colors.caret = Cursor…   # Caret…
+menu.settings.appearance.colors.separators = Separadores…   # Separators…
+menu.settings.appearance.colors.tab_bg = Fondo de la barra de pestañas   # Tab bar background      (submenu)
+menu.settings.appearance.colors.tab_bg.active = Pestaña activa…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Pestaña bajo el puntero…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Pestaña inactiva…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Cerrar pestaña ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Texto de la interfaz…   # UI text…
+menu.settings.appearance.colors.ui_bg = Fondo de la interfaz…   # UI background…
+menu.settings.appearance.colors.txt_text = Texto de la ventana TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Fondo de la ventana TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Texto de la ventana de directorio…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Fondo de la ventana de directorio…   # Directory window background…
+menu.settings.appearance.fonts = Fuentes   # Fonts                  (submenu)
+menu.settings.appearance.fonts.editor = Editor…   # Editor…
+menu.settings.appearance.fonts.ui = Interfaz…   # UI…
+menu.settings.appearance.fonts.txt = Ventana TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Ventana de directorio…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Cuerpo de vista previa/PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Código de vista previa/PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Zoom de la interfaz   # UI zoom                (submenu)
+menu.settings.appearance.ui_zoom.in = Acercar   # Zoom in
+menu.settings.appearance.ui_zoom.out = Alejar   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Restablecer (100 %)   # Reset (100%)
+menu.settings.appearance.margins = Márgenes   # Margins                (submenu)
+menu.settings.appearance.margins.wider = Más anchos   # Wider
+menu.settings.appearance.margins.narrower = Más estrechos   # Narrower
+menu.settings.appearance.margins.none = Ninguno   # None
+menu.settings.appearance.line_spacing = Interlineado   # Line spacing            (submenu)
+menu.settings.appearance.line_spacing.more = Más   # More
+menu.settings.appearance.line_spacing.less = Menos   # Less
+menu.settings.appearance.reset_ui = Restablecer el tamaño de la interfaz   # Reset UI sizing
+menu.settings.appearance.reset_dw = Restablecer la ventana de directorio   # Reset directory window
+menu.settings.syntax = Resaltado de sintaxis   # Syntax highlighting    (submenu)
+menu.settings.syntax.theme_colors = Colores del tema   # Theme colors           (submenu; items generated)
+menu.settings.syntax.token_kinds = Tipos de token…   # Token kinds…
+menu.settings.syntax.reset_theme = Restablecer el tema   # Reset theme
+menu.settings.syntax.auto = Resaltar automáticamente al abrir   # Auto-highlight on open
+menu.settings.editor = Comportamiento del editor   # Editor behavior        (submenu)
+menu.settings.editor.persistent_sel = Selección persistente   # Persistent selection
+menu.settings.editor.remember_geom = Recordar tamaño y posición de la ventana   # Remember window size+position
+menu.settings.editor.coding = Ayudas de programación   # Coding aids            (submenu)
+menu.settings.editor.coding.autoindent = Sangrar automáticamente las líneas nuevas   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Tabulaciones suaves (insertar espacios)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Sangría francesa para líneas ajustadas   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Resaltar los paréntesis coincidentes   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Cerrar automáticamente paréntesis y comillas   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Guardado automático   # Autosave               (submenu)
+menu.settings.editor.autosave.off = Desactivado   # Off
+menu.settings.editor.autosave.30s = Cada 30 s   # Every 30 s
+menu.settings.editor.autosave.1m = Cada 1 min   # Every 1 min
+menu.settings.editor.autosave.2m = Cada 2 min   # Every 2 min
+menu.settings.editor.autosave.5m = Cada 5 min   # Every 5 min
+menu.settings.editor.tab_width = Ancho de tabulación   # Tab width              (submenu; items 2/4/8 are numbers)
+menu.settings.editor.precision = Precisión numérica   # Number precision       (submenu)
+menu.settings.editor.precision.off = Desactivada (completa)   # Off (full)
+menu.settings.keyboard = Teclado   # Keyboard               (submenu)
+menu.settings.keyboard.load = Cargar…   # Load…
+menu.settings.keyboard.save = Guardar…   # Save…
+menu.settings.keyboard.reset = Restablecer al teclado integrado   # Reset to built-in
+menu.settings.allow_shell = Permitir comandos de shell   # Allow shell commands
+menu.settings.save_settings = Guardar configuración…   # Save settings…
+menu.settings.load_settings = Cargar configuración…   # Load settings…
+menu.settings.autosave_settings = Guardar la configuración automáticamente   # Auto-save settings
+
+# ---- Help -------------------------------------------------------------------
+menu.help.reference = Referencia   # Reference
+menu.help.about = Acerca de XyScript   # About XyScript
+
+
+# =============================================================================
+# 2. DIALOGS  (DONE — Grep, Run, Find, About are wired)
+# =============================================================================
+
+# ---- Shared ----------------------------------------------------------------
+button.close = Cerrar   # Close
+
+# ---- Grep dialog ------------------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Buscar:   # Search for:
+dialog.grep.pattern_hint = texto (o una expresión regular con «Expresión regular»)   # text (or a regex with Regular expression)
+dialog.grep.folder = En la carpeta:   # In folder:
+dialog.grep.folder_hint = vacío = carpeta actual — o  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Expresión regular   # Regular expression
+dialog.grep.ignore_case = Ignorar mayúsculas y minúsculas   # Ignore case
+dialog.grep.whole_word = Palabra completa   # Whole word
+dialog.grep.search = Buscar   # Search
+
+# ---- Run-command dialog -----------------------------------------------------
+dialog.run.title = Ejecutar comando   # Run command
+dialog.run.shell_off = Los comandos de shell están desactivados — actívelos en Configuración ⏵ Permitir comandos de shell.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Comando:   # Command:
+dialog.run.command_hint = un comando de shell   # a shell command
+dialog.run.background = Ejecutar en segundo plano   # Run in background
+dialog.run.insert_output = Insertar la salida en el cursor   # Insert output at cursor
+dialog.run.run = Ejecutar   # Run
+
+# ---- Find / Replace window --------------------------------------------------
+dialog.find.find_label = Buscar:   # Find:
+dialog.find.find_hint = texto que buscar   # text to find
+dialog.find.replace_label = Reemplazar:   # Replace:
+dialog.find.replace_hint = reemplazo   # replacement
+dialog.find.case = Distinguir mayúsculas y minúsculas   # Case sensitive
+dialog.find.whole_word = Palabra completa   # Whole word
+dialog.find.regex = Expresión regular   # Regular expression
+dialog.find.in_selection = En la selección   # In selection
+dialog.find.keep_case = Conservar mayúsculas y minúsculas al reemplazar   # Keep case in replacement
+dialog.find.keep_case_hint = Reemplazar / Reemplazar todo: ajusta las mayúsculas y minúsculas de cada reemplazo al texto que sustituye (minúsculas / Con inicial mayúscula / MAYÚSCULAS).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Siguiente (F3)   # Find next (F3)
+dialog.find.find_prev = Anterior (Mayús+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Reemplazar   # Replace
+dialog.find.replace_all = Reemplazar todo   # Replace all
+
+# ---- About dialog -----------------------------------------------------------
+dialog.about.title = Acerca de XyScript   # About XyScript
+dialog.about.tagline = Un editor configurable en la tradición de XyWrite.   # A configurable editor in the XyWrite tradition.
+
+
+# =============================================================================
+# 3. MESSAGES  (phase 2 — a CURATED batch of high-visibility status/error text)
+# =============================================================================
+# Status-line and error text. These carry NAMED {placeholders} (not positional
+# {}) so a translation may reorder the pieces; keep every {name} intact.
+#
+# Only the most-seen messages are routed through the catalog so far. The long
+# tail (~200 script-parser diagnostics from the XPL engine) stays English — they
+# reference command VERBS, which are the command language, not UI chrome. Two
+# grep messages that pluralize inline ("N match/matches in M file/files") are
+# also still English, pending a pluralization convention.
+
+msg.search.not_found = no encontrado: {find}   # not found: {find}
+msg.open.not_found = archivo no encontrado: {path}   # file not found: {path}
+msg.save.written = guardado {name}   # saved {name}
+msg.readonly = el documento es de solo lectura (RO para desbloquear)   # document is read-only (RO to unlock)
+msg.grep.none = GREP: sin coincidencias   # GREP: no matches
+msg.grep.searching = GREP: buscando…   # GREP: searching…
