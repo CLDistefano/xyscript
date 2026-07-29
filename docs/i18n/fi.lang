@@ -1,0 +1,296 @@
+# =============================================================================
+# XyScript UI strings  —  SUOMI (sample translation)
+# =============================================================================
+# A sample Finnish catalog, generated from xyscript-strings.template. Load it:
+#   LANG <path>\fi.lang
+# Menu labels, dialogs, and the curated status/error messages are all wired
+# (phases 1 & 2). Any untranslated key falls back to English. The ~200 XPL
+# parser diagnostics stay English by design. {placeholders} kept intact.
+# =============================================================================
+
+
+# =============================================================================
+# 1. MENUS
+# =============================================================================
+
+# ---- Menu bar (top-level titles) -------------------------------------------
+menubar.file = Tiedosto   # File
+menubar.edit = Muokkaa   # Edit
+menubar.search = Etsi   # Search
+menubar.view = Näytä   # View
+menubar.document = Asiakirja   # Document
+menubar.tools = Työkalut   # Tools
+menubar.settings = Asetukset   # Settings
+menubar.help = Ohje   # Help
+
+# ---- File -------------------------------------------------------------------
+menu.file.new = Uusi   # New
+menu.file.open = Avaa…   # Open…
+menu.file.open_readonly = Avaa vain luettavaksi…   # Open read-only…
+menu.file.revert = Palauta tallennettu versio   # Revert to saved
+menu.file.save = Tallenna   # Save
+menu.file.save_as = Tallenna nimellä…   # Save as…
+menu.file.save_selection_as = Tallenna valinta nimellä…   # Save selection as…
+menu.file.save_all = Tallenna kaikki   # Save all
+menu.file.export_pdf = Vie PDF-muotoon…   # Export PDF…
+menu.file.close = Sulje   # Close
+menu.file.quit = Lopeta   # Quit
+
+# ---- Edit -------------------------------------------------------------------
+menu.edit.undo = Kumoa   # Undo
+menu.edit.redo = Tee uudelleen   # Redo
+menu.edit.cut = Leikkaa   # Cut
+menu.edit.copy = Kopioi   # Copy
+menu.edit.append_clipboard = Lisää leikepöydän loppuun   # Append to clipboard
+menu.edit.prepend_clipboard = Lisää leikepöydän alkuun   # Prepend to clipboard
+menu.edit.paste = Liitä   # Paste
+menu.edit.select_all = Valitse kaikki   # Select all
+menu.edit.delete_selection = Poista valinta   # Delete selection
+menu.edit.copy_to_cursor = Kopioi kohdistimeen   # Copy to cursor
+menu.edit.move_to_cursor = Siirrä kohdistimeen   # Move to cursor
+menu.edit.case = Muuta kirjainkokoa   # Change case            (submenu)
+menu.edit.case.upper = SUURAAKKOSET   # UPPERCASE
+menu.edit.case.lower = pienaakkoset   # lowercase
+menu.edit.case.swap = Vaihda kirjainkoko   # Swap case
+menu.edit.text_colour = Tekstin väri…   # Text colour…
+menu.edit.clear_text_colour = Poista tekstin väri   # Clear text colour
+menu.edit.insert_file = Lisää tiedosto…   # Insert file…
+
+# ---- Search -----------------------------------------------------------------
+menu.search.find = Etsi…   # Find…
+menu.search.replace = Korvaa…   # Replace…
+menu.search.find_next = Etsi seuraava   # Find next
+menu.search.find_prev = Etsi edellinen   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Korosta   # Emphasize              (submenu)
+menu.search.emphasize.selection = Valinta   # Selection
+menu.search.emphasize.word = Sana tai lause…   # Word or phrase…
+menu.search.emphasize.regex = Säännöllinen lauseke…   # Regular expression…
+menu.search.emphasize.clear = Tyhjennä   # Clear
+
+# ---- View -------------------------------------------------------------------
+menu.view.highlighting = Syntaksin korostus   # Highlighting
+menu.view.paragraph_marks = Kappalemerkit   # Paragraph marks
+menu.view.whitespace = Tyhjemerkit   # Whitespace
+menu.view.line_numbers = Rivinumerot   # Line numbers
+menu.view.word_wrap = Rivitys   # Word wrap
+menu.view.wrap_hang = Riippuva sisennys ({n})…   # Wrap hang ({n})…       ({n} = current width)
+menu.view.preview_pane = Esikatseluruutu   # Preview pane
+menu.view.shell_pane = Komentotulkkiruutu   # Shell pane
+menu.view.shell_output = Komentotulkin tuloste -välilehti   # Shell output tab
+menu.view.split = Jaa ruutu   # Split panes            (submenu)
+menu.view.split.side_by_side = Jaa vierekkäin   # Split side by side
+menu.view.split.top_bottom = Jaa ylä- ja alaosaan   # Split top and bottom
+menu.view.split.focus_next = Aktivoi seuraava ruutu   # Focus next pane
+menu.view.split.swap = Vaihda ruudut keskenään   # Swap the two panes
+menu.view.split.zoom = Suurenna aktiivinen ruutu (vaihto)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Aktiivinen ruutu koko näytölle   # Active pane full screen
+menu.view.split.remove = Poista jako   # Remove split
+menu.view.menu_bar = Valikkorivi   # Menu bar
+menu.view.title_bar = Otsikkorivi   # Title bar
+menu.view.writers_view = Kirjoitustila (poistu Esc)   # Writer's View (Esc to exit)
+menu.view.cmdline = Komentorivi   # Command line           (submenu)
+menu.view.cmdline.popup = Ponnahdusikkuna   # Pop-up
+menu.view.cmdline.position = Sijainti   # Position               (submenu)
+menu.view.cmdline.position.top = Ylhäällä   # Top
+menu.view.cmdline.position.bottom = Alhaalla   # Bottom
+menu.view.cmdline.position.hidden = Piilotettu   # Hidden
+
+# ---- Document ---------------------------------------------------------------
+menu.document.doctype = Asiakirjatyyppi   # Document type          (submenu)
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automaattinen (tarkenteen mukaan)   # Auto (by extension)
+menu.document.encoding = Merkistökoodaus   # Text encoding          (submenu)
+menu.document.encoding.display_as = Näytä muodossa   # Display as             (items are generated)
+menu.document.encoding.convert_to = Muunna muotoon (uusi tiedosto)   # Convert to (new file)  (items are generated)
+menu.document.line_endings = Rivinvaihdot   # Line endings           (submenu)
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Vain luku   # Read-only
+menu.document.word_count = Sanamäärä   # Word count
+menu.document.char_count = Merkkimäärä   # Character count
+menu.document.properties = Ominaisuudet…   # Properties…
+
+# ---- Tools ------------------------------------------------------------------
+menu.tools.run_script = Suorita komentosarja…   # Run script…
+menu.tools.run_script_bg = Suorita komentosarja taustalla…   # Run script in background…
+menu.tools.run_here = Suorita kohdistimen alla oleva koodi   # Run code under cursor
+menu.tools.shell_command = Komentotulkin komento…   # Shell command…
+menu.tools.jobs = Taustatehtävät   # Background jobs
+menu.tools.lang = Kielentarkistus   # Language check         (submenu)
+menu.tools.lang.check = Tarkista asiakirja   # Check document
+menu.tools.lang.spelling = Oikeinkirjoituksen alleviivaus   # Spelling underlines
+menu.tools.lang.grammar = Kieliopin alleviivaus   # Grammar underlines
+menu.tools.lang.spell_next = Seuraava kirjoitusvirhe   # Next spelling issue
+menu.tools.lang.spell_prev = Edellinen kirjoitusvirhe   # Previous spelling issue
+menu.tools.lang.grammar_next = Seuraava kielioppivirhe   # Next grammar issue
+menu.tools.lang.grammar_prev = Edellinen kielioppivirhe   # Previous grammar issue
+menu.tools.lang.fix = Korjaa kohdistimen kohdalla oleva ongelma…   # Fix issue at cursor…
+menu.tools.lang.learn = Opeta valitut sanat   # Learn selected words
+menu.tools.lang.dialect = Murre   # Dialect                (submenu)
+menu.tools.lang.dialect.american = Amerikanenglanti   # American
+menu.tools.lang.dialect.british = Britannianenglanti   # British
+menu.tools.lang.dialect.canadian = Kanadanenglanti   # Canadian
+menu.tools.lang.dialect.australian = Australianenglanti   # Australian
+menu.tools.lang.dialect.indian = Intianenglanti   # Indian
+menu.tools.lang.spell_style = Oikeinkirjoitustyyli   # Spelling style         (submenu; items generated)
+menu.tools.lang.grammar_style = Kielioppityyli   # Grammar style          (submenu; items generated)
+menu.tools.email = Sähköposti   # Email                  (submenu)
+menu.tools.email.list = Listaa postilaatikko   # List mailbox
+menu.tools.email.save = Tallenna viestit…   # Save messages…
+menu.tools.email.delete = Poista viestit…   # Delete messages…
+menu.tools.email.send = Lähetä…   # Send…
+menu.tools.email.attach = Liitä tiedosto…   # Attach file…
+menu.tools.email.clear_attach = Tyhjennä liitteet   # Clear attachments
+menu.tools.email.verbose = Yksityiskohtainen loki   # Verbose logging
+menu.tools.library = Kirjasto   # Library                (submenu)
+menu.tools.library.load = Lataa…   # Load…
+menu.tools.library.reload = Lataa uudelleen   # Reload
+menu.tools.library.unload = Poista kaikki muistista   # Unload all
+menu.tools.library.list = Listaa rutiinit   # List routines
+menu.tools.keyboard_chart = Näppäimistökaavio   # Keyboard chart
+
+# ---- Settings ---------------------------------------------------------------
+menu.settings.appearance = Ulkoasu   # Appearance             (submenu)
+menu.settings.appearance.colors = Värit   # Colors                 (submenu)
+menu.settings.appearance.colors.editor_text = Editorin teksti…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Editorin tausta…   # Editor background…
+menu.settings.appearance.colors.selection_text = Valinnan teksti…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Valinnan tausta…   # Selection background…
+menu.settings.appearance.colors.caret = Kohdistin…   # Caret…
+menu.settings.appearance.colors.separators = Erottimet…   # Separators…
+menu.settings.appearance.colors.tab_bg = Välilehtirivin tausta   # Tab bar background      (submenu)
+menu.settings.appearance.colors.tab_bg.active = Aktiivinen välilehti…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Osoitettu välilehti…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Ei-aktiivinen välilehti…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Välilehden sulkeminen ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Käyttöliittymän teksti…   # UI text…
+menu.settings.appearance.colors.ui_bg = Käyttöliittymän tausta…   # UI background…
+menu.settings.appearance.colors.txt_text = TXT-ikkunan teksti…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = TXT-ikkunan tausta…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Hakemistoikkunan teksti…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Hakemistoikkunan tausta…   # Directory window background…
+menu.settings.appearance.fonts = Fontit   # Fonts                  (submenu)
+menu.settings.appearance.fonts.editor = Editori…   # Editor…
+menu.settings.appearance.fonts.ui = Käyttöliittymä…   # UI…
+menu.settings.appearance.fonts.txt = TXT-ikkuna…   # TXT window…
+menu.settings.appearance.fonts.dir = Hakemistoikkuna…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Esikatselun / PDF:n leipäteksti…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Esikatselun / PDF:n koodi…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Käyttöliittymän zoomaus   # UI zoom                (submenu)
+menu.settings.appearance.ui_zoom.in = Lähennä   # Zoom in
+menu.settings.appearance.ui_zoom.out = Loitonna   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Palauta (100 %)   # Reset (100%)
+menu.settings.appearance.margins = Marginaalit   # Margins                (submenu)
+menu.settings.appearance.margins.wider = Leveämmät   # Wider
+menu.settings.appearance.margins.narrower = Kapeammat   # Narrower
+menu.settings.appearance.margins.none = Ei marginaaleja   # None
+menu.settings.appearance.line_spacing = Riviväli   # Line spacing            (submenu)
+menu.settings.appearance.line_spacing.more = Enemmän   # More
+menu.settings.appearance.line_spacing.less = Vähemmän   # Less
+menu.settings.appearance.reset_ui = Palauta käyttöliittymän koko   # Reset UI sizing
+menu.settings.appearance.reset_dw = Palauta hakemistoikkuna   # Reset directory window
+menu.settings.syntax = Syntaksin korostus   # Syntax highlighting    (submenu)
+menu.settings.syntax.theme_colors = Teeman värit   # Theme colors           (submenu; items generated)
+menu.settings.syntax.token_kinds = Token-tyypit…   # Token kinds…
+menu.settings.syntax.reset_theme = Palauta teema   # Reset theme
+menu.settings.syntax.auto = Automaattinen korostus avattaessa   # Auto-highlight on open
+menu.settings.editor = Editorin toiminta   # Editor behavior        (submenu)
+menu.settings.editor.persistent_sel = Pysyvä valinta   # Persistent selection
+menu.settings.editor.remember_geom = Muista ikkunan koko ja sijainti   # Remember window size+position
+menu.settings.editor.coding = Koodausavut   # Coding aids            (submenu)
+menu.settings.editor.coding.autoindent = Uusien rivien automaattinen sisennys   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Pehmeät sarkaimet (lisää välilyöntejä)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Riippuva sisennys rivitetyille riveille   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Korosta vastaavat sulkeet   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Sulje sulkeet ja lainausmerkit automaattisesti   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Automaattinen tallennus   # Autosave               (submenu)
+menu.settings.editor.autosave.off = Pois käytöstä   # Off
+menu.settings.editor.autosave.30s = 30 sekunnin välein   # Every 30 s
+menu.settings.editor.autosave.1m = 1 minuutin välein   # Every 1 min
+menu.settings.editor.autosave.2m = 2 minuutin välein   # Every 2 min
+menu.settings.editor.autosave.5m = 5 minuutin välein   # Every 5 min
+menu.settings.editor.tab_width = Sarkaimen leveys   # Tab width              (submenu; items 2/4/8 are numbers)
+menu.settings.editor.precision = Numeerinen tarkkuus   # Number precision       (submenu)
+menu.settings.editor.precision.off = Pois käytöstä (täysi)   # Off (full)
+menu.settings.keyboard = Näppäimistö   # Keyboard               (submenu)
+menu.settings.keyboard.load = Lataa…   # Load…
+menu.settings.keyboard.save = Tallenna…   # Save…
+menu.settings.keyboard.reset = Palauta sisäänrakennettuun näppäimistöön   # Reset to built-in
+menu.settings.allow_shell = Salli komentotulkin komennot   # Allow shell commands
+menu.settings.save_settings = Tallenna asetukset…   # Save settings…
+menu.settings.load_settings = Lataa asetukset…   # Load settings…
+menu.settings.autosave_settings = Tallenna asetukset automaattisesti   # Auto-save settings
+
+# ---- Help -------------------------------------------------------------------
+menu.help.reference = Viiteopas   # Reference
+menu.help.about = Tietoja XyScriptistä   # About XyScript
+
+
+# =============================================================================
+# 2. DIALOGS  (DONE — Grep, Run, Find, About are wired)
+# =============================================================================
+
+# ---- Shared ----------------------------------------------------------------
+button.close = Sulje   # Close
+
+# ---- Grep dialog ------------------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Etsi:   # Search for:
+dialog.grep.pattern_hint = teksti (tai säännöllinen lauseke Säännöllinen lauseke -valinnalla)   # text (or a regex with Regular expression)
+dialog.grep.folder = Kansiossa:   # In folder:
+dialog.grep.folder_hint = tyhjä = nykyinen kansio — tai  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Säännöllinen lauseke   # Regular expression
+dialog.grep.ignore_case = Ohita kirjainkoko   # Ignore case
+dialog.grep.whole_word = Koko sana   # Whole word
+dialog.grep.search = Etsi   # Search
+
+# ---- Run-command dialog -----------------------------------------------------
+dialog.run.title = Suorita komento   # Run command
+dialog.run.shell_off = Komentotulkin komennot ovat pois käytöstä — ota ne käyttöön kohdasta Asetukset ⏵ Salli komentotulkin komennot.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Komento:   # Command:
+dialog.run.command_hint = komentotulkin komento   # a shell command
+dialog.run.background = Suorita taustalla   # Run in background
+dialog.run.insert_output = Lisää tuloste kohdistimeen   # Insert output at cursor
+dialog.run.run = Suorita   # Run
+
+# ---- Find / Replace window --------------------------------------------------
+dialog.find.find_label = Etsi:   # Find:
+dialog.find.find_hint = etsittävä teksti   # text to find
+dialog.find.replace_label = Korvaa:   # Replace:
+dialog.find.replace_hint = korvaava teksti   # replacement
+dialog.find.case = Huomioi kirjainkoko   # Case sensitive
+dialog.find.whole_word = Koko sana   # Whole word
+dialog.find.regex = Säännöllinen lauseke   # Regular expression
+dialog.find.in_selection = Valinnan sisällä   # In selection
+dialog.find.keep_case = Säilytä kirjainkoko korvattaessa   # Keep case in replacement
+dialog.find.keep_case_hint = Korvaa / Korvaa kaikki: mukauttaa kunkin korvauksen kirjainkoon korvattavan tekstin mukaan (pienaakkoset / Alkukirjain / SUURAAKKOSET).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Seuraava (F3)   # Find next (F3)
+dialog.find.find_prev = Edellinen (Vaihto+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Korvaa   # Replace
+dialog.find.replace_all = Korvaa kaikki   # Replace all
+
+# ---- About dialog -----------------------------------------------------------
+dialog.about.title = Tietoja XyScriptistä   # About XyScript
+dialog.about.tagline = Muokattava editori XyWrite-perinteessä.   # A configurable editor in the XyWrite tradition.
+
+
+# =============================================================================
+# 3. MESSAGES  (phase 2 — a CURATED batch of high-visibility status/error text)
+# =============================================================================
+# Status-line and error text. These carry NAMED {placeholders} (not positional
+# {}) so a translation may reorder the pieces; keep every {name} intact.
+#
+# Only the most-seen messages are routed through the catalog so far. The long
+# tail (~200 script-parser diagnostics from the XPL engine) stays English — they
+# reference command VERBS, which are the command language, not UI chrome. Two
+# grep messages that pluralize inline ("N match/matches in M file/files") are
+# also still English, pending a pluralization convention.
+
+msg.search.not_found = ei löytynyt: {find}   # not found: {find}
+msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
+msg.save.written = tallennettu {name}   # saved {name}
+msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
+msg.grep.none = GREP: ei osumia   # GREP: no matches
+msg.grep.searching = GREP: etsitään…   # GREP: searching…

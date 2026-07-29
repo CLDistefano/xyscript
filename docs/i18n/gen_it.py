@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate a sample ITALIAN catalog from the English template (structure stays in sync)."""
-import re, sys
+import os, re, sys
 SRC, DST = sys.argv[1], sys.argv[2]
 
 IT = {
@@ -154,7 +154,7 @@ HEADER = """\
 """
 
 ENTRY = re.compile(r'^([A-Za-z][\w.]*)\s*=\s*#\s*(.*)$')
-out = [HEADER]
+out = [re.sub(r'xyscript-strings-[a-z]{2}\.\w+', os.path.basename(DST), HEADER)]
 started = False
 missing = []
 for raw in open(SRC, encoding='utf-8'):
