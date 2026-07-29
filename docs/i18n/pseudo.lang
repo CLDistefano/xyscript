@@ -268,6 +268,13 @@ button.close = [Çĺòšè ··]   # Close
 
 # ---- msg ---------------------------------------------------------
 msg.grep.none = [ĜŔÈÞ: ñò ɱàţçĥèš ······]   # GREP: no matches
+msg.grep.match.one = [{n} ɱàţçĥ ··]   # {n} match
+msg.grep.match.other = [{n} ɱàţçĥèš ···]   # {n} matches
+msg.grep.file.one = [{n} ƒìĺè ··]   # {n} file
+msg.grep.file.other = [{n} ƒìĺèš ··]   # {n} files
+msg.grep.summary_capped = [ĜŔÈÞ: {matches} ìñ {files} (çàþþèđ àţ {cap}) ·········]   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = [ĜŔÈÞ: {matches} ìñ {files} ····]   # GREP: {matches} in {files}
+msg.grep.progress = [ĜŔÈÞ: {matches} šò ƒàŕ… ······]   # GREP: {matches} so far…
 msg.search.not_found = [ñòţ ƒòùñđ: {find} ····]   # not found: {find}
 msg.save.written = [šàṽèđ {name} ··]   # saved {name}
 msg.open.not_found = [ƒìĺè ñòţ ƒòùñđ: {path} ······]   # file not found: {path}

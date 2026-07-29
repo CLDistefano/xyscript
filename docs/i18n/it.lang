@@ -269,6 +269,13 @@ button.close = Chiudi   # Close
 
 # ---- msg ---------------------------------------------------------
 msg.grep.none = GREP: nessun risultato   # GREP: no matches
+msg.grep.match.one = {n} corrispondenza   # {n} match
+msg.grep.match.other = {n} corrispondenze   # {n} matches
+msg.grep.file.one = {n} file   # {n} file
+msg.grep.file.other = {n} file   # {n} files
+msg.grep.summary_capped = GREP: {matches} in {files} (limitato a {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} in {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} finora…   # GREP: {matches} so far…
 msg.search.not_found = non trovato: {find}   # not found: {find}
 msg.save.written = salvato {name}   # saved {name}
 msg.open.not_found = file non trovato: {path}   # file not found: {path}

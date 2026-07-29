@@ -46,8 +46,11 @@ LANGS = {
     "fi": ("SUOMI", "Finnish"),
 }
 
+STR = r'"((?:\\.|[^"\\])*)"'  # a Rust string literal (captures its contents)
 # `.tr("id", "English"...)`, `.tr_msg("id", "English")`, `.tr_fmt("id", "English", ...)`.
-TR = re.compile(r'\.tr(?:_msg|_fmt)?\(\s*"((?:\\.|[^"\\])*)"\s*,\s*"((?:\\.|[^"\\])*)"')
+TR = re.compile(r'\.tr(?:_msg|_fmt)?\(\s*' + STR + r'\s*,\s*' + STR)
+# `.tr_plural("base", "English one", "English other", n)` → keys "base.one" and "base.other".
+PLURAL = re.compile(r'\.tr_plural\(\s*' + STR + r'\s*,\s*' + STR + r'\s*,\s*' + STR)
 KEY = re.compile(r'^[a-z][a-zA-Z0-9._]*$')
 DELIM = "   # "  # separates a translation (value) from its English anchor on an entry line
 # A template-era alignment hint like `Foo            (submenu)` — 2+ spaces then a paren group at
@@ -66,14 +69,29 @@ def unesc(s):
 
 
 def extract():
-    """Ordered [(key, english)] as first seen across the sources (menus, then messages)."""
+    """Ordered [(key, english)] as first seen across the sources (menus, then messages). Plain
+    tr()/tr_msg()/tr_fmt() contribute one key each; tr_plural() contributes both `.one` and `.other`.
+    Matches from both patterns are merged in source order so en.lang stays UI-ordered."""
     order, seen = [], {}
+
+    def add(key, english):
+        if KEY.match(key) and key not in seen:
+            seen[key] = english
+            order.append(key)
+
     for path in SOURCES:
-        for m in TR.finditer(read(path)):
-            key, english = m.group(1), unesc(m.group(2))
-            if KEY.match(key) and key not in seen:
-                seen[key] = english
-                order.append(key)
+        text = read(path)
+        events = [(m.start(), [(m.group(1), unesc(m.group(2)))]) for m in TR.finditer(text)]
+        for m in PLURAL.finditer(text):
+            base = m.group(1)
+            events.append((m.start(), [
+                (f"{base}.one", unesc(m.group(2))),
+                (f"{base}.other", unesc(m.group(3))),
+            ]))
+        events.sort(key=lambda e: e[0])
+        for _, pairs in events:
+            for key, english in pairs:
+                add(key, english)
     return [(k, seen[k]) for k in order]
 
 

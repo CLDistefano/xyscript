@@ -269,6 +269,13 @@ button.close = Sulje   # Close
 
 # ---- msg ---------------------------------------------------------
 msg.grep.none = GREP: ei osumia   # GREP: no matches
+msg.grep.match.one = {n} osuma   # {n} match
+msg.grep.match.other = {n} osumaa   # {n} matches
+msg.grep.file.one = {n} tiedosto   # {n} file
+msg.grep.file.other = {n} tiedostoa   # {n} files
+msg.grep.summary_capped = GREP: {matches}, {files} (enintään {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} toistaiseksi…   # GREP: {matches} so far…
 msg.search.not_found = ei löytynyt: {find}   # not found: {find}
 msg.save.written = tallennettu {name}   # saved {name}
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}

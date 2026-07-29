@@ -3346,6 +3346,16 @@ impl AppHost {
         }
         s
     }
+    /// A count phrase with singular/plural selection: `<base>.one` when `n == 1`, else `<base>.other`,
+    /// with `{n}` filled in. Two categories (one/other) — enough for every language shipped, and the
+    /// zero case never reaches a plural phrase here (grep reports "no matches" via `msg.grep.none`).
+    /// `en_one`/`en_other` are the built-in English templates. NOTE: `i18n-sync.py` extracts BOTH
+    /// `<base>.one` and `<base>.other` from each `tr_plural(...)` call — keep the base + both English
+    /// templates as string literals at the call site so translators see both forms in the catalogs.
+    fn tr_plural(&self, base: &str, en_one: &str, en_other: &str, n: usize) -> String {
+        let (suffix, en) = if n == 1 { ("one", en_one) } else { ("other", en_other) };
+        self.tr_fmt(&format!("{base}.{suffix}"), en, &[("n", &n)])
+    }
     /// `BALPAIRS` — is matched-bracket highlighting on?
     pub fn bal_pairs(&self) -> bool {
         self.bal_pairs
@@ -3731,13 +3741,24 @@ impl AppHost {
                         if n == 0 {
                             self.tr_msg("msg.grep.none", "GREP: no matches")
                         } else {
-                            let cap_note =
-                                if capped { format!(" (capped at {GREP_CAP})") } else { String::new() };
-                            format!(
-                                "GREP: {n} match{} in {files} file{}{cap_note}",
-                                if n == 1 { "" } else { "es" },
-                                if files == 1 { "" } else { "s" },
-                            )
+                            // Compose from localizable pieces: each count word picks its own singular/
+                            // plural form, then drops into the summary frame. A separate capped frame
+                            // avoids a leading-space fragment (catalog values are trimmed on load).
+                            let matches = self.tr_plural("msg.grep.match", "{n} match", "{n} matches", n);
+                            let files = self.tr_plural("msg.grep.file", "{n} file", "{n} files", files);
+                            if capped {
+                                self.tr_fmt(
+                                    "msg.grep.summary_capped",
+                                    "GREP: {matches} in {files} (capped at {cap})",
+                                    &[("matches", &matches), ("files", &files), ("cap", &GREP_CAP)],
+                                )
+                            } else {
+                                self.tr_fmt(
+                                    "msg.grep.summary",
+                                    "GREP: {matches} in {files}",
+                                    &[("matches", &matches), ("files", &files)],
+                                )
+                            }
                         }
                     }
                     Err(e) => format!("GREP: {e}"),
@@ -3747,7 +3768,8 @@ impl AppHost {
             None => {
                 // Still running — put the job back and report progress.
                 self.grep_job = Some(job);
-                (changed, Some(format!("GREP: {n} match{} so far…", if n == 1 { "" } else { "es" })))
+                let matches = self.tr_plural("msg.grep.match", "{n} match", "{n} matches", n);
+                (changed, Some(self.tr_fmt("msg.grep.progress", "GREP: {matches} so far…", &[("matches", &matches)])))
             }
         }
     }
@@ -11458,5 +11480,21 @@ not a kv line
             host.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &"a/b.txt")]),
             "file not found: a/b.txt",
         );
+    }
+
+    #[test]
+    fn tr_plural_selects_one_or_other_form() {
+        let mut host = super::AppHost::new();
+        // English fallback: n == 1 → the `.one` template, else `.other`; `{n}` filled in.
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 1), "1 match");
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 0), "0 matches");
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 7), "7 matches");
+        // With a catalog: the localized singular/plural forms win (French agrees with English that
+        // only 1 is singular — and the zero case never reaches here in the grep summary anyway).
+        host.lang = super::parse_lang_table(
+            "msg.grep.match.one = {n} correspondance\nmsg.grep.match.other = {n} correspondances\n",
+        );
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 1), "1 correspondance");
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 4), "4 correspondances");
     }
 }

@@ -269,6 +269,13 @@ button.close = Sluiten   # Close
 
 # ---- msg ---------------------------------------------------------
 msg.grep.none = GREP: geen treffers   # GREP: no matches
+msg.grep.match.one = {n} treffer   # {n} match
+msg.grep.match.other = {n} treffers   # {n} matches
+msg.grep.file.one = {n} bestand   # {n} file
+msg.grep.file.other = {n} bestanden   # {n} files
+msg.grep.summary_capped = GREP: {matches} in {files} (beperkt tot {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} in {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} tot nu toe…   # GREP: {matches} so far…
 msg.search.not_found = niet gevonden: {find}   # not found: {find}
 msg.save.written = opgeslagen {name}   # saved {name}
 msg.open.not_found = bestand niet gevonden: {path}   # file not found: {path}
