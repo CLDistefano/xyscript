@@ -332,6 +332,10 @@ pub enum EditorOp {
     /// `LOADCFG [path]` — load + run a config script written by `SAVECFG` (it's just XPL, run
     /// after the current script returns). `None` = the default config file.
     LoadCfg(Option<String>),
+    /// `LANG <path>` — load a UI string table (translations) from a flat `key = value` file so the
+    /// GUI can render menu/dialog labels in another language. `None` (bare `LANG` / `LANG off`)
+    /// clears it, reverting to the built-in English. i18n phase-1 spike.
+    LoadLang(Option<String>),
     /// `AUTOCFG [path]` / `AUTOCFG off` — live config tracking ("self-updating SAVECFG"): rewrite
     /// the config file whenever a setting changes. `on=false` stops; `on=true` with `path=None`
     /// uses the default config file. Settings only (no command history). Read back via `$ACF`.

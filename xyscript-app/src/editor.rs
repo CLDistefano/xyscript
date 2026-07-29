@@ -361,6 +361,11 @@ impl Editor {
         self.host.autosave_secs()
     }
     /// Tab width in spaces (`TB`/`$TB`); the GUI applies it as the cosmic tab stop.
+    /// The `LANG` translation for UI string `id` (or `None` → fall back to English). See
+    /// [`AppHost::lang_get`].
+    pub fn lang_get(&self, id: &str) -> Option<&str> {
+        self.host.lang_get(id)
+    }
     pub fn tab_width(&self) -> usize {
         self.host.tab_width()
     }

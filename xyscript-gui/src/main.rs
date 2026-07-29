@@ -580,7 +580,7 @@ fn m_sub(label: impl Into<String>, children: Vec<MenuNode>) -> MenuNode {
 }
 /// A ✔-prefixed toggle item that runs `cmd` (the menu's "tog!" idiom). Uses U+2714 (HEAVY CHECK
 /// MARK), NOT U+2713 — the latter is absent from every bundled egui font and renders as tofu.
-fn m_tog(label: &str, on: bool, cmd: impl Into<String>) -> MenuNode {
+fn m_tog(label: impl std::fmt::Display, on: bool, cmd: impl Into<String>) -> MenuNode {
     let mark = if on { "✔ " } else { "   " };
     m_item(format!("{mark}{label}"), cmd)
 }
@@ -5192,6 +5192,13 @@ impl GuiApp {
         }
     }
 
+    /// Localized UI label: the `LANG` translation for string `id`, or the built-in English `en` if
+    /// no table is loaded / the id is missing. Menu/dialog labels route through this so a loaded
+    /// translation (or the pseudolocale) shows without hard-coding a language. i18n phase-1 spike.
+    fn tr(&self, id: &str, en: &str) -> String {
+        self.editor.lang_get(id).map(str::to_string).unwrap_or_else(|| en.to_string())
+    }
+
     /// Build the menu tree from the live editor state — the single source the mouse menu bar and the
     /// keyboard navigator both render. Rebuilt each frame so ✓ marks and generated submenus stay
     /// current. Item commands are the same XPL the old inline menus fired.
@@ -5255,278 +5262,281 @@ impl GuiApp {
             PickRun { save, filter, template: tmpl.to_string() }
         };
         vec![
-            m_sub("File", vec![
-                m_act("New", New),
-                m_act("Open…", PickOpen),
-                m_act("Open read-only…", pick(false, txtmd, "READ {}")),
-                m_item("Revert to saved", "REC"),
+            m_sub(self.tr("menubar.file", "File"), vec![
+                m_act(self.tr("menu.file.new", "New"), New),
+                m_act(self.tr("menu.file.open", "Open…"), PickOpen),
+                m_act(self.tr("menu.file.open_readonly", "Open read-only…"), pick(false, txtmd, "READ {}")),
+                m_item(self.tr("menu.file.revert", "Revert to saved"), "REC"),
                 MenuNode::Sep,
-                m_act("Save", Save),
-                m_act("Save as…", PickSaveAs),
-                m_act("Save selection as…", pick(true, None, "SAD {}")),
-                m_item("Save all", "SL"),
+                m_act(self.tr("menu.file.save", "Save"), Save),
+                m_act(self.tr("menu.file.save_as", "Save as…"), PickSaveAs),
+                m_act(self.tr("menu.file.save_selection_as", "Save selection as…"), pick(true, None, "SAD {}")),
+                m_item(self.tr("menu.file.save_all", "Save all"), "SL"),
                 MenuNode::Sep,
-                m_act("Export PDF…", PickExport),
+                m_act(self.tr("menu.file.export_pdf", "Export PDF…"), PickExport),
                 MenuNode::Sep,
-                m_item("Close", "AB"),
-                m_item("Quit", "QUIT"),
+                m_item(self.tr("menu.file.close", "Close"), "AB"),
+                m_item(self.tr("menu.file.quit", "Quit"), "QUIT"),
             ]),
-            m_sub("Edit", vec![
-                m_item("Undo", "UNDO"),
-                m_item("Redo", "REDO"),
+            m_sub(self.tr("menubar.edit", "Edit"), vec![
+                m_item(self.tr("menu.edit.undo", "Undo"), "UNDO"),
+                m_item(self.tr("menu.edit.redo", "Redo"), "REDO"),
                 MenuNode::Sep,
-                m_item("Cut", "CUT"),
-                m_item("Copy", "COPY"),
-                m_item("Append to clipboard", "APPEND"),
-                m_item("Prepend to clipboard", "PREPEND"),
-                m_item("Paste", "PASTE"),
+                m_item(self.tr("menu.edit.cut", "Cut"), "CUT"),
+                m_item(self.tr("menu.edit.copy", "Copy"), "COPY"),
+                m_item(self.tr("menu.edit.append_clipboard", "Append to clipboard"), "APPEND"),
+                m_item(self.tr("menu.edit.prepend_clipboard", "Prepend to clipboard"), "PREPEND"),
+                m_item(self.tr("menu.edit.paste", "Paste"), "PASTE"),
                 MenuNode::Sep,
-                m_item("Select all", "DFA"),
-                m_item("Delete selection", "DN"),
+                m_item(self.tr("menu.edit.select_all", "Select all"), "DFA"),
+                m_item(self.tr("menu.edit.delete_selection", "Delete selection"), "DN"),
                 MenuNode::Sep,
-                m_item("Copy to cursor", "CP"),
-                m_item("Move to cursor", "MV"),
+                m_item(self.tr("menu.edit.copy_to_cursor", "Copy to cursor"), "CP"),
+                m_item(self.tr("menu.edit.move_to_cursor", "Move to cursor"), "MV"),
                 MenuNode::Sep,
-                m_sub("Change case", vec![
-                    m_item("UPPERCASE", "UC"),
-                    m_item("lowercase", "LC"),
-                    m_item("Swap case", "CC"),
+                m_sub(self.tr("menu.edit.case", "Change case"), vec![
+                    m_item(self.tr("menu.edit.case.upper", "UPPERCASE"), "UC"),
+                    m_item(self.tr("menu.edit.case.lower", "lowercase"), "LC"),
+                    m_item(self.tr("menu.edit.case.swap", "Swap case"), "CC"),
                 ]),
                 MenuNode::Sep,
                 // Colour the SELECTION (a transient span) — or the whole editor when nothing is
                 // selected. `FGCOLOR default` clears a selected span (selection-only).
-                m_item("Text colour…", "FGCOLORS"),
-                m_item("Clear text colour", "FGCOLOR default"),
+                m_item(self.tr("menu.edit.text_colour", "Text colour…"), "FGCOLORS"),
+                m_item(self.tr("menu.edit.clear_text_colour", "Clear text colour"), "FGCOLOR default"),
                 MenuNode::Sep,
-                m_act("Insert file…", pick(false, None, "MERGE {}")),
+                m_act(self.tr("menu.edit.insert_file", "Insert file…"), pick(false, None, "MERGE {}")),
             ]),
-            m_sub("Search", vec![
-                m_act("Find…", OpenFind { replace: false }),
-                m_act("Replace…", OpenFind { replace: true }),
+            m_sub(self.tr("menubar.search", "Search"), vec![
+                m_act(self.tr("menu.search.find", "Find…"), OpenFind { replace: false }),
+                m_act(self.tr("menu.search.replace", "Replace…"), OpenFind { replace: true }),
                 MenuNode::Sep,
-                m_item("Find next", "SE"),
-                m_item("Find previous", "SEB"),
+                m_item(self.tr("menu.search.find_next", "Find next"), "SE"),
+                m_item(self.tr("menu.search.find_prev", "Find previous"), "SEB"),
                 MenuNode::Sep,
                 // GREP — recursive search across files into a results tab (a companion to Find).
-                m_act("Grep…", OpenGrep),
+                m_act(self.tr("menu.search.grep", "Grep…"), OpenGrep),
                 MenuNode::Sep,
                 // EMPH — highlight every occurrence of a word/phrase in the current tab. A sibling of
                 // Find; the "…" items stage the verb on the command line for you to finish typing.
-                m_sub("Emphasize", vec![
-                    m_item("Selection", "EMPH $SE"),
-                    m_stage("Word or phrase…", emph_lit_stage),
-                    m_stage("Regular expression…", emph_rx_stage),
+                m_sub(self.tr("menu.search.emphasize", "Emphasize"), vec![
+                    m_item(self.tr("menu.search.emphasize.selection", "Selection"), "EMPH $SE"),
+                    m_stage(self.tr("menu.search.emphasize.word", "Word or phrase…"), emph_lit_stage),
+                    m_stage(self.tr("menu.search.emphasize.regex", "Regular expression…"), emph_rx_stage),
                     MenuNode::Sep,
-                    m_item("Clear", "EMPH"),
+                    m_item(self.tr("menu.search.emphasize.clear", "Clear"), "EMPH"),
                 ]),
             ]),
-            m_sub("View", vec![
-                m_act(format!("{}Highlighting", tick(hl_on)), Highlight(!hl_on)),
+            m_sub(self.tr("menubar.view", "View"), vec![
+                m_act(format!("{}{}", tick(hl_on), self.tr("menu.view.highlighting", "Highlighting")), Highlight(!hl_on)),
                 MenuNode::Sep,
-                m_tog("Paragraph marks", para_on, "TVR"),
-                m_tog("Whitespace", ws_on, "TWS"),
-                m_tog("Line numbers", lnum_on, "TLN"),
-                m_tog("Word wrap", wrap_on, "WRAP"),
+                m_tog(self.tr("menu.view.paragraph_marks", "Paragraph marks"), para_on, "TVR"),
+                m_tog(self.tr("menu.view.whitespace", "Whitespace"), ws_on, "TWS"),
+                m_tog(self.tr("menu.view.line_numbers", "Line numbers"), lnum_on, "TLN"),
+                m_tog(self.tr("menu.view.word_wrap", "Word wrap"), wrap_on, "WRAP"),
                 // Not a toggle — a value. Stage `WRAPHANG <current>` on the command line and focus it
                 // (via `BC … ;CMLINE`, like the Email "…" items) so you edit the number and press Enter.
-                m_item(format!("Wrap hang ({wrap_hang})…"), format!("BC WRAPHANG {wrap_hang} ;CMLINE")),
+                // `{n}` in the translated label is filled with the current width.
+                m_item(self.tr("menu.view.wrap_hang", "Wrap hang ({n})…").replace("{n}", &wrap_hang.to_string()), format!("BC WRAPHANG {wrap_hang} ;CMLINE")),
                 MenuNode::Sep,
-                m_act(format!("{}Preview pane", tick(preview_on)), TogglePreview),
-                m_tog("Shell pane", shell_on, "SH"),
-                m_tog("Shell output tab", shellout_on, "SW"),
+                m_act(format!("{}{}", tick(preview_on), self.tr("menu.view.preview_pane", "Preview pane")), TogglePreview),
+                m_tog(self.tr("menu.view.shell_pane", "Shell pane"), shell_on, "SH"),
+                m_tog(self.tr("menu.view.shell_output", "Shell output tab"), shellout_on, "SW"),
                 MenuNode::Sep,
-                m_sub("Split panes", vec![
-                    m_item("Split side by side", "TVS"),
-                    m_item("Split top and bottom", "THS"),
+                m_sub(self.tr("menu.view.split", "Split panes"), vec![
+                    m_item(self.tr("menu.view.split.side_by_side", "Split side by side"), "TVS"),
+                    m_item(self.tr("menu.view.split.top_bottom", "Split top and bottom"), "THS"),
                     MenuNode::Sep,
-                    m_item("Focus next pane", "TW"),
-                    m_item("Swap the two panes", "TRV"),
+                    m_item(self.tr("menu.view.split.focus_next", "Focus next pane"), "TW"),
+                    m_item(self.tr("menu.view.split.swap", "Swap the two panes"), "TRV"),
                     MenuNode::Sep,
-                    m_item("Zoom active pane (toggle)", "TZ"),
-                    m_item("Active pane full screen", "FS"),
-                    m_item("Remove split", "TUS"),
+                    m_item(self.tr("menu.view.split.zoom", "Zoom active pane (toggle)"), "TZ"),
+                    m_item(self.tr("menu.view.split.fullscreen", "Active pane full screen"), "FS"),
+                    m_item(self.tr("menu.view.split.remove", "Remove split"), "TUS"),
                 ]),
                 MenuNode::Sep,
-                m_tog("Menu bar", menubar_on, "TMB"),
-                m_tog("Title bar", titlebar_on, "TITLEBAR"),
-                m_tog("Writer's View (Esc to exit)", wv_on, "WV"),
-                m_sub("Command line", vec![
-                    m_tog("Pop-up", popup_on, "TGC"),
-                    m_sub("Position", vec![
-                        m_tog("Top", cur_placement == "top", "CMPLACE top"),
-                        m_tog("Bottom", cur_placement == "bottom", "CMPLACE bottom"),
-                        m_tog("Hidden", cur_placement == "hidden", "CMPLACE hidden"),
+                m_tog(self.tr("menu.view.menu_bar", "Menu bar"), menubar_on, "TMB"),
+                m_tog(self.tr("menu.view.title_bar", "Title bar"), titlebar_on, "TITLEBAR"),
+                m_tog(self.tr("menu.view.writers_view", "Writer's View (Esc to exit)"), wv_on, "WV"),
+                m_sub(self.tr("menu.view.cmdline", "Command line"), vec![
+                    m_tog(self.tr("menu.view.cmdline.popup", "Pop-up"), popup_on, "TGC"),
+                    m_sub(self.tr("menu.view.cmdline.position", "Position"), vec![
+                        m_tog(self.tr("menu.view.cmdline.position.top", "Top"), cur_placement == "top", "CMPLACE top"),
+                        m_tog(self.tr("menu.view.cmdline.position.bottom", "Bottom"), cur_placement == "bottom", "CMPLACE bottom"),
+                        m_tog(self.tr("menu.view.cmdline.position.hidden", "Hidden"), cur_placement == "hidden", "CMPLACE hidden"),
                     ]),
                 ]),
             ]),
-            m_sub("Document", vec![
-                m_sub("Document type", vec![
-                    m_tog("Typst", doctype == "typst", "DOCTYPE typst"),
-                    m_tog("GFM (Markdown)", doctype == "gfm", "DOCTYPE gfm"),
-                    m_item("Auto (by extension)", "DOCTYPE auto"),
+            m_sub(self.tr("menubar.document", "Document"), vec![
+                m_sub(self.tr("menu.document.doctype", "Document type"), vec![
+                    m_tog(self.tr("menu.document.doctype.typst", "Typst"), doctype == "typst", "DOCTYPE typst"),
+                    m_tog(self.tr("menu.document.doctype.gfm", "GFM (Markdown)"), doctype == "gfm", "DOCTYPE gfm"),
+                    m_item(self.tr("menu.document.doctype.auto", "Auto (by extension)"), "DOCTYPE auto"),
                 ]),
-                m_sub("Text encoding", vec![
-                    m_sub("Display as", encoding_display_items(&enc)),
-                    m_sub("Convert to (new file)", encoding_convert_items()),
+                m_sub(self.tr("menu.document.encoding", "Text encoding"), vec![
+                    m_sub(self.tr("menu.document.encoding.display_as", "Display as"), encoding_display_items(&enc)),
+                    m_sub(self.tr("menu.document.encoding.convert_to", "Convert to (new file)"), encoding_convert_items()),
                 ]),
-                m_sub("Line endings", vec![
-                    m_item("LF (Unix)", "NEWLINE lf"),
-                    m_item("CRLF (Windows)", "NEWLINE crlf"),
+                m_sub(self.tr("menu.document.line_endings", "Line endings"), vec![
+                    m_item(self.tr("menu.document.line_endings.lf", "LF (Unix)"), "NEWLINE lf"),
+                    m_item(self.tr("menu.document.line_endings.crlf", "CRLF (Windows)"), "NEWLINE crlf"),
                 ]),
                 MenuNode::Sep,
-                m_tog("Read-only", ro_on, "RO"),
+                m_tog(self.tr("menu.document.read_only", "Read-only"), ro_on, "RO"),
                 MenuNode::Sep,
-                m_item("Word count", "WORDCOUNT"),
-                m_item("Character count", "CHARCOUNT"),
-                m_act("Properties…", ShowProperties),
+                m_item(self.tr("menu.document.word_count", "Word count"), "WORDCOUNT"),
+                m_item(self.tr("menu.document.char_count", "Character count"), "CHARCOUNT"),
+                m_act(self.tr("menu.document.properties", "Properties…"), ShowProperties),
             ]),
-            m_sub("Tools", vec![
-                m_act("Run script…", pick(false, xpl_f, "RUN {}")),
-                m_act("Run script in background…", pick(false, xpl_f, "RUN/BG {}")),
-                m_item("Run code under cursor", "RUNHERE"),
+            m_sub(self.tr("menubar.tools", "Tools"), vec![
+                m_act(self.tr("menu.tools.run_script", "Run script…"), pick(false, xpl_f, "RUN {}")),
+                m_act(self.tr("menu.tools.run_script_bg", "Run script in background…"), pick(false, xpl_f, "RUN/BG {}")),
+                m_item(self.tr("menu.tools.run_here", "Run code under cursor"), "RUNHERE"),
                 MenuNode::Sep,
-                m_act("Shell command…", OpenRunCmd),
-                m_item("Background jobs", "JOBS"),
+                m_act(self.tr("menu.tools.shell_command", "Shell command…"), OpenRunCmd),
+                m_item(self.tr("menu.tools.jobs", "Background jobs"), "JOBS"),
                 MenuNode::Sep,
-                m_sub("Language check", vec![
-                    m_item("Check document", "CHECK"),
+                m_sub(self.tr("menu.tools.lang", "Language check"), vec![
+                    m_item(self.tr("menu.tools.lang.check", "Check document"), "CHECK"),
                     MenuNode::Sep,
-                    m_tog("Spelling underlines", spelling_on, if spelling_on { "SPELLING off" } else { "SPELLING on" }),
-                    m_tog("Grammar underlines", grammar_on, if grammar_on { "GRAMMAR off" } else { "GRAMMAR on" }),
+                    m_tog(self.tr("menu.tools.lang.spelling", "Spelling underlines"), spelling_on, if spelling_on { "SPELLING off" } else { "SPELLING on" }),
+                    m_tog(self.tr("menu.tools.lang.grammar", "Grammar underlines"), grammar_on, if grammar_on { "GRAMMAR off" } else { "GRAMMAR on" }),
                     MenuNode::Sep,
-                    m_item("Next spelling issue", "SPELLNEXT"),
-                    m_item("Previous spelling issue", "SPELLPREV"),
-                    m_item("Next grammar issue", "GRAMMARNEXT"),
-                    m_item("Previous grammar issue", "GRAMMARPREV"),
-                    m_item("Fix issue at cursor…", "LINTFIX"),
-                    m_item("Learn selected words", "LEARN/S"),
+                    m_item(self.tr("menu.tools.lang.spell_next", "Next spelling issue"), "SPELLNEXT"),
+                    m_item(self.tr("menu.tools.lang.spell_prev", "Previous spelling issue"), "SPELLPREV"),
+                    m_item(self.tr("menu.tools.lang.grammar_next", "Next grammar issue"), "GRAMMARNEXT"),
+                    m_item(self.tr("menu.tools.lang.grammar_prev", "Previous grammar issue"), "GRAMMARPREV"),
+                    m_item(self.tr("menu.tools.lang.fix", "Fix issue at cursor…"), "LINTFIX"),
+                    m_item(self.tr("menu.tools.lang.learn", "Learn selected words"), "LEARN/S"),
                     MenuNode::Sep,
-                    m_sub("Dialect", vec![
-                        m_tog("American", dialect == "american", "DIALECT american"),
-                        m_tog("British", dialect == "british", "DIALECT british"),
-                        m_tog("Canadian", dialect == "canadian", "DIALECT canadian"),
-                        m_tog("Australian", dialect == "australian", "DIALECT australian"),
-                        m_tog("Indian", dialect == "indian", "DIALECT indian"),
+                    m_sub(self.tr("menu.tools.lang.dialect", "Dialect"), vec![
+                        m_tog(self.tr("menu.tools.lang.dialect.american", "American"), dialect == "american", "DIALECT american"),
+                        m_tog(self.tr("menu.tools.lang.dialect.british", "British"), dialect == "british", "DIALECT british"),
+                        m_tog(self.tr("menu.tools.lang.dialect.canadian", "Canadian"), dialect == "canadian", "DIALECT canadian"),
+                        m_tog(self.tr("menu.tools.lang.dialect.australian", "Australian"), dialect == "australian", "DIALECT australian"),
+                        m_tog(self.tr("menu.tools.lang.dialect.indian", "Indian"), dialect == "indian", "DIALECT indian"),
                     ]),
-                    m_sub("Spelling style", style_choices("SPELLSTYLE", &spell_style)),
-                    m_sub("Grammar style", style_choices("GRAMMARSTYLE", &grammar_style)),
+                    m_sub(self.tr("menu.tools.lang.spell_style", "Spelling style"), style_choices("SPELLSTYLE", &spell_style)),
+                    m_sub(self.tr("menu.tools.lang.grammar_style", "Grammar style"), style_choices("GRAMMARSTYLE", &grammar_style)),
                 ]),
                 MenuNode::Sep,
                 // Email: send/receive via curl. The "…" items prefill the command line (via `BC`) so
                 // you can add a recipient / message range, then Enter. `MAILUSER`/`MAILPASS`/`SMTPURL`
                 // (send) and `IMAPURL` (receive) must be configured first — see the reference.
-                m_sub("Email", vec![
-                    m_item("List mailbox", "LISTMAIL"),
+                m_sub(self.tr("menu.tools.email", "Email"), vec![
+                    m_item(self.tr("menu.tools.email.list", "List mailbox"), "LISTMAIL"),
                     // The "…" items stage a command on the command line (via `BC`) and focus it, so you
                     // finish the range / recipient and press Enter. `SAVEMAIL all` is prefilled whole so
                     // its space survives (a trailing space would be trimmed); edit `all` to a range.
-                    m_item("Save messages…", "BC SAVEMAIL all ;CMLINE"),
-                    m_item("Delete messages…", "BC DELMAIL ;CMLINE"),
+                    m_item(self.tr("menu.tools.email.save", "Save messages…"), "BC SAVEMAIL all ;CMLINE"),
+                    m_item(self.tr("menu.tools.email.delete", "Delete messages…"), "BC DELMAIL ;CMLINE"),
                     MenuNode::Sep,
-                    m_item("Send…", "BC SENDMAIL ;CMLINE"),
-                    m_act("Attach file…", pick(false, None, "ATTACH {}")),
-                    m_item("Clear attachments", "CLEARATTACH"),
+                    m_item(self.tr("menu.tools.email.send", "Send…"), "BC SENDMAIL ;CMLINE"),
+                    m_act(self.tr("menu.tools.email.attach", "Attach file…"), pick(false, None, "ATTACH {}")),
+                    m_item(self.tr("menu.tools.email.clear_attach", "Clear attachments"), "CLEARATTACH"),
                     MenuNode::Sep,
-                    m_tog("Verbose logging", mail_debug, if mail_debug { "MAILDEBUG off" } else { "MAILDEBUG on" }),
+                    m_tog(self.tr("menu.tools.email.verbose", "Verbose logging"), mail_debug, if mail_debug { "MAILDEBUG off" } else { "MAILDEBUG on" }),
                 ]),
                 MenuNode::Sep,
-                m_sub("Library", vec![
-                    m_act("Load…", pick(false, Some(("Library", &["lib"])), "LOADLIB {}")),
-                    m_item("Reload", "RELOADLIB"),
-                    m_item("Unload all", "UNLOADLIB"),
-                    m_item("List routines", "LISTLIB"),
+                m_sub(self.tr("menu.tools.library", "Library"), vec![
+                    m_act(self.tr("menu.tools.library.load", "Load…"), pick(false, Some(("Library", &["lib"])), "LOADLIB {}")),
+                    m_item(self.tr("menu.tools.library.reload", "Reload"), "RELOADLIB"),
+                    m_item(self.tr("menu.tools.library.unload", "Unload all"), "UNLOADLIB"),
+                    m_item(self.tr("menu.tools.library.list", "List routines"), "LISTLIB"),
                 ]),
                 MenuNode::Sep,
                 // Opens the keymap's chart (all modifier tables) in a scrollable TXT modal.
-                m_item("Keyboard chart", "KBCHART"),
+                m_item(self.tr("menu.tools.keyboard_chart", "Keyboard chart"), "KBCHART"),
             ]),
-            m_sub("Settings", vec![
-                m_sub("Appearance", vec![
-                    m_sub("Colors", vec![
-                        m_item("Editor text…", "FGCOLORS"),
-                        m_item("Editor background…", "BGCOLORS"),
-                        m_item("Selection text…", "SELFGCOLORS"),
-                        m_item("Selection background…", "SELBGCOLORS"),
-                        m_item("Caret…", "CRCOLORS"),
-                        m_item("Separators…", "SEPCOLORS"),
-                        m_sub("Tab bar background", vec![
-                            m_item("Active tab…", "TABBGCOLORS active"),
-                            m_item("Hovered tab…", "TABBGCOLORS hover"),
-                            m_item("Inactive tab…", "TABBGCOLORS inactive"),
+            m_sub(self.tr("menubar.settings", "Settings"), vec![
+                m_sub(self.tr("menu.settings.appearance", "Appearance"), vec![
+                    m_sub(self.tr("menu.settings.appearance.colors", "Colors"), vec![
+                        m_item(self.tr("menu.settings.appearance.colors.editor_text", "Editor text…"), "FGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.editor_bg", "Editor background…"), "BGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.selection_text", "Selection text…"), "SELFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.selection_bg", "Selection background…"), "SELBGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.caret", "Caret…"), "CRCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.separators", "Separators…"), "SEPCOLORS"),
+                        m_sub(self.tr("menu.settings.appearance.colors.tab_bg", "Tab bar background"), vec![
+                            m_item(self.tr("menu.settings.appearance.colors.tab_bg.active", "Active tab…"), "TABBGCOLORS active"),
+                            m_item(self.tr("menu.settings.appearance.colors.tab_bg.hover", "Hovered tab…"), "TABBGCOLORS hover"),
+                            m_item(self.tr("menu.settings.appearance.colors.tab_bg.inactive", "Inactive tab…"), "TABBGCOLORS inactive"),
                         ]),
-                        m_item("Tab close ×…", "TABXCOLORS"),
-                        m_item("UI text…", "UIFGCOLORS"),
-                        m_item("UI background…", "UIBGCOLORS"),
-                        m_item("TXT window text…", "TXTFGCOLORS"),
-                        m_item("TXT window background…", "TXTBGCOLORS"),
-                        m_item("Directory window text…", "DWFGCOLORS"),
-                        m_item("Directory window background…", "DWBGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.tab_close", "Tab close ×…"), "TABXCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.ui_text", "UI text…"), "UIFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.ui_bg", "UI background…"), "UIBGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.txt_text", "TXT window text…"), "TXTFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.txt_bg", "TXT window background…"), "TXTBGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.dir_text", "Directory window text…"), "DWFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.dir_bg", "Directory window background…"), "DWBGCOLORS"),
                     ]),
-                    m_sub("Fonts", vec![
-                        m_item("Editor…", "EDFONTS"),
-                        m_item("UI…", "UIFONTS"),
-                        m_item("TXT window…", "TXTFONTS"),
-                        m_item("Directory window…", "DWFONTS"),
+                    m_sub(self.tr("menu.settings.appearance.fonts", "Fonts"), vec![
+                        m_item(self.tr("menu.settings.appearance.fonts.editor", "Editor…"), "EDFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.ui", "UI…"), "UIFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.txt", "TXT window…"), "TXTFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.dir", "Directory window…"), "DWFONTS"),
                         MenuNode::Sep,
-                        m_item("Preview / PDF body…", "PVFONTS"),
-                        m_item("Preview / PDF code…", "PVCODES"),
+                        m_item(self.tr("menu.settings.appearance.fonts.preview_body", "Preview / PDF body…"), "PVFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.preview_code", "Preview / PDF code…"), "PVCODES"),
                     ]),
-                    m_sub("UI zoom", vec![
-                        m_item("Zoom in", "UISCALE +0.1"),
-                        m_item("Zoom out", "UISCALE -0.1"),
-                        m_item("Reset (100%)", "UISCALE 1"),
+                    m_sub(self.tr("menu.settings.appearance.ui_zoom", "UI zoom"), vec![
+                        m_item(self.tr("menu.settings.appearance.ui_zoom.in", "Zoom in"), "UISCALE +0.1"),
+                        m_item(self.tr("menu.settings.appearance.ui_zoom.out", "Zoom out"), "UISCALE -0.1"),
+                        m_item(self.tr("menu.settings.appearance.ui_zoom.reset", "Reset (100%)"), "UISCALE 1"),
                     ]),
-                    m_sub("Margins", vec![
-                        m_item("Wider", "OF +2"),
-                        m_item("Narrower", "OF -2"),
-                        m_item("None", "OF 0"),
+                    m_sub(self.tr("menu.settings.appearance.margins", "Margins"), vec![
+                        m_item(self.tr("menu.settings.appearance.margins.wider", "Wider"), "OF +2"),
+                        m_item(self.tr("menu.settings.appearance.margins.narrower", "Narrower"), "OF -2"),
+                        m_item(self.tr("menu.settings.appearance.margins.none", "None"), "OF 0"),
                     ]),
-                    m_sub("Line spacing", vec![
-                        m_item("More", "LEADING +1"),
-                        m_item("Less", "LEADING -1"),
+                    m_sub(self.tr("menu.settings.appearance.line_spacing", "Line spacing"), vec![
+                        m_item(self.tr("menu.settings.appearance.line_spacing.more", "More"), "LEADING +1"),
+                        m_item(self.tr("menu.settings.appearance.line_spacing.less", "Less"), "LEADING -1"),
                     ]),
                     MenuNode::Sep,
-                    m_item("Reset UI sizing", "UIRESET"),
-                    m_item("Reset directory window", "DWRESET"),
+                    m_item(self.tr("menu.settings.appearance.reset_ui", "Reset UI sizing"), "UIRESET"),
+                    m_item(self.tr("menu.settings.appearance.reset_dw", "Reset directory window"), "DWRESET"),
                 ]),
-                m_sub("Syntax highlighting", vec![
+                m_sub(self.tr("menu.settings.syntax", "Syntax highlighting"), vec![
                     // One colour-picker entry per themeable token kind — `HLCOLORS <kind>` (the bare
                     // verb needs a kind, so a single item did nothing). Built from the live kind list.
+                    // The per-kind item labels are the (generated) token-kind names — not translated.
                     m_sub(
-                        "Theme colors",
+                        self.tr("menu.settings.syntax.theme_colors", "Theme colors"),
                         ed.highlight_kinds()
                             .into_iter()
                             .map(|k| m_item(format!("{}…", cap_first(&k)), format!("HLCOLORS {k}")))
                             .collect(),
                     ),
-                    m_item("Token kinds…", "HLKINDS"),
-                    m_item("Reset theme", "HLRESET"),
-                    m_tog("Auto-highlight on open", hlauto_on, if hlauto_on { "HLAUTO off" } else { "HLAUTO on" }),
+                    m_item(self.tr("menu.settings.syntax.token_kinds", "Token kinds…"), "HLKINDS"),
+                    m_item(self.tr("menu.settings.syntax.reset_theme", "Reset theme"), "HLRESET"),
+                    m_tog(self.tr("menu.settings.syntax.auto", "Auto-highlight on open"), hlauto_on, if hlauto_on { "HLAUTO off" } else { "HLAUTO on" }),
                 ]),
-                m_sub("Editor behavior", vec![
-                    m_tog("Persistent selection", ps_on, "TPS"),
-                    m_tog("Remember window size+position", wingeo_on, "WINGEO"),
-                    m_sub("Coding aids", vec![
-                        m_tog("Auto-indent new lines", tabindent_on, if tabindent_on { "TABINDENT off" } else { "TABINDENT on" }),
-                        m_tog("Soft tabs (insert spaces)", tabspaces_on, if tabspaces_on { "TABSPACES off" } else { "TABSPACES on" }),
-                        m_tog("Hanging indent for wrapped lines", wrapindent_on, if wrapindent_on { "WRAPINDENT off" } else { "WRAPINDENT on" }),
-                        m_tog("Highlight matching brackets", balpairs_on, if balpairs_on { "BALPAIRS off" } else { "BALPAIRS on" }),
-                        m_tog("Auto-close brackets and quotes", typepairs_on, if typepairs_on { "TYPEPAIRS off" } else { "TYPEPAIRS on" }),
+                m_sub(self.tr("menu.settings.editor", "Editor behavior"), vec![
+                    m_tog(self.tr("menu.settings.editor.persistent_sel", "Persistent selection"), ps_on, "TPS"),
+                    m_tog(self.tr("menu.settings.editor.remember_geom", "Remember window size+position"), wingeo_on, "WINGEO"),
+                    m_sub(self.tr("menu.settings.editor.coding", "Coding aids"), vec![
+                        m_tog(self.tr("menu.settings.editor.coding.autoindent", "Auto-indent new lines"), tabindent_on, if tabindent_on { "TABINDENT off" } else { "TABINDENT on" }),
+                        m_tog(self.tr("menu.settings.editor.coding.soft_tabs", "Soft tabs (insert spaces)"), tabspaces_on, if tabspaces_on { "TABSPACES off" } else { "TABSPACES on" }),
+                        m_tog(self.tr("menu.settings.editor.coding.hang_indent", "Hanging indent for wrapped lines"), wrapindent_on, if wrapindent_on { "WRAPINDENT off" } else { "WRAPINDENT on" }),
+                        m_tog(self.tr("menu.settings.editor.coding.match_brackets", "Highlight matching brackets"), balpairs_on, if balpairs_on { "BALPAIRS off" } else { "BALPAIRS on" }),
+                        m_tog(self.tr("menu.settings.editor.coding.close_brackets", "Auto-close brackets and quotes"), typepairs_on, if typepairs_on { "TYPEPAIRS off" } else { "TYPEPAIRS on" }),
                     ]),
-                    m_sub("Autosave", vec![
-                        m_tog("Off", autosave == "0", "AUTOSAVE off"),
-                        m_tog("Every 30 s", autosave == "30", "AUTOSAVE 30"),
-                        m_tog("Every 1 min", autosave == "60", "AUTOSAVE 60"),
-                        m_tog("Every 2 min", autosave == "120", "AUTOSAVE 120"),
-                        m_tog("Every 5 min", autosave == "300", "AUTOSAVE 300"),
+                    m_sub(self.tr("menu.settings.editor.autosave", "Autosave"), vec![
+                        m_tog(self.tr("menu.settings.editor.autosave.off", "Off"), autosave == "0", "AUTOSAVE off"),
+                        m_tog(self.tr("menu.settings.editor.autosave.30s", "Every 30 s"), autosave == "30", "AUTOSAVE 30"),
+                        m_tog(self.tr("menu.settings.editor.autosave.1m", "Every 1 min"), autosave == "60", "AUTOSAVE 60"),
+                        m_tog(self.tr("menu.settings.editor.autosave.2m", "Every 2 min"), autosave == "120", "AUTOSAVE 120"),
+                        m_tog(self.tr("menu.settings.editor.autosave.5m", "Every 5 min"), autosave == "300", "AUTOSAVE 300"),
                     ]),
-                    m_sub("Tab width", vec![
+                    // Tab-width items are bare numbers (2/4/8) — not translated.
+                    m_sub(self.tr("menu.settings.editor.tab_width", "Tab width"), vec![
                         m_tog("2", tabw == "2", "TB 2"),
                         m_tog("4", tabw == "4", "TB 4"),
                         m_tog("8", tabw == "8", "TB 8"),
                     ]),
-                    m_sub("Number precision", vec![
-                        m_tog("Off (full)", decimals == "off", "DECIMALS off"),
+                    m_sub(self.tr("menu.settings.editor.precision", "Number precision"), vec![
+                        m_tog(self.tr("menu.settings.editor.precision.off", "Off (full)"), decimals == "off", "DECIMALS off"),
                         m_tog("0", decimals == "0", "DECIMALS 0"),
                         m_tog("1", decimals == "1", "DECIMALS 1"),
                         m_tog("2", decimals == "2", "DECIMALS 2"),
@@ -5534,21 +5544,21 @@ impl GuiApp {
                         m_tog("4", decimals == "4", "DECIMALS 4"),
                     ]),
                 ]),
-                m_sub("Keyboard", vec![
-                    m_act("Load…", pick(false, kbd_f, "LOADKBD {}")),
-                    m_act("Save…", pick(true, kbd_f, "SAVEKBD {}")),
-                    m_item("Reset to built-in", "CLEARKBD"),
+                m_sub(self.tr("menu.settings.keyboard", "Keyboard"), vec![
+                    m_act(self.tr("menu.settings.keyboard.load", "Load…"), pick(false, kbd_f, "LOADKBD {}")),
+                    m_act(self.tr("menu.settings.keyboard.save", "Save…"), pick(true, kbd_f, "SAVEKBD {}")),
+                    m_item(self.tr("menu.settings.keyboard.reset", "Reset to built-in"), "CLEARKBD"),
                 ]),
-                m_tog("Allow shell commands", trusted, if trusted { "TRUST 0" } else { "TRUST 1" }),
+                m_tog(self.tr("menu.settings.allow_shell", "Allow shell commands"), trusted, if trusted { "TRUST 0" } else { "TRUST 1" }),
                 MenuNode::Sep,
-                m_act("Save settings…", pick(true, cfg_f, "SAVECFG {}")),
-                m_act("Load settings…", pick(false, cfg_f, "LOADCFG {}")),
-                m_tog("Auto-save settings", autocfg_on, if autocfg_on { "AUTOCFG off" } else { "AUTOCFG" }),
+                m_act(self.tr("menu.settings.save_settings", "Save settings…"), pick(true, cfg_f, "SAVECFG {}")),
+                m_act(self.tr("menu.settings.load_settings", "Load settings…"), pick(false, cfg_f, "LOADCFG {}")),
+                m_tog(self.tr("menu.settings.autosave_settings", "Auto-save settings"), autocfg_on, if autocfg_on { "AUTOCFG off" } else { "AUTOCFG" }),
             ]),
-            m_sub("Help", vec![
-                m_act("Reference", ShowReference),
+            m_sub(self.tr("menubar.help", "Help"), vec![
+                m_act(self.tr("menu.help.reference", "Reference"), ShowReference),
                 MenuNode::Sep,
-                m_act("About XyScript", ShowAbout),
+                m_act(self.tr("menu.help.about", "About XyScript"), ShowAbout),
             ]),
         ]
     }

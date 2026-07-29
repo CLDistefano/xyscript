@@ -1,0 +1,273 @@
+# =============================================================================
+# XyScript UI strings  —  PSEUDOLOCALIZATION  (generated; do not translate)
+# =============================================================================
+# A fake locale for LAYOUT TESTING, generated from xyscript-strings.template.
+# Load it like any language file and eyeball every menu / dialog:
+#   * If a string is NOT bracketed+accented (plain ASCII), it was NOT routed
+#     through the string table — a localization gap to fix.
+#   * If you can't see the closing "]", the text is being CLIPPED.
+#   * Each value is ~40% longer than English to shake out overflow (the tight
+#     menu bar and any hard-coded widths like the clipboard menu's min_width).
+#   * {placeholders} are preserved — they must survive translation intact.
+# Regenerate with: gen_pseudo.py xyscript-strings.template xyscript-strings-pseudo.txt
+# =============================================================================
+
+
+# =============================================================================
+# 1. MENUS
+# =============================================================================
+
+# ---- Menu bar (top-level titles) -------------------------------------------
+menubar.file = [Fìlè ··]   # File
+menubar.edit = [Èdìt ··]   # Edit
+menubar.search = [Sèàrçh ··]   # Search
+menubar.view = [Vìèw ··]   # View
+menubar.document = [Dòçùmèñt ···]   # Document
+menubar.tools = [Tòòls ··]   # Tools
+menubar.settings = [Sèttìñgs ···]   # Settings
+menubar.help = [Hèlp ··]   # Help
+
+# ---- File -------------------------------------------------------------------
+menu.file.new = [Ñèw ··]   # New
+menu.file.open = [Òpèñ… ··]   # Open…
+menu.file.open_readonly = [Òpèñ rèàd-òñlý… ······]   # Open read-only…
+menu.file.revert = [Rèvèrt tò sàvèd ······]   # Revert to saved
+menu.file.save = [Sàvè ··]   # Save
+menu.file.save_as = [Sàvè às… ···]   # Save as…
+menu.file.save_selection_as = [Sàvè sèlèçtìòñ às… ·······]   # Save selection as…
+menu.file.save_all = [Sàvè àll ···]   # Save all
+menu.file.export_pdf = [Èxpòrt PDF… ····]   # Export PDF…
+menu.file.close = [Çlòsè ··]   # Close
+menu.file.quit = [Qùìt ··]   # Quit
+
+# ---- Edit -------------------------------------------------------------------
+menu.edit.undo = [Ùñdò ··]   # Undo
+menu.edit.redo = [Rèdò ··]   # Redo
+menu.edit.cut = [Çùt ··]   # Cut
+menu.edit.copy = [Çòpý ··]   # Copy
+menu.edit.append_clipboard = [Àppèñd tò çlìpbòàrd ········]   # Append to clipboard
+menu.edit.prepend_clipboard = [Prèpèñd tò çlìpbòàrd ········]   # Prepend to clipboard
+menu.edit.paste = [Pàstè ··]   # Paste
+menu.edit.select_all = [Sèlèçt àll ····]   # Select all
+menu.edit.delete_selection = [Dèlètè sèlèçtìòñ ······]   # Delete selection
+menu.edit.copy_to_cursor = [Çòpý tò çùrsòr ······]   # Copy to cursor
+menu.edit.move_to_cursor = [Mòvè tò çùrsòr ······]   # Move to cursor
+menu.edit.case = [Çhàñgè çàsè ····]   # Change case            (submenu)
+menu.edit.case.upper = [ÙPPÈRÇÀSÈ ····]   # UPPERCASE
+menu.edit.case.lower = [lòwèrçàsè ····]   # lowercase
+menu.edit.case.swap = [Swàp çàsè ····]   # Swap case
+menu.edit.text_colour = [Tèxt çòlòùr… ·····]   # Text colour…
+menu.edit.clear_text_colour = [Çlèàr tèxt çòlòùr ·······]   # Clear text colour
+menu.edit.insert_file = [Ìñsèrt fìlè… ·····]   # Insert file…
+
+# ---- Search -----------------------------------------------------------------
+menu.search.find = [Fìñd… ··]   # Find…
+menu.search.replace = [Rèplàçè… ···]   # Replace…
+menu.search.find_next = [Fìñd ñèxt ····]   # Find next
+menu.search.find_prev = [Fìñd prèvìòùs ·····]   # Find previous
+menu.search.grep = [Grèp… ··]   # Grep…
+menu.search.emphasize = [Èmphàsìzè ····]   # Emphasize              (submenu)
+menu.search.emphasize.selection = [Sèlèçtìòñ ····]   # Selection
+menu.search.emphasize.word = [Wòrd òr phràsè… ······]   # Word or phrase…
+menu.search.emphasize.regex = [Règùlàr èxprèssìòñ… ········]   # Regular expression…
+menu.search.emphasize.clear = [Çlèàr ··]   # Clear
+
+# ---- View -------------------------------------------------------------------
+menu.view.highlighting = [Hìghlìghtìñg ·····]   # Highlighting
+menu.view.paragraph_marks = [Pàràgràph màrks ······]   # Paragraph marks
+menu.view.whitespace = [Whìtèspàçè ····]   # Whitespace
+menu.view.line_numbers = [Lìñè ñùmbèrs ·····]   # Line numbers
+menu.view.word_wrap = [Wòrd wràp ····]   # Word wrap
+menu.view.wrap_hang = [Wràp hàñg ({n})… ······]   # Wrap hang ({n})…       ({n} = current width)
+menu.view.preview_pane = [Prèvìèw pàñè ·····]   # Preview pane
+menu.view.shell_pane = [Shèll pàñè ····]   # Shell pane
+menu.view.shell_output = [Shèll òùtpùt tàb ······]   # Shell output tab
+menu.view.split = [Splìt pàñès ····]   # Split panes            (submenu)
+menu.view.split.side_by_side = [Splìt sìdè bý sìdè ·······]   # Split side by side
+menu.view.split.top_bottom = [Splìt tòp àñd bòttòm ········]   # Split top and bottom
+menu.view.split.focus_next = [Fòçùs ñèxt pàñè ······]   # Focus next pane
+menu.view.split.swap = [Swàp thè twò pàñès ·······]   # Swap the two panes
+menu.view.split.zoom = [Zòòm àçtìvè pàñè (tògglè) ··········]   # Zoom active pane (toggle)
+menu.view.split.fullscreen = [Àçtìvè pàñè fùll sçrèèñ ·········]   # Active pane full screen
+menu.view.split.remove = [Rèmòvè splìt ·····]   # Remove split
+menu.view.menu_bar = [Mèñù bàr ···]   # Menu bar
+menu.view.title_bar = [Tìtlè bàr ····]   # Title bar
+menu.view.writers_view = [Wrìtèr's Vìèw (Èsç tò èxìt) ···········]   # Writer's View (Esc to exit)
+menu.view.cmdline = [Çòmmàñd lìñè ·····]   # Command line           (submenu)
+menu.view.cmdline.popup = [Pòp-ùp ··]   # Pop-up
+menu.view.cmdline.position = [Pòsìtìòñ ···]   # Position               (submenu)
+menu.view.cmdline.position.top = [Tòp ··]   # Top
+menu.view.cmdline.position.bottom = [Bòttòm ··]   # Bottom
+menu.view.cmdline.position.hidden = [Hìddèñ ··]   # Hidden
+
+# ---- Document ---------------------------------------------------------------
+menu.document.doctype = [Dòçùmèñt týpè ·····]   # Document type          (submenu)
+menu.document.doctype.typst = [Týpst ··]   # Typst
+menu.document.doctype.gfm = [GFM (Màrkdòwñ) ······]   # GFM (Markdown)
+menu.document.doctype.auto = [Àùtò (bý èxtèñsìòñ) ········]   # Auto (by extension)
+menu.document.encoding = [Tèxt èñçòdìñg ·····]   # Text encoding          (submenu)
+menu.document.encoding.display_as = [Dìsplàý às ····]   # Display as             (items are generated)
+menu.document.encoding.convert_to = [Çòñvèrt tò (ñèw fìlè) ········]   # Convert to (new file)  (items are generated)
+menu.document.line_endings = [Lìñè èñdìñgs ·····]   # Line endings           (submenu)
+menu.document.line_endings.lf = [LF (Ùñìx) ····]   # LF (Unix)
+menu.document.line_endings.crlf = [ÇRLF (Wìñdòws) ······]   # CRLF (Windows)
+menu.document.read_only = [Rèàd-òñlý ····]   # Read-only
+menu.document.word_count = [Wòrd çòùñt ····]   # Word count
+menu.document.char_count = [Çhàràçtèr çòùñt ······]   # Character count
+menu.document.properties = [Pròpèrtìès… ····]   # Properties…
+
+# ---- Tools ------------------------------------------------------------------
+menu.tools.run_script = [Rùñ sçrìpt… ····]   # Run script…
+menu.tools.run_script_bg = [Rùñ sçrìpt ìñ bàçkgròùñd… ··········]   # Run script in background…
+menu.tools.run_here = [Rùñ çòdè ùñdèr çùrsòr ········]   # Run code under cursor
+menu.tools.shell_command = [Shèll çòmmàñd… ······]   # Shell command…
+menu.tools.jobs = [Bàçkgròùñd jòbs ······]   # Background jobs
+menu.tools.lang = [Làñgùàgè çhèçk ······]   # Language check         (submenu)
+menu.tools.lang.check = [Çhèçk dòçùmèñt ······]   # Check document
+menu.tools.lang.spelling = [Spèllìñg ùñdèrlìñès ········]   # Spelling underlines
+menu.tools.lang.grammar = [Gràmmàr ùñdèrlìñès ·······]   # Grammar underlines
+menu.tools.lang.spell_next = [Ñèxt spèllìñg ìssùè ········]   # Next spelling issue
+menu.tools.lang.spell_prev = [Prèvìòùs spèllìñg ìssùè ·········]   # Previous spelling issue
+menu.tools.lang.grammar_next = [Ñèxt gràmmàr ìssùè ·······]   # Next grammar issue
+menu.tools.lang.grammar_prev = [Prèvìòùs gràmmàr ìssùè ·········]   # Previous grammar issue
+menu.tools.lang.fix = [Fìx ìssùè àt çùrsòr… ········]   # Fix issue at cursor…
+menu.tools.lang.learn = [Lèàrñ sèlèçtèd wòrds ········]   # Learn selected words
+menu.tools.lang.dialect = [Dìàlèçt ···]   # Dialect                (submenu)
+menu.tools.lang.dialect.american = [Àmèrìçàñ ···]   # American
+menu.tools.lang.dialect.british = [Brìtìsh ···]   # British
+menu.tools.lang.dialect.canadian = [Çàñàdìàñ ···]   # Canadian
+menu.tools.lang.dialect.australian = [Àùstràlìàñ ····]   # Australian
+menu.tools.lang.dialect.indian = [Ìñdìàñ ··]   # Indian
+menu.tools.lang.spell_style = [Spèllìñg stýlè ······]   # Spelling style         (submenu; items generated)
+menu.tools.lang.grammar_style = [Gràmmàr stýlè ·····]   # Grammar style          (submenu; items generated)
+menu.tools.email = [Èmàìl ··]   # Email                  (submenu)
+menu.tools.email.list = [Lìst màìlbòx ·····]   # List mailbox
+menu.tools.email.save = [Sàvè mèssàgès… ······]   # Save messages…
+menu.tools.email.delete = [Dèlètè mèssàgès… ······]   # Delete messages…
+menu.tools.email.send = [Sèñd… ··]   # Send…
+menu.tools.email.attach = [Àttàçh fìlè… ·····]   # Attach file…
+menu.tools.email.clear_attach = [Çlèàr àttàçhmèñts ·······]   # Clear attachments
+menu.tools.email.verbose = [Vèrbòsè lòggìñg ······]   # Verbose logging
+menu.tools.library = [Lìbràrý ···]   # Library                (submenu)
+menu.tools.library.load = [Lòàd… ··]   # Load…
+menu.tools.library.reload = [Rèlòàd ··]   # Reload
+menu.tools.library.unload = [Ùñlòàd àll ····]   # Unload all
+menu.tools.library.list = [Lìst ròùtìñès ·····]   # List routines
+menu.tools.keyboard_chart = [Kèýbòàrd çhàrt ······]   # Keyboard chart
+
+# ---- Settings ---------------------------------------------------------------
+menu.settings.appearance = [Àppèàràñçè ····]   # Appearance             (submenu)
+menu.settings.appearance.colors = [Çòlòrs ··]   # Colors                 (submenu)
+menu.settings.appearance.colors.editor_text = [Èdìtòr tèxt… ·····]   # Editor text…
+menu.settings.appearance.colors.editor_bg = [Èdìtòr bàçkgròùñd… ·······]   # Editor background…
+menu.settings.appearance.colors.selection_text = [Sèlèçtìòñ tèxt… ······]   # Selection text…
+menu.settings.appearance.colors.selection_bg = [Sèlèçtìòñ bàçkgròùñd… ········]   # Selection background…
+menu.settings.appearance.colors.caret = [Çàrèt… ··]   # Caret…
+menu.settings.appearance.colors.separators = [Sèpàràtòrs… ····]   # Separators…
+menu.settings.appearance.colors.tab_bg = [Tàb bàr bàçkgròùñd ·······]   # Tab bar background      (submenu)
+menu.settings.appearance.colors.tab_bg.active = [Àçtìvè tàb… ····]   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = [Hòvèrèd tàb… ·····]   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = [Ìñàçtìvè tàb… ·····]   # Inactive tab…
+menu.settings.appearance.colors.tab_close = [Tàb çlòsè ×… ·····]   # Tab close ×…
+menu.settings.appearance.colors.ui_text = [ÙÌ tèxt… ···]   # UI text…
+menu.settings.appearance.colors.ui_bg = [ÙÌ bàçkgròùñd… ······]   # UI background…
+menu.settings.appearance.colors.txt_text = [TXT wìñdòw tèxt… ······]   # TXT window text…
+menu.settings.appearance.colors.txt_bg = [TXT wìñdòw bàçkgròùñd… ·········]   # TXT window background…
+menu.settings.appearance.colors.dir_text = [Dìrèçtòrý wìñdòw tèxt… ·········]   # Directory window text…
+menu.settings.appearance.colors.dir_bg = [Dìrèçtòrý wìñdòw bàçkgròùñd… ···········]   # Directory window background…
+menu.settings.appearance.fonts = [Fòñts ··]   # Fonts                  (submenu)
+menu.settings.appearance.fonts.editor = [Èdìtòr… ···]   # Editor…
+menu.settings.appearance.fonts.ui = [ÙÌ… ··]   # UI…
+menu.settings.appearance.fonts.txt = [TXT wìñdòw… ····]   # TXT window…
+menu.settings.appearance.fonts.dir = [Dìrèçtòrý wìñdòw… ·······]   # Directory window…
+menu.settings.appearance.fonts.preview_body = [Prèvìèw / PDF bòdý… ········]   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = [Prèvìèw / PDF çòdè… ········]   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = [ÙÌ zòòm ···]   # UI zoom                (submenu)
+menu.settings.appearance.ui_zoom.in = [Zòòm ìñ ···]   # Zoom in
+menu.settings.appearance.ui_zoom.out = [Zòòm òùt ···]   # Zoom out
+menu.settings.appearance.ui_zoom.reset = [Rèsèt (100%) ·····]   # Reset (100%)
+menu.settings.appearance.margins = [Màrgìñs ···]   # Margins                (submenu)
+menu.settings.appearance.margins.wider = [Wìdèr ··]   # Wider
+menu.settings.appearance.margins.narrower = [Ñàrròwèr ···]   # Narrower
+menu.settings.appearance.margins.none = [Ñòñè ··]   # None
+menu.settings.appearance.line_spacing = [Lìñè spàçìñg ·····]   # Line spacing            (submenu)
+menu.settings.appearance.line_spacing.more = [Mòrè ··]   # More
+menu.settings.appearance.line_spacing.less = [Lèss ··]   # Less
+menu.settings.appearance.reset_ui = [Rèsèt ÙÌ sìzìñg ······]   # Reset UI sizing
+menu.settings.appearance.reset_dw = [Rèsèt dìrèçtòrý wìñdòw ·········]   # Reset directory window
+menu.settings.syntax = [Sýñtàx hìghlìghtìñg ········]   # Syntax highlighting    (submenu)
+menu.settings.syntax.theme_colors = [Thèmè çòlòrs ·····]   # Theme colors           (submenu; items generated)
+menu.settings.syntax.token_kinds = [Tòkèñ kìñds… ·····]   # Token kinds…
+menu.settings.syntax.reset_theme = [Rèsèt thèmè ····]   # Reset theme
+menu.settings.syntax.auto = [Àùtò-hìghlìght òñ òpèñ ·········]   # Auto-highlight on open
+menu.settings.editor = [Èdìtòr bèhàvìòr ······]   # Editor behavior        (submenu)
+menu.settings.editor.persistent_sel = [Pèrsìstèñt sèlèçtìòñ ········]   # Persistent selection
+menu.settings.editor.remember_geom = [Rèmèmbèr wìñdòw sìzè+pòsìtìòñ ············]   # Remember window size+position
+menu.settings.editor.coding = [Çòdìñg àìds ····]   # Coding aids            (submenu)
+menu.settings.editor.coding.autoindent = [Àùtò-ìñdèñt ñèw lìñès ········]   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = [Sòft tàbs (ìñsèrt spàçès) ··········]   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = [Hàñgìñg ìñdèñt fòr wràppèd lìñès ·············]   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = [Hìghlìght màtçhìñg bràçkèts ···········]   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = [Àùtò-çlòsè bràçkèts àñd qùòtès ············]   # Auto-close brackets and quotes
+menu.settings.editor.autosave = [Àùtòsàvè ···]   # Autosave               (submenu)
+menu.settings.editor.autosave.off = [Òff ··]   # Off
+menu.settings.editor.autosave.30s = [Èvèrý 30 s ····]   # Every 30 s
+menu.settings.editor.autosave.1m = [Èvèrý 1 mìñ ····]   # Every 1 min
+menu.settings.editor.autosave.2m = [Èvèrý 2 mìñ ····]   # Every 2 min
+menu.settings.editor.autosave.5m = [Èvèrý 5 mìñ ····]   # Every 5 min
+menu.settings.editor.tab_width = [Tàb wìdth ····]   # Tab width              (submenu; items 2/4/8 are numbers)
+menu.settings.editor.precision = [Ñùmbèr prèçìsìòñ ······]   # Number precision       (submenu)
+menu.settings.editor.precision.off = [Òff (fùll) ····]   # Off (full)
+menu.settings.keyboard = [Kèýbòàrd ···]   # Keyboard               (submenu)
+menu.settings.keyboard.load = [Lòàd… ··]   # Load…
+menu.settings.keyboard.save = [Sàvè… ··]   # Save…
+menu.settings.keyboard.reset = [Rèsèt tò bùìlt-ìñ ·······]   # Reset to built-in
+menu.settings.allow_shell = [Àllòw shèll çòmmàñds ········]   # Allow shell commands
+menu.settings.save_settings = [Sàvè sèttìñgs… ······]   # Save settings…
+menu.settings.load_settings = [Lòàd sèttìñgs… ······]   # Load settings…
+menu.settings.autosave_settings = [Àùtò-sàvè sèttìñgs ·······]   # Auto-save settings
+
+# ---- Help -------------------------------------------------------------------
+menu.help.reference = [Rèfèrèñçè ····]   # Reference
+menu.help.about = [Àbòùt XýSçrìpt ······]   # About XyScript
+
+
+# =============================================================================
+# 2. DIALOGS  — ILLUSTRATIVE STUB (to be completed in phase 1)
+# =============================================================================
+# Shows how dialog titles, field labels, and buttons fit the same scheme.
+
+# ---- Shared buttons ---------------------------------------------------------
+button.ok = [ÒK ··]   # OK
+button.cancel = [Çàñçèl ··]   # Cancel
+button.close = [Çlòsè ··]   # Close
+
+# ---- Grep dialog ------------------------------------------------------------
+dialog.grep.title = [Grèp ··]   # Grep
+dialog.grep.pattern = [Pàttèrñ ···]   # Pattern
+dialog.grep.folder = [Fòldèr òr glòb (òptìòñàl) ··········]   # Folder or glob (optional)
+dialog.grep.regex = [Règùlàr èxprèssìòñ ·······]   # Regular expression
+dialog.grep.ignore_case = [Ìgñòrè çàsè ····]   # Ignore case
+dialog.grep.whole_word = [Whòlè wòrd ····]   # Whole word
+dialog.grep.search = [Sèàrçh ··]   # Search
+
+# ---- Find / Replace dialog --------------------------------------------------
+dialog.find.title = [Fìñd ··]   # Find
+dialog.find.replace_title = [Rèplàçè ···]   # Replace
+dialog.find.find_what = [Fìñd whàt ····]   # Find what
+dialog.find.replace_with = [Rèplàçè wìth ·····]   # Replace with
+
+
+# =============================================================================
+# 3. MESSAGES  — ILLUSTRATIVE STUB (phase 2)
+# =============================================================================
+# Status-line and error text. These carry {placeholders}; keep them intact.
+# There are ~270 of these in the code; only a few are shown here to fix the
+# convention (named placeholders instead of positional {}).
+
+msg.grep.summary = [{count} màtçhès ìñ {files} fìlès ·············]   # {count} matches in {files} files
+msg.grep.none = [Ñò màtçhès ····]   # No matches
+msg.grep.running = [Sèàrçhìñg… {count} màtçhès sò fàr ·············]   # Searching… {count} matches so far
+msg.save.written = [Sàvèd {path} ·····]   # Saved {path}
+msg.open.not_found = [Fìlè ñòt fòùñd: {path} ·········]   # File not found: {path}
+msg.readonly = [Thìs bùffèr ìs rèàd-òñlý ··········]   # This buffer is read-only

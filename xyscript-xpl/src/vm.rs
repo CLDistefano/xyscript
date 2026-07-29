@@ -1923,6 +1923,18 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::LoadCfg(arg))?;
                 Ok(Flow::Next)
             }
+            // `LANG <path>` loads a UI translation table; bare `LANG` or `LANG off` clears it (back
+            // to built-in English). i18n phase-1 spike.
+            "LANG" => {
+                let p = args.trim();
+                let arg = if p.is_empty() || p.eq_ignore_ascii_case("off") {
+                    None
+                } else {
+                    Some(p.to_string())
+                };
+                self.host_op(EditorOp::LoadLang(arg))?;
+                Ok(Flow::Next)
+            }
             // `AUTOCFG [path]` starts live config tracking (default file if no path); `AUTOCFG off`
             // stops it. Self-updating SAVECFG (settings only). Read back via `$ACF`.
             "AUTOCFG" => {

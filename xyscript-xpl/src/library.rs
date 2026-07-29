@@ -138,7 +138,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "HISTORY", "HI", "LOADCM", "SAVECM", "CMH", "LOADCLOSED", "SAVECLOSED", "REOPEN",
     "CLEARCLOSED",
     // Global-variable persistence: save/reload/list all globals and their values.
-    "SAVEVARS", "LOADVARS", "LISTVARS", "LISTVAR",
+    "SAVEVARS", "LOADVARS", "LISTVARS", "LISTVAR", "LANG",
     // GUI view toggles (B15): menu bar / visible-¶ / visible-whitespace / line-number
     // gutter / pop-up command line, each S=on C=off T=toggle.
     "SMB", "CMB", "TMB", "SVR", "CVR", "TVR", "SWS", "CWS", "TWS", "SLN", "CLN", "TLN",

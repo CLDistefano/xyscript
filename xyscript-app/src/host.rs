@@ -1453,6 +1453,32 @@ fn truncate_col(s: &str, width: usize) -> String {
     }
 }
 
+/// Parse a `LANG` UI-string table: a flat UTF-8 file of `key = value   # english-source` lines.
+/// The key is everything left of the FIRST `=`; the value is the rest with any trailing `# …`
+/// reference comment stripped and trimmed. Blank/`#`-comment lines and empty values are skipped —
+/// an empty value means "fall back to English", so a partially-filled catalog works. (Values never
+/// contain `#` in practice; the reference comment is split off at the first one.)
+fn parse_lang_table(text: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for line in text.lines() {
+        let line = line.trim_start_matches('\u{feff}'); // tolerate a leading BOM
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, rest)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = rest.split('#').next().unwrap_or("").trim();
+        if key.is_empty() || value.is_empty() {
+            continue;
+        }
+        map.insert(key.to_string(), value.to_string());
+    }
+    map
+}
+
 /// A one-line preview of selection text for the enhanced-`CP` chooser: the first non-blank-trimmed
 /// line, truncated to ~40 characters with an ellipsis.
 fn preview_one_line(s: &str) -> String {
@@ -1876,6 +1902,9 @@ pub struct AppHost {
     config_track_path: Option<String>,
     /// The resolved path of the most recent `LOADCFG` (persists; `None` = none yet). `$CF`.
     last_loadcfg_path: Option<String>,
+    /// UI translation table (`LANG`): `string-id -> localized text`. Empty = built-in English. The
+    /// GUI looks up menu/dialog labels here, falling back to English on a miss. i18n phase-1 spike.
+    lang: HashMap<String, String>,
     /// `QUIET` status-suppression level for the current script: 0 = off, 1 = hide op-result
     /// statuses (PR + errors still show), 2 = also hide non-fatal error text. Reset per top-level
     /// script run (the editor clears it at the start of each outermost dispatch).
@@ -2269,6 +2298,7 @@ impl AppHost {
             keymap_gen: 0,
             config_track_path: None,
             last_loadcfg_path: None,
+            lang: HashMap::new(),
             quiet: 0,
             config_last_written: String::new(),
             jobs: Vec::new(),
@@ -3285,6 +3315,11 @@ impl AppHost {
     /// Tab width in spaces (`TB`/`$TB`); the GUI uses it for visual tab stops.
     pub fn tab_width(&self) -> usize {
         self.tab_width
+    }
+    /// The `LANG` translation for UI string `id`, or `None` to fall back to built-in English. The
+    /// GUI wraps this in `tr(id, english)`; empty table (no `LANG` loaded) ⇒ always English.
+    pub fn lang_get(&self, id: &str) -> Option<&str> {
+        self.lang.get(id).map(String::as_str)
     }
     /// `BALPAIRS` — is matched-bracket highlighting on?
     pub fn bal_pairs(&self) -> bool {
@@ -8650,6 +8685,24 @@ impl Host for AppHost {
                 self.pending_run.push("PR loaded config from $CF".to_string());
                 return Ok(Value::str(format!("loading config from {path}")));
             }
+            EditorOp::LoadLang(opt) => {
+                // `LANG off` / bare `LANG` (None) clears the table → built-in English.
+                let Some(path) = opt.filter(|p| !p.trim().is_empty()) else {
+                    self.lang.clear();
+                    return Ok(Value::str("language reset to English".to_string()));
+                };
+                let resolved = if self.virtual_fs {
+                    path.clone()
+                } else {
+                    self.resolve_path(&path).to_string_lossy().into_owned()
+                };
+                let content = self.read_file(&resolved)?;
+                self.lang = parse_lang_table(&content);
+                return Ok(Value::str(format!(
+                    "loaded {} UI strings from {path}",
+                    self.lang.len()
+                )));
+            }
             EditorOp::SetTabWidth(n) => {
                 self.tab_width = n;
                 return Ok(Value::str(format!("tab width {n}")));
@@ -11323,5 +11376,24 @@ mod tests {
         assert!(fenced_block_at(NOTE, 9).is_none());
         // An unterminated fence yields no runnable block.
         assert!(fenced_block_at("text\n```\nMSG x\nmore", 2).is_none());
+    }
+
+    #[test]
+    fn lang_table_parses_keys_strips_comments_and_skips_blanks() {
+        let src = "\
+# a comment line
+menu.file.new = Nouveau            # New
+menu.file.open = Ouvrir…
+menu.file.save =                   # Save  (blank value → falls back to English)
+
+msg.grep.summary = {count} correspondances   # {count} matches
+not a kv line
+";
+        let t = super::parse_lang_table(src);
+        assert_eq!(t.get("menu.file.new").map(String::as_str), Some("Nouveau")); // comment stripped
+        assert_eq!(t.get("menu.file.open").map(String::as_str), Some("Ouvrir…")); // no comment
+        assert_eq!(t.get("menu.file.save"), None); // blank value → skipped (English fallback)
+        assert_eq!(t.get("msg.grep.summary").map(String::as_str), Some("{count} correspondances")); // placeholder kept
+        assert_eq!(t.len(), 3); // the comment line and "not a kv line" are ignored
     }
 }
