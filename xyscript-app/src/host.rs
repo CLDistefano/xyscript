@@ -8716,6 +8716,15 @@ impl Host for AppHost {
                     self.lang_path = None;
                     return Ok(Value::str("language reset to English".to_string()));
                 };
+                // Two-letter language-code shorthand: `LANG fi` → `fi.lang` (resolved against `$CWD`
+                // like any relative path). Give a name with an extension or path to load a file
+                // directly (`LANG fr.txt`, `LANG i18n\de.lang`) — that form is untouched.
+                let code = path.trim();
+                let path = if code.len() == 2 && code.bytes().all(|b| b.is_ascii_alphabetic()) {
+                    format!("{code}.lang")
+                } else {
+                    path
+                };
                 let resolved = if self.virtual_fs {
                     path.clone()
                 } else {

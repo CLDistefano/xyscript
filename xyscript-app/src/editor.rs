@@ -4249,6 +4249,30 @@ mod tests {
     }
 
     #[test]
+    fn lang_two_letter_shorthand_loads_the_dot_lang_file() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("fi.lang".into(), "menubar.file = Tiedosto\n".into());
+        e.host_mut().files.insert("catalog.txt".into(), "menubar.file = Zzz\n".into());
+
+        // `LANG fi` → loads `fi.lang`; $LANG reports the (resolved) path it loaded.
+        e.run_command("LANG fi");
+        assert_eq!(e.host().lang_get("menubar.file"), Some("Tiedosto"));
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some("fi.lang"));
+
+        // A name with an extension is the explicit-path form — no `.lang` appended.
+        e.run_command("LANG catalog.txt");
+        assert_eq!(e.host().lang_get("menubar.file"), Some("Zzz"));
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some("catalog.txt"));
+
+        // A 3-letter argument is NOT shorthand — it's a literal path (here, missing → traps).
+        e.run_command("LANG eng");
+        assert!(e.host().lang_get("menubar.file").is_some(), "failed load left the prior catalog intact");
+    }
+
+    #[test]
     fn savecfg_persists_the_lang_catalog_and_reads_back_as_lang() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
