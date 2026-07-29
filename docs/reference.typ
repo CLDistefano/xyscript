@@ -768,7 +768,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SAVEVARS"): save every global variable and its value to a file (`SaveVars [path]`; bare → `xyscript-vars.txt`, resolved against `$CWD`). The file is `name⇥value-literal` lines — a data file, not a script. Under `CAPTURE` the text goes into the variable instead. #cmd("LOADVARS"): restore variables written by `SaveVars` (`LoadVars [path]`); each value is evaluated directly, so a `$` in a saved string stays literal. A missing file or a bad line sets `$ERROR`.
 / #cmd("LISTVARS"): list every global variable and its current value (`$name: value`, sorted) — into a `CAPTURE` variable if one is open, else inserted at the caret. #cmd("LISTVAR") is a synonym.
 / #cmd("LOCAL"): scope variables to the current routine.
-/ #cmd("LANG"): `LANG <file>` — load a UI translation table so the interface shows in another language. The file is a flat UTF-8 `key = value` catalog of translated menu/dialog labels (`#`-comments and blank values allowed; a blank or missing key falls back to the built-in English, so a partial catalog works). Bare `LANG` or `LANG off` reverts to English. Point-and-shoot: with the caret on a catalog file in a `DIR` listing, bare `LANG` loads that file. Path resolved against `$CWD`. Experimental (phase-1: the menu bar and the File and Search menus are wired so far).
+/ #cmd("LANG"): `LANG <file>` — load a UI translation table so the interface shows in another language. The file is a flat UTF-8 `key = value` catalog of translated menu/dialog labels (`#`-comments and blank values allowed; a blank or missing key falls back to the built-in English, so a partial catalog works). Bare `LANG` or `LANG off` reverts to English. Point-and-shoot: with the caret on a catalog file in a `DIR` listing, bare `LANG` loads that file. Path resolved against `$CWD`, read back as #sv("LANG"), and persisted by `SaveCfg` (a `LANG <path>` line) so the choice restores on load. Experimental (phase-1: the menu bar and the File and Search menus are wired so far).
 
 == M
 
@@ -1060,6 +1060,7 @@ plain alphabetical index.
 / #sv("NL"): the document's line-ending *characters* (a real newline) — the character form of #sv("NEWLINE"), for building text or file content that matches the document. (A string `\n` escape is always a lone LF; #sv("NL") is `\r\n` in a CRLF document.) New documents adopt the OS default.
 / #sv("CF") / #sv("CFA"): path of the last config loaded with `LOADCFG` / the file `AUTOCFG` is tracking (empty if off).
 / #sv("KB"): full path of the last keymap loaded with `LOADKBD`.
+/ #sv("LANG"): path of the loaded `LANG` UI-translation catalog (empty when the interface is built-in English).
 / #sv("ED") / #sv("XSDIR"): full path of the running XyScript program / the folder it lives in.
 / #sv("VE") / #sv("OS"): the XyScript version / the operating-system name.
 
@@ -1272,6 +1273,7 @@ Every special variable in one list, for quick lookup.
 / #sv("INDENTED"): current line's indentation, in columns.
 / #sv("JOBS"): running background-job count.
 / #sv("KB"): last `LOADKBD` file path.
+/ #sv("LANG"): loaded `LANG` UI-translation catalog path (empty = English).
 / #sv("LC"): caret's column (1-based).
 / #sv("LI"): text of the line under the caret.
 / #sv("LJ"): id of the last job launched.

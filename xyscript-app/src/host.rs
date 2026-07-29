@@ -1905,6 +1905,9 @@ pub struct AppHost {
     /// UI translation table (`LANG`): `string-id -> localized text`. Empty = built-in English. The
     /// GUI looks up menu/dialog labels here, falling back to English on a miss. i18n phase-1 spike.
     lang: HashMap<String, String>,
+    /// The (resolved) path of the catalog loaded by `LANG`, or `None` when English. Read back as
+    /// `$LANG`; persisted by `SAVECFG` as a re-runnable `LANG <path>` line so the choice restores.
+    lang_path: Option<String>,
     /// `QUIET` status-suppression level for the current script: 0 = off, 1 = hide op-result
     /// statuses (PR + errors still show), 2 = also hide non-fatal error text. Reset per top-level
     /// script run (the editor clears it at the start of each outermost dispatch).
@@ -2299,6 +2302,7 @@ impl AppHost {
             config_track_path: None,
             last_loadcfg_path: None,
             lang: HashMap::new(),
+            lang_path: None,
             quiet: 0,
             config_last_written: String::new(),
             jobs: Vec::new(),
@@ -6784,6 +6788,10 @@ impl AppHost {
         let (r, g, b) = self.pane_border_color;
         put(&mut s, "Active split-pane border colour — R G B, 0-255", format!("PANECOLOR {r} {g} {b}"));
         put(&mut s, "Language-check dialect", format!("DIALECT {}", self.lint_dialect.name()));
+        // UI localization catalog — emit only when one is loaded (default is built-in English).
+        if let Some(path) = &self.lang_path {
+            put(&mut s, "UI translation catalog (LANG) — path to a key=value strings file", format!("LANG {path}"));
+        }
         // Tab-title backgrounds — emit only the states the user set (others stay egui's theme).
         for (state, color) in
             [("active", self.tab_active_bg), ("hover", self.tab_hover_bg), ("inactive", self.tab_inactive_bg)]
@@ -8705,6 +8713,7 @@ impl Host for AppHost {
                 // `LANG off` / bare `LANG` (None) clears the table → built-in English.
                 let Some(path) = opt.filter(|p| !p.trim().is_empty()) else {
                     self.lang.clear();
+                    self.lang_path = None;
                     return Ok(Value::str("language reset to English".to_string()));
                 };
                 let resolved = if self.virtual_fs {
@@ -8714,6 +8723,7 @@ impl Host for AppHost {
                 };
                 let content = self.read_file(&resolved)?;
                 self.lang = parse_lang_table(&content);
+                self.lang_path = Some(resolved);
                 return Ok(Value::str(format!(
                     "loaded {} UI strings from {path}",
                     self.lang.len()
@@ -10283,6 +10293,8 @@ impl Host for AppHost {
             "SPELLING" => Some(Value::Int(if self.spell_on { 1 } else { 0 })),
             "GRAMMAR" => Some(Value::Int(if self.grammar_on { 1 } else { 0 })),
             "DIALECT" => Some(Value::str(self.lint_dialect.name())),
+            // Path of the loaded LANG catalog; empty string when English (no catalog).
+            "LANG" => Some(Value::str(self.lang_path.clone().unwrap_or_default())),
             "SPELLSTYLE" => Some(Value::str(self.spell_style.name())),
             "GRAMMARSTYLE" => Some(Value::str(self.grammar_style.name())),
             "PANES" => Some(Value::Int(self.pane_count() as i64)),

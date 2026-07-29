@@ -4249,6 +4249,36 @@ mod tests {
     }
 
     #[test]
+    fn savecfg_persists_the_lang_catalog_and_reads_back_as_lang() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("cat.txt".into(), "menubar.file = Zzz\n".into());
+
+        // No catalog → $LANG is empty and SaveCfg emits no LANG line.
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some(""));
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(!e.host_mut().files.get("cfg.cfg").unwrap().contains("\nLANG "), "no LANG line yet");
+
+        // Load a catalog → $LANG reports its path and SaveCfg records a re-runnable LANG line.
+        e.run_command("LANG cat.txt");
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some("cat.txt"));
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(e.host_mut().files.get("cfg.cfg").unwrap().contains("LANG cat.txt"), "cfg records the catalog");
+
+        // Clear, then LOADCFG restores it (the saved LANG line reloads the catalog).
+        e.run_command("LANG off");
+        assert_eq!(e.host().lang_get("menubar.file"), None);
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some(""));
+        e.run_command("LOADCFG cfg.cfg");
+        assert_eq!(e.host().lang_get("menubar.file"), Some("Zzz"), "LOADCFG reloaded the catalog");
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some("cat.txt"));
+    }
+
+    #[test]
     fn cmh_with_an_argument_stashes_a_quoted_string_with_vars_expanded() {
         let mut e = Editor::new(typing_keymap());
         // `CMH "command"` adds the quoted string to the top of history without running it.

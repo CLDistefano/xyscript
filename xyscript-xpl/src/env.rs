@@ -81,6 +81,8 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "RC", "LS", "TR", "XO", "JOBS", "LJ",
     // language checking (live-on flags + dialect + underline styles)
     "SPELLING", "GRAMMAR", "DIALECT", "SPELLSTYLE", "GRAMMARSTYLE",
+    // UI localization: path of the loaded LANG catalog (empty = built-in English)
+    "LANG",
     // split panes: pane count + focused pane's 1-based position + active-pane border colour
     "PANES", "PANE", "PANECOLOR",
     // clipboard / deletion buffer
