@@ -1012,9 +1012,13 @@ fn lang_endonym(path: &std::path::Path) -> Option<String> {
     None
 }
 
-/// Scan `dirs` for loadable `<xx>.lang` catalogs, skipping the generated `en.lang` (English is the
-/// menu's built-in entry). Deduped by file stem — the first directory to provide a code wins — and
-/// sorted by display name so the menu order is stable.
+/// Non-language `<xx>.lang` files to keep out of the picker: the generated English source (English
+/// is the menu's built-in entry) and the pseudolocale (a layout smoke test, not a real language).
+const NON_LANGUAGE_LANGS: &[&str] = &["en", "pseudo"];
+
+/// Scan `dirs` for loadable `<xx>.lang` catalogs, skipping [`NON_LANGUAGE_LANGS`]. Deduped by file
+/// stem — the first directory to provide a code wins — and sorted by display name so the menu order
+/// is stable.
 fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
     let mut seen = std::collections::HashSet::new();
     let mut out: Vec<LangChoice> = Vec::new();
@@ -1026,7 +1030,9 @@ fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
                 continue;
             }
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-            if stem.eq_ignore_ascii_case("en") || !seen.insert(stem.to_ascii_lowercase()) {
+            if NON_LANGUAGE_LANGS.iter().any(|s| stem.eq_ignore_ascii_case(s))
+                || !seen.insert(stem.to_ascii_lowercase())
+            {
                 continue;
             }
             let name = lang_endonym(&path).unwrap_or_else(|| stem.to_uppercase());
@@ -1057,11 +1063,13 @@ mod menu_tests {
         std::fs::write(base.join("de.lang"), "# XyScript UI strings — DEUTSCH (German)\n").unwrap();
         std::fs::write(base.join("xx.lang"), "no header here\n").unwrap(); // falls back to the code
         std::fs::write(base.join("en.lang"), "# English source\n").unwrap(); // skipped — English is built in
+        std::fs::write(base.join("pseudo.lang"), "# — PSEUDO (smoke test)\n").unwrap(); // skipped — not a language
         std::fs::write(base.join("notes.txt"), "not a catalog").unwrap(); // ignored — not .lang
 
         let got = discover_langs(&[base.clone()]);
         let names: Vec<_> = got.iter().map(|c| c.name.as_str()).collect();
-        // en.lang skipped, .txt ignored; endonyms title-cased; missing header → uppercased code; name-sorted.
+        // en.lang + pseudo.lang skipped, .txt ignored; endonyms title-cased; missing header → uppercased
+        // code; name-sorted.
         assert_eq!(names, ["Deutsch", "Français", "XX"]);
         // Same dir listed twice → deduped by stem (first wins), not doubled.
         assert_eq!(discover_langs(&[base.clone(), base.clone()]).len(), 3);
