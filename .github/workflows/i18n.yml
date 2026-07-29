@@ -1,0 +1,36 @@
+name: i18n
+
+# Early drift gate: fail a push/PR the moment the UI catalogs (docs/i18n/*.lang) fall out of sync
+# with the tr()/tr_msg()/tr_fmt() strings in the code — so drift is caught in review, not only at
+# release time (release.yml runs the same check to gate the tag-triggered binaries).
+#
+# The `paths` filter mirrors i18n-sync.py's SOURCES plus the catalog dir, so this only runs when the
+# strings or catalogs could actually have changed. Keep the two lists in step: if a new file starts
+# using tr(), add it to i18n-sync.py's SOURCES and to the paths below.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "xyscript-gui/src/main.rs"
+      - "xyscript-app/src/host.rs"
+      - "docs/i18n/**"
+      - ".github/workflows/i18n.yml"
+  pull_request:
+    paths:
+      - "xyscript-gui/src/main.rs"
+      - "xyscript-app/src/host.rs"
+      - "docs/i18n/**"
+      - ".github/workflows/i18n.yml"
+
+jobs:
+  check:
+    name: UI catalogs in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Verify docs/i18n catalogs match the code
+        run: python docs/i18n/i18n-sync.py --check
