@@ -3325,6 +3325,11 @@ impl AppHost {
     pub fn lang_get(&self, id: &str) -> Option<&str> {
         self.lang.get(id).map(String::as_str)
     }
+    /// The (resolved) path of the loaded `LANG` catalog, or `None` when English. Read back as
+    /// `$LANG`; the GUI uses it to tick the active language in the `Settings ▸ Language` menu.
+    pub fn lang_path(&self) -> Option<&str> {
+        self.lang_path.as_deref()
+    }
     /// A localized status/error MESSAGE: the `LANG` translation for `id`, else the English `en`.
     /// Host-side sibling of the GUI's `tr` (the `lang` table lives here, so messages the host emits
     /// translate at the source). Plain — no placeholders; use [`tr_fmt`](Self::tr_fmt) for those.

@@ -976,9 +976,96 @@ fn encoding_convert_items() -> Vec<MenuNode> {
         .collect()
 }
 
+/// A `<xx>.lang` UI-translation catalog found on disk, for the `Settings ▸ Language` menu.
+#[derive(Clone)]
+struct LangChoice {
+    /// Endonym shown in the menu — the catalog's own native name (e.g. "Français"), or the bare
+    /// language code when the file has no readable header.
+    name: String,
+    /// Path to hand to `LANG` (forward-slashed so it drops cleanly into a command string).
+    cmd_path: String,
+    /// Canonicalized path, compared against `Editor::lang_path` to tick the active catalog.
+    canon: String,
+}
+
+/// First letter upper, the rest lower (Unicode-aware): a header's all-caps "FRANÇAIS" → "Français".
+fn titlecase(s: &str) -> String {
+    let mut cs = s.chars();
+    match cs.next() {
+        Some(c) => c.to_uppercase().chain(cs.flat_map(char::to_lowercase)).collect(),
+        None => String::new(),
+    }
+}
+
+/// A catalog's endonym, read from its header line (`# XyScript UI strings — FRANÇAIS (French)`) and
+/// title-cased. `None` if the file can't be read or has no such `—`-delimited native name.
+fn lang_endonym(path: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    for line in text.lines().take(12) {
+        if let Some((_, rest)) = line.split_once('—') {
+            let native = rest.split('(').next().unwrap_or("").trim();
+            if !native.is_empty() {
+                return Some(titlecase(native));
+            }
+        }
+    }
+    None
+}
+
+/// Scan `dirs` for loadable `<xx>.lang` catalogs, skipping the generated `en.lang` (English is the
+/// menu's built-in entry). Deduped by file stem — the first directory to provide a code wins — and
+/// sorted by display name so the menu order is stable.
+fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<LangChoice> = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        for e in entries.flatten() {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("lang") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            if stem.eq_ignore_ascii_case("en") || !seen.insert(stem.to_ascii_lowercase()) {
+                continue;
+            }
+            let name = lang_endonym(&path).unwrap_or_else(|| stem.to_uppercase());
+            let canon = std::fs::canonicalize(&path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            out.push(LangChoice {
+                name,
+                cmd_path: path.to_string_lossy().replace('\\', "/"),
+                canon,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
 #[cfg(test)]
 mod menu_tests {
     use super::*;
+
+    #[test]
+    fn discover_langs_skips_english_reads_endonyms_and_dedups() {
+        let base = std::env::temp_dir().join(format!("xyscript-langdisc-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("fr.lang"), "# XyScript UI strings — FRANÇAIS (French)\nmenubar.file = Fichier\n").unwrap();
+        std::fs::write(base.join("de.lang"), "# XyScript UI strings — DEUTSCH (German)\n").unwrap();
+        std::fs::write(base.join("xx.lang"), "no header here\n").unwrap(); // falls back to the code
+        std::fs::write(base.join("en.lang"), "# English source\n").unwrap(); // skipped — English is built in
+        std::fs::write(base.join("notes.txt"), "not a catalog").unwrap(); // ignored — not .lang
+
+        let got = discover_langs(&[base.clone()]);
+        let names: Vec<_> = got.iter().map(|c| c.name.as_str()).collect();
+        // en.lang skipped, .txt ignored; endonyms title-cased; missing header → uppercased code; name-sorted.
+        assert_eq!(names, ["Deutsch", "Français", "XX"]);
+        // Same dir listed twice → deduped by stem (first wins), not doubled.
+        assert_eq!(discover_langs(&[base.clone(), base.clone()]).len(), 3);
+    }
 
     /// Deeper menu columns must sit in a STRICTLY higher egui layer than their parent, so a submenu
     /// can never be painted under the column that spawned it (the field report was
@@ -1969,6 +2056,10 @@ struct GuiApp {
     /// The line being typed for a script parked on `INPUT` (a modal prompt owns the
     /// keyboard while `editor.awaiting_line()`). `READKEY` is captured raw in `runtime.rs`.
     input_line: String,
+    /// Cached discovery of loadable `<xx>.lang` catalogs for `Settings ▸ Language`, with the instant
+    /// it was scanned. `menu_tree` (hence this scan) runs every frame, so `available_languages`
+    /// throttles the filesystem walk. `RefCell` because `menu_tree` takes `&self`.
+    lang_menu_cache: std::cell::RefCell<Option<(std::time::Instant, Vec<LangChoice>)>>,
 }
 
 impl GuiApp {
@@ -2129,6 +2220,7 @@ impl GuiApp {
             quitting: false,
             should_exit: false,
             input_line: String::new(),
+            lang_menu_cache: std::cell::RefCell::new(None),
         }
     }
 
@@ -5229,6 +5321,27 @@ impl GuiApp {
         self.editor.lang_get(id).map(str::to_string).unwrap_or_else(|| en.to_string())
     }
 
+    /// The `<xx>.lang` catalogs to offer under `Settings ▸ Language`, discovered from `$CWD`, the
+    /// executable's own directory, and a `lang/` folder beside it. `menu_tree` (hence this) runs
+    /// every frame, so the filesystem walk is throttled to a few times a second and cached.
+    fn available_languages(&self) -> Vec<LangChoice> {
+        const TTL: std::time::Duration = std::time::Duration::from_millis(1500);
+        let mut cache = self.lang_menu_cache.borrow_mut();
+        if let Some((at, choices)) = cache.as_ref() {
+            if at.elapsed() < TTL {
+                return choices.clone();
+            }
+        }
+        let mut dirs = vec![std::path::PathBuf::from(self.editor.cwd())];
+        if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
+            dirs.push(dir.join("lang"));
+            dirs.push(dir);
+        }
+        let choices = discover_langs(&dirs);
+        *cache = Some((std::time::Instant::now(), choices.clone()));
+        choices
+    }
+
     /// Build the menu tree from the live editor state — the single source the mouse menu bar and the
     /// keyboard navigator both render. Rebuilt each frame so ✓ marks and generated submenus stay
     /// current. Item commands are the same XPL the old inline menus fired.
@@ -5579,6 +5692,22 @@ impl GuiApp {
                     m_act(self.tr("menu.settings.keyboard.save", "Save…"), pick(true, kbd_f, "SAVEKBD {}")),
                     m_item(self.tr("menu.settings.keyboard.reset", "Reset to built-in"), "CLEARKBD"),
                 ]),
+                // UI language — discovered `<xx>.lang` catalogs plus a built-in English entry. Item
+                // labels are endonyms (each language in its own name), so they are NOT translated;
+                // only the submenu title is. The active catalog is ticked via `Editor::lang_path`.
+                m_sub(self.tr("menu.settings.language", "Language"), {
+                    let active_canon = self
+                        .editor
+                        .lang_path()
+                        .and_then(|p| std::fs::canonicalize(p).ok())
+                        .map(|p| p.to_string_lossy().into_owned());
+                    let mut items = vec![m_tog("English", active_canon.is_none(), "LANG off")];
+                    for c in self.available_languages() {
+                        let on = active_canon.as_deref() == Some(c.canon.as_str());
+                        items.push(m_tog(c.name, on, format!("LANG {}", c.cmd_path)));
+                    }
+                    items
+                }),
                 m_tog(self.tr("menu.settings.allow_shell", "Allow shell commands"), trusted, if trusted { "TRUST 0" } else { "TRUST 1" }),
                 MenuNode::Sep,
                 m_act(self.tr("menu.settings.save_settings", "Save settings…"), pick(true, cfg_f, "SAVECFG {}")),

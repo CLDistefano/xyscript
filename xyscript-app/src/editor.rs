@@ -366,6 +366,10 @@ impl Editor {
     pub fn lang_get(&self, id: &str) -> Option<&str> {
         self.host.lang_get(id)
     }
+    /// Path of the loaded `LANG` catalog, or `None` when English. See [`AppHost::lang_path`].
+    pub fn lang_path(&self) -> Option<&str> {
+        self.host.lang_path()
+    }
     pub fn tab_width(&self) -> usize {
         self.host.tab_width()
     }
