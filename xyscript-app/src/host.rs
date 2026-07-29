@@ -3365,6 +3365,18 @@ impl AppHost {
                     "many"
                 }
             }
+            // Russian/Ukrainian: one=n%10==1 except the teens; few=n%10 in 2–4 except the teens;
+            // many=the rest. Unlike Polish, "one" covers 21, 31, … (not just 1).
+            Some("east-slavic") => {
+                let (unit, teen) = (n % 10, n % 100);
+                if unit == 1 && teen != 11 {
+                    "one"
+                } else if (2..=4).contains(&unit) && !(12..=14).contains(&teen) {
+                    "few"
+                } else {
+                    "many"
+                }
+            }
             // Czech: one=1; few=2–4 exactly; other=the rest.
             Some("czech") => {
                 if n == 1 {
@@ -11585,6 +11597,14 @@ not a kv line
         assert_eq!(cat("polish", 5), "many");
         assert_eq!(cat("polish", 14), "many"); // teen → many, not few
         assert_eq!(cat("polish", 24), "few"); // 24 % 10 == 4, not a teen
+        // Russian/Ukrainian: one covers 1,21,31 (n%10==1, not the teens); few 2–4 & 22–24; many rest.
+        assert_eq!(cat("east-slavic", 1), "one");
+        assert_eq!(cat("east-slavic", 21), "one"); // unlike Polish
+        assert_eq!(cat("east-slavic", 11), "many"); // teen
+        assert_eq!(cat("east-slavic", 2), "few");
+        assert_eq!(cat("east-slavic", 24), "few");
+        assert_eq!(cat("east-slavic", 12), "many"); // teen
+        assert_eq!(cat("east-slavic", 5), "many");
         // Czech: 1=one; 2–4 exactly=few; else other (22 is NOT few).
         assert_eq!(cat("czech", 1), "one");
         assert_eq!(cat("czech", 3), "few");

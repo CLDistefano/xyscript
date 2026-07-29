@@ -1,0 +1,283 @@
+# =============================================================================
+# XyScript UI strings — ΕΛΛΗΝΙΚΆ (Greek)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\el.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Αρχείο   # File
+menubar.edit = Επεξεργασία   # Edit
+menubar.search = Αναζήτηση   # Search
+menubar.view = Προβολή   # View
+menubar.document = Έγγραφο   # Document
+menubar.tools = Εργαλεία   # Tools
+menubar.settings = Ρυθμίσεις   # Settings
+menubar.help = Βοήθεια   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Νέο   # New
+menu.file.open = Άνοιγμα…   # Open…
+menu.file.open_readonly = Άνοιγμα μόνο για ανάγνωση…   # Open read-only…
+menu.file.revert = Επαναφορά στο αποθηκευμένο   # Revert to saved
+menu.file.save = Αποθήκευση   # Save
+menu.file.save_as = Αποθήκευση ως…   # Save as…
+menu.file.save_selection_as = Αποθήκευση επιλογής ως…   # Save selection as…
+menu.file.save_all = Αποθήκευση όλων   # Save all
+menu.file.export_pdf = Εξαγωγή PDF…   # Export PDF…
+menu.file.close = Κλείσιμο   # Close
+menu.file.quit = Έξοδος   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Αναίρεση   # Undo
+menu.edit.redo = Ακύρωση αναίρεσης   # Redo
+menu.edit.cut = Αποκοπή   # Cut
+menu.edit.copy = Αντιγραφή   # Copy
+menu.edit.append_clipboard = Προσθήκη στο πρόχειρο   # Append to clipboard
+menu.edit.prepend_clipboard = Προσθήκη στην αρχή του προχείρου   # Prepend to clipboard
+menu.edit.paste = Επικόλληση   # Paste
+menu.edit.select_all = Επιλογή όλων   # Select all
+menu.edit.delete_selection = Διαγραφή επιλογής   # Delete selection
+menu.edit.copy_to_cursor = Αντιγραφή στον δρομέα   # Copy to cursor
+menu.edit.move_to_cursor = Μετακίνηση στον δρομέα   # Move to cursor
+menu.edit.case = Αλλαγή πεζών-κεφαλαίων   # Change case
+menu.edit.case.upper = ΚΕΦΑΛΑΙΑ   # UPPERCASE
+menu.edit.case.lower = πεζά   # lowercase
+menu.edit.case.swap = Εναλλαγή πεζών-κεφαλαίων   # Swap case
+menu.edit.text_colour = Χρώμα κειμένου…   # Text colour…
+menu.edit.clear_text_colour = Εκκαθάριση χρώματος κειμένου   # Clear text colour
+menu.edit.insert_file = Εισαγωγή αρχείου…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Εύρεση…   # Find…
+menu.search.replace = Αντικατάσταση…   # Replace…
+menu.search.find_next = Εύρεση επόμενου   # Find next
+menu.search.find_prev = Εύρεση προηγούμενου   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Επισήμανση   # Emphasize
+menu.search.emphasize.selection = Επιλογή   # Selection
+menu.search.emphasize.word = Λέξη ή φράση…   # Word or phrase…
+menu.search.emphasize.regex = Κανονική έκφραση…   # Regular expression…
+menu.search.emphasize.clear = Εκκαθάριση   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Επισήμανση σύνταξης   # Highlighting
+menu.view.paragraph_marks = Σημάδια παραγράφου   # Paragraph marks
+menu.view.whitespace = Κενοί χαρακτήρες   # Whitespace
+menu.view.line_numbers = Αριθμοί γραμμών   # Line numbers
+menu.view.word_wrap = Αναδίπλωση λέξεων   # Word wrap
+menu.view.wrap_hang = Εσοχή αναδίπλωσης ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Παράθυρο προεπισκόπησης   # Preview pane
+menu.view.shell_pane = Παράθυρο κελύφους   # Shell pane
+menu.view.shell_output = Καρτέλα εξόδου κελύφους   # Shell output tab
+menu.view.split = Διαίρεση παραθύρων   # Split panes
+menu.view.split.side_by_side = Διαίρεση δίπλα-δίπλα   # Split side by side
+menu.view.split.top_bottom = Διαίρεση πάνω και κάτω   # Split top and bottom
+menu.view.split.focus_next = Εστίαση στο επόμενο παράθυρο   # Focus next pane
+menu.view.split.swap = Εναλλαγή των δύο παραθύρων   # Swap the two panes
+menu.view.split.zoom = Μεγέθυνση ενεργού παραθύρου (εναλλαγή)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Ενεργό παράθυρο σε πλήρη οθόνη   # Active pane full screen
+menu.view.split.remove = Κατάργηση διαίρεσης   # Remove split
+menu.view.menu_bar = Γραμμή μενού   # Menu bar
+menu.view.title_bar = Γραμμή τίτλου   # Title bar
+menu.view.writers_view = Προβολή συγγραφέα (Esc για έξοδο)   # Writer's View (Esc to exit)
+menu.view.cmdline = Γραμμή εντολών   # Command line
+menu.view.cmdline.popup = Αναδυόμενο   # Pop-up
+menu.view.cmdline.position = Θέση   # Position
+menu.view.cmdline.position.top = Πάνω   # Top
+menu.view.cmdline.position.bottom = Κάτω   # Bottom
+menu.view.cmdline.position.hidden = Κρυφή   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Τύπος εγγράφου   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Αυτόματα (κατά επέκταση)   # Auto (by extension)
+menu.document.encoding = Κωδικοποίηση κειμένου   # Text encoding
+menu.document.encoding.display_as = Εμφάνιση ως   # Display as
+menu.document.encoding.convert_to = Μετατροπή σε (νέο αρχείο)   # Convert to (new file)
+menu.document.line_endings = Τέλη γραμμών   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Μόνο για ανάγνωση   # Read-only
+menu.document.word_count = Καταμέτρηση λέξεων   # Word count
+menu.document.char_count = Καταμέτρηση χαρακτήρων   # Character count
+menu.document.properties = Ιδιότητες…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Εκτέλεση σεναρίου…   # Run script…
+menu.tools.run_script_bg = Εκτέλεση σεναρίου στο παρασκήνιο…   # Run script in background…
+menu.tools.run_here = Εκτέλεση κώδικα κάτω από τον δρομέα   # Run code under cursor
+menu.tools.shell_command = Εντολή κελύφους…   # Shell command…
+menu.tools.jobs = Εργασίες παρασκηνίου   # Background jobs
+menu.tools.lang = Γλωσσικός έλεγχος   # Language check
+menu.tools.lang.check = Έλεγχος εγγράφου   # Check document
+menu.tools.lang.spelling = Υπογράμμιση ορθογραφίας   # Spelling underlines
+menu.tools.lang.grammar = Υπογράμμιση γραμματικής   # Grammar underlines
+menu.tools.lang.spell_next = Επόμενο ορθογραφικό ζήτημα   # Next spelling issue
+menu.tools.lang.spell_prev = Προηγούμενο ορθογραφικό ζήτημα   # Previous spelling issue
+menu.tools.lang.grammar_next = Επόμενο γραμματικό ζήτημα   # Next grammar issue
+menu.tools.lang.grammar_prev = Προηγούμενο γραμματικό ζήτημα   # Previous grammar issue
+menu.tools.lang.fix = Διόρθωση ζητήματος στον δρομέα…   # Fix issue at cursor…
+menu.tools.lang.learn = Εκμάθηση επιλεγμένων λέξεων   # Learn selected words
+menu.tools.lang.dialect = Διάλεκτος   # Dialect
+menu.tools.lang.dialect.american = Αμερικανικά   # American
+menu.tools.lang.dialect.british = Βρετανικά   # British
+menu.tools.lang.dialect.canadian = Καναδικά   # Canadian
+menu.tools.lang.dialect.australian = Αυστραλιανά   # Australian
+menu.tools.lang.dialect.indian = Ινδικά   # Indian
+menu.tools.lang.spell_style = Στυλ ορθογραφίας   # Spelling style
+menu.tools.lang.grammar_style = Στυλ γραμματικής   # Grammar style
+menu.tools.email = Ηλεκτρονικό ταχυδρομείο   # Email
+menu.tools.email.list = Λίστα γραμματοκιβωτίου   # List mailbox
+menu.tools.email.save = Αποθήκευση μηνυμάτων…   # Save messages…
+menu.tools.email.delete = Διαγραφή μηνυμάτων…   # Delete messages…
+menu.tools.email.send = Αποστολή…   # Send…
+menu.tools.email.attach = Επισύναψη αρχείου…   # Attach file…
+menu.tools.email.clear_attach = Εκκαθάριση συνημμένων   # Clear attachments
+menu.tools.email.verbose = Αναλυτική καταγραφή   # Verbose logging
+menu.tools.library = Βιβλιοθήκη   # Library
+menu.tools.library.load = Φόρτωση…   # Load…
+menu.tools.library.reload = Επαναφόρτωση   # Reload
+menu.tools.library.unload = Αποφόρτωση όλων   # Unload all
+menu.tools.library.list = Λίστα ρουτινών   # List routines
+menu.tools.keyboard_chart = Χάρτης πληκτρολογίου   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Εμφάνιση   # Appearance
+menu.settings.appearance.colors = Χρώματα   # Colors
+menu.settings.appearance.colors.editor_text = Κείμενο επεξεργαστή…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Φόντο επεξεργαστή…   # Editor background…
+menu.settings.appearance.colors.selection_text = Κείμενο επιλογής…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Φόντο επιλογής…   # Selection background…
+menu.settings.appearance.colors.caret = Δρομέας…   # Caret…
+menu.settings.appearance.colors.separators = Διαχωριστικά…   # Separators…
+menu.settings.appearance.colors.tab_bg = Φόντο γραμμής καρτελών   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Ενεργή καρτέλα…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Καρτέλα υπό τον δείκτη…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Ανενεργή καρτέλα…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Κλείσιμο καρτέλας ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Κείμενο διεπαφής…   # UI text…
+menu.settings.appearance.colors.ui_bg = Φόντο διεπαφής…   # UI background…
+menu.settings.appearance.colors.txt_text = Κείμενο παραθύρου TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Φόντο παραθύρου TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Κείμενο παραθύρου καταλόγου…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Φόντο παραθύρου καταλόγου…   # Directory window background…
+menu.settings.appearance.fonts = Γραμματοσειρές   # Fonts
+menu.settings.appearance.fonts.editor = Επεξεργαστής…   # Editor…
+menu.settings.appearance.fonts.ui = Διεπαφή…   # UI…
+menu.settings.appearance.fonts.txt = Παράθυρο TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Παράθυρο καταλόγου…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Σώμα προεπισκόπησης / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Κώδικας προεπισκόπησης / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Ζουμ διεπαφής   # UI zoom
+menu.settings.appearance.ui_zoom.in = Μεγέθυνση   # Zoom in
+menu.settings.appearance.ui_zoom.out = Σμίκρυνση   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Επαναφορά (100%)   # Reset (100%)
+menu.settings.appearance.margins = Περιθώρια   # Margins
+menu.settings.appearance.margins.wider = Πλατύτερα   # Wider
+menu.settings.appearance.margins.narrower = Στενότερα   # Narrower
+menu.settings.appearance.margins.none = Κανένα   # None
+menu.settings.appearance.line_spacing = Διάστιχο   # Line spacing
+menu.settings.appearance.line_spacing.more = Περισσότερο   # More
+menu.settings.appearance.line_spacing.less = Λιγότερο   # Less
+menu.settings.appearance.reset_ui = Επαναφορά μεγέθους διεπαφής   # Reset UI sizing
+menu.settings.appearance.reset_dw = Επαναφορά παραθύρου καταλόγου   # Reset directory window
+menu.settings.syntax = Επισήμανση σύνταξης   # Syntax highlighting
+menu.settings.syntax.theme_colors = Χρώματα θέματος   # Theme colors
+menu.settings.syntax.token_kinds = Είδη Token…   # Token kinds…
+menu.settings.syntax.reset_theme = Επαναφορά θέματος   # Reset theme
+menu.settings.syntax.auto = Αυτόματη επισήμανση κατά το άνοιγμα   # Auto-highlight on open
+menu.settings.editor = Συμπεριφορά επεξεργαστή   # Editor behavior
+menu.settings.editor.persistent_sel = Μόνιμη επιλογή   # Persistent selection
+menu.settings.editor.remember_geom = Απομνημόνευση μεγέθους+θέσης παραθύρου   # Remember window size+position
+menu.settings.editor.coding = Βοηθήματα κωδικοποίησης   # Coding aids
+menu.settings.editor.coding.autoindent = Αυτόματη εσοχή σε νέες γραμμές   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Απαλοί στηλοθέτες (εισαγωγή κενών)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Κρεμαστή εσοχή για αναδιπλωμένες γραμμές   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Επισήμανση αντίστοιχων αγκύλων   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Αυτόματο κλείσιμο αγκύλων και εισαγωγικών   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Αυτόματη αποθήκευση   # Autosave
+menu.settings.editor.autosave.off = Ανενεργή   # Off
+menu.settings.editor.autosave.30s = Κάθε 30 δευτ.   # Every 30 s
+menu.settings.editor.autosave.1m = Κάθε 1 λεπτό   # Every 1 min
+menu.settings.editor.autosave.2m = Κάθε 2 λεπτά   # Every 2 min
+menu.settings.editor.autosave.5m = Κάθε 5 λεπτά   # Every 5 min
+menu.settings.editor.tab_width = Πλάτος στηλοθέτη   # Tab width
+menu.settings.editor.precision = Ακρίβεια αριθμών   # Number precision
+menu.settings.editor.precision.off = Ανενεργή (πλήρης)   # Off (full)
+menu.settings.keyboard = Πληκτρολόγιο   # Keyboard
+menu.settings.keyboard.load = Φόρτωση…   # Load…
+menu.settings.keyboard.save = Αποθήκευση…   # Save…
+menu.settings.keyboard.reset = Επαναφορά στο ενσωματωμένο   # Reset to built-in
+menu.settings.language = Γλώσσα   # Language
+menu.settings.allow_shell = Να επιτρέπονται εντολές κελύφους   # Allow shell commands
+menu.settings.save_settings = Αποθήκευση ρυθμίσεων…   # Save settings…
+menu.settings.load_settings = Φόρτωση ρυθμίσεων…   # Load settings…
+menu.settings.autosave_settings = Αυτόματη αποθήκευση ρυθμίσεων   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Αναφορά   # Reference
+menu.help.about = Σχετικά με το XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Εύρεση:   # Find:
+dialog.find.find_hint = κείμενο προς εύρεση   # text to find
+dialog.find.replace_label = Αντικατάσταση:   # Replace:
+dialog.find.replace_hint = αντικατάσταση   # replacement
+dialog.find.case = Διάκριση πεζών-κεφαλαίων   # Case sensitive
+dialog.find.whole_word = Ολόκληρη λέξη   # Whole word
+dialog.find.regex = Κανονική έκφραση   # Regular expression
+dialog.find.in_selection = Στην επιλογή   # In selection
+dialog.find.keep_case = Διατήρηση πεζών-κεφαλαίων στην αντικατάσταση   # Keep case in replacement
+dialog.find.keep_case_hint = Αντικατάσταση / Αντικατάσταση όλων: προσαρμογή κάθε αντικατάστασης ώστε να ταιριάζει με τα πεζά-κεφαλαία του κειμένου που αντικαθιστά (πεζά / Κεφαλαιοποιημένα / ΚΕΦΑΛΑΙΑ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Εύρεση επόμενου (F3)   # Find next (F3)
+dialog.find.find_prev = Εύρεση προηγούμενου (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Αντικατάσταση   # Replace
+dialog.find.replace_all = Αντικατάσταση όλων   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Εκτέλεση εντολής   # Run command
+dialog.run.shell_off = Οι εντολές κελύφους είναι ανενεργές — ενεργοποιήστε τες στο Ρυθμίσεις ⏵ Να επιτρέπονται εντολές κελύφους.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Εντολή:   # Command:
+dialog.run.command_hint = μια εντολή κελύφους   # a shell command
+dialog.run.background = Εκτέλεση στο παρασκήνιο   # Run in background
+dialog.run.insert_output = Εισαγωγή εξόδου στον δρομέα   # Insert output at cursor
+dialog.run.run = Εκτέλεση   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Αναζήτηση για:   # Search for:
+dialog.grep.pattern_hint = κείμενο (ή κανονική έκφραση με Κανονική έκφραση)   # text (or a regex with Regular expression)
+dialog.grep.folder = Στον φάκελο:   # In folder:
+dialog.grep.folder_hint = κενό = τρέχων φάκελος — ή  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Κανονική έκφραση   # Regular expression
+dialog.grep.ignore_case = Αγνόηση πεζών-κεφαλαίων   # Ignore case
+dialog.grep.whole_word = Ολόκληρη λέξη   # Whole word
+dialog.grep.search = Αναζήτηση   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Σχετικά με το XyScript   # About XyScript
+dialog.about.tagline = Ένας παραμετροποιήσιμος επεξεργαστής στην παράδοση του XyWrite.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Κλείσιμο   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: καμία αντιστοιχία   # GREP: no matches
+msg.grep.match.one = {n} αντιστοιχία   # {n} match
+msg.grep.match.other = {n} αντιστοιχίες   # {n} matches
+msg.grep.file.one = {n} αρχείο   # {n} file
+msg.grep.file.other = {n} αρχεία   # {n} files
+msg.grep.summary_capped = GREP: {matches} σε {files} (όριο στα {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} σε {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} μέχρι στιγμής…   # GREP: {matches} so far…
+msg.search.not_found = δεν βρέθηκε: {find}   # not found: {find}
+msg.save.written = αποθηκεύτηκε {name}   # saved {name}
+msg.open.not_found = το αρχείο δεν βρέθηκε: {path}   # file not found: {path}
+msg.readonly = το έγγραφο είναι μόνο για ανάγνωση (RO για ξεκλείδωμα)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: αναζήτηση…   # GREP: searching…

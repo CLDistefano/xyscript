@@ -1,0 +1,289 @@
+# =============================================================================
+# XyScript UI strings — УКРАЇНСЬКА (Ukrainian)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\uk.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+# Plural rule for this language — drives the singular/few/many selection in count
+# phrases (grep's match/file counts). Managed by i18n-sync; do not edit.
+_plural = east-slavic
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Файл   # File
+menubar.edit = Редагування   # Edit
+menubar.search = Пошук   # Search
+menubar.view = Вигляд   # View
+menubar.document = Документ   # Document
+menubar.tools = Інструменти   # Tools
+menubar.settings = Параметри   # Settings
+menubar.help = Довідка   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Створити   # New
+menu.file.open = Відкрити…   # Open…
+menu.file.open_readonly = Відкрити лише для читання…   # Open read-only…
+menu.file.revert = Повернути до збереженого   # Revert to saved
+menu.file.save = Зберегти   # Save
+menu.file.save_as = Зберегти як…   # Save as…
+menu.file.save_selection_as = Зберегти виділене як…   # Save selection as…
+menu.file.save_all = Зберегти все   # Save all
+menu.file.export_pdf = Експорт у PDF…   # Export PDF…
+menu.file.close = Закрити   # Close
+menu.file.quit = Вихід   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Скасувати   # Undo
+menu.edit.redo = Повторити   # Redo
+menu.edit.cut = Вирізати   # Cut
+menu.edit.copy = Копіювати   # Copy
+menu.edit.append_clipboard = Додати до буфера обміну   # Append to clipboard
+menu.edit.prepend_clipboard = Додати на початок буфера обміну   # Prepend to clipboard
+menu.edit.paste = Вставити   # Paste
+menu.edit.select_all = Виділити все   # Select all
+menu.edit.delete_selection = Видалити виділене   # Delete selection
+menu.edit.copy_to_cursor = Копіювати до курсора   # Copy to cursor
+menu.edit.move_to_cursor = Перемістити до курсора   # Move to cursor
+menu.edit.case = Змінити регістр   # Change case
+menu.edit.case.upper = ВЕЛИКІ ЛІТЕРИ   # UPPERCASE
+menu.edit.case.lower = малі літери   # lowercase
+menu.edit.case.swap = Поміняти регістр   # Swap case
+menu.edit.text_colour = Колір тексту…   # Text colour…
+menu.edit.clear_text_colour = Очистити колір тексту   # Clear text colour
+menu.edit.insert_file = Вставити файл…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Знайти…   # Find…
+menu.search.replace = Замінити…   # Replace…
+menu.search.find_next = Знайти далі   # Find next
+menu.search.find_prev = Знайти попереднє   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Виділити кольором   # Emphasize
+menu.search.emphasize.selection = Виділене   # Selection
+menu.search.emphasize.word = Слово або фразу…   # Word or phrase…
+menu.search.emphasize.regex = Регулярний вираз…   # Regular expression…
+menu.search.emphasize.clear = Очистити   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Підсвічування   # Highlighting
+menu.view.paragraph_marks = Знаки абзаців   # Paragraph marks
+menu.view.whitespace = Пробільні символи   # Whitespace
+menu.view.line_numbers = Номери рядків   # Line numbers
+menu.view.word_wrap = Перенесення слів   # Word wrap
+menu.view.wrap_hang = Відступ перенесення ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Панель попереднього перегляду   # Preview pane
+menu.view.shell_pane = Панель оболонки   # Shell pane
+menu.view.shell_output = Вкладка виводу оболонки   # Shell output tab
+menu.view.split = Розділити панелі   # Split panes
+menu.view.split.side_by_side = Розділити поруч   # Split side by side
+menu.view.split.top_bottom = Розділити зверху й знизу   # Split top and bottom
+menu.view.split.focus_next = Перейти до наступної панелі   # Focus next pane
+menu.view.split.swap = Поміняти панелі місцями   # Swap the two panes
+menu.view.split.zoom = Збільшити активну панель (перемкнути)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Активна панель на весь екран   # Active pane full screen
+menu.view.split.remove = Прибрати розділення   # Remove split
+menu.view.menu_bar = Рядок меню   # Menu bar
+menu.view.title_bar = Рядок заголовка   # Title bar
+menu.view.writers_view = Режим письменника (Esc для виходу)   # Writer's View (Esc to exit)
+menu.view.cmdline = Командний рядок   # Command line
+menu.view.cmdline.popup = Спливне вікно   # Pop-up
+menu.view.cmdline.position = Розташування   # Position
+menu.view.cmdline.position.top = Угорі   # Top
+menu.view.cmdline.position.bottom = Унизу   # Bottom
+menu.view.cmdline.position.hidden = Приховано   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Тип документа   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Автоматично (за розширенням)   # Auto (by extension)
+menu.document.encoding = Кодування тексту   # Text encoding
+menu.document.encoding.display_as = Показувати як   # Display as
+menu.document.encoding.convert_to = Перетворити на (новий файл)   # Convert to (new file)
+menu.document.line_endings = Символи кінця рядка   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Лише для читання   # Read-only
+menu.document.word_count = Кількість слів   # Word count
+menu.document.char_count = Кількість символів   # Character count
+menu.document.properties = Властивості…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Виконати сценарій…   # Run script…
+menu.tools.run_script_bg = Виконати сценарій у фоні…   # Run script in background…
+menu.tools.run_here = Виконати код під курсором   # Run code under cursor
+menu.tools.shell_command = Команда оболонки…   # Shell command…
+menu.tools.jobs = Фонові завдання   # Background jobs
+menu.tools.lang = Перевірка мови   # Language check
+menu.tools.lang.check = Перевірити документ   # Check document
+menu.tools.lang.spelling = Підкреслення орфографії   # Spelling underlines
+menu.tools.lang.grammar = Підкреслення граматики   # Grammar underlines
+menu.tools.lang.spell_next = Наступна орфографічна помилка   # Next spelling issue
+menu.tools.lang.spell_prev = Попередня орфографічна помилка   # Previous spelling issue
+menu.tools.lang.grammar_next = Наступна граматична помилка   # Next grammar issue
+menu.tools.lang.grammar_prev = Попередня граматична помилка   # Previous grammar issue
+menu.tools.lang.fix = Виправити помилку під курсором…   # Fix issue at cursor…
+menu.tools.lang.learn = Запам'ятати виділені слова   # Learn selected words
+menu.tools.lang.dialect = Діалект   # Dialect
+menu.tools.lang.dialect.american = Американський   # American
+menu.tools.lang.dialect.british = Британський   # British
+menu.tools.lang.dialect.canadian = Канадський   # Canadian
+menu.tools.lang.dialect.australian = Австралійський   # Australian
+menu.tools.lang.dialect.indian = Індійський   # Indian
+menu.tools.lang.spell_style = Стиль орфографії   # Spelling style
+menu.tools.lang.grammar_style = Стиль граматики   # Grammar style
+menu.tools.email = Пошта   # Email
+menu.tools.email.list = Показати поштову скриньку   # List mailbox
+menu.tools.email.save = Зберегти повідомлення…   # Save messages…
+menu.tools.email.delete = Видалити повідомлення…   # Delete messages…
+menu.tools.email.send = Надіслати…   # Send…
+menu.tools.email.attach = Прикріпити файл…   # Attach file…
+menu.tools.email.clear_attach = Очистити вкладення   # Clear attachments
+menu.tools.email.verbose = Докладне журналювання   # Verbose logging
+menu.tools.library = Бібліотека   # Library
+menu.tools.library.load = Завантажити…   # Load…
+menu.tools.library.reload = Перезавантажити   # Reload
+menu.tools.library.unload = Вивантажити все   # Unload all
+menu.tools.library.list = Показати процедури   # List routines
+menu.tools.keyboard_chart = Схема клавіатури   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Зовнішній вигляд   # Appearance
+menu.settings.appearance.colors = Кольори   # Colors
+menu.settings.appearance.colors.editor_text = Текст редактора…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Тло редактора…   # Editor background…
+menu.settings.appearance.colors.selection_text = Текст виділення…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Тло виділення…   # Selection background…
+menu.settings.appearance.colors.caret = Курсор…   # Caret…
+menu.settings.appearance.colors.separators = Роздільники…   # Separators…
+menu.settings.appearance.colors.tab_bg = Тло панелі вкладок   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Активна вкладка…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Вкладка під вказівником…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Неактивна вкладка…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Закриття вкладки ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Текст інтерфейсу…   # UI text…
+menu.settings.appearance.colors.ui_bg = Тло інтерфейсу…   # UI background…
+menu.settings.appearance.colors.txt_text = Текст вікна TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Тло вікна TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Текст вікна каталогу…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Тло вікна каталогу…   # Directory window background…
+menu.settings.appearance.fonts = Шрифти   # Fonts
+menu.settings.appearance.fonts.editor = Редактор…   # Editor…
+menu.settings.appearance.fonts.ui = Інтерфейс…   # UI…
+menu.settings.appearance.fonts.txt = Вікно TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Вікно каталогу…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Основний текст перегляду / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Код перегляду / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Масштаб інтерфейсу   # UI zoom
+menu.settings.appearance.ui_zoom.in = Збільшити   # Zoom in
+menu.settings.appearance.ui_zoom.out = Зменшити   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Скинути (100%)   # Reset (100%)
+menu.settings.appearance.margins = Поля   # Margins
+menu.settings.appearance.margins.wider = Ширші   # Wider
+menu.settings.appearance.margins.narrower = Вужчі   # Narrower
+menu.settings.appearance.margins.none = Немає   # None
+menu.settings.appearance.line_spacing = Міжрядковий інтервал   # Line spacing
+menu.settings.appearance.line_spacing.more = Більший   # More
+menu.settings.appearance.line_spacing.less = Менший   # Less
+menu.settings.appearance.reset_ui = Скинути розміри інтерфейсу   # Reset UI sizing
+menu.settings.appearance.reset_dw = Скинути вікно каталогу   # Reset directory window
+menu.settings.syntax = Підсвічування синтаксису   # Syntax highlighting
+menu.settings.syntax.theme_colors = Кольори теми   # Theme colors
+menu.settings.syntax.token_kinds = Види Token…   # Token kinds…
+menu.settings.syntax.reset_theme = Скинути тему   # Reset theme
+menu.settings.syntax.auto = Автопідсвічування під час відкриття   # Auto-highlight on open
+menu.settings.editor = Поведінка редактора   # Editor behavior
+menu.settings.editor.persistent_sel = Стійке виділення   # Persistent selection
+menu.settings.editor.remember_geom = Запам'ятати розмір і положення вікна   # Remember window size+position
+menu.settings.editor.coding = Засоби кодування   # Coding aids
+menu.settings.editor.coding.autoindent = Автовідступ нових рядків   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = М'які табуляції (вставляти пробіли)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Висячий відступ для перенесених рядків   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Підсвічувати парні дужки   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Автозакриття дужок і лапок   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Автозбереження   # Autosave
+menu.settings.editor.autosave.off = Вимкнено   # Off
+menu.settings.editor.autosave.30s = Кожні 30 с   # Every 30 s
+menu.settings.editor.autosave.1m = Кожну 1 хв   # Every 1 min
+menu.settings.editor.autosave.2m = Кожні 2 хв   # Every 2 min
+menu.settings.editor.autosave.5m = Кожні 5 хв   # Every 5 min
+menu.settings.editor.tab_width = Ширина табуляції   # Tab width
+menu.settings.editor.precision = Точність чисел   # Number precision
+menu.settings.editor.precision.off = Вимкнено (повна)   # Off (full)
+menu.settings.keyboard = Клавіатура   # Keyboard
+menu.settings.keyboard.load = Завантажити…   # Load…
+menu.settings.keyboard.save = Зберегти…   # Save…
+menu.settings.keyboard.reset = Скинути до вбудованої   # Reset to built-in
+menu.settings.language = Мова   # Language
+menu.settings.allow_shell = Дозволити команди оболонки   # Allow shell commands
+menu.settings.save_settings = Зберегти параметри…   # Save settings…
+menu.settings.load_settings = Завантажити параметри…   # Load settings…
+menu.settings.autosave_settings = Автозбереження параметрів   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Довідник   # Reference
+menu.help.about = Про XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Знайти:   # Find:
+dialog.find.find_hint = текст для пошуку   # text to find
+dialog.find.replace_label = Замінити:   # Replace:
+dialog.find.replace_hint = заміна   # replacement
+dialog.find.case = З урахуванням регістру   # Case sensitive
+dialog.find.whole_word = Слово цілком   # Whole word
+dialog.find.regex = Регулярний вираз   # Regular expression
+dialog.find.in_selection = У виділеному   # In selection
+dialog.find.keep_case = Зберігати регістр у заміні   # Keep case in replacement
+dialog.find.keep_case_hint = Замінити / Замінити все: приводити кожну заміну до регістру тексту, який вона замінює (малі / З великої / ВЕЛИКІ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Знайти далі (F3)   # Find next (F3)
+dialog.find.find_prev = Знайти попереднє (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Замінити   # Replace
+dialog.find.replace_all = Замінити все   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Виконати команду   # Run command
+dialog.run.shell_off = Команди оболонки вимкнено — увімкніть у Параметри ⏵ Дозволити команди оболонки.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Команда:   # Command:
+dialog.run.command_hint = команда оболонки   # a shell command
+dialog.run.background = Виконати у фоні   # Run in background
+dialog.run.insert_output = Вставити вивід біля курсора   # Insert output at cursor
+dialog.run.run = Виконати   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Шукати:   # Search for:
+dialog.grep.pattern_hint = текст (або регулярний вираз із «Регулярний вираз»)   # text (or a regex with Regular expression)
+dialog.grep.folder = У теці:   # In folder:
+dialog.grep.folder_hint = порожньо = поточна тека — або  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Регулярний вираз   # Regular expression
+dialog.grep.ignore_case = Ігнорувати регістр   # Ignore case
+dialog.grep.whole_word = Слово цілком   # Whole word
+dialog.grep.search = Шукати   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Про XyScript   # About XyScript
+dialog.about.tagline = Налаштовуваний редактор у традиції XyWrite.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Закрити   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: збігів немає   # GREP: no matches
+msg.grep.match.one = {n} збіг   # {n} match
+msg.grep.match.few = {n} збіги   # {n} matches
+msg.grep.match.many = {n} збігів   # {n} matches
+msg.grep.file.one = {n} файл   # {n} file
+msg.grep.file.few = {n} файли   # {n} files
+msg.grep.file.many = {n} файлів   # {n} files
+msg.grep.summary_capped = GREP: {matches}, {files} (не більше {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} наразі…   # GREP: {matches} so far…
+msg.search.not_found = не знайдено: {find}   # not found: {find}
+msg.save.written = збережено {name}   # saved {name}
+msg.open.not_found = файл не знайдено: {path}   # file not found: {path}
+msg.readonly = документ лише для читання (RO щоб розблокувати)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: пошук…   # GREP: searching…

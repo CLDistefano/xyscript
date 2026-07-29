@@ -1,0 +1,283 @@
+# =============================================================================
+# XyScript UI strings — БЪЛГАРСКИ (Bulgarian)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\bg.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Файл   # File
+menubar.edit = Редактиране   # Edit
+menubar.search = Търсене   # Search
+menubar.view = Изглед   # View
+menubar.document = Документ   # Document
+menubar.tools = Инструменти   # Tools
+menubar.settings = Настройки   # Settings
+menubar.help = Помощ   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Нов   # New
+menu.file.open = Отваряне…   # Open…
+menu.file.open_readonly = Отваряне само за четене…   # Open read-only…
+menu.file.revert = Връщане към записаното   # Revert to saved
+menu.file.save = Записване   # Save
+menu.file.save_as = Записване като…   # Save as…
+menu.file.save_selection_as = Записване на селекцията като…   # Save selection as…
+menu.file.save_all = Записване на всички   # Save all
+menu.file.export_pdf = Експортиране в PDF…   # Export PDF…
+menu.file.close = Затваряне   # Close
+menu.file.quit = Изход   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Отмяна   # Undo
+menu.edit.redo = Повтаряне   # Redo
+menu.edit.cut = Изрязване   # Cut
+menu.edit.copy = Копиране   # Copy
+menu.edit.append_clipboard = Добавяне към клипборда   # Append to clipboard
+menu.edit.prepend_clipboard = Добавяне в началото на клипборда   # Prepend to clipboard
+menu.edit.paste = Поставяне   # Paste
+menu.edit.select_all = Избиране на всичко   # Select all
+menu.edit.delete_selection = Изтриване на селекцията   # Delete selection
+menu.edit.copy_to_cursor = Копиране до курсора   # Copy to cursor
+menu.edit.move_to_cursor = Преместване до курсора   # Move to cursor
+menu.edit.case = Смяна на регистъра   # Change case
+menu.edit.case.upper = ГЛАВНИ БУКВИ   # UPPERCASE
+menu.edit.case.lower = малки букви   # lowercase
+menu.edit.case.swap = Размяна на регистъра   # Swap case
+menu.edit.text_colour = Цвят на текста…   # Text colour…
+menu.edit.clear_text_colour = Изчистване на цвета на текста   # Clear text colour
+menu.edit.insert_file = Вмъкване на файл…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Търсене…   # Find…
+menu.search.replace = Замяна…   # Replace…
+menu.search.find_next = Следващо   # Find next
+menu.search.find_prev = Предишно   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Открояване   # Emphasize
+menu.search.emphasize.selection = Селекция   # Selection
+menu.search.emphasize.word = Дума или израз…   # Word or phrase…
+menu.search.emphasize.regex = Регулярен израз…   # Regular expression…
+menu.search.emphasize.clear = Изчистване   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Открояване на синтаксиса   # Highlighting
+menu.view.paragraph_marks = Знаци за абзац   # Paragraph marks
+menu.view.whitespace = Интервали   # Whitespace
+menu.view.line_numbers = Номера на редовете   # Line numbers
+menu.view.word_wrap = Пренасяне на думите   # Word wrap
+menu.view.wrap_hang = Отстъп при пренасяне ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Панел за преглед   # Preview pane
+menu.view.shell_pane = Панел на конзолата   # Shell pane
+menu.view.shell_output = Раздел с изход от конзолата   # Shell output tab
+menu.view.split = Разделяне на панелите   # Split panes
+menu.view.split.side_by_side = Разделяне един до друг   # Split side by side
+menu.view.split.top_bottom = Разделяне отгоре и отдолу   # Split top and bottom
+menu.view.split.focus_next = Фокус върху следващия панел   # Focus next pane
+menu.view.split.swap = Размяна на двата панела   # Swap the two panes
+menu.view.split.zoom = Увеличаване на активния панел (превключване)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Активният панел на цял екран   # Active pane full screen
+menu.view.split.remove = Премахване на разделянето   # Remove split
+menu.view.menu_bar = Лента с менюта   # Menu bar
+menu.view.title_bar = Заглавна лента   # Title bar
+menu.view.writers_view = Изглед за писане (Esc за изход)   # Writer's View (Esc to exit)
+menu.view.cmdline = Команден ред   # Command line
+menu.view.cmdline.popup = Изскачащ прозорец   # Pop-up
+menu.view.cmdline.position = Позиция   # Position
+menu.view.cmdline.position.top = Отгоре   # Top
+menu.view.cmdline.position.bottom = Отдолу   # Bottom
+menu.view.cmdline.position.hidden = Скрит   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Тип на документа   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Автоматично (по разширение)   # Auto (by extension)
+menu.document.encoding = Кодиране на текста   # Text encoding
+menu.document.encoding.display_as = Показване като   # Display as
+menu.document.encoding.convert_to = Преобразуване в (нов файл)   # Convert to (new file)
+menu.document.line_endings = Край на редовете   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Само за четене   # Read-only
+menu.document.word_count = Брой думи   # Word count
+menu.document.char_count = Брой знаци   # Character count
+menu.document.properties = Свойства…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Изпълняване на скрипт…   # Run script…
+menu.tools.run_script_bg = Изпълняване на скрипт във фонов режим…   # Run script in background…
+menu.tools.run_here = Изпълняване на кода под курсора   # Run code under cursor
+menu.tools.shell_command = Команда на конзолата…   # Shell command…
+menu.tools.jobs = Фонови задачи   # Background jobs
+menu.tools.lang = Езикова проверка   # Language check
+menu.tools.lang.check = Проверка на документа   # Check document
+menu.tools.lang.spelling = Подчертаване на правописа   # Spelling underlines
+menu.tools.lang.grammar = Подчертаване на граматиката   # Grammar underlines
+menu.tools.lang.spell_next = Следваща правописна грешка   # Next spelling issue
+menu.tools.lang.spell_prev = Предишна правописна грешка   # Previous spelling issue
+menu.tools.lang.grammar_next = Следваща граматична грешка   # Next grammar issue
+menu.tools.lang.grammar_prev = Предишна граматична грешка   # Previous grammar issue
+menu.tools.lang.fix = Поправяне на грешката при курсора…   # Fix issue at cursor…
+menu.tools.lang.learn = Запомняне на избраните думи   # Learn selected words
+menu.tools.lang.dialect = Диалект   # Dialect
+menu.tools.lang.dialect.american = Американски   # American
+menu.tools.lang.dialect.british = Британски   # British
+menu.tools.lang.dialect.canadian = Канадски   # Canadian
+menu.tools.lang.dialect.australian = Австралийски   # Australian
+menu.tools.lang.dialect.indian = Индийски   # Indian
+menu.tools.lang.spell_style = Правописен стил   # Spelling style
+menu.tools.lang.grammar_style = Граматичен стил   # Grammar style
+menu.tools.email = Ел. поща   # Email
+menu.tools.email.list = Показване на пощенската кутия   # List mailbox
+menu.tools.email.save = Записване на съобщенията…   # Save messages…
+menu.tools.email.delete = Изтриване на съобщенията…   # Delete messages…
+menu.tools.email.send = Изпращане…   # Send…
+menu.tools.email.attach = Прикачване на файл…   # Attach file…
+menu.tools.email.clear_attach = Изчистване на прикачените файлове   # Clear attachments
+menu.tools.email.verbose = Подробно журналиране   # Verbose logging
+menu.tools.library = Библиотека   # Library
+menu.tools.library.load = Зареждане…   # Load…
+menu.tools.library.reload = Презареждане   # Reload
+menu.tools.library.unload = Изваждане на всички   # Unload all
+menu.tools.library.list = Показване на процедурите   # List routines
+menu.tools.keyboard_chart = Таблица на клавиатурата   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Външен вид   # Appearance
+menu.settings.appearance.colors = Цветове   # Colors
+menu.settings.appearance.colors.editor_text = Текст на редактора…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Фон на редактора…   # Editor background…
+menu.settings.appearance.colors.selection_text = Текст на селекцията…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Фон на селекцията…   # Selection background…
+menu.settings.appearance.colors.caret = Курсор…   # Caret…
+menu.settings.appearance.colors.separators = Разделители…   # Separators…
+menu.settings.appearance.colors.tab_bg = Фон на лентата с раздели   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Активен раздел…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Раздел под курсора…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Неактивен раздел…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Затваряне на раздел ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Текст на интерфейса…   # UI text…
+menu.settings.appearance.colors.ui_bg = Фон на интерфейса…   # UI background…
+menu.settings.appearance.colors.txt_text = Текст на прозореца TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Фон на прозореца TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Текст на прозореца с директории…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Фон на прозореца с директории…   # Directory window background…
+menu.settings.appearance.fonts = Шрифтове   # Fonts
+menu.settings.appearance.fonts.editor = Редактор…   # Editor…
+menu.settings.appearance.fonts.ui = Интерфейс…   # UI…
+menu.settings.appearance.fonts.txt = Прозорец TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Прозорец с директории…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Основен текст за преглед / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Код за преглед / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Мащаб на интерфейса   # UI zoom
+menu.settings.appearance.ui_zoom.in = Увеличаване   # Zoom in
+menu.settings.appearance.ui_zoom.out = Намаляване   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Нулиране (100%)   # Reset (100%)
+menu.settings.appearance.margins = Полета   # Margins
+menu.settings.appearance.margins.wider = По-широки   # Wider
+menu.settings.appearance.margins.narrower = По-тесни   # Narrower
+menu.settings.appearance.margins.none = Без   # None
+menu.settings.appearance.line_spacing = Междуредие   # Line spacing
+menu.settings.appearance.line_spacing.more = Повече   # More
+menu.settings.appearance.line_spacing.less = По-малко   # Less
+menu.settings.appearance.reset_ui = Нулиране на размерите на интерфейса   # Reset UI sizing
+menu.settings.appearance.reset_dw = Нулиране на прозореца с директории   # Reset directory window
+menu.settings.syntax = Открояване на синтаксиса   # Syntax highlighting
+menu.settings.syntax.theme_colors = Цветове на темата   # Theme colors
+menu.settings.syntax.token_kinds = Видове Token…   # Token kinds…
+menu.settings.syntax.reset_theme = Нулиране на темата   # Reset theme
+menu.settings.syntax.auto = Автоматично открояване при отваряне   # Auto-highlight on open
+menu.settings.editor = Поведение на редактора   # Editor behavior
+menu.settings.editor.persistent_sel = Постоянна селекция   # Persistent selection
+menu.settings.editor.remember_geom = Запомняне на размера и позицията на прозореца   # Remember window size+position
+menu.settings.editor.coding = Помощ при кодиране   # Coding aids
+menu.settings.editor.coding.autoindent = Автоматичен отстъп на новите редове   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Меки табулатори (вмъкване на интервали)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Висящ отстъп за пренесените редове   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Открояване на съответстващите скоби   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Автоматично затваряне на скоби и кавички   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Автоматично записване   # Autosave
+menu.settings.editor.autosave.off = Изключено   # Off
+menu.settings.editor.autosave.30s = На всеки 30 с   # Every 30 s
+menu.settings.editor.autosave.1m = На всяка 1 мин   # Every 1 min
+menu.settings.editor.autosave.2m = На всеки 2 мин   # Every 2 min
+menu.settings.editor.autosave.5m = На всеки 5 мин   # Every 5 min
+menu.settings.editor.tab_width = Ширина на табулатора   # Tab width
+menu.settings.editor.precision = Точност на числата   # Number precision
+menu.settings.editor.precision.off = Изключено (пълна)   # Off (full)
+menu.settings.keyboard = Клавиатура   # Keyboard
+menu.settings.keyboard.load = Зареждане…   # Load…
+menu.settings.keyboard.save = Записване…   # Save…
+menu.settings.keyboard.reset = Връщане към вградената   # Reset to built-in
+menu.settings.language = Език   # Language
+menu.settings.allow_shell = Разрешаване на команди на конзолата   # Allow shell commands
+menu.settings.save_settings = Записване на настройките…   # Save settings…
+menu.settings.load_settings = Зареждане на настройките…   # Load settings…
+menu.settings.autosave_settings = Автоматично записване на настройките   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Справочник   # Reference
+menu.help.about = Относно XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Търсене:   # Find:
+dialog.find.find_hint = текст за търсене   # text to find
+dialog.find.replace_label = Замяна:   # Replace:
+dialog.find.replace_hint = замяна   # replacement
+dialog.find.case = Различаване на регистъра   # Case sensitive
+dialog.find.whole_word = Цяла дума   # Whole word
+dialog.find.regex = Регулярен израз   # Regular expression
+dialog.find.in_selection = В селекцията   # In selection
+dialog.find.keep_case = Запазване на регистъра при замяна   # Keep case in replacement
+dialog.find.keep_case_hint = Замяна / Замяна на всички: привежда всяка замяна към регистъра на текста, който заменя (малки / С главна буква / ГЛАВНИ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Следващо (F3)   # Find next (F3)
+dialog.find.find_prev = Предишно (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Замяна   # Replace
+dialog.find.replace_all = Замяна на всички   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Изпълняване на команда   # Run command
+dialog.run.shell_off = Командите на конзолата са изключени — включете ги от Настройки ⏵ Разрешаване на команди на конзолата.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Команда:   # Command:
+dialog.run.command_hint = команда на конзолата   # a shell command
+dialog.run.background = Изпълняване във фонов режим   # Run in background
+dialog.run.insert_output = Вмъкване на изхода при курсора   # Insert output at cursor
+dialog.run.run = Изпълняване   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Търсене на:   # Search for:
+dialog.grep.pattern_hint = текст (или регулярен израз с Регулярен израз)   # text (or a regex with Regular expression)
+dialog.grep.folder = В папка:   # In folder:
+dialog.grep.folder_hint = празно = текущата папка — или  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Регулярен израз   # Regular expression
+dialog.grep.ignore_case = Пренебрегване на регистъра   # Ignore case
+dialog.grep.whole_word = Цяла дума   # Whole word
+dialog.grep.search = Търсене   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Относно XyScript   # About XyScript
+dialog.about.tagline = Конфигурируем редактор в традицията на XyWrite.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Затваряне   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: няма съвпадения   # GREP: no matches
+msg.grep.match.one = {n} съвпадение   # {n} match
+msg.grep.match.other = {n} съвпадения   # {n} matches
+msg.grep.file.one = {n} файл   # {n} file
+msg.grep.file.other = {n} файла   # {n} files
+msg.grep.summary_capped = GREP: {matches} в {files} (ограничено до {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} в {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} досега…   # GREP: {matches} so far…
+msg.search.not_found = не е намерено: {find}   # not found: {find}
+msg.save.written = записано {name}   # saved {name}
+msg.open.not_found = файлът не е намерен: {path}   # file not found: {path}
+msg.readonly = документът е само за четене (RO за отключване)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: търсене…   # GREP: searching…

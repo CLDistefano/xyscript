@@ -52,16 +52,21 @@ LANGS = {
     "da": ("DANSK", "Danish"),
     "no": ("NORSK", "Norwegian"),
     "hu": ("MAGYAR", "Hungarian"),
+    "ru": ("РУССКИЙ", "Russian"),
+    "uk": ("УКРАЇНСЬКА", "Ukrainian"),
+    "bg": ("БЪЛГАРСКИ", "Bulgarian"),
+    "el": ("ΕΛΛΗΝΙΚΆ", "Greek"),
 }
 
 # Plural rule per language code (default: "one-other"). A rule names the CLDR-style categories a
 # language needs for count phrases; the arithmetic that maps a number to a category lives in Rust
 # (AppHost::plural_category) — the two MUST agree. Only languages needing more than one/other appear
 # here; each such catalog gets a `_plural = <rule>` marker so the app knows which rule to apply.
-PLURAL_RULE = {"pl": "polish", "cs": "czech", "ro": "romanian"}
+PLURAL_RULE = {"pl": "polish", "cs": "czech", "ro": "romanian", "ru": "east-slavic", "uk": "east-slavic"}
 RULE_CATEGORIES = {
     "one-other": ["one", "other"],
     "polish": ["one", "few", "many"],
+    "east-slavic": ["one", "few", "many"],
     "czech": ["one", "few", "other"],
     "romanian": ["one", "few", "other"],
 }
