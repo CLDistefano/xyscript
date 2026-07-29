@@ -416,7 +416,8 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 *Point-and-shoot.* In a `DIR`/`LS` listing, a file command typed with NO argument acts on the file
 on the caret's row — so parking the caret on a name and typing `OPEN`, `DEL`, `RUN`, `ED`, `BEDIT`,
-`LOADKBD`/`LOADLIB`/`LOADAR`/`LOADVARS`, or `NE` operates on that file, as if you had typed its path.
+`LOADKBD`/`LOADLIB`/`LOADAR`/`LOADVARS`, `LANG`, or `NE` operates on that file, as if you had typed
+its path.
 It applies only when the argument is empty and the caret is on a real entry (not the `..` parent);
 give an explicit path and that always wins. Two-argument commands (`COPY`, `RENAME`) and the
 save-to-a-path verbs (`ST`, `SAAS`) are excluded — their argument isn't a file to read but a
@@ -767,7 +768,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SAVEVARS"): save every global variable and its value to a file (`SaveVars [path]`; bare → `xyscript-vars.txt`, resolved against `$CWD`). The file is `name⇥value-literal` lines — a data file, not a script. Under `CAPTURE` the text goes into the variable instead. #cmd("LOADVARS"): restore variables written by `SaveVars` (`LoadVars [path]`); each value is evaluated directly, so a `$` in a saved string stays literal. A missing file or a bad line sets `$ERROR`.
 / #cmd("LISTVARS"): list every global variable and its current value (`$name: value`, sorted) — into a `CAPTURE` variable if one is open, else inserted at the caret. #cmd("LISTVAR") is a synonym.
 / #cmd("LOCAL"): scope variables to the current routine.
-/ #cmd("LANG"): `LANG <file>` — load a UI translation table so the interface shows in another language. The file is a flat UTF-8 `key = value` catalog of translated menu/dialog labels (`#`-comments and blank values allowed; a blank or missing key falls back to the built-in English, so a partial catalog works). Bare `LANG` or `LANG off` reverts to English. Path resolved against `$CWD`. Experimental (phase-1: the menu bar and the File and Search menus are wired so far).
+/ #cmd("LANG"): `LANG <file>` — load a UI translation table so the interface shows in another language. The file is a flat UTF-8 `key = value` catalog of translated menu/dialog labels (`#`-comments and blank values allowed; a blank or missing key falls back to the built-in English, so a partial catalog works). Bare `LANG` or `LANG off` reverts to English. Point-and-shoot: with the caret on a catalog file in a `DIR` listing, bare `LANG` loads that file. Path resolved against `$CWD`. Experimental (phase-1: the menu bar and the File and Search menus are wired so far).
 
 == M
 

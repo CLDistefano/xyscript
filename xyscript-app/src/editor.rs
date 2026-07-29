@@ -6421,6 +6421,33 @@ mod tests {
     }
 
     #[test]
+    fn point_and_shoot_lang_loads_the_catalog_under_the_caret() {
+        let base = std::env::temp_dir().join(format!("xyscript-pns-lang-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("strings-xx.txt"), b"menubar.file = Zzz\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        assert!(e.active_is_dir_listing(), "DIR opened a listing tab");
+        assert_eq!(e.host().lang_get("menubar.file"), None, "no catalog loaded yet");
+
+        // Caret on the catalog row, then bare LANG (no argument) — point-and-shoot loads THAT file.
+        e.run_command("SE /strings-xx/");
+        assert!(e.host().point_and_shoot_file().is_some_and(|p| p.ends_with("strings-xx.txt")));
+        e.run_command("LANG");
+        assert_eq!(e.host().lang_get("menubar.file"), Some("Zzz"), "the catalog under the caret loaded");
+        assert!(e.active_is_dir_listing(), "LANG loads in place — it doesn't switch tabs");
+
+        // Bare LANG off a listing still clears (point-and-shoot only fires on a listing entry).
+        e.run_command("NEW");
+        assert!(!e.active_is_dir_listing());
+        e.run_command("LANG");
+        assert_eq!(e.host().lang_get("menubar.file"), None, "bare LANG on a normal buffer cleared it");
+    }
+
+    #[test]
     fn point_and_shoot_deletes_the_file_under_the_caret() {
         let base = std::env::temp_dir().join(format!("xyscript-pns-del-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);

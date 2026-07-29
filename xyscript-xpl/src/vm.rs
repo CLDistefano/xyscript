@@ -50,7 +50,7 @@ const NO_ERROR_TOUCH: &[&str] = &[
 /// verbs that write the active buffer (`ST`, `SAAS`) are deliberately excluded.
 const POINT_AND_SHOOT_VERBS: &[&str] = &[
     "OPEN", "CA", "ED", "EDIT", "READ", "DEL", "ERNV", "RUN", "BEDIT", "LOADKBD", "LOADLIB",
-    "LOADAR", "LOADVARS", "NEW", "NE",
+    "LOADAR", "LOADVARS", "LANG", "NEW", "NE",
 ];
 
 /// Instruction budget for one cooperative-preemption slice. The foreground editor runs scripts
@@ -1923,8 +1923,9 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::LoadCfg(arg))?;
                 Ok(Flow::Next)
             }
-            // `LANG <path>` loads a UI translation table; bare `LANG` or `LANG off` clears it (back
-            // to built-in English). i18n phase-1 spike.
+            // `LANG <path>` loads a UI translation table. Point-and-shoot: bare `LANG` with the caret
+            // on a strings file in a DIR listing loads THAT file (the path is substituted in above).
+            // Bare `LANG` elsewhere, or `LANG off`, clears it (back to built-in English). i18n phase 1.
             "LANG" => {
                 let p = args.trim();
                 let arg = if p.is_empty() || p.eq_ignore_ascii_case("off") {
