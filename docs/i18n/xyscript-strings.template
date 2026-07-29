@@ -311,15 +311,20 @@ dialog.about.tagline =                 # A configurable editor in the XyWrite tr
 
 
 # =============================================================================
-# 3. MESSAGES  — ILLUSTRATIVE STUB (phase 2)
+# 3. MESSAGES  (phase 2 — a CURATED batch of high-visibility status/error text)
 # =============================================================================
-# Status-line and error text. These carry {placeholders}; keep them intact.
-# There are ~270 of these in the code; only a few are shown here to fix the
-# convention (named placeholders instead of positional {}).
+# Status-line and error text. These carry NAMED {placeholders} (not positional
+# {}) so a translation may reorder the pieces; keep every {name} intact.
+#
+# Only the most-seen messages are routed through the catalog so far. The long
+# tail (~200 script-parser diagnostics from the XPL engine) stays English — they
+# reference command VERBS, which are the command language, not UI chrome. Two
+# grep messages that pluralize inline ("N match/matches in M file/files") are
+# also still English, pending a pluralization convention.
 
-msg.grep.summary =                     # {count} matches in {files} files
-msg.grep.none =                        # No matches
-msg.grep.running =                     # Searching… {count} matches so far
-msg.save.written =                     # Saved {path}
-msg.open.not_found =                   # File not found: {path}
-msg.readonly =                         # This buffer is read-only
+msg.search.not_found =                 # not found: {find}
+msg.open.not_found =                   # file not found: {path}
+msg.save.written =                     # saved {name}
+msg.readonly =                         # document is read-only (RO to unlock)
+msg.grep.none =                        # GREP: no matches
+msg.grep.searching =                   # GREP: searching…

@@ -3321,6 +3321,22 @@ impl AppHost {
     pub fn lang_get(&self, id: &str) -> Option<&str> {
         self.lang.get(id).map(String::as_str)
     }
+    /// A localized status/error MESSAGE: the `LANG` translation for `id`, else the English `en`.
+    /// Host-side sibling of the GUI's `tr` (the `lang` table lives here, so messages the host emits
+    /// translate at the source). Plain — no placeholders; use [`tr_fmt`](Self::tr_fmt) for those.
+    fn tr_msg(&self, id: &str, en: &str) -> String {
+        self.lang.get(id).map(String::as_str).unwrap_or(en).to_string()
+    }
+    /// Like [`tr_msg`](Self::tr_msg) but with named `{placeholder}` substitution: takes the translated
+    /// (or English) template and replaces each `{name}` with its value. Named — not positional — so a
+    /// translation can reorder the pieces (e.g. put `{path}` first). Values are substituted verbatim.
+    fn tr_fmt(&self, id: &str, en: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+        let mut s = self.lang.get(id).map(String::as_str).unwrap_or(en).to_string();
+        for (name, value) in args {
+            s = s.replace(&format!("{{{name}}}"), &value.to_string());
+        }
+        s
+    }
     /// `BALPAIRS` — is matched-bracket highlighting on?
     pub fn bal_pairs(&self) -> bool {
         self.bal_pairs
@@ -3704,7 +3720,7 @@ impl AppHost {
                             d.finalize_grep(capped);
                         }
                         if n == 0 {
-                            "GREP: no matches".to_string()
+                            self.tr_msg("msg.grep.none", "GREP: no matches")
                         } else {
                             let cap_note =
                                 if capped { format!(" (capped at {GREP_CAP})") } else { String::new() };
@@ -5070,7 +5086,7 @@ impl AppHost {
                     Ok(Value::str(""))
                 } else {
                     self.active().set_caret(restore.0, restore.1);
-                    Err(XplError::trappable(format!("not found: {find}")))
+                    Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
                 }
             }
             Some(replace) => {
@@ -5081,7 +5097,7 @@ impl AppHost {
                     .replace_all(&pattern, &replace, spec.from_top, scope, spec.count, spec.keep_case);
                 self.change_count = n as i64;
                 if n == 0 && spec.count.is_none() {
-                    Err(XplError::trappable(format!("not found: {find}")))
+                    Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
                 } else {
                     // XyWrite-style: the caret stayed put, so report the tally on the status line.
                     let msg = if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
@@ -5169,7 +5185,7 @@ impl AppHost {
                     Some(VerifySession { pattern, replacement, origin, current: (ms, me), limit });
                 Ok(Value::str(""))
             }
-            None => Err(XplError::trappable(format!("not found: {find}"))),
+            None => Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)]))),
         }
     }
 
@@ -6338,7 +6354,7 @@ impl AppHost {
                         Ok(()) => {
                             self.docs[self.active].set_path(path);
                             self.docs[self.active].mark_saved();
-                            Some(format!("saved {name}"))
+                            Some(self.tr_fmt("msg.save.written", "saved {name}", &[("name", &name)]))
                         }
                         Err(e) => Some(format!("save failed: {}", e.message())),
                     }
@@ -6604,7 +6620,7 @@ impl AppHost {
             return Ok(text.clone().into_bytes());
         }
         if self.virtual_fs {
-            return Err(XplError::trappable(format!("file not found: {path}")));
+            return Err(XplError::trappable(self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
         }
         cloud_only_guard(Path::new(path))?;
         std::fs::read(path).map_err(|e| {
@@ -7205,7 +7221,7 @@ impl Host for AppHost {
             && self.docs[self.active].read_only()
             && op_mutates_buffer(&op)
         {
-            return Err(XplError::trappable("document is read-only (RO to unlock)"));
+            return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
         }
         match op {
             EditorOp::InsertText(s) => self.active().insert(&s),
@@ -7633,7 +7649,7 @@ impl Host for AppHost {
                     });
                 }
                 self.grep_job = Some(GrepJob { rx, cancel, doc: doc_id, base });
-                return Ok(Value::str("GREP: searching…"));
+                return Ok(Value::str(self.tr_msg("msg.grep.searching", "GREP: searching…")));
             }
             EditorOp::GrepJump => {
                 return self.grep_jump();
@@ -8011,7 +8027,7 @@ impl Host for AppHost {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
-                return Ok(Value::str(format!("saved {name}")));
+                return Ok(Value::str(self.tr_fmt("msg.save.written", "saved {name}", &[("name", &name)])));
             }
             EditorOp::SaveCopy { path, force } => {
                 // Write the active document's bytes to `path` as a COPY: the doc's own path,
@@ -8112,7 +8128,7 @@ impl Host for AppHost {
                 self.write_doc_bytes(&key, &bytes)?;
                 self.file_doc_mut().set_path(target);
                 self.file_doc_mut().mark_saved();
-                return Ok(Value::str(format!("saved {name}")));
+                return Ok(Value::str(self.tr_fmt("msg.save.written", "saved {name}", &[("name", &name)])));
             }
             EditorOp::ClearKbd => {
                 // "Clear" = RESET to the small built-in baseline KBD (a usable editing floor), NOT
@@ -9690,7 +9706,7 @@ impl Host for AppHost {
                 let out = doc.counter_op(idx as usize, &arg).map_err(XplError::trappable)?;
                 if let Some(text) = out {
                     if doc.read_only() {
-                        return Err(XplError::trappable("document is read-only (RO to unlock)"));
+                        return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
                     }
                     doc.insert(&text);
                 }
@@ -10406,7 +10422,7 @@ impl Host for AppHost {
             return Ok(text.clone());
         }
         if self.virtual_fs {
-            return Err(XplError::trappable(format!("file not found: {path}")));
+            return Err(XplError::trappable(self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
         }
         // Resolve relative paths against the editor's working dir ($CWD / `CD`), like every
         // other file op — NOT the process cwd. Absolute paths (e.g. `$FP`) pass through. This
@@ -11395,5 +11411,26 @@ not a kv line
         assert_eq!(t.get("menu.file.save"), None); // blank value → skipped (English fallback)
         assert_eq!(t.get("msg.grep.summary").map(String::as_str), Some("{count} correspondances")); // placeholder kept
         assert_eq!(t.len(), 3); // the comment line and "not a kv line" are ignored
+    }
+
+    #[test]
+    fn tr_msg_and_tr_fmt_translate_or_fall_back_and_substitute() {
+        let mut host = super::AppHost::new();
+        host.lang = super::parse_lang_table(
+            "msg.readonly = document en lecture seule\nmsg.search.not_found = introuvable : {find}\n",
+        );
+        // Present key → translated; absent key → English fallback verbatim.
+        assert_eq!(host.tr_msg("msg.readonly", "document is read-only"), "document en lecture seule");
+        assert_eq!(host.tr_msg("msg.grep.none", "GREP: no matches"), "GREP: no matches");
+        // Named placeholder is substituted into the translated template.
+        assert_eq!(
+            host.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &"foo")]),
+            "introuvable : foo",
+        );
+        // Missing key → English template still gets its placeholder filled.
+        assert_eq!(
+            host.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &"a/b.txt")]),
+            "file not found: a/b.txt",
+        );
     }
 }

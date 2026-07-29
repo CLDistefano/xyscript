@@ -131,10 +131,13 @@ FR = {
     "dialog.find.find_next": "Suivant (F3)", "dialog.find.find_prev": "Précédent (Maj+F3)",
     "dialog.find.replace": "Remplacer", "dialog.find.replace_all": "Remplacer tout",
     "dialog.about.title": "À propos de XyScript", "dialog.about.tagline": "Un éditeur configurable dans la tradition XyWrite.",
-    # Messages (not wired yet — phase 2 — placeholders preserved)
-    "msg.grep.summary": "{count} correspondances dans {files} fichiers", "msg.grep.none": "Aucune correspondance",
-    "msg.grep.running": "Recherche… {count} correspondances jusqu’à présent", "msg.save.written": "Enregistré {path}",
-    "msg.open.not_found": "Fichier introuvable : {path}", "msg.readonly": "Ce tampon est en lecture seule",
+    # Messages (curated phase-2 batch — keep every {placeholder} intact)
+    "msg.search.not_found": "introuvable : {find}",
+    "msg.open.not_found": "fichier introuvable : {path}",
+    "msg.save.written": "enregistré {name}",
+    "msg.readonly": "document en lecture seule (RO pour déverrouiller)",
+    "msg.grep.none": "GREP : aucune correspondance",
+    "msg.grep.searching": "GREP : recherche…",
 }
 
 HEADER = """\

@@ -277,15 +277,20 @@ dialog.about.tagline = Un éditeur configurable dans la tradition XyWrite.   # A
 
 
 # =============================================================================
-# 3. MESSAGES  — ILLUSTRATIVE STUB (phase 2)
+# 3. MESSAGES  (phase 2 — a CURATED batch of high-visibility status/error text)
 # =============================================================================
-# Status-line and error text. These carry {placeholders}; keep them intact.
-# There are ~270 of these in the code; only a few are shown here to fix the
-# convention (named placeholders instead of positional {}).
+# Status-line and error text. These carry NAMED {placeholders} (not positional
+# {}) so a translation may reorder the pieces; keep every {name} intact.
+#
+# Only the most-seen messages are routed through the catalog so far. The long
+# tail (~200 script-parser diagnostics from the XPL engine) stays English — they
+# reference command VERBS, which are the command language, not UI chrome. Two
+# grep messages that pluralize inline ("N match/matches in M file/files") are
+# also still English, pending a pluralization convention.
 
-msg.grep.summary = {count} correspondances dans {files} fichiers   # {count} matches in {files} files
-msg.grep.none = Aucune correspondance   # No matches
-msg.grep.running = Recherche… {count} correspondances jusqu’à présent   # Searching… {count} matches so far
-msg.save.written = Enregistré {path}   # Saved {path}
-msg.open.not_found = Fichier introuvable : {path}   # File not found: {path}
-msg.readonly = Ce tampon est en lecture seule   # This buffer is read-only
+msg.search.not_found = introuvable : {find}   # not found: {find}
+msg.open.not_found = fichier introuvable : {path}   # file not found: {path}
+msg.save.written = enregistré {name}   # saved {name}
+msg.readonly = document en lecture seule (RO pour déverrouiller)   # document is read-only (RO to unlock)
+msg.grep.none = GREP : aucune correspondance   # GREP: no matches
+msg.grep.searching = GREP : recherche…   # GREP: searching…
