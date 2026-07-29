@@ -5764,7 +5764,11 @@ impl GuiApp {
         if bar_shown {
             egui::Panel::top("menubar").show_inside(ui, |ui| {
                 bar_rect = ui.max_rect();
-                ui.horizontal(|ui| {
+                // WRAPPED, not a plain row: when the titles don't fit the window width (a narrow
+                // window, or a localized build whose translated titles run long) the bar flows onto a
+                // second row instead of clipping — a clipped title is an unreachable menu. It stays a
+                // single row whenever everything fits (the English / wide-window common case).
+                ui.horizontal_wrapped(|ui| {
                     for (i, top) in tree.iter().enumerate() {
                         if let MenuNode::Sub { label, .. } = top {
                             let text = accel_label(ui, label, top_accels[i]);
