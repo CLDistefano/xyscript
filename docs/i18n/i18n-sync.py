@@ -44,6 +44,26 @@ LANGS = {
     "it": ("ITALIANO", "Italian"),
     "nl": ("NEDERLANDS", "Dutch"),
     "fi": ("SUOMI", "Finnish"),
+    "pt": ("PORTUGUÊS", "Portuguese"),
+    "pl": ("POLSKI", "Polish"),
+    "ro": ("ROMÂNĂ", "Romanian"),
+    "cs": ("ČEŠTINA", "Czech"),
+    "sv": ("SVENSKA", "Swedish"),
+    "da": ("DANSK", "Danish"),
+    "no": ("NORSK", "Norwegian"),
+    "hu": ("MAGYAR", "Hungarian"),
+}
+
+# Plural rule per language code (default: "one-other"). A rule names the CLDR-style categories a
+# language needs for count phrases; the arithmetic that maps a number to a category lives in Rust
+# (AppHost::plural_category) — the two MUST agree. Only languages needing more than one/other appear
+# here; each such catalog gets a `_plural = <rule>` marker so the app knows which rule to apply.
+PLURAL_RULE = {"pl": "polish", "cs": "czech", "ro": "romanian"}
+RULE_CATEGORIES = {
+    "one-other": ["one", "other"],
+    "polish": ["one", "few", "many"],
+    "czech": ["one", "few", "other"],
+    "romanian": ["one", "few", "other"],
 }
 
 STR = r'"((?:\\.|[^"\\])*)"'  # a Rust string literal (captures its contents)
@@ -79,20 +99,19 @@ def extract():
             seen[key] = english
             order.append(key)
 
+    plural_bases = {}  # base -> (english one, english other); for per-language category expansion
     for path in SOURCES:
         text = read(path)
         events = [(m.start(), [(m.group(1), unesc(m.group(2)))]) for m in TR.finditer(text)]
         for m in PLURAL.finditer(text):
-            base = m.group(1)
-            events.append((m.start(), [
-                (f"{base}.one", unesc(m.group(2))),
-                (f"{base}.other", unesc(m.group(3))),
-            ]))
+            base, en_one, en_other = m.group(1), unesc(m.group(2)), unesc(m.group(3))
+            plural_bases.setdefault(base, (en_one, en_other))
+            events.append((m.start(), [(f"{base}.one", en_one), (f"{base}.other", en_other)]))
         events.sort(key=lambda e: e[0])
         for _, pairs in events:
             for key, english in pairs:
                 add(key, english)
-    return [(k, seen[k]) for k in order]
+    return [(k, seen[k]) for k in order], plural_bases
 
 
 # Top-level ordering for the generated files, so they read top-down like the UI. Within a rank,
@@ -173,12 +192,18 @@ def lang_header(code, untranslated, fuzzy):
     ]
 
 
-def merge(pairs, code, path):
-    """Return (text, untranslated, fuzzy) for <code>.lang, preserving existing translations."""
+def merge(pairs, plural_bases, code, path):
+    """Return (text, untranslated, fuzzy) for <code>.lang, preserving existing translations. Plural
+    bases expand into the categories the language's rule needs (one/few/many/…) — English has only
+    one/other, so few/many anchor to the English plural."""
     old = parse_lang(path)
+    rule = PLURAL_RULE.get(code, "one-other")
+    cats = RULE_CATEGORIES[rule]
     body, untranslated, fuzzy = [], 0, 0
     last = None
-    for key, english in pairs:
+
+    def emit(key, english):
+        nonlocal untranslated, fuzzy, last
         value, was_fuzzy = "", False
         if key in old:
             value, anchor, was_fuzzy = old[key]
@@ -189,13 +214,37 @@ def merge(pairs, code, path):
             was_fuzzy = False  # nothing to review yet
         sec = section(key)
         if sec != last:
-            body += ["", f"# ---- {sec} " + "-" * max(0, 60 - len(sec))]
+            body.append("")
+            body.append(f"# ---- {sec} " + "-" * max(0, 60 - len(sec)))
             last = sec
         if was_fuzzy:
             fuzzy += 1
             body.append("#, fuzzy")
         body.append(f"{key} = {value}{DELIM}{english}")
-    text = "\n".join(lang_header(code, untranslated, fuzzy) + body) + "\n"
+
+    emitted_bases = set()
+    for key, english in pairs:
+        base, _, suffix = key.rpartition(".")
+        if base in plural_bases and suffix in ("one", "other"):
+            # Replace en.lang's one/other with this language's full category set (emit once per base,
+            # at the base's first appearance; skip the sibling key).
+            if base not in emitted_bases:
+                emitted_bases.add(base)
+                en_one, en_other = plural_bases[base]
+                for cat in cats:
+                    emit(f"{base}.{cat}", en_one if cat == "one" else en_other)
+            continue
+        emit(key, english)
+
+    meta = []
+    if rule != "one-other":
+        meta = [
+            "# Plural rule for this language — drives the singular/few/many selection in count",
+            "# phrases (grep's match/file counts). Managed by i18n-sync; do not edit.",
+            f"_plural = {rule}",
+            "",
+        ]
+    text = "\n".join(lang_header(code, untranslated, fuzzy) + meta + body) + "\n"
     return text, untranslated, fuzzy
 
 
@@ -260,7 +309,7 @@ def main():
             pass
     args = sys.argv[1:]
     check = "--check" in args
-    pairs = extract()
+    pairs, plural_bases = extract()
     pairs.sort(key=lambda kv: rank(kv[0]))  # stable: logical section order, source order within
 
     # --new <code> [native] [english]: seed a blank catalog, then fall through to a normal merge.
@@ -273,7 +322,7 @@ def main():
         if os.path.exists(path):
             print(f"{code}.lang already exists — merging instead of seeding.")
         else:
-            text, unt, fz = merge(pairs, code, path)  # no old file → all blank
+            text, unt, fz = merge(pairs, plural_bases, code, path)  # no old file → all blank
             io.open(path, "w", encoding="utf-8", newline="\n").write(text)
             print(f"seeded {code}.lang — {unt} strings to translate")
         return 0
@@ -282,7 +331,7 @@ def main():
     reports = []
     for f in lang_files():
         code = f[:2]
-        text, unt, fz = merge(pairs, code, os.path.join(HERE, f))
+        text, unt, fz = merge(pairs, plural_bases, code, os.path.join(HERE, f))
         planned[f] = text
         reports.append((f, unt, fz))
 

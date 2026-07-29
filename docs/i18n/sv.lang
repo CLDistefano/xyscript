@@ -1,0 +1,283 @@
+# =============================================================================
+# XyScript UI strings — SVENSKA (Swedish)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\sv.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Arkiv   # File
+menubar.edit = Redigera   # Edit
+menubar.search = Sök   # Search
+menubar.view = Visa   # View
+menubar.document = Dokument   # Document
+menubar.tools = Verktyg   # Tools
+menubar.settings = Inställningar   # Settings
+menubar.help = Hjälp   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Nytt   # New
+menu.file.open = Öppna…   # Open…
+menu.file.open_readonly = Öppna skrivskyddat…   # Open read-only…
+menu.file.revert = Återgå till sparat   # Revert to saved
+menu.file.save = Spara   # Save
+menu.file.save_as = Spara som…   # Save as…
+menu.file.save_selection_as = Spara markering som…   # Save selection as…
+menu.file.save_all = Spara alla   # Save all
+menu.file.export_pdf = Exportera PDF…   # Export PDF…
+menu.file.close = Stäng   # Close
+menu.file.quit = Avsluta   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Ångra   # Undo
+menu.edit.redo = Gör om   # Redo
+menu.edit.cut = Klipp ut   # Cut
+menu.edit.copy = Kopiera   # Copy
+menu.edit.append_clipboard = Lägg till i urklipp   # Append to clipboard
+menu.edit.prepend_clipboard = Infoga först i urklipp   # Prepend to clipboard
+menu.edit.paste = Klistra in   # Paste
+menu.edit.select_all = Markera allt   # Select all
+menu.edit.delete_selection = Ta bort markering   # Delete selection
+menu.edit.copy_to_cursor = Kopiera till markören   # Copy to cursor
+menu.edit.move_to_cursor = Flytta till markören   # Move to cursor
+menu.edit.case = Ändra skiftläge   # Change case
+menu.edit.case.upper = VERSALER   # UPPERCASE
+menu.edit.case.lower = gemener   # lowercase
+menu.edit.case.swap = Växla skiftläge   # Swap case
+menu.edit.text_colour = Textfärg…   # Text colour…
+menu.edit.clear_text_colour = Rensa textfärg   # Clear text colour
+menu.edit.insert_file = Infoga fil…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Sök…   # Find…
+menu.search.replace = Ersätt…   # Replace…
+menu.search.find_next = Sök nästa   # Find next
+menu.search.find_prev = Sök föregående   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Framhäv   # Emphasize
+menu.search.emphasize.selection = Markering   # Selection
+menu.search.emphasize.word = Ord eller fras…   # Word or phrase…
+menu.search.emphasize.regex = Reguljärt uttryck…   # Regular expression…
+menu.search.emphasize.clear = Rensa   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Färgmarkering   # Highlighting
+menu.view.paragraph_marks = Styckemarkeringar   # Paragraph marks
+menu.view.whitespace = Blanktecken   # Whitespace
+menu.view.line_numbers = Radnummer   # Line numbers
+menu.view.word_wrap = Radbrytning   # Word wrap
+menu.view.wrap_hang = Indrag vid radbrytning ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Förhandsgranskningsruta   # Preview pane
+menu.view.shell_pane = Skalruta   # Shell pane
+menu.view.shell_output = Flik för skalutdata   # Shell output tab
+menu.view.split = Dela rutor   # Split panes
+menu.view.split.side_by_side = Dela sida vid sida   # Split side by side
+menu.view.split.top_bottom = Dela upptill och nedtill   # Split top and bottom
+menu.view.split.focus_next = Fokusera nästa ruta   # Focus next pane
+menu.view.split.swap = Byt plats på de två rutorna   # Swap the two panes
+menu.view.split.zoom = Zooma aktiv ruta (växla)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Aktiv ruta i helskärm   # Active pane full screen
+menu.view.split.remove = Ta bort delning   # Remove split
+menu.view.menu_bar = Menyrad   # Menu bar
+menu.view.title_bar = Namnlist   # Title bar
+menu.view.writers_view = Skrivarvy (Esc för att avsluta)   # Writer's View (Esc to exit)
+menu.view.cmdline = Kommandorad   # Command line
+menu.view.cmdline.popup = Pop-up   # Pop-up
+menu.view.cmdline.position = Placering   # Position
+menu.view.cmdline.position.top = Överst   # Top
+menu.view.cmdline.position.bottom = Nederst   # Bottom
+menu.view.cmdline.position.hidden = Dold   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Dokumenttyp   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Auto (efter filändelse)   # Auto (by extension)
+menu.document.encoding = Teckenkodning   # Text encoding
+menu.document.encoding.display_as = Visa som   # Display as
+menu.document.encoding.convert_to = Konvertera till (ny fil)   # Convert to (new file)
+menu.document.line_endings = Radslut   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Skrivskyddat   # Read-only
+menu.document.word_count = Antal ord   # Word count
+menu.document.char_count = Antal tecken   # Character count
+menu.document.properties = Egenskaper…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Kör skript…   # Run script…
+menu.tools.run_script_bg = Kör skript i bakgrunden…   # Run script in background…
+menu.tools.run_here = Kör kod under markören   # Run code under cursor
+menu.tools.shell_command = Skalkommando…   # Shell command…
+menu.tools.jobs = Bakgrundsjobb   # Background jobs
+menu.tools.lang = Språkkontroll   # Language check
+menu.tools.lang.check = Kontrollera dokument   # Check document
+menu.tools.lang.spelling = Stavningsunderstrykningar   # Spelling underlines
+menu.tools.lang.grammar = Grammatikunderstrykningar   # Grammar underlines
+menu.tools.lang.spell_next = Nästa stavningsfel   # Next spelling issue
+menu.tools.lang.spell_prev = Föregående stavningsfel   # Previous spelling issue
+menu.tools.lang.grammar_next = Nästa grammatikfel   # Next grammar issue
+menu.tools.lang.grammar_prev = Föregående grammatikfel   # Previous grammar issue
+menu.tools.lang.fix = Åtgärda problem vid markören…   # Fix issue at cursor…
+menu.tools.lang.learn = Lär in markerade ord   # Learn selected words
+menu.tools.lang.dialect = Dialekt   # Dialect
+menu.tools.lang.dialect.american = Amerikansk   # American
+menu.tools.lang.dialect.british = Brittisk   # British
+menu.tools.lang.dialect.canadian = Kanadensisk   # Canadian
+menu.tools.lang.dialect.australian = Australisk   # Australian
+menu.tools.lang.dialect.indian = Indisk   # Indian
+menu.tools.lang.spell_style = Stavningsstil   # Spelling style
+menu.tools.lang.grammar_style = Grammatikstil   # Grammar style
+menu.tools.email = E-post   # Email
+menu.tools.email.list = Visa brevlåda   # List mailbox
+menu.tools.email.save = Spara meddelanden…   # Save messages…
+menu.tools.email.delete = Ta bort meddelanden…   # Delete messages…
+menu.tools.email.send = Skicka…   # Send…
+menu.tools.email.attach = Bifoga fil…   # Attach file…
+menu.tools.email.clear_attach = Rensa bifogade filer   # Clear attachments
+menu.tools.email.verbose = Utförlig loggning   # Verbose logging
+menu.tools.library = Bibliotek   # Library
+menu.tools.library.load = Läs in…   # Load…
+menu.tools.library.reload = Läs in på nytt   # Reload
+menu.tools.library.unload = Avlägsna alla   # Unload all
+menu.tools.library.list = Visa rutiner   # List routines
+menu.tools.keyboard_chart = Tangentbordsöversikt   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Utseende   # Appearance
+menu.settings.appearance.colors = Färger   # Colors
+menu.settings.appearance.colors.editor_text = Redigerartext…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Redigerarbakgrund…   # Editor background…
+menu.settings.appearance.colors.selection_text = Markeringstext…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Markeringsbakgrund…   # Selection background…
+menu.settings.appearance.colors.caret = Markör…   # Caret…
+menu.settings.appearance.colors.separators = Avgränsare…   # Separators…
+menu.settings.appearance.colors.tab_bg = Flikradsbakgrund   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Aktiv flik…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Hovrad flik…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Inaktiv flik…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Flikstängning ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Gränssnittstext…   # UI text…
+menu.settings.appearance.colors.ui_bg = Gränssnittsbakgrund…   # UI background…
+menu.settings.appearance.colors.txt_text = Text i TXT-fönster…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Bakgrund i TXT-fönster…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Text i katalogfönster…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Bakgrund i katalogfönster…   # Directory window background…
+menu.settings.appearance.fonts = Teckensnitt   # Fonts
+menu.settings.appearance.fonts.editor = Redigerare…   # Editor…
+menu.settings.appearance.fonts.ui = Gränssnitt…   # UI…
+menu.settings.appearance.fonts.txt = TXT-fönster…   # TXT window…
+menu.settings.appearance.fonts.dir = Katalogfönster…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Brödtext för förhandsgranskning/PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Kod för förhandsgranskning/PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Gränssnittszoom   # UI zoom
+menu.settings.appearance.ui_zoom.in = Zooma in   # Zoom in
+menu.settings.appearance.ui_zoom.out = Zooma ut   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Återställ (100 %)   # Reset (100%)
+menu.settings.appearance.margins = Marginaler   # Margins
+menu.settings.appearance.margins.wider = Bredare   # Wider
+menu.settings.appearance.margins.narrower = Smalare   # Narrower
+menu.settings.appearance.margins.none = Inga   # None
+menu.settings.appearance.line_spacing = Radavstånd   # Line spacing
+menu.settings.appearance.line_spacing.more = Mer   # More
+menu.settings.appearance.line_spacing.less = Mindre   # Less
+menu.settings.appearance.reset_ui = Återställ gränssnittsstorlek   # Reset UI sizing
+menu.settings.appearance.reset_dw = Återställ katalogfönster   # Reset directory window
+menu.settings.syntax = Syntaxfärgning   # Syntax highlighting
+menu.settings.syntax.theme_colors = Temafärger   # Theme colors
+menu.settings.syntax.token_kinds = Token-typer…   # Token kinds…
+menu.settings.syntax.reset_theme = Återställ tema   # Reset theme
+menu.settings.syntax.auto = Färgmarkera automatiskt vid öppning   # Auto-highlight on open
+menu.settings.editor = Redigerarbeteende   # Editor behavior
+menu.settings.editor.persistent_sel = Bestående markering   # Persistent selection
+menu.settings.editor.remember_geom = Kom ihåg fönsterstorlek och -position   # Remember window size+position
+menu.settings.editor.coding = Kodningshjälp   # Coding aids
+menu.settings.editor.coding.autoindent = Automatiskt indrag på nya rader   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Mjuka tabbar (infoga blanksteg)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Hängande indrag för radbrutna rader   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Markera matchande parenteser   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Slut parenteser och citattecken automatiskt   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Autospara   # Autosave
+menu.settings.editor.autosave.off = Av   # Off
+menu.settings.editor.autosave.30s = Var 30:e sek   # Every 30 s
+menu.settings.editor.autosave.1m = Varje min   # Every 1 min
+menu.settings.editor.autosave.2m = Varannan min   # Every 2 min
+menu.settings.editor.autosave.5m = Var 5:e min   # Every 5 min
+menu.settings.editor.tab_width = Tabbredd   # Tab width
+menu.settings.editor.precision = Sifferprecision   # Number precision
+menu.settings.editor.precision.off = Av (fullständig)   # Off (full)
+menu.settings.keyboard = Tangentbord   # Keyboard
+menu.settings.keyboard.load = Läs in…   # Load…
+menu.settings.keyboard.save = Spara…   # Save…
+menu.settings.keyboard.reset = Återställ till inbyggt   # Reset to built-in
+menu.settings.language = Språk   # Language
+menu.settings.allow_shell = Tillåt skalkommandon   # Allow shell commands
+menu.settings.save_settings = Spara inställningar…   # Save settings…
+menu.settings.load_settings = Läs in inställningar…   # Load settings…
+menu.settings.autosave_settings = Autospara inställningar   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Referens   # Reference
+menu.help.about = Om XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Sök:   # Find:
+dialog.find.find_hint = text att söka efter   # text to find
+dialog.find.replace_label = Ersätt:   # Replace:
+dialog.find.replace_hint = ersättning   # replacement
+dialog.find.case = Skiftlägeskänslig   # Case sensitive
+dialog.find.whole_word = Helt ord   # Whole word
+dialog.find.regex = Reguljärt uttryck   # Regular expression
+dialog.find.in_selection = I markering   # In selection
+dialog.find.keep_case = Behåll skiftläge vid ersättning   # Keep case in replacement
+dialog.find.keep_case_hint = Ersätt / Ersätt alla: anpassa varje ersättning till skiftläget i texten den ersätter (gemener / Inledande versal / VERSALER).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Sök nästa (F3)   # Find next (F3)
+dialog.find.find_prev = Sök föregående (Skift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Ersätt   # Replace
+dialog.find.replace_all = Ersätt alla   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Kör kommando   # Run command
+dialog.run.shell_off = Skalkommandon är avstängda — aktivera under Inställningar ⏵ Tillåt skalkommandon.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Kommando:   # Command:
+dialog.run.command_hint = ett skalkommando   # a shell command
+dialog.run.background = Kör i bakgrunden   # Run in background
+dialog.run.insert_output = Infoga utdata vid markören   # Insert output at cursor
+dialog.run.run = Kör   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Sök efter:   # Search for:
+dialog.grep.pattern_hint = text (eller ett regex med Reguljärt uttryck)   # text (or a regex with Regular expression)
+dialog.grep.folder = I mapp:   # In folder:
+dialog.grep.folder_hint = tom = aktuell mapp — eller  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Reguljärt uttryck   # Regular expression
+dialog.grep.ignore_case = Ignorera skiftläge   # Ignore case
+dialog.grep.whole_word = Helt ord   # Whole word
+dialog.grep.search = Sök   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Om XyScript   # About XyScript
+dialog.about.tagline = En konfigurerbar redigerare i XyWrite-traditionen.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Stäng   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: inga träffar   # GREP: no matches
+msg.grep.match.one = {n} träff   # {n} match
+msg.grep.match.other = {n} träffar   # {n} matches
+msg.grep.file.one = {n} fil   # {n} file
+msg.grep.file.other = {n} filer   # {n} files
+msg.grep.summary_capped = GREP: {matches} i {files} (begränsat till {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} i {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} hittills…   # GREP: {matches} so far…
+msg.search.not_found = hittades inte: {find}   # not found: {find}
+msg.save.written = sparade {name}   # saved {name}
+msg.open.not_found = filen hittades inte: {path}   # file not found: {path}
+msg.readonly = dokumentet är skrivskyddat (RO för att låsa upp)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: söker…   # GREP: searching…

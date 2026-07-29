@@ -1,0 +1,289 @@
+# =============================================================================
+# XyScript UI strings — ROMÂNĂ (Romanian)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\ro.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+# Plural rule for this language — drives the singular/few/many selection in count
+# phrases (grep's match/file counts). Managed by i18n-sync; do not edit.
+_plural = romanian
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Fișier   # File
+menubar.edit = Editare   # Edit
+menubar.search = Căutare   # Search
+menubar.view = Vizualizare   # View
+menubar.document = Document   # Document
+menubar.tools = Instrumente   # Tools
+menubar.settings = Setări   # Settings
+menubar.help = Ajutor   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Nou   # New
+menu.file.open = Deschide…   # Open…
+menu.file.open_readonly = Deschide doar-citire…   # Open read-only…
+menu.file.revert = Revenire la versiunea salvată   # Revert to saved
+menu.file.save = Salvează   # Save
+menu.file.save_as = Salvează ca…   # Save as…
+menu.file.save_selection_as = Salvează selecția ca…   # Save selection as…
+menu.file.save_all = Salvează tot   # Save all
+menu.file.export_pdf = Exportă PDF…   # Export PDF…
+menu.file.close = Închide   # Close
+menu.file.quit = Ieșire   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Anulează   # Undo
+menu.edit.redo = Refă   # Redo
+menu.edit.cut = Decupează   # Cut
+menu.edit.copy = Copiază   # Copy
+menu.edit.append_clipboard = Adaugă la clipboard   # Append to clipboard
+menu.edit.prepend_clipboard = Adaugă la începutul clipboardului   # Prepend to clipboard
+menu.edit.paste = Lipește   # Paste
+menu.edit.select_all = Selectează tot   # Select all
+menu.edit.delete_selection = Șterge selecția   # Delete selection
+menu.edit.copy_to_cursor = Copiază la cursor   # Copy to cursor
+menu.edit.move_to_cursor = Mută la cursor   # Move to cursor
+menu.edit.case = Schimbă majuscule/minuscule   # Change case
+menu.edit.case.upper = MAJUSCULE   # UPPERCASE
+menu.edit.case.lower = minuscule   # lowercase
+menu.edit.case.swap = Inversează majuscule/minuscule   # Swap case
+menu.edit.text_colour = Culoarea textului…   # Text colour…
+menu.edit.clear_text_colour = Șterge culoarea textului   # Clear text colour
+menu.edit.insert_file = Inserează fișier…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Caută…   # Find…
+menu.search.replace = Înlocuiește…   # Replace…
+menu.search.find_next = Caută următorul   # Find next
+menu.search.find_prev = Caută precedentul   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Evidențiază   # Emphasize
+menu.search.emphasize.selection = Selecția   # Selection
+menu.search.emphasize.word = Cuvânt sau frază…   # Word or phrase…
+menu.search.emphasize.regex = Expresie regulată…   # Regular expression…
+menu.search.emphasize.clear = Șterge   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Evidențiere sintaxă   # Highlighting
+menu.view.paragraph_marks = Marcaje de paragraf   # Paragraph marks
+menu.view.whitespace = Spații albe   # Whitespace
+menu.view.line_numbers = Numere de rând   # Line numbers
+menu.view.word_wrap = Încadrarea textului   # Word wrap
+menu.view.wrap_hang = Indentare la încadrare ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Panou de previzualizare   # Preview pane
+menu.view.shell_pane = Panou shell   # Shell pane
+menu.view.shell_output = Filă ieșire shell   # Shell output tab
+menu.view.split = Împarte panourile   # Split panes
+menu.view.split.side_by_side = Împarte pe orizontală   # Split side by side
+menu.view.split.top_bottom = Împarte pe verticală   # Split top and bottom
+menu.view.split.focus_next = Focalizează panoul următor   # Focus next pane
+menu.view.split.swap = Interschimbă cele două panouri   # Swap the two panes
+menu.view.split.zoom = Mărește panoul activ (comută)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Panoul activ pe tot ecranul   # Active pane full screen
+menu.view.split.remove = Elimină împărțirea   # Remove split
+menu.view.menu_bar = Bară de meniu   # Menu bar
+menu.view.title_bar = Bară de titlu   # Title bar
+menu.view.writers_view = Vizualizare scriitor (Esc pentru ieșire)   # Writer's View (Esc to exit)
+menu.view.cmdline = Linie de comandă   # Command line
+menu.view.cmdline.popup = Fereastră pop-up   # Pop-up
+menu.view.cmdline.position = Poziție   # Position
+menu.view.cmdline.position.top = Sus   # Top
+menu.view.cmdline.position.bottom = Jos   # Bottom
+menu.view.cmdline.position.hidden = Ascunsă   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Tip de document   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automat (după extensie)   # Auto (by extension)
+menu.document.encoding = Codificare text   # Text encoding
+menu.document.encoding.display_as = Afișează ca   # Display as
+menu.document.encoding.convert_to = Convertește în (fișier nou)   # Convert to (new file)
+menu.document.line_endings = Terminații de rând   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Doar-citire   # Read-only
+menu.document.word_count = Număr de cuvinte   # Word count
+menu.document.char_count = Număr de caractere   # Character count
+menu.document.properties = Proprietăți…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Rulează script…   # Run script…
+menu.tools.run_script_bg = Rulează script în fundal…   # Run script in background…
+menu.tools.run_here = Rulează codul de sub cursor   # Run code under cursor
+menu.tools.shell_command = Comandă shell…   # Shell command…
+menu.tools.jobs = Sarcini în fundal   # Background jobs
+menu.tools.lang = Verificare lingvistică   # Language check
+menu.tools.lang.check = Verifică documentul   # Check document
+menu.tools.lang.spelling = Sublinieri ortografice   # Spelling underlines
+menu.tools.lang.grammar = Sublinieri gramaticale   # Grammar underlines
+menu.tools.lang.spell_next = Următoarea problemă ortografică   # Next spelling issue
+menu.tools.lang.spell_prev = Problema ortografică precedentă   # Previous spelling issue
+menu.tools.lang.grammar_next = Următoarea problemă gramaticală   # Next grammar issue
+menu.tools.lang.grammar_prev = Problema gramaticală precedentă   # Previous grammar issue
+menu.tools.lang.fix = Corectează problema de la cursor…   # Fix issue at cursor…
+menu.tools.lang.learn = Memorează cuvintele selectate   # Learn selected words
+menu.tools.lang.dialect = Dialect   # Dialect
+menu.tools.lang.dialect.american = American   # American
+menu.tools.lang.dialect.british = Britanic   # British
+menu.tools.lang.dialect.canadian = Canadian   # Canadian
+menu.tools.lang.dialect.australian = Australian   # Australian
+menu.tools.lang.dialect.indian = Indian   # Indian
+menu.tools.lang.spell_style = Stil ortografic   # Spelling style
+menu.tools.lang.grammar_style = Stil gramatical   # Grammar style
+menu.tools.email = Email   # Email
+menu.tools.email.list = Listează căsuța poștală   # List mailbox
+menu.tools.email.save = Salvează mesajele…   # Save messages…
+menu.tools.email.delete = Șterge mesajele…   # Delete messages…
+menu.tools.email.send = Trimite…   # Send…
+menu.tools.email.attach = Atașează fișier…   # Attach file…
+menu.tools.email.clear_attach = Șterge atașamentele   # Clear attachments
+menu.tools.email.verbose = Jurnalizare detaliată   # Verbose logging
+menu.tools.library = Bibliotecă   # Library
+menu.tools.library.load = Încarcă…   # Load…
+menu.tools.library.reload = Reîncarcă   # Reload
+menu.tools.library.unload = Descarcă tot   # Unload all
+menu.tools.library.list = Listează rutinele   # List routines
+menu.tools.keyboard_chart = Diagramă tastatură   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Aspect   # Appearance
+menu.settings.appearance.colors = Culori   # Colors
+menu.settings.appearance.colors.editor_text = Text editor…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Fundal editor…   # Editor background…
+menu.settings.appearance.colors.selection_text = Text selecție…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Fundal selecție…   # Selection background…
+menu.settings.appearance.colors.caret = Cursor…   # Caret…
+menu.settings.appearance.colors.separators = Separatoare…   # Separators…
+menu.settings.appearance.colors.tab_bg = Fundal bară de file   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Filă activă…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Filă survolată…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Filă inactivă…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Închidere filă ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Text interfață…   # UI text…
+menu.settings.appearance.colors.ui_bg = Fundal interfață…   # UI background…
+menu.settings.appearance.colors.txt_text = Text fereastră TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Fundal fereastră TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Text fereastră director…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Fundal fereastră director…   # Directory window background…
+menu.settings.appearance.fonts = Fonturi   # Fonts
+menu.settings.appearance.fonts.editor = Editor…   # Editor…
+menu.settings.appearance.fonts.ui = Interfață…   # UI…
+menu.settings.appearance.fonts.txt = Fereastră TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Fereastră director…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Corp previzualizare / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Cod previzualizare / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Zoom interfață   # UI zoom
+menu.settings.appearance.ui_zoom.in = Mărește   # Zoom in
+menu.settings.appearance.ui_zoom.out = Micșorează   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Resetează (100%)   # Reset (100%)
+menu.settings.appearance.margins = Margini   # Margins
+menu.settings.appearance.margins.wider = Mai late   # Wider
+menu.settings.appearance.margins.narrower = Mai înguste   # Narrower
+menu.settings.appearance.margins.none = Fără   # None
+menu.settings.appearance.line_spacing = Spațiere între rânduri   # Line spacing
+menu.settings.appearance.line_spacing.more = Mai mare   # More
+menu.settings.appearance.line_spacing.less = Mai mică   # Less
+menu.settings.appearance.reset_ui = Resetează dimensiunea interfeței   # Reset UI sizing
+menu.settings.appearance.reset_dw = Resetează fereastra directorului   # Reset directory window
+menu.settings.syntax = Evidențiere sintaxă   # Syntax highlighting
+menu.settings.syntax.theme_colors = Culori temă   # Theme colors
+menu.settings.syntax.token_kinds = Tipuri de token…   # Token kinds…
+menu.settings.syntax.reset_theme = Resetează tema   # Reset theme
+menu.settings.syntax.auto = Evidențiere automată la deschidere   # Auto-highlight on open
+menu.settings.editor = Comportament editor   # Editor behavior
+menu.settings.editor.persistent_sel = Selecție persistentă   # Persistent selection
+menu.settings.editor.remember_geom = Reține dimensiunea+poziția ferestrei   # Remember window size+position
+menu.settings.editor.coding = Ajutoare de programare   # Coding aids
+menu.settings.editor.coding.autoindent = Indentare automată a rândurilor noi   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Taburi soft (inserează spații)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Indentare agățată pentru rândurile încadrate   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Evidențiază parantezele pereche   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Închide automat parantezele și ghilimelele   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Salvare automată   # Autosave
+menu.settings.editor.autosave.off = Dezactivată   # Off
+menu.settings.editor.autosave.30s = La fiecare 30 s   # Every 30 s
+menu.settings.editor.autosave.1m = La fiecare 1 min   # Every 1 min
+menu.settings.editor.autosave.2m = La fiecare 2 min   # Every 2 min
+menu.settings.editor.autosave.5m = La fiecare 5 min   # Every 5 min
+menu.settings.editor.tab_width = Lățime tab   # Tab width
+menu.settings.editor.precision = Precizie numerică   # Number precision
+menu.settings.editor.precision.off = Dezactivată (completă)   # Off (full)
+menu.settings.keyboard = Tastatură   # Keyboard
+menu.settings.keyboard.load = Încarcă…   # Load…
+menu.settings.keyboard.save = Salvează…   # Save…
+menu.settings.keyboard.reset = Resetează la valorile implicite   # Reset to built-in
+menu.settings.language = Limbă   # Language
+menu.settings.allow_shell = Permite comenzi shell   # Allow shell commands
+menu.settings.save_settings = Salvează setările…   # Save settings…
+menu.settings.load_settings = Încarcă setările…   # Load settings…
+menu.settings.autosave_settings = Salvează automat setările   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Referință   # Reference
+menu.help.about = Despre XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Caută:   # Find:
+dialog.find.find_hint = text de căutat   # text to find
+dialog.find.replace_label = Înlocuiește:   # Replace:
+dialog.find.replace_hint = înlocuitor   # replacement
+dialog.find.case = Sensibil la majuscule   # Case sensitive
+dialog.find.whole_word = Cuvânt întreg   # Whole word
+dialog.find.regex = Expresie regulată   # Regular expression
+dialog.find.in_selection = În selecție   # In selection
+dialog.find.keep_case = Păstrează majusculele la înlocuire   # Keep case in replacement
+dialog.find.keep_case_hint = Înlocuiește / Înlocuiește tot: adaptează fiecare înlocuire la majusculele textului pe care îl înlocuiește (minuscule / Cu Inițială Mare / MAJUSCULE).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Caută următorul (F3)   # Find next (F3)
+dialog.find.find_prev = Caută precedentul (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Înlocuiește   # Replace
+dialog.find.replace_all = Înlocuiește tot   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Rulează comanda   # Run command
+dialog.run.shell_off = Comenzile shell sunt dezactivate — activează-le în Setări ⏵ Permite comenzi shell.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Comandă:   # Command:
+dialog.run.command_hint = o comandă shell   # a shell command
+dialog.run.background = Rulează în fundal   # Run in background
+dialog.run.insert_output = Inserează ieșirea la cursor   # Insert output at cursor
+dialog.run.run = Rulează   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Caută:   # Search for:
+dialog.grep.pattern_hint = text (sau o expresie regulată cu Expresie regulată)   # text (or a regex with Regular expression)
+dialog.grep.folder = În folder:   # In folder:
+dialog.grep.folder_hint = gol = folderul curent — sau  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Expresie regulată   # Regular expression
+dialog.grep.ignore_case = Ignoră majusculele   # Ignore case
+dialog.grep.whole_word = Cuvânt întreg   # Whole word
+dialog.grep.search = Caută   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Despre XyScript   # About XyScript
+dialog.about.tagline = Un editor configurabil în tradiția XyWrite.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Închide   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: nicio potrivire   # GREP: no matches
+msg.grep.match.one = {n} potrivire   # {n} match
+msg.grep.match.few = {n} potriviri   # {n} matches
+msg.grep.match.other = {n} de potriviri   # {n} matches
+msg.grep.file.one = {n} fișier   # {n} file
+msg.grep.file.few = {n} fișiere   # {n} files
+msg.grep.file.other = {n} de fișiere   # {n} files
+msg.grep.summary_capped = GREP: {matches} în {files} (limitat la {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} în {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} până acum…   # GREP: {matches} so far…
+msg.search.not_found = negăsit: {find}   # not found: {find}
+msg.save.written = salvat {name}   # saved {name}
+msg.open.not_found = fișier negăsit: {path}   # file not found: {path}
+msg.readonly = documentul este doar-citire (RO pentru deblocare)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: se caută…   # GREP: searching…

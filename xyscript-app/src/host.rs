@@ -3346,15 +3346,67 @@ impl AppHost {
         }
         s
     }
-    /// A count phrase with singular/plural selection: `<base>.one` when `n == 1`, else `<base>.other`,
-    /// with `{n}` filled in. Two categories (one/other) — enough for every language shipped, and the
-    /// zero case never reaches a plural phrase here (grep reports "no matches" via `msg.grep.none`).
-    /// `en_one`/`en_other` are the built-in English templates. NOTE: `i18n-sync.py` extracts BOTH
-    /// `<base>.one` and `<base>.other` from each `tr_plural(...)` call — keep the base + both English
-    /// templates as string literals at the call site so translators see both forms in the catalogs.
+    /// The CLDR-style plural CATEGORY for `n` under the loaded catalog's declared rule (the `_plural`
+    /// key). English and most languages are the implicit `one`/`other`; Slavic/Romanian catalogs
+    /// declare a rule that adds `few`/`many`. The rule NAMES and arithmetic here are mirrored by
+    /// `i18n-sync.py`, which generates the matching `<base>.<category>` keys per language — keep them
+    /// in step. Only the grep count phrases pluralize, and `n == 0` never reaches here (grep reports
+    /// "no matches" via `msg.grep.none`), so the zero row of each rule is academic.
+    fn plural_category(&self, n: usize) -> &'static str {
+        match self.lang.get("_plural").map(String::as_str) {
+            // Polish: one=1; few=2–4 excluding the teens; many=the rest.
+            Some("polish") => {
+                let (unit, teen) = (n % 10, n % 100);
+                if n == 1 {
+                    "one"
+                } else if (2..=4).contains(&unit) && !(12..=14).contains(&teen) {
+                    "few"
+                } else {
+                    "many"
+                }
+            }
+            // Czech: one=1; few=2–4 exactly; other=the rest.
+            Some("czech") => {
+                if n == 1 {
+                    "one"
+                } else if (2..=4).contains(&n) {
+                    "few"
+                } else {
+                    "other"
+                }
+            }
+            // Romanian: one=1; few=0 or n%100 in 2–19 (bare noun); other=the rest (the "de" form).
+            Some("romanian") => {
+                let teen = n % 100;
+                if n == 1 {
+                    "one"
+                } else if n == 0 || (2..=19).contains(&teen) {
+                    "few"
+                } else {
+                    "other"
+                }
+            }
+            // Default one/other: en, de, es, it, nl, pt, sv, da, nb, fi, hu, fr, …
+            _ => {
+                if n == 1 {
+                    "one"
+                } else {
+                    "other"
+                }
+            }
+        }
+    }
+
+    /// A count phrase with plural selection: `<base>.<category>` for the loaded catalog's plural rule
+    /// (see [`plural_category`](Self::plural_category)), with `{n}` filled in. `en_one`/`en_other`
+    /// are the built-in English templates — English has only one/other, so `few`/`many`/`other` all
+    /// fall back to `en_other`. NOTE: `i18n-sync.py` extracts BOTH `<base>.one` and `<base>.other`
+    /// from each `tr_plural(...)` call and expands the extra categories per language — keep the base
+    /// and both English templates as string literals at the call site so translators see the forms.
     fn tr_plural(&self, base: &str, en_one: &str, en_other: &str, n: usize) -> String {
-        let (suffix, en) = if n == 1 { ("one", en_one) } else { ("other", en_other) };
-        self.tr_fmt(&format!("{base}.{suffix}"), en, &[("n", &n)])
+        let cat = self.plural_category(n);
+        let en = if cat == "one" { en_one } else { en_other };
+        self.tr_fmt(&format!("{base}.{cat}"), en, &[("n", &n)])
     }
     /// `BALPAIRS` — is matched-bracket highlighting on?
     pub fn bal_pairs(&self) -> bool {
@@ -11496,5 +11548,53 @@ not a kv line
         );
         assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 1), "1 correspondance");
         assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 4), "4 correspondances");
+    }
+
+    #[test]
+    fn tr_plural_honors_a_three_form_rule() {
+        let mut host = super::AppHost::new();
+        // Polish declares its rule via `_plural` and provides one/few/many forms.
+        host.lang = super::parse_lang_table(
+            "_plural = polish\n\
+             msg.grep.match.one = {n} dopasowanie\n\
+             msg.grep.match.few = {n} dopasowania\n\
+             msg.grep.match.many = {n} dopasowań\n",
+        );
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 1), "1 dopasowanie"); // one
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 3), "3 dopasowania"); // few
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 5), "5 dopasowań"); // many
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 12), "12 dopasowań"); // teens → many
+        assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 22), "22 dopasowania"); // few again
+        // A missing category (e.g. an incomplete catalog) falls back to the English plural.
+        assert_eq!(host.tr_plural("msg.grep.file", "{n} file", "{n} files", 3), "3 files");
+    }
+
+    #[test]
+    fn plural_category_boundaries_per_rule() {
+        let cat = |rule: &str, n: usize| {
+            let mut h = super::AppHost::new();
+            h.lang = super::parse_lang_table(&format!("_plural = {rule}\n"));
+            h.plural_category(n)
+        };
+        // one/other (default / unknown rule): only 1 is "one".
+        assert_eq!(cat("", 1), "one");
+        assert_eq!(cat("", 2), "other");
+        // Polish: 1=one; 2–4 except teens=few; else many.
+        assert_eq!(cat("polish", 1), "one");
+        assert_eq!(cat("polish", 4), "few");
+        assert_eq!(cat("polish", 5), "many");
+        assert_eq!(cat("polish", 14), "many"); // teen → many, not few
+        assert_eq!(cat("polish", 24), "few"); // 24 % 10 == 4, not a teen
+        // Czech: 1=one; 2–4 exactly=few; else other (22 is NOT few).
+        assert_eq!(cat("czech", 1), "one");
+        assert_eq!(cat("czech", 3), "few");
+        assert_eq!(cat("czech", 5), "other");
+        assert_eq!(cat("czech", 22), "other");
+        // Romanian: 1=one; n%100 in 2–19=few; else other (the "de" form).
+        assert_eq!(cat("romanian", 1), "one");
+        assert_eq!(cat("romanian", 2), "few");
+        assert_eq!(cat("romanian", 19), "few");
+        assert_eq!(cat("romanian", 20), "other");
+        assert_eq!(cat("romanian", 119), "few"); // 119 % 100 == 19
     }
 }

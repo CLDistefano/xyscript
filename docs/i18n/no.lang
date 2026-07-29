@@ -1,0 +1,283 @@
+# =============================================================================
+# XyScript UI strings — NORSK (Norwegian)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\no.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Fil   # File
+menubar.edit = Rediger   # Edit
+menubar.search = Søk   # Search
+menubar.view = Vis   # View
+menubar.document = Dokument   # Document
+menubar.tools = Verktøy   # Tools
+menubar.settings = Innstillinger   # Settings
+menubar.help = Hjelp   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Ny   # New
+menu.file.open = Åpne…   # Open…
+menu.file.open_readonly = Åpne skrivebeskyttet…   # Open read-only…
+menu.file.revert = Gå tilbake til lagret   # Revert to saved
+menu.file.save = Lagre   # Save
+menu.file.save_as = Lagre som…   # Save as…
+menu.file.save_selection_as = Lagre merket område som…   # Save selection as…
+menu.file.save_all = Lagre alle   # Save all
+menu.file.export_pdf = Eksporter PDF…   # Export PDF…
+menu.file.close = Lukk   # Close
+menu.file.quit = Avslutt   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Angre   # Undo
+menu.edit.redo = Gjør om   # Redo
+menu.edit.cut = Klipp ut   # Cut
+menu.edit.copy = Kopier   # Copy
+menu.edit.append_clipboard = Legg til på utklippstavlen   # Append to clipboard
+menu.edit.prepend_clipboard = Sett foran på utklippstavlen   # Prepend to clipboard
+menu.edit.paste = Lim inn   # Paste
+menu.edit.select_all = Merk alt   # Select all
+menu.edit.delete_selection = Slett merket område   # Delete selection
+menu.edit.copy_to_cursor = Kopier til markør   # Copy to cursor
+menu.edit.move_to_cursor = Flytt til markør   # Move to cursor
+menu.edit.case = Endre bokstavstørrelse   # Change case
+menu.edit.case.upper = STORE BOKSTAVER   # UPPERCASE
+menu.edit.case.lower = små bokstaver   # lowercase
+menu.edit.case.swap = Bytt bokstavstørrelse   # Swap case
+menu.edit.text_colour = Tekstfarge…   # Text colour…
+menu.edit.clear_text_colour = Fjern tekstfarge   # Clear text colour
+menu.edit.insert_file = Sett inn fil…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Finn…   # Find…
+menu.search.replace = Erstatt…   # Replace…
+menu.search.find_next = Finn neste   # Find next
+menu.search.find_prev = Finn forrige   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Fremhev   # Emphasize
+menu.search.emphasize.selection = Merket område   # Selection
+menu.search.emphasize.word = Ord eller frase…   # Word or phrase…
+menu.search.emphasize.regex = Regulært uttrykk…   # Regular expression…
+menu.search.emphasize.clear = Fjern   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Utheving   # Highlighting
+menu.view.paragraph_marks = Avsnittsmerker   # Paragraph marks
+menu.view.whitespace = Blanktegn   # Whitespace
+menu.view.line_numbers = Linjenumre   # Line numbers
+menu.view.word_wrap = Tekstbryting   # Word wrap
+menu.view.wrap_hang = Hengende innrykk ved bryting ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Forhåndsvisningsrute   # Preview pane
+menu.view.shell_pane = Skallrute   # Shell pane
+menu.view.shell_output = Skallutdata-fane   # Shell output tab
+menu.view.split = Del ruter   # Split panes
+menu.view.split.side_by_side = Del side ved side   # Split side by side
+menu.view.split.top_bottom = Del øverst og nederst   # Split top and bottom
+menu.view.split.focus_next = Fokuser neste rute   # Focus next pane
+menu.view.split.swap = Bytt om de to rutene   # Swap the two panes
+menu.view.split.zoom = Forstørr aktiv rute (veksle)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Aktiv rute i fullskjerm   # Active pane full screen
+menu.view.split.remove = Fjern deling   # Remove split
+menu.view.menu_bar = Menylinje   # Menu bar
+menu.view.title_bar = Tittellinje   # Title bar
+menu.view.writers_view = Skrivevisning (Esc for å avslutte)   # Writer's View (Esc to exit)
+menu.view.cmdline = Kommandolinje   # Command line
+menu.view.cmdline.popup = Sprett opp   # Pop-up
+menu.view.cmdline.position = Plassering   # Position
+menu.view.cmdline.position.top = Øverst   # Top
+menu.view.cmdline.position.bottom = Nederst   # Bottom
+menu.view.cmdline.position.hidden = Skjult   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Dokumenttype   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automatisk (etter filtype)   # Auto (by extension)
+menu.document.encoding = Tegnkoding   # Text encoding
+menu.document.encoding.display_as = Vis som   # Display as
+menu.document.encoding.convert_to = Konverter til (ny fil)   # Convert to (new file)
+menu.document.line_endings = Linjeslutt   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Skrivebeskyttet   # Read-only
+menu.document.word_count = Antall ord   # Word count
+menu.document.char_count = Antall tegn   # Character count
+menu.document.properties = Egenskaper…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Kjør skript…   # Run script…
+menu.tools.run_script_bg = Kjør skript i bakgrunnen…   # Run script in background…
+menu.tools.run_here = Kjør kode under markøren   # Run code under cursor
+menu.tools.shell_command = Skallkommando…   # Shell command…
+menu.tools.jobs = Bakgrunnsjobber   # Background jobs
+menu.tools.lang = Språkkontroll   # Language check
+menu.tools.lang.check = Kontroller dokument   # Check document
+menu.tools.lang.spelling = Stavekontrollstreker   # Spelling underlines
+menu.tools.lang.grammar = Grammatikkstreker   # Grammar underlines
+menu.tools.lang.spell_next = Neste stavefeil   # Next spelling issue
+menu.tools.lang.spell_prev = Forrige stavefeil   # Previous spelling issue
+menu.tools.lang.grammar_next = Neste grammatikkfeil   # Next grammar issue
+menu.tools.lang.grammar_prev = Forrige grammatikkfeil   # Previous grammar issue
+menu.tools.lang.fix = Rett feil ved markøren…   # Fix issue at cursor…
+menu.tools.lang.learn = Lær merkede ord   # Learn selected words
+menu.tools.lang.dialect = Dialekt   # Dialect
+menu.tools.lang.dialect.american = Amerikansk   # American
+menu.tools.lang.dialect.british = Britisk   # British
+menu.tools.lang.dialect.canadian = Kanadisk   # Canadian
+menu.tools.lang.dialect.australian = Australsk   # Australian
+menu.tools.lang.dialect.indian = Indisk   # Indian
+menu.tools.lang.spell_style = Stavestil   # Spelling style
+menu.tools.lang.grammar_style = Grammatikkstil   # Grammar style
+menu.tools.email = E-post   # Email
+menu.tools.email.list = Vis postkasse   # List mailbox
+menu.tools.email.save = Lagre meldinger…   # Save messages…
+menu.tools.email.delete = Slett meldinger…   # Delete messages…
+menu.tools.email.send = Send…   # Send…
+menu.tools.email.attach = Legg ved fil…   # Attach file…
+menu.tools.email.clear_attach = Fjern vedlegg   # Clear attachments
+menu.tools.email.verbose = Detaljert logging   # Verbose logging
+menu.tools.library = Bibliotek   # Library
+menu.tools.library.load = Last inn…   # Load…
+menu.tools.library.reload = Last inn på nytt   # Reload
+menu.tools.library.unload = Last ut alle   # Unload all
+menu.tools.library.list = Vis rutiner   # List routines
+menu.tools.keyboard_chart = Tastaturoversikt   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Utseende   # Appearance
+menu.settings.appearance.colors = Farger   # Colors
+menu.settings.appearance.colors.editor_text = Redigeringstekst…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Redigeringsbakgrunn…   # Editor background…
+menu.settings.appearance.colors.selection_text = Tekst i merket område…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Bakgrunn i merket område…   # Selection background…
+menu.settings.appearance.colors.caret = Markør…   # Caret…
+menu.settings.appearance.colors.separators = Skilletegn…   # Separators…
+menu.settings.appearance.colors.tab_bg = Bakgrunn for fanelinje   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Aktiv fane…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Fane under peker…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Inaktiv fane…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Fanelukking ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Grensesnittstekst…   # UI text…
+menu.settings.appearance.colors.ui_bg = Grensesnittsbakgrunn…   # UI background…
+menu.settings.appearance.colors.txt_text = Tekst i TXT-vindu…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Bakgrunn i TXT-vindu…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Tekst i katalogvindu…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Bakgrunn i katalogvindu…   # Directory window background…
+menu.settings.appearance.fonts = Skrifter   # Fonts
+menu.settings.appearance.fonts.editor = Redigering…   # Editor…
+menu.settings.appearance.fonts.ui = Grensesnitt…   # UI…
+menu.settings.appearance.fonts.txt = TXT-vindu…   # TXT window…
+menu.settings.appearance.fonts.dir = Katalogvindu…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Brødtekst i forhåndsvisning / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Kode i forhåndsvisning / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Grensesnittszoom   # UI zoom
+menu.settings.appearance.ui_zoom.in = Zoom inn   # Zoom in
+menu.settings.appearance.ui_zoom.out = Zoom ut   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Tilbakestill (100 %)   # Reset (100%)
+menu.settings.appearance.margins = Marger   # Margins
+menu.settings.appearance.margins.wider = Bredere   # Wider
+menu.settings.appearance.margins.narrower = Smalere   # Narrower
+menu.settings.appearance.margins.none = Ingen   # None
+menu.settings.appearance.line_spacing = Linjeavstand   # Line spacing
+menu.settings.appearance.line_spacing.more = Mer   # More
+menu.settings.appearance.line_spacing.less = Mindre   # Less
+menu.settings.appearance.reset_ui = Tilbakestill grensesnittsstørrelse   # Reset UI sizing
+menu.settings.appearance.reset_dw = Tilbakestill katalogvindu   # Reset directory window
+menu.settings.syntax = Syntaksutheving   # Syntax highlighting
+menu.settings.syntax.theme_colors = Temafarger   # Theme colors
+menu.settings.syntax.token_kinds = Token-typer…   # Token kinds…
+menu.settings.syntax.reset_theme = Tilbakestill tema   # Reset theme
+menu.settings.syntax.auto = Uthev automatisk ved åpning   # Auto-highlight on open
+menu.settings.editor = Redigeringsatferd   # Editor behavior
+menu.settings.editor.persistent_sel = Vedvarende merking   # Persistent selection
+menu.settings.editor.remember_geom = Husk vindusstørrelse og -plassering   # Remember window size+position
+menu.settings.editor.coding = Kodehjelp   # Coding aids
+menu.settings.editor.coding.autoindent = Innrykk automatisk på nye linjer   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Myke tabulatorer (sett inn mellomrom)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Hengende innrykk for brutte linjer   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Uthev samsvarende parenteser   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Lukk parenteser og anførselstegn automatisk   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Autolagring   # Autosave
+menu.settings.editor.autosave.off = Av   # Off
+menu.settings.editor.autosave.30s = Hvert 30. sek   # Every 30 s
+menu.settings.editor.autosave.1m = Hvert 1. min   # Every 1 min
+menu.settings.editor.autosave.2m = Hvert 2. min   # Every 2 min
+menu.settings.editor.autosave.5m = Hvert 5. min   # Every 5 min
+menu.settings.editor.tab_width = Tabulatorbredde   # Tab width
+menu.settings.editor.precision = Tallpresisjon   # Number precision
+menu.settings.editor.precision.off = Av (full)   # Off (full)
+menu.settings.keyboard = Tastatur   # Keyboard
+menu.settings.keyboard.load = Last inn…   # Load…
+menu.settings.keyboard.save = Lagre…   # Save…
+menu.settings.keyboard.reset = Tilbakestill til innebygd   # Reset to built-in
+menu.settings.language = Språk   # Language
+menu.settings.allow_shell = Tillat skallkommandoer   # Allow shell commands
+menu.settings.save_settings = Lagre innstillinger…   # Save settings…
+menu.settings.load_settings = Last inn innstillinger…   # Load settings…
+menu.settings.autosave_settings = Autolagre innstillinger   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Referanse   # Reference
+menu.help.about = Om XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Finn:   # Find:
+dialog.find.find_hint = tekst å finne   # text to find
+dialog.find.replace_label = Erstatt:   # Replace:
+dialog.find.replace_hint = erstatning   # replacement
+dialog.find.case = Skill mellom store og små bokstaver   # Case sensitive
+dialog.find.whole_word = Hele ord   # Whole word
+dialog.find.regex = Regulært uttrykk   # Regular expression
+dialog.find.in_selection = I merket område   # In selection
+dialog.find.keep_case = Behold bokstavstørrelse i erstatningen   # Keep case in replacement
+dialog.find.keep_case_hint = Erstatt / Erstatt alle: tilpass bokstavstørrelsen på hver erstatning til teksten den erstatter (små / Stor forbokstav / STORE).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Finn neste (F3)   # Find next (F3)
+dialog.find.find_prev = Finn forrige (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Erstatt   # Replace
+dialog.find.replace_all = Erstatt alle   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Kjør kommando   # Run command
+dialog.run.shell_off = Skallkommandoer er av — slå på under Innstillinger ⏵ Tillat skallkommandoer.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Kommando:   # Command:
+dialog.run.command_hint = en skallkommando   # a shell command
+dialog.run.background = Kjør i bakgrunnen   # Run in background
+dialog.run.insert_output = Sett inn utdata ved markøren   # Insert output at cursor
+dialog.run.run = Kjør   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Søk etter:   # Search for:
+dialog.grep.pattern_hint = tekst (eller et regulært uttrykk med Regulært uttrykk)   # text (or a regex with Regular expression)
+dialog.grep.folder = I mappe:   # In folder:
+dialog.grep.folder_hint = tom = gjeldende mappe — eller  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Regulært uttrykk   # Regular expression
+dialog.grep.ignore_case = Ignorer bokstavstørrelse   # Ignore case
+dialog.grep.whole_word = Hele ord   # Whole word
+dialog.grep.search = Søk   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = Om XyScript   # About XyScript
+dialog.about.tagline = En konfigurerbar editor i XyWrite-tradisjonen.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Lukk   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: ingen treff   # GREP: no matches
+msg.grep.match.one = {n} treff   # {n} match
+msg.grep.match.other = {n} treff   # {n} matches
+msg.grep.file.one = {n} fil   # {n} file
+msg.grep.file.other = {n} filer   # {n} files
+msg.grep.summary_capped = GREP: {matches} i {files} (begrenset til {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches} i {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: {matches} så langt…   # GREP: {matches} so far…
+msg.search.not_found = ikke funnet: {find}   # not found: {find}
+msg.save.written = lagret {name}   # saved {name}
+msg.open.not_found = fant ikke filen: {path}   # file not found: {path}
+msg.readonly = dokumentet er skrivebeskyttet (RO for å låse opp)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: søker…   # GREP: searching…

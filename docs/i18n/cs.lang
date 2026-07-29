@@ -1,0 +1,289 @@
+# =============================================================================
+# XyScript UI strings — ČEŠTINA (Czech)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\cs.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+# Plural rule for this language — drives the singular/few/many selection in count
+# phrases (grep's match/file counts). Managed by i18n-sync; do not edit.
+_plural = czech
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Soubor   # File
+menubar.edit = Úpravy   # Edit
+menubar.search = Hledat   # Search
+menubar.view = Zobrazení   # View
+menubar.document = Dokument   # Document
+menubar.tools = Nástroje   # Tools
+menubar.settings = Nastavení   # Settings
+menubar.help = Nápověda   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Nový   # New
+menu.file.open = Otevřít…   # Open…
+menu.file.open_readonly = Otevřít jen pro čtení…   # Open read-only…
+menu.file.revert = Vrátit k uloženému   # Revert to saved
+menu.file.save = Uložit   # Save
+menu.file.save_as = Uložit jako…   # Save as…
+menu.file.save_selection_as = Uložit výběr jako…   # Save selection as…
+menu.file.save_all = Uložit vše   # Save all
+menu.file.export_pdf = Exportovat PDF…   # Export PDF…
+menu.file.close = Zavřít   # Close
+menu.file.quit = Ukončit   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Zpět   # Undo
+menu.edit.redo = Znovu   # Redo
+menu.edit.cut = Vyjmout   # Cut
+menu.edit.copy = Kopírovat   # Copy
+menu.edit.append_clipboard = Připojit do schránky   # Append to clipboard
+menu.edit.prepend_clipboard = Vložit na začátek schránky   # Prepend to clipboard
+menu.edit.paste = Vložit   # Paste
+menu.edit.select_all = Vybrat vše   # Select all
+menu.edit.delete_selection = Odstranit výběr   # Delete selection
+menu.edit.copy_to_cursor = Kopírovat ke kurzoru   # Copy to cursor
+menu.edit.move_to_cursor = Přesunout ke kurzoru   # Move to cursor
+menu.edit.case = Změnit velikost písmen   # Change case
+menu.edit.case.upper = VELKÁ PÍSMENA   # UPPERCASE
+menu.edit.case.lower = malá písmena   # lowercase
+menu.edit.case.swap = Prohodit velikost   # Swap case
+menu.edit.text_colour = Barva textu…   # Text colour…
+menu.edit.clear_text_colour = Zrušit barvu textu   # Clear text colour
+menu.edit.insert_file = Vložit soubor…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Najít…   # Find…
+menu.search.replace = Nahradit…   # Replace…
+menu.search.find_next = Najít další   # Find next
+menu.search.find_prev = Najít předchozí   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Zvýraznit   # Emphasize
+menu.search.emphasize.selection = Výběr   # Selection
+menu.search.emphasize.word = Slovo nebo fráze…   # Word or phrase…
+menu.search.emphasize.regex = Regulární výraz…   # Regular expression…
+menu.search.emphasize.clear = Vymazat   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Zvýrazňování   # Highlighting
+menu.view.paragraph_marks = Značky odstavců   # Paragraph marks
+menu.view.whitespace = Bílé znaky   # Whitespace
+menu.view.line_numbers = Čísla řádků   # Line numbers
+menu.view.word_wrap = Zalamování slov   # Word wrap
+menu.view.wrap_hang = Odsazení zalomení ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Panel náhledu   # Preview pane
+menu.view.shell_pane = Panel shellu   # Shell pane
+menu.view.shell_output = Karta výstupu shellu   # Shell output tab
+menu.view.split = Rozdělit panely   # Split panes
+menu.view.split.side_by_side = Rozdělit vedle sebe   # Split side by side
+menu.view.split.top_bottom = Rozdělit nad sebe   # Split top and bottom
+menu.view.split.focus_next = Přejít na další panel   # Focus next pane
+menu.view.split.swap = Prohodit oba panely   # Swap the two panes
+menu.view.split.zoom = Přiblížit aktivní panel (přepnout)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Aktivní panel na celou obrazovku   # Active pane full screen
+menu.view.split.remove = Zrušit rozdělení   # Remove split
+menu.view.menu_bar = Panel nabídek   # Menu bar
+menu.view.title_bar = Záhlaví okna   # Title bar
+menu.view.writers_view = Režim psaní (Esc pro ukončení)   # Writer's View (Esc to exit)
+menu.view.cmdline = Příkazový řádek   # Command line
+menu.view.cmdline.popup = Vyskakovací okno   # Pop-up
+menu.view.cmdline.position = Umístění   # Position
+menu.view.cmdline.position.top = Nahoře   # Top
+menu.view.cmdline.position.bottom = Dole   # Bottom
+menu.view.cmdline.position.hidden = Skryté   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Typ dokumentu   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automaticky (podle přípony)   # Auto (by extension)
+menu.document.encoding = Kódování textu   # Text encoding
+menu.document.encoding.display_as = Zobrazit jako   # Display as
+menu.document.encoding.convert_to = Převést na (nový soubor)   # Convert to (new file)
+menu.document.line_endings = Konce řádků   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Jen pro čtení   # Read-only
+menu.document.word_count = Počet slov   # Word count
+menu.document.char_count = Počet znaků   # Character count
+menu.document.properties = Vlastnosti…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Spustit skript…   # Run script…
+menu.tools.run_script_bg = Spustit skript na pozadí…   # Run script in background…
+menu.tools.run_here = Spustit kód pod kurzorem   # Run code under cursor
+menu.tools.shell_command = Příkaz shellu…   # Shell command…
+menu.tools.jobs = Úlohy na pozadí   # Background jobs
+menu.tools.lang = Kontrola jazyka   # Language check
+menu.tools.lang.check = Zkontrolovat dokument   # Check document
+menu.tools.lang.spelling = Podtržení pravopisu   # Spelling underlines
+menu.tools.lang.grammar = Podtržení gramatiky   # Grammar underlines
+menu.tools.lang.spell_next = Další pravopisný problém   # Next spelling issue
+menu.tools.lang.spell_prev = Předchozí pravopisný problém   # Previous spelling issue
+menu.tools.lang.grammar_next = Další gramatický problém   # Next grammar issue
+menu.tools.lang.grammar_prev = Předchozí gramatický problém   # Previous grammar issue
+menu.tools.lang.fix = Opravit problém u kurzoru…   # Fix issue at cursor…
+menu.tools.lang.learn = Naučit vybraná slova   # Learn selected words
+menu.tools.lang.dialect = Dialekt   # Dialect
+menu.tools.lang.dialect.american = Americká   # American
+menu.tools.lang.dialect.british = Britská   # British
+menu.tools.lang.dialect.canadian = Kanadská   # Canadian
+menu.tools.lang.dialect.australian = Australská   # Australian
+menu.tools.lang.dialect.indian = Indická   # Indian
+menu.tools.lang.spell_style = Styl pravopisu   # Spelling style
+menu.tools.lang.grammar_style = Styl gramatiky   # Grammar style
+menu.tools.email = E-mail   # Email
+menu.tools.email.list = Zobrazit schránku   # List mailbox
+menu.tools.email.save = Uložit zprávy…   # Save messages…
+menu.tools.email.delete = Odstranit zprávy…   # Delete messages…
+menu.tools.email.send = Odeslat…   # Send…
+menu.tools.email.attach = Přiložit soubor…   # Attach file…
+menu.tools.email.clear_attach = Zrušit přílohy   # Clear attachments
+menu.tools.email.verbose = Podrobné protokolování   # Verbose logging
+menu.tools.library = Knihovna   # Library
+menu.tools.library.load = Načíst…   # Load…
+menu.tools.library.reload = Znovu načíst   # Reload
+menu.tools.library.unload = Uvolnit vše   # Unload all
+menu.tools.library.list = Zobrazit rutiny   # List routines
+menu.tools.keyboard_chart = Přehled kláves   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Vzhled   # Appearance
+menu.settings.appearance.colors = Barvy   # Colors
+menu.settings.appearance.colors.editor_text = Text editoru…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Pozadí editoru…   # Editor background…
+menu.settings.appearance.colors.selection_text = Text výběru…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Pozadí výběru…   # Selection background…
+menu.settings.appearance.colors.caret = Kurzor…   # Caret…
+menu.settings.appearance.colors.separators = Oddělovače…   # Separators…
+menu.settings.appearance.colors.tab_bg = Pozadí lišty karet   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Aktivní karta…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Karta pod kurzorem…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Neaktivní karta…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Zavření karty ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Text rozhraní…   # UI text…
+menu.settings.appearance.colors.ui_bg = Pozadí rozhraní…   # UI background…
+menu.settings.appearance.colors.txt_text = Text okna TXT…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = Pozadí okna TXT…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Text okna adresáře…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Pozadí okna adresáře…   # Directory window background…
+menu.settings.appearance.fonts = Písma   # Fonts
+menu.settings.appearance.fonts.editor = Editor…   # Editor…
+menu.settings.appearance.fonts.ui = Rozhraní…   # UI…
+menu.settings.appearance.fonts.txt = Okno TXT…   # TXT window…
+menu.settings.appearance.fonts.dir = Okno adresáře…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Text náhledu / PDF…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Kód náhledu / PDF…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Přiblížení rozhraní   # UI zoom
+menu.settings.appearance.ui_zoom.in = Přiblížit   # Zoom in
+menu.settings.appearance.ui_zoom.out = Oddálit   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Obnovit (100 %)   # Reset (100%)
+menu.settings.appearance.margins = Okraje   # Margins
+menu.settings.appearance.margins.wider = Širší   # Wider
+menu.settings.appearance.margins.narrower = Užší   # Narrower
+menu.settings.appearance.margins.none = Žádné   # None
+menu.settings.appearance.line_spacing = Řádkování   # Line spacing
+menu.settings.appearance.line_spacing.more = Větší   # More
+menu.settings.appearance.line_spacing.less = Menší   # Less
+menu.settings.appearance.reset_ui = Obnovit velikost rozhraní   # Reset UI sizing
+menu.settings.appearance.reset_dw = Obnovit okno adresáře   # Reset directory window
+menu.settings.syntax = Zvýrazňování syntaxe   # Syntax highlighting
+menu.settings.syntax.theme_colors = Barvy motivu   # Theme colors
+menu.settings.syntax.token_kinds = Druhy tokenů…   # Token kinds…
+menu.settings.syntax.reset_theme = Obnovit motiv   # Reset theme
+menu.settings.syntax.auto = Zvýraznit automaticky při otevření   # Auto-highlight on open
+menu.settings.editor = Chování editoru   # Editor behavior
+menu.settings.editor.persistent_sel = Trvalý výběr   # Persistent selection
+menu.settings.editor.remember_geom = Zapamatovat velikost a polohu okna   # Remember window size+position
+menu.settings.editor.coding = Pomůcky pro psaní kódu   # Coding aids
+menu.settings.editor.coding.autoindent = Automatické odsazení nových řádků   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Měkké tabulátory (vkládat mezery)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Předsazené odsazení zalomených řádků   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Zvýraznit odpovídající závorky   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Automaticky uzavírat závorky a uvozovky   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Automatické ukládání   # Autosave
+menu.settings.editor.autosave.off = Vypnuto   # Off
+menu.settings.editor.autosave.30s = Každých 30 s   # Every 30 s
+menu.settings.editor.autosave.1m = Každou 1 min   # Every 1 min
+menu.settings.editor.autosave.2m = Každé 2 min   # Every 2 min
+menu.settings.editor.autosave.5m = Každých 5 min   # Every 5 min
+menu.settings.editor.tab_width = Šířka tabulátoru   # Tab width
+menu.settings.editor.precision = Přesnost čísel   # Number precision
+menu.settings.editor.precision.off = Vypnuto (plná)   # Off (full)
+menu.settings.keyboard = Klávesnice   # Keyboard
+menu.settings.keyboard.load = Načíst…   # Load…
+menu.settings.keyboard.save = Uložit…   # Save…
+menu.settings.keyboard.reset = Obnovit vestavěné   # Reset to built-in
+menu.settings.language = Jazyk   # Language
+menu.settings.allow_shell = Povolit příkazy shellu   # Allow shell commands
+menu.settings.save_settings = Uložit nastavení…   # Save settings…
+menu.settings.load_settings = Načíst nastavení…   # Load settings…
+menu.settings.autosave_settings = Automaticky ukládat nastavení   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Referenční příručka   # Reference
+menu.help.about = O aplikaci XyScript   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Najít:   # Find:
+dialog.find.find_hint = hledaný text   # text to find
+dialog.find.replace_label = Nahradit:   # Replace:
+dialog.find.replace_hint = náhrada   # replacement
+dialog.find.case = Rozlišovat velikost písmen   # Case sensitive
+dialog.find.whole_word = Celé slovo   # Whole word
+dialog.find.regex = Regulární výraz   # Regular expression
+dialog.find.in_selection = Ve výběru   # In selection
+dialog.find.keep_case = Zachovat velikost při nahrazení   # Keep case in replacement
+dialog.find.keep_case_hint = Nahradit / Nahradit vše: upravit velikost každé náhrady podle textu, který nahrazuje (malá / S velkým počátečním / VELKÁ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Najít další (F3)   # Find next (F3)
+dialog.find.find_prev = Najít předchozí (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Nahradit   # Replace
+dialog.find.replace_all = Nahradit vše   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Spustit příkaz   # Run command
+dialog.run.shell_off = Příkazy shellu jsou vypnuté — povolte je v Nastavení ⏵ Povolit příkazy shellu.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Příkaz:   # Command:
+dialog.run.command_hint = příkaz shellu   # a shell command
+dialog.run.background = Spustit na pozadí   # Run in background
+dialog.run.insert_output = Vložit výstup ke kurzoru   # Insert output at cursor
+dialog.run.run = Spustit   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Hledat:   # Search for:
+dialog.grep.pattern_hint = text (nebo regulární výraz s Regulární výraz)   # text (or a regex with Regular expression)
+dialog.grep.folder = Ve složce:   # In folder:
+dialog.grep.folder_hint = prázdné = aktuální složka — nebo  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Regulární výraz   # Regular expression
+dialog.grep.ignore_case = Ignorovat velikost písmen   # Ignore case
+dialog.grep.whole_word = Celé slovo   # Whole word
+dialog.grep.search = Hledat   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = O aplikaci XyScript   # About XyScript
+dialog.about.tagline = Konfigurovatelný editor v tradici XyWrite.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Zavřít   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: žádné shody   # GREP: no matches
+msg.grep.match.one = {n} shoda   # {n} match
+msg.grep.match.few = {n} shody   # {n} matches
+msg.grep.match.other = {n} shod   # {n} matches
+msg.grep.file.one = {n} soubor   # {n} file
+msg.grep.file.few = {n} soubory   # {n} files
+msg.grep.file.other = {n} souborů   # {n} files
+msg.grep.summary_capped = GREP: {matches}, {files} (omezeno na {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: zatím {matches}…   # GREP: {matches} so far…
+msg.search.not_found = nenalezeno: {find}   # not found: {find}
+msg.save.written = uloženo {name}   # saved {name}
+msg.open.not_found = soubor nenalezen: {path}   # file not found: {path}
+msg.readonly = dokument je jen pro čtení (RO pro odemčení)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: hledání…   # GREP: searching…

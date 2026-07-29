@@ -1,0 +1,283 @@
+# =============================================================================
+# XyScript UI strings — MAGYAR (Hungarian)
+# =============================================================================
+# Translators: edit the value to the RIGHT of '='. The trailing '# English' is the
+# source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
+# value falls back to English. Keep every {placeholder} intact. Load with:
+#   LANG <path>\hu.lang
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# =============================================================================
+
+
+# ---- menu bar ----------------------------------------------------
+menubar.file = Fájl   # File
+menubar.edit = Szerkesztés   # Edit
+menubar.search = Keresés   # Search
+menubar.view = Nézet   # View
+menubar.document = Dokumentum   # Document
+menubar.tools = Eszközök   # Tools
+menubar.settings = Beállítások   # Settings
+menubar.help = Súgó   # Help
+
+# ---- menu.file ---------------------------------------------------
+menu.file.new = Új   # New
+menu.file.open = Megnyitás…   # Open…
+menu.file.open_readonly = Megnyitás csak olvasásra…   # Open read-only…
+menu.file.revert = Visszaállítás a mentett verzióra   # Revert to saved
+menu.file.save = Mentés   # Save
+menu.file.save_as = Mentés másként…   # Save as…
+menu.file.save_selection_as = Kijelölés mentése másként…   # Save selection as…
+menu.file.save_all = Összes mentése   # Save all
+menu.file.export_pdf = Exportálás PDF-be…   # Export PDF…
+menu.file.close = Bezárás   # Close
+menu.file.quit = Kilépés   # Quit
+
+# ---- menu.edit ---------------------------------------------------
+menu.edit.undo = Visszavonás   # Undo
+menu.edit.redo = Újra   # Redo
+menu.edit.cut = Kivágás   # Cut
+menu.edit.copy = Másolás   # Copy
+menu.edit.append_clipboard = Hozzáfűzés a vágólaphoz   # Append to clipboard
+menu.edit.prepend_clipboard = Elé fűzés a vágólapon   # Prepend to clipboard
+menu.edit.paste = Beillesztés   # Paste
+menu.edit.select_all = Összes kijelölése   # Select all
+menu.edit.delete_selection = Kijelölés törlése   # Delete selection
+menu.edit.copy_to_cursor = Másolás a kurzorhoz   # Copy to cursor
+menu.edit.move_to_cursor = Áthelyezés a kurzorhoz   # Move to cursor
+menu.edit.case = Kis- és nagybetűk módosítása   # Change case
+menu.edit.case.upper = NAGYBETŰS   # UPPERCASE
+menu.edit.case.lower = kisbetűs   # lowercase
+menu.edit.case.swap = Kis- és nagybetűk cseréje   # Swap case
+menu.edit.text_colour = Szövegszín…   # Text colour…
+menu.edit.clear_text_colour = Szövegszín törlése   # Clear text colour
+menu.edit.insert_file = Fájl beszúrása…   # Insert file…
+
+# ---- menu.search -------------------------------------------------
+menu.search.find = Keresés…   # Find…
+menu.search.replace = Csere…   # Replace…
+menu.search.find_next = Következő keresése   # Find next
+menu.search.find_prev = Előző keresése   # Find previous
+menu.search.grep = Grep…   # Grep…
+menu.search.emphasize = Kiemelés   # Emphasize
+menu.search.emphasize.selection = Kijelölés   # Selection
+menu.search.emphasize.word = Szó vagy kifejezés…   # Word or phrase…
+menu.search.emphasize.regex = Reguláris kifejezés…   # Regular expression…
+menu.search.emphasize.clear = Törlés   # Clear
+
+# ---- menu.view ---------------------------------------------------
+menu.view.highlighting = Kiemelés   # Highlighting
+menu.view.paragraph_marks = Bekezdésjelek   # Paragraph marks
+menu.view.whitespace = Szóközök   # Whitespace
+menu.view.line_numbers = Sorszámok   # Line numbers
+menu.view.word_wrap = Sortörés   # Word wrap
+menu.view.wrap_hang = Behúzott sortörés ({n})…   # Wrap hang ({n})…
+menu.view.preview_pane = Előnézeti panel   # Preview pane
+menu.view.shell_pane = Parancssori panel   # Shell pane
+menu.view.shell_output = Parancssori kimenet lap   # Shell output tab
+menu.view.split = Panelek felosztása   # Split panes
+menu.view.split.side_by_side = Felosztás egymás mellé   # Split side by side
+menu.view.split.top_bottom = Felosztás fent és lent   # Split top and bottom
+menu.view.split.focus_next = Következő panelre váltás   # Focus next pane
+menu.view.split.swap = A két panel felcserélése   # Swap the two panes
+menu.view.split.zoom = Aktív panel nagyítása (váltó)   # Zoom active pane (toggle)
+menu.view.split.fullscreen = Aktív panel teljes képernyőn   # Active pane full screen
+menu.view.split.remove = Felosztás megszüntetése   # Remove split
+menu.view.menu_bar = Menüsor   # Menu bar
+menu.view.title_bar = Címsor   # Title bar
+menu.view.writers_view = Írói nézet (Esc a kilépéshez)   # Writer's View (Esc to exit)
+menu.view.cmdline = Parancssor   # Command line
+menu.view.cmdline.popup = Felugró   # Pop-up
+menu.view.cmdline.position = Elhelyezés   # Position
+menu.view.cmdline.position.top = Fent   # Top
+menu.view.cmdline.position.bottom = Lent   # Bottom
+menu.view.cmdline.position.hidden = Rejtett   # Hidden
+
+# ---- menu.document -----------------------------------------------
+menu.document.doctype = Dokumentumtípus   # Document type
+menu.document.doctype.typst = Typst   # Typst
+menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.auto = Automatikus (kiterjesztés szerint)   # Auto (by extension)
+menu.document.encoding = Szövegkódolás   # Text encoding
+menu.document.encoding.display_as = Megjelenítés mint   # Display as
+menu.document.encoding.convert_to = Konvertálás erre (új fájl)   # Convert to (new file)
+menu.document.line_endings = Sorvégek   # Line endings
+menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
+menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.read_only = Csak olvasható   # Read-only
+menu.document.word_count = Szavak száma   # Word count
+menu.document.char_count = Karakterek száma   # Character count
+menu.document.properties = Tulajdonságok…   # Properties…
+
+# ---- menu.tools --------------------------------------------------
+menu.tools.run_script = Szkript futtatása…   # Run script…
+menu.tools.run_script_bg = Szkript futtatása a háttérben…   # Run script in background…
+menu.tools.run_here = Kurzor alatti kód futtatása   # Run code under cursor
+menu.tools.shell_command = Parancssori parancs…   # Shell command…
+menu.tools.jobs = Háttérfeladatok   # Background jobs
+menu.tools.lang = Nyelvi ellenőrzés   # Language check
+menu.tools.lang.check = Dokumentum ellenőrzése   # Check document
+menu.tools.lang.spelling = Helyesírási aláhúzások   # Spelling underlines
+menu.tools.lang.grammar = Nyelvtani aláhúzások   # Grammar underlines
+menu.tools.lang.spell_next = Következő helyesírási hiba   # Next spelling issue
+menu.tools.lang.spell_prev = Előző helyesírási hiba   # Previous spelling issue
+menu.tools.lang.grammar_next = Következő nyelvtani hiba   # Next grammar issue
+menu.tools.lang.grammar_prev = Előző nyelvtani hiba   # Previous grammar issue
+menu.tools.lang.fix = Kurzornál lévő hiba javítása…   # Fix issue at cursor…
+menu.tools.lang.learn = Kijelölt szavak megtanulása   # Learn selected words
+menu.tools.lang.dialect = Nyelvváltozat   # Dialect
+menu.tools.lang.dialect.american = Amerikai   # American
+menu.tools.lang.dialect.british = Brit   # British
+menu.tools.lang.dialect.canadian = Kanadai   # Canadian
+menu.tools.lang.dialect.australian = Ausztrál   # Australian
+menu.tools.lang.dialect.indian = Indiai   # Indian
+menu.tools.lang.spell_style = Helyesírási stílus   # Spelling style
+menu.tools.lang.grammar_style = Nyelvtani stílus   # Grammar style
+menu.tools.email = E-mail   # Email
+menu.tools.email.list = Postafiók listázása   # List mailbox
+menu.tools.email.save = Üzenetek mentése…   # Save messages…
+menu.tools.email.delete = Üzenetek törlése…   # Delete messages…
+menu.tools.email.send = Küldés…   # Send…
+menu.tools.email.attach = Fájl csatolása…   # Attach file…
+menu.tools.email.clear_attach = Mellékletek törlése   # Clear attachments
+menu.tools.email.verbose = Részletes naplózás   # Verbose logging
+menu.tools.library = Könyvtár   # Library
+menu.tools.library.load = Betöltés…   # Load…
+menu.tools.library.reload = Újratöltés   # Reload
+menu.tools.library.unload = Összes eltávolítása   # Unload all
+menu.tools.library.list = Rutinok listázása   # List routines
+menu.tools.keyboard_chart = Billentyűzettáblázat   # Keyboard chart
+
+# ---- menu.settings -----------------------------------------------
+menu.settings.appearance = Megjelenés   # Appearance
+menu.settings.appearance.colors = Színek   # Colors
+menu.settings.appearance.colors.editor_text = Szerkesztő szövege…   # Editor text…
+menu.settings.appearance.colors.editor_bg = Szerkesztő háttere…   # Editor background…
+menu.settings.appearance.colors.selection_text = Kijelölés szövege…   # Selection text…
+menu.settings.appearance.colors.selection_bg = Kijelölés háttere…   # Selection background…
+menu.settings.appearance.colors.caret = Kurzor…   # Caret…
+menu.settings.appearance.colors.separators = Elválasztók…   # Separators…
+menu.settings.appearance.colors.tab_bg = Lapsor háttere   # Tab bar background
+menu.settings.appearance.colors.tab_bg.active = Aktív lap…   # Active tab…
+menu.settings.appearance.colors.tab_bg.hover = Rámutatott lap…   # Hovered tab…
+menu.settings.appearance.colors.tab_bg.inactive = Inaktív lap…   # Inactive tab…
+menu.settings.appearance.colors.tab_close = Lapbezáró ×…   # Tab close ×…
+menu.settings.appearance.colors.ui_text = Kezelőfelület szövege…   # UI text…
+menu.settings.appearance.colors.ui_bg = Kezelőfelület háttere…   # UI background…
+menu.settings.appearance.colors.txt_text = TXT-ablak szövege…   # TXT window text…
+menu.settings.appearance.colors.txt_bg = TXT-ablak háttere…   # TXT window background…
+menu.settings.appearance.colors.dir_text = Könyvtárablak szövege…   # Directory window text…
+menu.settings.appearance.colors.dir_bg = Könyvtárablak háttere…   # Directory window background…
+menu.settings.appearance.fonts = Betűtípusok   # Fonts
+menu.settings.appearance.fonts.editor = Szerkesztő…   # Editor…
+menu.settings.appearance.fonts.ui = Kezelőfelület…   # UI…
+menu.settings.appearance.fonts.txt = TXT-ablak…   # TXT window…
+menu.settings.appearance.fonts.dir = Könyvtárablak…   # Directory window…
+menu.settings.appearance.fonts.preview_body = Előnézet / PDF törzsszövege…   # Preview / PDF body…
+menu.settings.appearance.fonts.preview_code = Előnézet / PDF kódja…   # Preview / PDF code…
+menu.settings.appearance.ui_zoom = Kezelőfelület nagyítása   # UI zoom
+menu.settings.appearance.ui_zoom.in = Nagyítás   # Zoom in
+menu.settings.appearance.ui_zoom.out = Kicsinyítés   # Zoom out
+menu.settings.appearance.ui_zoom.reset = Visszaállítás (100%)   # Reset (100%)
+menu.settings.appearance.margins = Margók   # Margins
+menu.settings.appearance.margins.wider = Szélesebb   # Wider
+menu.settings.appearance.margins.narrower = Keskenyebb   # Narrower
+menu.settings.appearance.margins.none = Nincs   # None
+menu.settings.appearance.line_spacing = Sorköz   # Line spacing
+menu.settings.appearance.line_spacing.more = Nagyobb   # More
+menu.settings.appearance.line_spacing.less = Kisebb   # Less
+menu.settings.appearance.reset_ui = Kezelőfelület méretének visszaállítása   # Reset UI sizing
+menu.settings.appearance.reset_dw = Könyvtárablak visszaállítása   # Reset directory window
+menu.settings.syntax = Szintaxiskiemelés   # Syntax highlighting
+menu.settings.syntax.theme_colors = Témaszínek   # Theme colors
+menu.settings.syntax.token_kinds = Token-típusok…   # Token kinds…
+menu.settings.syntax.reset_theme = Téma visszaállítása   # Reset theme
+menu.settings.syntax.auto = Automatikus kiemelés megnyitáskor   # Auto-highlight on open
+menu.settings.editor = Szerkesztő viselkedése   # Editor behavior
+menu.settings.editor.persistent_sel = Tartós kijelölés   # Persistent selection
+menu.settings.editor.remember_geom = Ablak méretének és helyzetének megjegyzése   # Remember window size+position
+menu.settings.editor.coding = Kódolási segédek   # Coding aids
+menu.settings.editor.coding.autoindent = Új sorok automatikus behúzása   # Auto-indent new lines
+menu.settings.editor.coding.soft_tabs = Lágy tabulátorok (szóközök beszúrása)   # Soft tabs (insert spaces)
+menu.settings.editor.coding.hang_indent = Függő behúzás a tört soroknál   # Hanging indent for wrapped lines
+menu.settings.editor.coding.match_brackets = Illeszkedő zárójelek kiemelése   # Highlight matching brackets
+menu.settings.editor.coding.close_brackets = Zárójelek és idézőjelek automatikus zárása   # Auto-close brackets and quotes
+menu.settings.editor.autosave = Automatikus mentés   # Autosave
+menu.settings.editor.autosave.off = Ki   # Off
+menu.settings.editor.autosave.30s = 30 másodpercenként   # Every 30 s
+menu.settings.editor.autosave.1m = Percenként   # Every 1 min
+menu.settings.editor.autosave.2m = 2 percenként   # Every 2 min
+menu.settings.editor.autosave.5m = 5 percenként   # Every 5 min
+menu.settings.editor.tab_width = Tabulátor szélessége   # Tab width
+menu.settings.editor.precision = Számpontosság   # Number precision
+menu.settings.editor.precision.off = Ki (teljes)   # Off (full)
+menu.settings.keyboard = Billentyűzet   # Keyboard
+menu.settings.keyboard.load = Betöltés…   # Load…
+menu.settings.keyboard.save = Mentés…   # Save…
+menu.settings.keyboard.reset = Visszaállítás a beépítettre   # Reset to built-in
+menu.settings.language = Nyelv   # Language
+menu.settings.allow_shell = Parancssori parancsok engedélyezése   # Allow shell commands
+menu.settings.save_settings = Beállítások mentése…   # Save settings…
+menu.settings.load_settings = Beállítások betöltése…   # Load settings…
+menu.settings.autosave_settings = Beállítások automatikus mentése   # Auto-save settings
+
+# ---- menu.help ---------------------------------------------------
+menu.help.reference = Referencia   # Reference
+menu.help.about = A XyScript névjegye   # About XyScript
+
+# ---- dialog.find -------------------------------------------------
+dialog.find.find_label = Keresés:   # Find:
+dialog.find.find_hint = keresendő szöveg   # text to find
+dialog.find.replace_label = Csere:   # Replace:
+dialog.find.replace_hint = csereszöveg   # replacement
+dialog.find.case = Kis- és nagybetű megkülönböztetése   # Case sensitive
+dialog.find.whole_word = Teljes szó   # Whole word
+dialog.find.regex = Reguláris kifejezés   # Regular expression
+dialog.find.in_selection = A kijelölésen belül   # In selection
+dialog.find.keep_case = Kis- és nagybetűk megtartása a cserénél   # Keep case in replacement
+dialog.find.keep_case_hint = Csere / Összes cseréje: minden csereszöveg a lecserélt szöveg kis- és nagybetűihez igazodik (kisbetűs / Nagy kezdőbetűs / NAGYBETŰS).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
+dialog.find.find_next = Következő keresése (F3)   # Find next (F3)
+dialog.find.find_prev = Előző keresése (Shift+F3)   # Find prev (Shift+F3)
+dialog.find.replace = Csere   # Replace
+dialog.find.replace_all = Összes cseréje   # Replace all
+
+# ---- dialog.run --------------------------------------------------
+dialog.run.title = Parancs futtatása   # Run command
+dialog.run.shell_off = A parancssori parancsok ki vannak kapcsolva — engedélyezze a Beállítások ⏵ Parancssori parancsok engedélyezése alatt.   # Shell commands are off — enable in Settings ⏵ Allow shell commands.
+dialog.run.command = Parancs:   # Command:
+dialog.run.command_hint = egy parancssori parancs   # a shell command
+dialog.run.background = Futtatás a háttérben   # Run in background
+dialog.run.insert_output = Kimenet beszúrása a kurzornál   # Insert output at cursor
+dialog.run.run = Futtatás   # Run
+
+# ---- dialog.grep -------------------------------------------------
+dialog.grep.title = Grep   # Grep
+dialog.grep.pattern = Keresés erre:   # Search for:
+dialog.grep.pattern_hint = szöveg (vagy reguláris kifejezés a Reguláris kifejezéssel)   # text (or a regex with Regular expression)
+dialog.grep.folder = Ebben a mappában:   # In folder:
+dialog.grep.folder_hint = üres = aktuális mappa — vagy  src  ·  *.rs  ·  src/*.rs   # blank = current folder — or  src  ·  *.rs  ·  src/*.rs
+dialog.grep.regex = Reguláris kifejezés   # Regular expression
+dialog.grep.ignore_case = Kis- és nagybetű mellőzése   # Ignore case
+dialog.grep.whole_word = Teljes szó   # Whole word
+dialog.grep.search = Keresés   # Search
+
+# ---- dialog.about ------------------------------------------------
+dialog.about.title = A XyScript névjegye   # About XyScript
+dialog.about.tagline = Konfigurálható szerkesztő a XyWrite hagyományában.   # A configurable editor in the XyWrite tradition.
+
+# ---- button ------------------------------------------------------
+button.close = Bezárás   # Close
+
+# ---- msg ---------------------------------------------------------
+msg.grep.none = GREP: nincs találat   # GREP: no matches
+msg.grep.match.one = {n} találat   # {n} match
+msg.grep.match.other = {n} találat   # {n} matches
+msg.grep.file.one = {n} fájl   # {n} file
+msg.grep.file.other = {n} fájl   # {n} files
+msg.grep.summary_capped = GREP: {matches}, {files} (felső határ: {cap})   # GREP: {matches} in {files} (capped at {cap})
+msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
+msg.grep.progress = GREP: eddig {matches}…   # GREP: {matches} so far…
+msg.search.not_found = nem található: {find}   # not found: {find}
+msg.save.written = mentve: {name}   # saved {name}
+msg.open.not_found = a fájl nem található: {path}   # file not found: {path}
+msg.readonly = a dokumentum csak olvasható (RO a feloldáshoz)   # document is read-only (RO to unlock)
+msg.grep.searching = GREP: keresés…   # GREP: searching…
