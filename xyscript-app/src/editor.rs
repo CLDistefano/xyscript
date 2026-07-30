@@ -4277,6 +4277,44 @@ mod tests {
     }
 
     #[test]
+    fn lang_overlay_layers_user_overrides_with_self_heal() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert(
+            "fi.lang".into(),
+            "menubar.file = Tiedosto   # File\n\
+             menu.file.save = Tallenna   # Save\n\
+             menu.file.open = Avaa   # Open\n"
+                .into(),
+        );
+        // A user override file: one entry whose English anchor still matches the base (applies), one
+        // whose anchor is stale — the base's English for that key has since changed (self-heal skips).
+        e.host_mut().files.insert(
+            "fi.local.lang".into(),
+            "menu.file.save = Tallenna muutokset   # Save\n\
+             menu.file.open = Avaa tiedosto   # Open file\n"
+                .into(),
+        );
+        e.run_command("LANG fi");
+
+        // Fresh anchor → the override wins over the base.
+        assert_eq!(e.host().lang_get("menu.file.save"), Some("Tallenna muutokset"));
+        // Stale anchor ("Open file" != base "Open") → override skipped, base value stands.
+        assert_eq!(e.host().lang_get("menu.file.open"), Some("Avaa"));
+        // A key the overlay never mentions is untouched.
+        assert_eq!(e.host().lang_get("menubar.file"), Some("Tiedosto"));
+        // $LANG still reports the BASE path (the overlay is auto-discovered, not separately tracked).
+        e.run_command("PR $LANG");
+        assert_eq!(e.output().last().map(String::as_str), Some("fi.lang"));
+
+        // Switching away and back re-applies the overlay (it isn't persisted, it's re-discovered).
+        e.run_command("LANG off");
+        assert_eq!(e.host().lang_get("menu.file.save"), None);
+        e.run_command("LANG fi");
+        assert_eq!(e.host().lang_get("menu.file.save"), Some("Tallenna muutokset"));
+    }
+
+    #[test]
     fn savecfg_persists_the_lang_catalog_and_reads_back_as_lang() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

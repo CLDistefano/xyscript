@@ -1030,7 +1030,10 @@ fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
                 continue;
             }
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-            if NON_LANGUAGE_LANGS.iter().any(|s| stem.eq_ignore_ascii_case(s))
+            // `<code>.local.lang` is a user OVERRIDE layered onto a base catalog, not a language of
+            // its own (its stem is e.g. "fi.local") — keep it out of the picker.
+            if stem.rsplit('.').next().is_some_and(|s| s.eq_ignore_ascii_case("local"))
+                || NON_LANGUAGE_LANGS.iter().any(|s| stem.eq_ignore_ascii_case(s))
                 || !seen.insert(stem.to_ascii_lowercase())
             {
                 continue;
@@ -1064,12 +1067,13 @@ mod menu_tests {
         std::fs::write(base.join("xx.lang"), "no header here\n").unwrap(); // falls back to the code
         std::fs::write(base.join("en.lang"), "# English source\n").unwrap(); // skipped — English is built in
         std::fs::write(base.join("pseudo.lang"), "# — PSEUDO (smoke test)\n").unwrap(); // skipped — not a language
+        std::fs::write(base.join("fi.local.lang"), "# — SUOMI\n").unwrap(); // skipped — user override, not a language
         std::fs::write(base.join("notes.txt"), "not a catalog").unwrap(); // ignored — not .lang
 
         let got = discover_langs(&[base.clone()]);
         let names: Vec<_> = got.iter().map(|c| c.name.as_str()).collect();
-        // en.lang + pseudo.lang skipped, .txt ignored; endonyms title-cased; missing header → uppercased
-        // code; name-sorted.
+        // en.lang + pseudo.lang + *.local.lang skipped, .txt ignored; endonyms title-cased; missing
+        // header → uppercased code; name-sorted.
         assert_eq!(names, ["Deutsch", "Français", "XX"]);
         // Same dir listed twice → deduped by stem (first wins), not doubled.
         assert_eq!(discover_langs(&[base.clone(), base.clone()]).len(), 3);

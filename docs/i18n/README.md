@@ -52,3 +52,30 @@ LANG off                         # back to built-in English
 
 - After a source-English change, find `#, fuzzy` markers, fix the translation, and
   delete the marker. Re-running the sync then clears the flag.
+
+## Local overrides (`<xx>.local.lang`)
+
+To tweak a shipped translation for yourself without editing the bundled catalog,
+put your changes in a **`<xx>.local.lang`** file next to the base (in the app's
+`lang/` folder) or in the working directory. It holds **only the lines you
+change** — everything else comes from the base:
+
+```
+# fi.local.lang — my Finnish tweaks
+menu.file.save = Tallenna muutokset   # Save
+msg.grep.none  = GREP: ei tuloksia    # GREP: no matches
+```
+
+`LANG fi` then loads `fi.lang` and layers `fi.local.lang` on top (overrides win).
+
+- **Upgrade-safe.** The base `fi.lang` ships and is replaced on upgrade (you get
+  new/improved strings automatically); `fi.local.lang` is *never* shipped, so it
+  survives — provided you upgrade by extracting the new release **over** your
+  install rather than deleting the folder. Same as `startup.xpl` and your keyboards.
+- **Self-healing.** Keep the trailing `# English` on each override line. If the
+  app's English for that key later changes, the override (written against the old
+  English) is skipped and the updated built-in translation shows instead — so a
+  stale tweak never lingers. Drop the `# English` and the override always applies.
+- Overrides are personal and not tracked by `i18n-sync`. A genuine *correction*
+  (not a personal preference) is better sent upstream — edit `xx.lang` and open a
+  PR — so everyone gets it and there's no local file to maintain.

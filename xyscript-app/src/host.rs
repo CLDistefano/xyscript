@@ -1458,8 +1458,12 @@ fn truncate_col(s: &str, width: usize) -> String {
 /// reference comment stripped and trimmed. Blank/`#`-comment lines and empty values are skipped —
 /// an empty value means "fall back to English", so a partially-filled catalog works. (Values never
 /// contain `#` in practice; the reference comment is split off at the first one.)
-fn parse_lang_table(text: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+/// Parse a `.lang` catalog into `(key, value, english_anchor)` triples in file order. `value` is the
+/// text left of the first `#` (may be empty = untranslated); `english_anchor` is the `# English`
+/// source comment right of it (`None` if absent). Comment/blank lines are skipped. The anchor lets
+/// the overlay loader self-heal (skip an override written against English that has since changed).
+fn parse_lang_entries(text: &str) -> Vec<(String, String, Option<String>)> {
+    let mut out = Vec::new();
     for line in text.lines() {
         let line = line.trim_start_matches('\u{feff}'); // tolerate a leading BOM
         let trimmed = line.trim_start();
@@ -1470,13 +1474,26 @@ fn parse_lang_table(text: &str) -> HashMap<String, String> {
             continue;
         };
         let key = key.trim();
-        let value = rest.split('#').next().unwrap_or("").trim();
-        if key.is_empty() || value.is_empty() {
+        if key.is_empty() {
             continue;
         }
-        map.insert(key.to_string(), value.to_string());
+        let (value, anchor) = match rest.split_once('#') {
+            Some((v, a)) => (v.trim(), Some(a.trim().to_string())),
+            None => (rest.trim(), None),
+        };
+        out.push((key.to_string(), value.to_string(), anchor));
     }
-    map
+    out
+}
+
+/// The `string-id -> value` table for a catalog (untranslated/blank entries dropped, so a partial
+/// catalog falls back to English). Anchors are discarded — [`parse_lang_entries`] keeps them.
+fn parse_lang_table(text: &str) -> HashMap<String, String> {
+    parse_lang_entries(text)
+        .into_iter()
+        .filter(|(_, value, _)| !value.is_empty())
+        .map(|(key, value, _)| (key, value))
+        .collect()
 }
 
 /// A one-line preview of selection text for the enhanced-`CP` chooser: the first non-blank-trimmed
@@ -1908,6 +1925,10 @@ pub struct AppHost {
     /// The (resolved) path of the catalog loaded by `LANG`, or `None` when English. Read back as
     /// `$LANG`; persisted by `SAVECFG` as a re-runnable `LANG <path>` line so the choice restores.
     lang_path: Option<String>,
+    /// The `<code>.local.lang` OVERRIDE file layered on top of the base catalog, if one was found
+    /// (`None` otherwise). A user keeps only their changed lines here; it wins over the base and
+    /// survives upgrades (never shipped). Not persisted — re-discovered from the base code on reload.
+    lang_overlay_path: Option<String>,
     /// `QUIET` status-suppression level for the current script: 0 = off, 1 = hide op-result
     /// statuses (PR + errors still show), 2 = also hide non-fatal error text. Reset per top-level
     /// script run (the editor clears it at the start of each outermost dispatch).
@@ -2303,6 +2324,7 @@ impl AppHost {
             last_loadcfg_path: None,
             lang: HashMap::new(),
             lang_path: None,
+            lang_overlay_path: None,
             quiet: 0,
             config_last_written: String::new(),
             jobs: Vec::new(),
@@ -3329,6 +3351,20 @@ impl AppHost {
     /// `$LANG`; the GUI uses it to tick the active language in the `Settings ▸ Language` menu.
     pub fn lang_path(&self) -> Option<&str> {
         self.lang_path.as_deref()
+    }
+    /// Find a `LANG` override file `<stem>.local.lang` for a just-loaded base catalog: sits next to
+    /// the base (so `.\lang` overrides live with the catalogs) or in `$CWD`. Returns its `(path,
+    /// contents)`, or `None`. Read errors (no such file) are the common case and mean "no overlay".
+    fn find_overlay(&self, base_resolved: &str, stem: &str) -> Option<(String, String)> {
+        let name = format!("{stem}.local.lang");
+        let base_dir = std::path::Path::new(base_resolved).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        for dir in [base_dir, self.cwd.clone()] {
+            let cand = dir.join(&name).to_string_lossy().into_owned();
+            if let Ok(text) = self.read_file(&cand) {
+                return Some((cand, text));
+            }
+        }
+        None
     }
     /// A localized status/error MESSAGE: the `LANG` translation for `id`, else the English `en`.
     /// Host-side sibling of the GUI's `tr` (the `lang` table lives here, so messages the host emits
@@ -8805,6 +8841,7 @@ impl Host for AppHost {
                 let Some(path) = opt.filter(|p| !p.trim().is_empty()) else {
                     self.lang.clear();
                     self.lang_path = None;
+                    self.lang_overlay_path = None;
                     return Ok(Value::str("language reset to English".to_string()));
                 };
                 // Two-letter language-code shorthand: `LANG fi` → `fi.lang` (resolved against `$CWD`
@@ -8822,12 +8859,57 @@ impl Host for AppHost {
                     self.resolve_path(&path).to_string_lossy().into_owned()
                 };
                 let content = self.read_file(&resolved)?;
-                self.lang = parse_lang_table(&content);
-                self.lang_path = Some(resolved);
-                return Ok(Value::str(format!(
-                    "loaded {} UI strings from {path}",
-                    self.lang.len()
-                )));
+                // Base catalog: values populate the live table; the English anchors are kept for the
+                // overlay's self-heal check below.
+                let base = parse_lang_entries(&content);
+                self.lang = base
+                    .iter()
+                    .filter(|(_, v, _)| !v.is_empty())
+                    .map(|(k, v, _)| (k.clone(), v.clone()))
+                    .collect();
+                self.lang_path = Some(resolved.clone());
+                self.lang_overlay_path = None;
+                // Overlay: a sibling `<code>.local.lang` of user overrides (next to the base, or in
+                // `$CWD`), layered on top. An override whose `# English` anchor no longer matches the
+                // base is SKIPPED (self-heal) — so a stale override steps aside for the updated base
+                // rather than showing an outdated translation of text whose English has moved on.
+                let stem = std::path::Path::new(&resolved)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let (mut applied, mut stale) = (0usize, 0usize);
+                if !stem.is_empty() {
+                    if let Some((over_path, over_text)) = self.find_overlay(&resolved, &stem) {
+                        let base_anchor: HashMap<&str, &str> = base
+                            .iter()
+                            .filter_map(|(k, _, a)| a.as_deref().map(|a| (k.as_str(), a)))
+                            .collect();
+                        for (key, value, anchor) in parse_lang_entries(&over_text) {
+                            if value.is_empty() {
+                                continue;
+                            }
+                            if let (Some(ov), Some(&cur)) = (anchor.as_deref(), base_anchor.get(key.as_str())) {
+                                if ov != cur {
+                                    stale += 1;
+                                    continue; // written against different English — let the base win
+                                }
+                            }
+                            self.lang.insert(key, value);
+                            applied += 1;
+                        }
+                        self.lang_overlay_path = Some(over_path);
+                    }
+                }
+                let total = self.lang.len();
+                let s_suffix = if applied == 1 { "" } else { "s" };
+                let msg = match (applied, stale) {
+                    (0, _) => format!("loaded {total} UI strings from {path}"),
+                    (a, 0) => format!("loaded {total} UI strings from {path} + {a} override{s_suffix}"),
+                    (a, s) => format!(
+                        "loaded {total} UI strings from {path} + {a} override{s_suffix} ({s} skipped: English changed)"
+                    ),
+                };
+                return Ok(Value::str(msg));
             }
             EditorOp::SetTabWidth(n) => {
                 self.tab_width = n;
