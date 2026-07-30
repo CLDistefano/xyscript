@@ -366,13 +366,23 @@ impl LintWorker {
 /// Build the whole-document `CHECK` report (one line per issue, honouring the user dictionary). A
 /// FREE function of plain data so it can run on a background thread (harper over a big doc is slow).
 #[cfg(feature = "lint")]
+#[allow(clippy::too_many_arguments)]
 fn build_check_report(
     text: &str,
     flavor: crate::lint::Flavor,
     dialect: crate::lint::Dialect,
+    engine: crate::lint::SpellEngine,
+    dicts: &str,
+    bin: &str,
     learned: &std::collections::BTreeSet<String>,
 ) -> String {
-    let spans = crate::lint::LintEngine::new(dialect).lint_region(text, flavor);
+    // Same engine split as the live underlines: Hunspell gives multilingual SPELLING issues; Harper
+    // gives English spelling + grammar. (Hunspell mode is spelling-only — it's a speller, not a
+    // grammar checker.)
+    let spans = match engine {
+        crate::lint::SpellEngine::Hunspell => crate::lint::hunspell_check(text, dicts, bin),
+        crate::lint::SpellEngine::Harper => crate::lint::LintEngine::new(dialect).lint_region(text, flavor),
+    };
     let has_learned = !learned.is_empty();
     let mut body = String::new();
     let mut count = 0usize;
@@ -3610,10 +3620,11 @@ impl AppHost {
         {
             let text = self.docs[self.active].buffer().text();
             let (flavor, dialect) = (self.lint_flavor(), self.lint_dialect);
+            let (engine, dicts, bin) = (self.spell_engine, self.spell_dicts.clone(), self.spell_bin.clone());
             let learned = self.learned_words.clone();
             let (tx, rx) = std::sync::mpsc::channel::<String>();
             std::thread::spawn(move || {
-                let _ = tx.send(build_check_report(&text, flavor, dialect, &learned));
+                let _ = tx.send(build_check_report(&text, flavor, dialect, engine, &dicts, &bin, &learned));
             });
             self.check_pending = Some(rx); // drops any prior receiver → its result is ignored
         }
@@ -8029,6 +8040,9 @@ impl Host for AppHost {
                         &text,
                         self.lint_flavor(),
                         self.lint_dialect,
+                        self.spell_engine,
+                        &self.spell_dicts,
+                        &self.spell_bin,
                         &self.learned_words,
                     );
                     return Ok(Value::str(report));
