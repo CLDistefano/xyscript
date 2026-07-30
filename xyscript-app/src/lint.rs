@@ -116,15 +116,23 @@ pub fn spans_for_words(text: &str, misspelled: &std::collections::HashSet<String
 pub fn hunspell_misspelled(text: &str, dicts: &str, bin: &str) -> std::collections::HashSet<String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let mut child = match Command::new(bin)
-        .arg("-d")
+    let mut cmd = Command::new(bin);
+    cmd.arg("-d")
         .arg(dicts)
         .arg("-l")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    // Windows: the dist exe is GUI-subsystem, so a console child (hunspell.exe) would flash a
+    // throwaway console window on EVERY check (once per scroll/edit). CREATE_NO_WINDOW suppresses it;
+    // stdout is piped regardless, so nothing is lost. (Same flag the shell-out paths use.)
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(_) => return std::collections::HashSet::new(),
     };
