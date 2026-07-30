@@ -350,7 +350,10 @@ impl LintWorker {
                 // in Hunspell mode. `hunspell_check` returns no spans if the binary is absent.
                 let spans = match job.engine {
                     crate::lint::SpellEngine::Hunspell => {
-                        crate::lint::hunspell_check(&job.text, &job.dicts, &job.bin)
+                        // Mask code/URLs first so hunspell checks only prose (harper's parser does
+                        // this itself). Length-preserving, so span offsets stay valid.
+                        let prose = crate::lint::mask_markup(&job.text, job.flavor);
+                        crate::lint::hunspell_check(&prose, &job.dicts, &job.bin)
                     }
                     crate::lint::SpellEngine::Harper => engine.lint_region(&job.text, job.flavor),
                 };
@@ -380,7 +383,9 @@ fn build_check_report(
     // gives English spelling + grammar. (Hunspell mode is spelling-only — it's a speller, not a
     // grammar checker.)
     let spans = match engine {
-        crate::lint::SpellEngine::Hunspell => crate::lint::hunspell_check(text, dicts, bin),
+        crate::lint::SpellEngine::Hunspell => {
+            crate::lint::hunspell_check(&crate::lint::mask_markup(text, flavor), dicts, bin)
+        }
         crate::lint::SpellEngine::Harper => crate::lint::LintEngine::new(dialect).lint_region(text, flavor),
     };
     let has_learned = !learned.is_empty();
@@ -4731,7 +4736,8 @@ impl AppHost {
         }
         let spans = match self.spell_engine {
             crate::lint::SpellEngine::Hunspell => {
-                crate::lint::hunspell_check(&region_text, &self.spell_dicts, &self.spell_bin)
+                let prose = crate::lint::mask_markup(&region_text, self.lint_flavor());
+                crate::lint::hunspell_check(&prose, &self.spell_dicts, &self.spell_bin)
             }
             crate::lint::SpellEngine::Harper => {
                 crate::lint::LintEngine::new(self.lint_dialect).lint_region(&region_text, self.lint_flavor())
@@ -4828,9 +4834,11 @@ impl AppHost {
         // tokenizer (word_at), so we never trust `-a`'s per-line offsets. Spelling-only by nature,
         // which is what both callers want (`spelling_only` is moot here).
         if self.spell_engine == crate::lint::SpellEngine::Hunspell {
+            // Mask code/URLs so a caret inside them finds no word (consistent with the underlines).
+            let prose = crate::lint::mask_markup(&region_text, self.lint_flavor());
             let rel = pos_dec.saturating_sub(abs_dec_lo);
-            let (ws, we) = crate::lint::word_at(&region_text, rel)?;
-            let sugs = crate::lint::hunspell_suggest(&region_text[ws..we], &self.spell_dicts, &self.spell_bin);
+            let (ws, we) = crate::lint::word_at(&prose, rel)?;
+            let sugs = crate::lint::hunspell_suggest(&prose[ws..we], &self.spell_dicts, &self.spell_bin);
             if sugs.is_empty() {
                 return None;
             }

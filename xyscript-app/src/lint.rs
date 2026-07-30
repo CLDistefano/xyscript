@@ -184,6 +184,69 @@ pub fn hunspell_suggest(word: &str, dicts: &str, bin: &str) -> Vec<String> {
     parse_a_suggestions(&run_hunspell(word, dicts, bin, "-a"))
 }
 
+/// Blank out (replace with ASCII spaces, keeping newlines and the TOTAL byte length) the non-prose
+/// regions of a Markdown/Typst chunk — fenced code blocks, inline `code`, and URL/email tokens — so a
+/// plain speller checks only prose. Length-preserving, so the surviving prose keeps its byte offsets.
+/// A pragmatic filter, NOT a full parser: Typst code-mode `#…` isn't handled, and a fence that spans
+/// the checked region's edge is only tracked from the region start (same limitation Harper has, since
+/// it lints the region too). Blank ranges are always char-aligned, so the result stays valid UTF-8.
+pub fn mask_markup(text: &str, _flavor: Flavor) -> String {
+    fn blank(out: &mut [u8], range: std::ops::Range<usize>) {
+        for b in &mut out[range] {
+            if *b != b'\n' {
+                *b = b' ';
+            }
+        }
+    }
+    let mut out = text.as_bytes().to_vec();
+    let mut in_fence = false;
+    let mut pos = 0usize;
+    for line in text.split_inclusive('\n') {
+        let (ls, le) = (pos, pos + line.len());
+        pos = le;
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence; // a fence toggles the block; hide the fence line itself too
+            blank(&mut out, ls..le);
+            continue;
+        }
+        if in_fence {
+            blank(&mut out, ls..le);
+            continue;
+        }
+        // Prose line: hide inline `code` spans (backtick pairs, inclusive)…
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'`' {
+                if let Some(off) = bytes[i + 1..].iter().position(|&b| b == b'`') {
+                    let close = i + 1 + off;
+                    blank(&mut out, ls + i..ls + close + 1);
+                    i = close + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        // …and URL/email tokens (whitespace-delimited runs carrying a scheme or '@').
+        let mut tok: Option<usize> = None;
+        for j in 0..=line.len() {
+            let is_ws = j == line.len() || bytes[j].is_ascii_whitespace();
+            if is_ws {
+                if let Some(s) = tok.take() {
+                    let t = &line[s..j];
+                    if t.contains("://") || t.contains('@') {
+                        blank(&mut out, ls + s..ls + j);
+                    }
+                }
+            } else if tok.is_none() {
+                tok = Some(j);
+            }
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
+}
+
 /// The (apostrophe-trimmed) byte span of the word token containing `pos`, or `None` if `pos` isn't on
 /// a word. Picks the word under the caret for on-demand Hunspell suggestions. PURE + unit-tested.
 pub fn word_at(text: &str, pos: usize) -> Option<(usize, usize)> {
@@ -422,5 +485,18 @@ mod tests {
         let t2 = "текст цетер конец";
         let (s, e) = word_at(t2, 12).unwrap();
         assert_eq!(&t2[s..e], "цетер");
+    }
+
+    #[test]
+    fn mask_markup_blanks_code_and_urls_but_keeps_prose() {
+        let md = "Chekc this\n```\nlet mispeld = 1;\n```\nSee `mispeld` at http://exmaple.com now\n";
+        let masked = mask_markup(md, Flavor::Markdown);
+        // Length + newlines preserved → prose byte offsets are unchanged.
+        assert_eq!(masked.len(), md.len());
+        assert_eq!(masked.matches('\n').count(), md.matches('\n').count());
+        // Prose survives (still spell-checkable), including the deliberate "Chekc" typo.
+        assert!(masked.contains("Chekc this") && masked.contains("See") && masked.contains("now"));
+        // Fenced code, inline `code`, and the URL are gone.
+        assert!(!masked.contains("mispeld") && !masked.contains("let") && !masked.contains("exmaple"));
     }
 }
