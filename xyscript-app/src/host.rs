@@ -299,6 +299,9 @@ struct LintJob {
     seq: u64,
     text: String,
     flavor: crate::lint::Flavor,
+    engine: crate::lint::SpellEngine,
+    dicts: String,
+    bin: String,
 }
 
 /// A completed lint result from the worker: byte spans into the requested region text.
@@ -342,7 +345,15 @@ impl LintWorker {
                 while let Ok(newer) = job_rx.try_recv() {
                     job = newer;
                 }
-                let spans = engine.lint_region(&job.text, job.flavor);
+                // Harper (built-in) or Hunspell (multilingual CLI spelling). Hunspell is stateless —
+                // it spawns a `hunspell` process per job — so the reusable harper `engine` sits idle
+                // in Hunspell mode. `hunspell_check` returns no spans if the binary is absent.
+                let spans = match job.engine {
+                    crate::lint::SpellEngine::Hunspell => {
+                        crate::lint::hunspell_check(&job.text, &job.dicts, &job.bin)
+                    }
+                    crate::lint::SpellEngine::Harper => engine.lint_region(&job.text, job.flavor),
+                };
                 if done_tx.send(LintDone { seq: job.seq, spans }).is_err() {
                     break; // the host (Receiver) is gone
                 }
@@ -2120,6 +2131,13 @@ pub struct AppHost {
     /// The English dialect harper checks against (`DIALECT`, `$DIALECT`). Changing it respawns the
     /// worker (the linter is dialect-bound) and forces a re-check.
     lint_dialect: crate::lint::Dialect,
+    /// Which checker produces SPELLING underlines (`SPELLENGINE`): `Harper` (built-in) or `Hunspell`
+    /// (the CLI, for multilingual spelling). Changing it respawns the worker + forces a re-check.
+    spell_engine: crate::lint::SpellEngine,
+    /// Hunspell dictionaries for its `-d` flag (`SPELLDICT`, e.g. `en_US,de_DE`). Default `en_US`.
+    spell_dicts: String,
+    /// The Hunspell executable (`SPELLBIN`): a name on `PATH` or a full path. Default `hunspell`.
+    spell_bin: String,
     /// The user's learned words (`LEARN`/`UNLEARN`) — merged into the checker's dictionary so they
     /// stop being flagged. Sorted/deduped; persisted to a dictionary file beside the executable.
     learned_words: std::collections::BTreeSet<String>,
@@ -2385,6 +2403,9 @@ impl AppHost {
             spell_on: false,
             grammar_on: false,
             lint_dialect: crate::lint::Dialect::default(),
+            spell_engine: crate::lint::SpellEngine::default(),
+            spell_dicts: "en_US".to_string(),
+            spell_bin: "hunspell".to_string(),
             learned_words: std::collections::BTreeSet::new(),
             lint_key: None,
             #[cfg(feature = "lint")]
@@ -4697,8 +4718,14 @@ impl AppHost {
         if region_text.is_empty() {
             return Vec::new();
         }
-        let spans = crate::lint::LintEngine::new(self.lint_dialect)
-            .lint_region(&region_text, self.lint_flavor());
+        let spans = match self.spell_engine {
+            crate::lint::SpellEngine::Hunspell => {
+                crate::lint::hunspell_check(&region_text, &self.spell_dicts, &self.spell_bin)
+            }
+            crate::lint::SpellEngine::Harper => {
+                crate::lint::LintEngine::new(self.lint_dialect).lint_region(&region_text, self.lint_flavor())
+            }
+        };
         self.map_lint_spans(doc, abs_dec_lo, &spans)
     }
 
@@ -4879,7 +4906,14 @@ impl AppHost {
             }
             self.lint_req_seq += 1;
             let seq = self.lint_req_seq;
-            let job = LintJob { seq, text, flavor: self.lint_flavor() };
+            let job = LintJob {
+                seq,
+                text,
+                flavor: self.lint_flavor(),
+                engine: self.spell_engine,
+                dicts: self.spell_dicts.clone(),
+                bin: self.spell_bin.clone(),
+            };
             if self.lint_worker.as_ref().unwrap().tx.send(job).is_ok() {
                 self.lint_pending = Some(LintPending { seq, active: doc, rev, abs_dec_lo, lo, hi });
             }
@@ -4973,6 +5007,41 @@ impl AppHost {
             return;
         }
         self.lint_dialect = dialect;
+        self.reset_lint_engine();
+    }
+
+    /// The spelling checker (`$`-less; SaveCfg + tests read it). `SPELLENGINE`.
+    pub fn spell_engine(&self) -> crate::lint::SpellEngine {
+        self.spell_engine
+    }
+    /// Set the spelling checker (`SPELLENGINE`). Invalidates existing marks + re-checks.
+    pub fn set_spell_engine(&mut self, engine: crate::lint::SpellEngine) {
+        if self.spell_engine == engine {
+            return;
+        }
+        self.spell_engine = engine;
+        self.reset_lint_engine();
+    }
+    /// The Hunspell dictionaries (`SPELLDICT`, the `-d` value).
+    pub fn spell_dicts(&self) -> &str {
+        &self.spell_dicts
+    }
+    pub fn set_spell_dicts(&mut self, dicts: String) {
+        if self.spell_dicts == dicts {
+            return;
+        }
+        self.spell_dicts = dicts;
+        self.reset_lint_engine();
+    }
+    /// The Hunspell executable (`SPELLBIN`).
+    pub fn spell_bin(&self) -> &str {
+        &self.spell_bin
+    }
+    pub fn set_spell_bin(&mut self, bin: String) {
+        if self.spell_bin == bin {
+            return;
+        }
+        self.spell_bin = bin;
         self.reset_lint_engine();
     }
 
@@ -6915,6 +6984,13 @@ impl AppHost {
         let (r, g, b) = self.pane_border_color;
         put(&mut s, "Active split-pane border colour — R G B, 0-255", format!("PANECOLOR {r} {g} {b}"));
         put(&mut s, "Language-check dialect", format!("DIALECT {}", self.lint_dialect.name()));
+        // Spell-check engine — emit only when NOT the default (harper), plus the Hunspell knobs so a
+        // hunspell setup restores fully. (Harper needs no dict/bin.)
+        if self.spell_engine != crate::lint::SpellEngine::default() {
+            put(&mut s, "Spell-check engine — harper | hunspell", format!("SPELLENGINE {}", self.spell_engine.name()));
+            put(&mut s, "Hunspell dictionaries (the -d value, e.g. en_US,de_DE)", format!("SPELLDICT {}", self.spell_dicts));
+            put(&mut s, "Hunspell executable (name on PATH or a full path)", format!("SPELLBIN {}", self.spell_bin));
+        }
         // UI localization catalog — emit only when one is loaded (default is built-in English).
         if let Some(path) = &self.lang_path {
             put(&mut s, "UI translation catalog (LANG) — path to a key=value strings file", format!("LANG {path}"));
@@ -8032,6 +8108,25 @@ impl Host for AppHost {
                         )))
                     }
                 }
+            }
+            EditorOp::SetSpellEngine(name) => match crate::lint::SpellEngine::parse(&name) {
+                Some(e) => {
+                    self.set_spell_engine(e);
+                    return Ok(Value::str(format!("spell engine = {}", e.name())));
+                }
+                None => {
+                    return Err(XplError::trappable(format!(
+                        "SPELLENGINE: unknown engine {name:?} (harper | hunspell)"
+                    )))
+                }
+            },
+            EditorOp::SetSpellDicts(names) => {
+                self.set_spell_dicts(names.clone());
+                return Ok(Value::str(format!("spell dictionaries = {names}")));
+            }
+            EditorOp::SetSpellBin(path) => {
+                self.set_spell_bin(path.clone());
+                return Ok(Value::str(format!("hunspell = {path}")));
             }
             EditorOp::SetSpelling(on) => {
                 self.set_spelling(on);

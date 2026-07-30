@@ -182,6 +182,13 @@ pub enum EditorOp {
     /// `DIALECT <name>` — set the English dialect harper checks against (american|british|…).
     /// The host parses `name`; `$DIALECT` reads it.
     SetDialect(String),
+    /// `SPELLENGINE harper|hunspell` — pick the SPELLING checker (Harper built-in vs the Hunspell CLI
+    /// for multilingual spelling). The host parses the name.
+    SetSpellEngine(String),
+    /// `SPELLDICT <names>` — the Hunspell dictionaries (`-d` value, e.g. `en_US,de_DE`).
+    SetSpellDicts(String),
+    /// `SPELLBIN <path>` — the Hunspell executable (name on `PATH` or a full path).
+    SetSpellBin(String),
     /// `SPELLING on|off` (`SP`) — toggle LIVE spelling underlines. `$SPELLING`.
     SetSpelling(bool),
     /// `GRAMMAR on|off` (`GR`) — toggle LIVE grammar/word-choice underlines. `$GRAMMAR`.

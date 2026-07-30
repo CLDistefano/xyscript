@@ -46,6 +46,108 @@ pub enum Flavor {
 /// host adds the region's base offset and converts to rope coordinates.
 pub type LintSpan = (usize, usize, String, String);
 
+/// Which checker produces the SPELLING underlines. Harper is the built-in (English grammar+spelling,
+/// behind the `lint` feature); Hunspell shells out to the `hunspell` CLI for multilingual spelling.
+/// Always compiled so the host can store/parse it without the feature. (`SPELLENGINE`.)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SpellEngine {
+    #[default]
+    Harper,
+    Hunspell,
+}
+
+impl SpellEngine {
+    pub fn parse(s: &str) -> Option<SpellEngine> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "harper" => Some(SpellEngine::Harper),
+            "hunspell" => Some(SpellEngine::Hunspell),
+            _ => None,
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            SpellEngine::Harper => "harper",
+            SpellEngine::Hunspell => "hunspell",
+        }
+    }
+}
+
+/// A word token is a maximal run of alphabetic characters plus internal apostrophes (contractions).
+/// Unicode-aware `is_alphabetic` so Cyrillic/Greek/accented scripts tokenize too. Approximates
+/// Hunspell's word notion closely enough for span mapping; hyphenated/alphanumeric edges are a
+/// known simplification for this spike.
+fn is_word_char(c: char) -> bool {
+    c.is_alphabetic() || c == '\''
+}
+
+/// SPELLING spans for every whole-word occurrence in `text` whose (apostrophe-trimmed) form is in
+/// `misspelled`. This is the "translate the `hunspell -l` list into underlines" step — treating the
+/// word list as a set-membership oracle and locating the occurrences ourselves, which is correct
+/// because spelling is context-free (every occurrence of a flagged word IS misspelled). PURE +
+/// unit-tested; needs no `hunspell` binary.
+pub fn spans_for_words(text: &str, misspelled: &std::collections::HashSet<String>) -> Vec<LintSpan> {
+    if misspelled.is_empty() {
+        return Vec::new();
+    }
+    let mut spans = Vec::new();
+    let mut start: Option<usize> = None;
+    // A trailing sentinel flushes the last word without duplicating the emit logic.
+    for (i, c) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
+        if is_word_char(c) {
+            start.get_or_insert(i);
+        } else if let Some(s) = start.take() {
+            let word = &text[s..i];
+            let trimmed = word.trim_matches('\'');
+            if !trimmed.is_empty() && misspelled.contains(trimmed) {
+                let lead = word.len() - word.trim_start_matches('\'').len();
+                let ws = s + lead;
+                spans.push((ws, ws + trimmed.len(), "Spelling".to_string(), String::new()));
+            }
+        }
+    }
+    spans
+}
+
+/// The set of misspelled word-types in `text` per `hunspell -d <dicts> -l` (fed via stdin). Returns
+/// EMPTY on any failure — the binary missing, a spawn/IO error, a non-zero exit — so the feature
+/// degrades to "no spell underlines" rather than erroring. `bin` is the executable (name on `PATH`
+/// or a full path). Always compiled (only `std::process`); the viewport-sized input keeps the
+/// single write→read exchange well under the OS pipe buffer, so no writer thread is needed here.
+pub fn hunspell_misspelled(text: &str, dicts: &str, bin: &str) -> std::collections::HashSet<String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = match Command::new(bin)
+        .arg("-d")
+        .arg(dicts)
+        .arg("-l")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(text.as_bytes()); // dropping stdin at scope end signals EOF
+    }
+    match child.wait_with_output() {
+        Ok(out) => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Err(_) => std::collections::HashSet::new(),
+    }
+}
+
+/// Spell-check `text` with Hunspell and return SPELLING [`LintSpan`]s — the same shape harper's
+/// `lint_region` returns, so the host maps/renders them identically.
+pub fn hunspell_check(text: &str, dicts: &str, bin: &str) -> Vec<LintSpan> {
+    spans_for_words(text, &hunspell_misspelled(text, dicts, bin))
+}
+
 /// A fixable issue for `LINTFIX`: byte span `[start, end)`, whether it's a SPELLING issue, and the
 /// ordered fix choices as `(label, replacement)` (`replacement` = what the span text becomes).
 pub type LintFix = (usize, usize, bool, Vec<(String, String)>);
@@ -200,5 +302,45 @@ impl LintEngine {
                 Some((bs, be, is_spelling, choices))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn set(words: &[&str]) -> HashSet<String> {
+        words.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn spans_for_words_underlines_every_whole_word_occurrence() {
+        let text = "teh cat sat on teh mat";
+        let spans = spans_for_words(text, &set(&["teh"]));
+        // Both occurrences of "teh" (offsets 0 and 15), nothing else.
+        assert_eq!(spans.iter().map(|(s, e, ..)| (*s, *e)).collect::<Vec<_>>(), [(0, 3), (15, 18)]);
+        assert!(spans.iter().all(|(_, _, k, _)| k == "Spelling"));
+    }
+
+    #[test]
+    fn spans_for_words_matches_whole_words_not_substrings() {
+        // "cat" is flagged, but "category" must NOT be underlined (whole-word match only).
+        let spans = spans_for_words("cat category cats", &set(&["cat"]));
+        assert_eq!(spans.iter().map(|(s, e, ..)| (*s, *e)).collect::<Vec<_>>(), [(0, 3)]);
+    }
+
+    #[test]
+    fn spans_for_words_handles_apostrophes_and_unicode() {
+        // Contraction kept as one token; a Cyrillic misspelling located by byte offset.
+        let text = "I dont know — цетер";
+        let spans = spans_for_words(text, &set(&["dont", "цетер"]));
+        let got: Vec<&str> = spans.iter().map(|(s, e, ..)| &text[*s..*e]).collect();
+        assert_eq!(got, ["dont", "цетер"]);
+    }
+
+    #[test]
+    fn spans_for_words_empty_set_is_empty() {
+        assert!(spans_for_words("anything here", &HashSet::new()).is_empty());
     }
 }

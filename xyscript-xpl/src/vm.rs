@@ -3704,6 +3704,33 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetDialect(name.to_string()))?;
                 Ok(Flow::Next)
             }
+            "SPELLENGINE" => {
+                // Pick the spelling checker: `harper` (built-in) or `hunspell` (multilingual CLI).
+                let name = args.trim();
+                if name.is_empty() {
+                    return Err(XplError::trappable("SPELLENGINE: harper | hunspell"));
+                }
+                self.host_op(EditorOp::SetSpellEngine(name.to_string()))?;
+                Ok(Flow::Next)
+            }
+            "SPELLDICT" => {
+                // Hunspell dictionaries for the `-d` flag, e.g. `SPELLDICT en_US,de_DE`.
+                let names = args.trim();
+                if names.is_empty() {
+                    return Err(XplError::trappable("SPELLDICT: one or more dictionary names (e.g. en_US)"));
+                }
+                self.host_op(EditorOp::SetSpellDicts(names.to_string()))?;
+                Ok(Flow::Next)
+            }
+            "SPELLBIN" => {
+                // The hunspell executable (name on PATH or a full path).
+                let path = args.trim();
+                if path.is_empty() {
+                    return Err(XplError::trappable("SPELLBIN: the hunspell executable (name or path)"));
+                }
+                self.host_op(EditorOp::SetSpellBin(path.to_string()))?;
+                Ok(Flow::Next)
+            }
             "SPELLNEXT" | "SPELLPREV" | "GRAMMARNEXT" | "GRAMMARPREV" => {
                 // Jump the caret to the next/previous spelling or grammar issue (selecting it).
                 let spelling = base.starts_with("SPELL");

@@ -4315,6 +4315,34 @@ mod tests {
     }
 
     #[test]
+    fn spellengine_switches_and_persists() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // Harper is the default → SaveCfg stays silent about the engine.
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(!e.host_mut().files.get("cfg.cfg").unwrap().contains("SPELLENGINE"), "harper default → no line");
+
+        // Switch to Hunspell and set its knobs — all three persist.
+        e.run_command("SPELLENGINE hunspell");
+        e.run_command("SPELLDICT en_US,fi_FI");
+        e.run_command("SPELLBIN C:/tools/hunspell.exe");
+        assert_eq!(e.host().spell_engine(), crate::lint::SpellEngine::Hunspell);
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("SPELLENGINE hunspell"), "cfg: {cfg}");
+        assert!(cfg.contains("SPELLDICT en_US,fi_FI") && cfg.contains("SPELLBIN C:/tools/hunspell.exe"));
+
+        // An unknown engine traps and leaves the setting unchanged.
+        e.run_command("SPELLENGINE bogus");
+        assert_eq!(e.host().spell_engine(), crate::lint::SpellEngine::Hunspell);
+
+        // LOADCFG restores the engine.
+        e.run_command("SPELLENGINE harper");
+        e.run_command("LOADCFG cfg.cfg");
+        assert_eq!(e.host().spell_engine(), crate::lint::SpellEngine::Hunspell);
+    }
+
+    #[test]
     fn savecfg_persists_the_lang_catalog_and_reads_back_as_lang() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
