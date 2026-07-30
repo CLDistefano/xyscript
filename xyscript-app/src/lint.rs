@@ -108,24 +108,24 @@ pub fn spans_for_words(text: &str, misspelled: &std::collections::HashSet<String
     spans
 }
 
-/// The set of misspelled word-types in `text` per `hunspell -d <dicts> -l` (fed via stdin). Returns
-/// EMPTY on any failure — the binary missing, a spawn/IO error, a non-zero exit — so the feature
-/// degrades to "no spell underlines" rather than erroring. `bin` is the executable (name on `PATH`
-/// or a full path). Always compiled (only `std::process`); the viewport-sized input keeps the
-/// single write→read exchange well under the OS pipe buffer, so no writer thread is needed here.
-pub fn hunspell_misspelled(text: &str, dicts: &str, bin: &str) -> std::collections::HashSet<String> {
+/// Run `hunspell -d <dicts> <mode>` with `input` piped to stdin, returning its stdout (empty on any
+/// failure — binary missing, spawn/IO error — so the feature degrades to "no output" rather than
+/// erroring). `mode` is `-l` (list misspellings) or `-a` (ispell pipe: per-word status + suggestions).
+/// Always compiled (only `std::process`); viewport/word-sized input keeps the single write→read
+/// exchange under the OS pipe buffer, so no writer thread is needed.
+fn run_hunspell(input: &str, dicts: &str, bin: &str, mode: &str) -> String {
     use std::io::Write;
     use std::process::{Command, Stdio};
     let mut cmd = Command::new(bin);
     cmd.arg("-d")
         .arg(dicts)
-        .arg("-l")
+        .arg(mode)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     // Windows: the dist exe is GUI-subsystem, so a console child (hunspell.exe) would flash a
-    // throwaway console window on EVERY check (once per scroll/edit). CREATE_NO_WINDOW suppresses it;
-    // stdout is piped regardless, so nothing is lost. (Same flag the shell-out paths use.)
+    // throwaway console window on every check. CREATE_NO_WINDOW suppresses it; stdout is piped
+    // regardless. (Same flag the shell-out paths use.)
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -134,26 +134,76 @@ pub fn hunspell_misspelled(text: &str, dicts: &str, bin: &str) -> std::collectio
     }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(_) => return std::collections::HashSet::new(),
+        Err(_) => return String::new(),
     };
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(text.as_bytes()); // dropping stdin at scope end signals EOF
+        let _ = stdin.write_all(input.as_bytes()); // dropping stdin at scope end signals EOF
     }
     match child.wait_with_output() {
-        Ok(out) => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
-            .collect(),
-        Err(_) => std::collections::HashSet::new(),
+        Ok(out) => String::from_utf8_lossy(&out.stdout).into_owned(),
+        Err(_) => String::new(),
     }
+}
+
+/// The set of misspelled word-types in `text` per `hunspell -l`.
+pub fn hunspell_misspelled(text: &str, dicts: &str, bin: &str) -> std::collections::HashSet<String> {
+    run_hunspell(text, dicts, bin, "-l")
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Spell-check `text` with Hunspell and return SPELLING [`LintSpan`]s — the same shape harper's
 /// `lint_region` returns, so the host maps/renders them identically.
 pub fn hunspell_check(text: &str, dicts: &str, bin: &str) -> Vec<LintSpan> {
     spans_for_words(text, &hunspell_misspelled(text, dicts, bin))
+}
+
+/// Pull the suggestion list out of `hunspell -a` (ispell-pipe) output. A misspelling with
+/// suggestions is a line `& <word> <count> <offset>: sug1, sug2, …`; we ignore the banner, offsets,
+/// the `#` (no-suggestion) and `*`/`+`/`-` (correct) lines, and return the first suggestion list
+/// found (we feed one word at a time). PURE + unit-tested.
+pub fn parse_a_suggestions(hunspell_a_output: &str) -> Vec<String> {
+    for line in hunspell_a_output.lines() {
+        if let Some(rest) = line.strip_prefix("& ") {
+            if let Some((_, sugs)) = rest.split_once(": ") {
+                return sugs.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Hunspell's correction suggestions for a single `word` (via `hunspell -a`). Empty if the word is
+/// correct, has no suggestions, or hunspell is unavailable. Feeding ONE word means we never parse
+/// `-a`'s per-line offsets (whose UTF-8 handling is unreliable) — the caret word's span comes from
+/// our own tokenization ([`word_at`]).
+pub fn hunspell_suggest(word: &str, dicts: &str, bin: &str) -> Vec<String> {
+    parse_a_suggestions(&run_hunspell(word, dicts, bin, "-a"))
+}
+
+/// The (apostrophe-trimmed) byte span of the word token containing `pos`, or `None` if `pos` isn't on
+/// a word. Picks the word under the caret for on-demand Hunspell suggestions. PURE + unit-tested.
+pub fn word_at(text: &str, pos: usize) -> Option<(usize, usize)> {
+    let mut start: Option<usize> = None;
+    for (i, c) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
+        if is_word_char(c) {
+            start.get_or_insert(i);
+        } else if let Some(s) = start.take() {
+            if s <= pos && pos <= i {
+                let word = &text[s..i];
+                let trimmed = word.trim_matches('\'');
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let ws = s + (word.len() - word.trim_start_matches('\'').len());
+                return Some((ws, ws + trimmed.len()));
+            }
+        }
+    }
+    None
 }
 
 /// A fixable issue for `LINTFIX`: byte span `[start, end)`, whether it's a SPELLING issue, and the
@@ -350,5 +400,27 @@ mod tests {
     #[test]
     fn spans_for_words_empty_set_is_empty() {
         assert!(spans_for_words("anything here", &HashSet::new()).is_empty());
+    }
+
+    #[test]
+    fn parse_a_suggestions_reads_the_ampersand_line() {
+        let out = "@(#) International Ispell Version 3.2.06 (but really Hunspell 1.7)\n& teh 3 0: the, tea, ten\n";
+        assert_eq!(parse_a_suggestions(out), ["the", "tea", "ten"]);
+        // `#` = misspelled, no suggestions; `*` = correct → no suggestions either.
+        assert!(parse_a_suggestions("# qwxz 0\n").is_empty());
+        assert!(parse_a_suggestions("*\n").is_empty());
+    }
+
+    #[test]
+    fn word_at_finds_the_token_under_a_position() {
+        let text = "the qick brown";
+        // Anywhere within "qick" (bytes 4..8), including its boundaries, returns that span.
+        assert_eq!(word_at(text, 4), Some((4, 8)));
+        assert_eq!(word_at(text, 6), Some((4, 8)));
+        assert_eq!(word_at(text, 8), Some((4, 8)));
+        // Unicode: the caret inside a Cyrillic word returns its byte span.
+        let t2 = "текст цетер конец";
+        let (s, e) = word_at(t2, 12).unwrap();
+        assert_eq!(&t2[s..e], "цетер");
     }
 }

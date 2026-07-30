@@ -4824,6 +4824,19 @@ impl AppHost {
         if region_text.is_empty() {
             return None;
         }
+        // Hunspell: suggestions for the caret word via `hunspell -a`. The span comes from OUR
+        // tokenizer (word_at), so we never trust `-a`'s per-line offsets. Spelling-only by nature,
+        // which is what both callers want (`spelling_only` is moot here).
+        if self.spell_engine == crate::lint::SpellEngine::Hunspell {
+            let rel = pos_dec.saturating_sub(abs_dec_lo);
+            let (ws, we) = crate::lint::word_at(&region_text, rel)?;
+            let sugs = crate::lint::hunspell_suggest(&region_text[ws..we], &self.spell_dicts, &self.spell_bin);
+            if sugs.is_empty() {
+                return None;
+            }
+            let (rs, re) = (buf.rope_offset(abs_dec_lo + ws), buf.rope_offset(abs_dec_lo + we));
+            return Some(LintFixChoices { span: (rs, re), labels: sugs.clone(), replacements: sugs });
+        }
         let fixes = crate::lint::LintEngine::new(self.lint_dialect)
             .lint_region_fixes(&region_text, self.lint_flavor());
         for (bs, be, is_spelling, choices) in &fixes {
