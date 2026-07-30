@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Australisk   # Australian
 menu.tools.lang.dialect.indian = Indisk   # Indian
 menu.tools.lang.spell_style = Stavningsstil   # Spelling style
 menu.tools.lang.grammar_style = Grammatikstil   # Grammar style
+menu.tools.lang.engine = Stavningskontroll   # Spelling engine
 menu.tools.email = E-post   # Email
 menu.tools.email.list = Visa brevlåda   # List mailbox
 menu.tools.email.save = Spara meddelanden…   # Save messages…

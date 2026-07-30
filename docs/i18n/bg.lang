@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Австралийски   # Australian
 menu.tools.lang.dialect.indian = Индийски   # Indian
 menu.tools.lang.spell_style = Правописен стил   # Spelling style
 menu.tools.lang.grammar_style = Граматичен стил   # Grammar style
+menu.tools.lang.engine = Проверка на правописа   # Spelling engine
 menu.tools.email = Ел. поща   # Email
 menu.tools.email.list = Показване на пощенската кутия   # List mailbox
 menu.tools.email.save = Записване на съобщенията…   # Save messages…

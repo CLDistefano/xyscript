@@ -129,6 +129,7 @@ menu.tools.lang.dialect.australian = Australian
 menu.tools.lang.dialect.indian = Indian
 menu.tools.lang.spell_style = Spelling style
 menu.tools.lang.grammar_style = Grammar style
+menu.tools.lang.engine = Spelling engine
 menu.tools.email = Email
 menu.tools.email.list = List mailbox
 menu.tools.email.save = Save messages…

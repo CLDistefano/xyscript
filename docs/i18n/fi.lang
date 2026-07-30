@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Australianenglanti   # Australian
 menu.tools.lang.dialect.indian = Intianenglanti   # Indian
 menu.tools.lang.spell_style = Oikeinkirjoitustyyli   # Spelling style
 menu.tools.lang.grammar_style = Kielioppityyli   # Grammar style
+menu.tools.lang.engine = Oikolukumoottori   # Spelling engine
 menu.tools.email = Sähköposti   # Email
 menu.tools.email.list = Listaa postilaatikko   # List mailbox
 menu.tools.email.save = Tallenna viestit…   # Save messages…

@@ -131,6 +131,7 @@ menu.tools.lang.dialect.australian = [Àùšţŕàĺìàñ ····]   # Austral
 menu.tools.lang.dialect.indian = [Ìñđìàñ ··]   # Indian
 menu.tools.lang.spell_style = [Šþèĺĺìñĝ šţýĺè ······]   # Spelling style
 menu.tools.lang.grammar_style = [Ĝŕàɱɱàŕ šţýĺè ·····]   # Grammar style
+menu.tools.lang.engine = [Šþèĺĺìñĝ èñĝìñè ······]   # Spelling engine
 menu.tools.email = [Èɱàìĺ ··]   # Email
 menu.tools.email.list = [Ĺìšţ ɱàìĺƀòẋ ·····]   # List mailbox
 menu.tools.email.save = [Šàṽè ɱèššàĝèš… ······]   # Save messages…

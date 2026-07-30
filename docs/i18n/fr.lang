@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Australien   # Australian
 menu.tools.lang.dialect.indian = Indien   # Indian
 menu.tools.lang.spell_style = Style d’orthographe   # Spelling style
 menu.tools.lang.grammar_style = Style de grammaire   # Grammar style
+menu.tools.lang.engine = Correcteur orthographique   # Spelling engine
 menu.tools.email = Courriel   # Email
 menu.tools.email.list = Lister la boîte aux lettres   # List mailbox
 menu.tools.email.save = Enregistrer les messages…   # Save messages…

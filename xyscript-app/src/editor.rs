@@ -4327,6 +4327,9 @@ mod tests {
         e.run_command("SPELLDICT en_US,fi_FI");
         e.run_command("SPELLBIN C:/tools/hunspell.exe");
         assert_eq!(e.host().spell_engine(), crate::lint::SpellEngine::Hunspell);
+        // $-reads (drive the menu checkmark + scripting).
+        e.run_command("PR $SPELLENGINE $SPELLDICT $SPELLBIN");
+        assert_eq!(e.output().last().map(String::as_str), Some("hunspell en_US,fi_FI C:/tools/hunspell.exe"));
         e.run_command("SAVECFG cfg.cfg");
         let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
         assert!(cfg.contains("SPELLENGINE hunspell"), "cfg: {cfg}");

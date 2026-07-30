@@ -136,6 +136,7 @@ menu.tools.lang.dialect.australian = Australijski   # Australian
 menu.tools.lang.dialect.indian = Indyjski   # Indian
 menu.tools.lang.spell_style = Styl pisowni   # Spelling style
 menu.tools.lang.grammar_style = Styl gramatyki   # Grammar style
+menu.tools.lang.engine = Sprawdzanie pisowni   # Spelling engine
 menu.tools.email = Poczta   # Email
 menu.tools.email.list = Pokaż skrzynkę   # List mailbox
 menu.tools.email.save = Zapisz wiadomości…   # Save messages…

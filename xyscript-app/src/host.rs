@@ -10605,6 +10605,9 @@ impl Host for AppHost {
             "SPELLING" => Some(Value::Int(if self.spell_on { 1 } else { 0 })),
             "GRAMMAR" => Some(Value::Int(if self.grammar_on { 1 } else { 0 })),
             "DIALECT" => Some(Value::str(self.lint_dialect.name())),
+            "SPELLENGINE" => Some(Value::str(self.spell_engine.name())),
+            "SPELLDICT" => Some(Value::str(self.spell_dicts.clone())),
+            "SPELLBIN" => Some(Value::str(self.spell_bin.clone())),
             // Path of the loaded LANG catalog; empty string when English (no catalog).
             "LANG" => Some(Value::str(self.lang_path.clone().unwrap_or_default())),
             "SPELLSTYLE" => Some(Value::str(self.spell_style.name())),

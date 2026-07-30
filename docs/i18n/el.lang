@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Αυστραλιανά   # Australian
 menu.tools.lang.dialect.indian = Ινδικά   # Indian
 menu.tools.lang.spell_style = Στυλ ορθογραφίας   # Spelling style
 menu.tools.lang.grammar_style = Στυλ γραμματικής   # Grammar style
+menu.tools.lang.engine = Ορθογραφικός έλεγχος   # Spelling engine
 menu.tools.email = Ηλεκτρονικό ταχυδρομείο   # Email
 menu.tools.email.list = Λίστα γραμματοκιβωτίου   # List mailbox
 menu.tools.email.save = Αποθήκευση μηνυμάτων…   # Save messages…

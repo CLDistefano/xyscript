@@ -136,6 +136,7 @@ menu.tools.lang.dialect.australian = Australská   # Australian
 menu.tools.lang.dialect.indian = Indická   # Indian
 menu.tools.lang.spell_style = Styl pravopisu   # Spelling style
 menu.tools.lang.grammar_style = Styl gramatiky   # Grammar style
+menu.tools.lang.engine = Kontrola pravopisu   # Spelling engine
 menu.tools.email = E-mail   # Email
 menu.tools.email.list = Zobrazit schránku   # List mailbox
 menu.tools.email.save = Uložit zprávy…   # Save messages…

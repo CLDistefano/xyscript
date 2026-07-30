@@ -136,6 +136,7 @@ menu.tools.lang.dialect.australian = Australian   # Australian
 menu.tools.lang.dialect.indian = Indian   # Indian
 menu.tools.lang.spell_style = Stil ortografic   # Spelling style
 menu.tools.lang.grammar_style = Stil gramatical   # Grammar style
+menu.tools.lang.engine = Corector ortografic   # Spelling engine
 menu.tools.email = Email   # Email
 menu.tools.email.list = Listează căsuța poștală   # List mailbox
 menu.tools.email.save = Salvează mesajele…   # Save messages…

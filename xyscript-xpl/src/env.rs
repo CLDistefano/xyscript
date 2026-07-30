@@ -79,8 +79,8 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "YEAR", "MON", "MDAY", "HOUR", "MIN", "SEC", "MSEC", "WDAY", "YDAY",
     // shell
     "RC", "LS", "TR", "XO", "JOBS", "LJ",
-    // language checking (live-on flags + dialect + underline styles)
-    "SPELLING", "GRAMMAR", "DIALECT", "SPELLSTYLE", "GRAMMARSTYLE",
+    // language checking (live-on flags + dialect + underline styles + spell engine/dicts/binary)
+    "SPELLING", "GRAMMAR", "DIALECT", "SPELLSTYLE", "GRAMMARSTYLE", "SPELLENGINE", "SPELLDICT", "SPELLBIN",
     // UI localization: path of the loaded LANG catalog (empty = built-in English)
     "LANG",
     // split panes: pane count + focused pane's 1-based position + active-pane border colour

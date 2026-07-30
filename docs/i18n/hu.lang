@@ -132,6 +132,7 @@ menu.tools.lang.dialect.australian = Ausztrál   # Australian
 menu.tools.lang.dialect.indian = Indiai   # Indian
 menu.tools.lang.spell_style = Helyesírási stílus   # Spelling style
 menu.tools.lang.grammar_style = Nyelvtani stílus   # Grammar style
+menu.tools.lang.engine = Helyesírás-ellenőrző   # Spelling engine
 menu.tools.email = E-mail   # Email
 menu.tools.email.list = Postafiók listázása   # List mailbox
 menu.tools.email.save = Üzenetek mentése…   # Save messages…

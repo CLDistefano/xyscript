@@ -5439,6 +5439,7 @@ impl GuiApp {
         let dialect = ed.special_str("DIALECT");
         let spell_style = ed.special_str("SPELLSTYLE");
         let grammar_style = ed.special_str("GRAMMARSTYLE");
+        let spell_engine = ed.special_str("SPELLENGINE");
         let mail_debug = ed.special_str("MAILDEBUG") == "1";
         // EMPH phrase-entry prefills: seed the "…" items with the current emphasis so re-editing is
         // one step. Staged via `StageCmdline` → `load_cmline`, which takes the EXACT string (the
@@ -5617,6 +5618,13 @@ impl GuiApp {
                     ]),
                     m_sub(self.tr("menu.tools.lang.spell_style", "Spelling style"), style_choices("SPELLSTYLE", &spell_style)),
                     m_sub(self.tr("menu.tools.lang.grammar_style", "Grammar style"), style_choices("GRAMMARSTYLE", &grammar_style)),
+                    // Spelling engine — Harper (English grammar+spelling) or the Hunspell CLI
+                    // (multilingual spelling). Engine names are literal (not translated); dictionary /
+                    // binary stay verb-only (SPELLDICT/SPELLBIN — they need free-text input).
+                    m_sub(self.tr("menu.tools.lang.engine", "Spelling engine"), vec![
+                        m_tog("Harper", spell_engine == "harper", "SPELLENGINE harper"),
+                        m_tog("Hunspell", spell_engine == "hunspell", "SPELLENGINE hunspell"),
+                    ]),
                 ]),
                 MenuNode::Sep,
                 // Email: send/receive via curl. The "…" items prefill the command line (via `BC`) so
