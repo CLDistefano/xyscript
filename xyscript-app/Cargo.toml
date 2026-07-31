@@ -66,8 +66,8 @@ markup5ever_rcdom = "0.39"
 # and several minutes to a clean build. `harper-typst` (prose-aware Typst parser) rides on
 # typst-syntax, which we already have. Edition-2024 crates; need rustc ≥ 1.85. Off by default so
 # normal dev/test builds stay lean; the distributable is built with `--features lint`.
-harper-core = { version = "2.5", optional = true }
-harper-typst = { version = "2.5", optional = true }
+harper-core = { version = "2.7", optional = true }
+harper-typst = { version = "2.7", optional = true }
 # System-font lookup for the user-selectable Preview/TOPDF font (resolve a chosen family name to
 # the face bytes we hand Typst). Matches the version cosmic-text already pulls in.
 fontdb = "0.23"
