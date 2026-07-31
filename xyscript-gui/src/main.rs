@@ -5697,8 +5697,10 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.margins.none", "None"), "OF 0"),
                     ]),
                     m_sub(self.tr("menu.settings.appearance.line_spacing", "Line spacing"), vec![
-                        m_item(self.tr("menu.settings.appearance.line_spacing.more", "More"), "LEADING +1"),
-                        m_item(self.tr("menu.settings.appearance.line_spacing.less", "Less"), "LEADING -1"),
+                        // Leading is a PERCENT (default 145, 50–400), so step by 10 for a visible
+                        // change — ±1 was a 1% nudge you couldn't see.
+                        m_item(self.tr("menu.settings.appearance.line_spacing.more", "More"), "LEADING +10"),
+                        m_item(self.tr("menu.settings.appearance.line_spacing.less", "Less"), "LEADING -10"),
                     ]),
                     MenuNode::Sep,
                     m_item(self.tr("menu.settings.appearance.reset_ui", "Reset UI sizing"), "UIRESET"),
