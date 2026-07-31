@@ -1398,20 +1398,27 @@ impl Buffer {
     }
 
     /// The span `[start, cursor)` of the word ENDING at the caret — i.e. the word the user just
-    /// typed (`AR` auto-replace looks here). `None` when the char immediately left of the caret
-    /// isn't a word char. Scans left over word chars (`is_word`), boundary-safe.
+    /// typed (`AR` auto-replace and the live-spell "don't underline the word being typed" both look
+    /// here). Scans left over word chars (`is_word`) AND apostrophes, so a contraction stays ONE word
+    /// while it's being typed — e.g. after `doesn'` the word is still `doesn'`, not the finished
+    /// `doesn`, so its squiggle keeps waiting until a real separator (space/period/…) lands. `None`
+    /// unless the run holds at least one real word char (a lone apostrophe/quote isn't a word).
     pub fn word_before_cursor(&self) -> Option<(usize, usize)> {
         let end = self.cursor;
         let mut start = end;
+        let mut has_word = false;
         while start > 0 {
             let prev = self.prev_boundary(start);
-            let is_w = self.slice(prev, start).chars().next().is_some_and(is_word);
-            if !is_w {
-                break;
+            match self.slice(prev, start).chars().next() {
+                Some(c) if is_word(c) => {
+                    has_word = true;
+                    start = prev;
+                }
+                Some('\'') => start = prev, // apostrophe: part of a contraction, not a boundary
+                _ => break,
             }
-            start = prev;
         }
-        (start < end).then_some((start, end))
+        (has_word && start < end).then_some((start, end))
     }
 
     /// `DL` select span — the whole line including its break (a movable line unit).
@@ -2818,6 +2825,25 @@ mod tests {
         assert_eq!(b.cursor(), 9);
         b.click_caret(2); // and again (the reported "twice" case)
         assert_eq!(b.selection_text(), "hello");
+    }
+
+    #[test]
+    fn word_before_cursor_keeps_a_contraction_together() {
+        let mut b = Buffer::from_str("doesn't and 'quoted");
+        // Caret right after the apostrophe (mid-typing): the word is still "doesn'", not "doesn" —
+        // so a spelling squiggle on "doesn" stays deferred until a real separator finishes the word.
+        b.set_caret(6, None); // after "doesn'"
+        assert_eq!(b.word_before_cursor(), Some((0, 6)));
+        b.set_caret(7, None); // the finished contraction "doesn't"
+        assert_eq!(b.word_before_cursor(), Some((0, 7)));
+        // A real separator (space) ends the word → nothing being typed.
+        b.set_caret(8, None); // after "doesn't "
+        assert_eq!(b.word_before_cursor(), None);
+        // A leading apostrophe still needs a real word char; a lone quote is not a word.
+        b.set_caret(13, None); // after the "'" of "'quoted"
+        assert_eq!(b.word_before_cursor(), None);
+        b.set_caret(19, None); // after "'quoted"
+        assert_eq!(b.word_before_cursor(), Some((12, 19)));
     }
 
     #[test]
