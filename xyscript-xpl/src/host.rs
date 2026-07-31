@@ -1333,6 +1333,11 @@ pub struct LintFixChoices {
     pub span: (usize, usize),
     pub labels: Vec<String>,
     pub replacements: Vec<String>,
+    /// The issue's explanation (the checker's description of the problem), for the right-click
+    /// popup's header. Empty when there's none (e.g. a plain Hunspell misspelling).
+    pub message: String,
+    /// Whether this is a SPELLING issue (vs grammar/other) — gates the "Add to dictionary" item.
+    pub is_spelling: bool,
 }
 
 /// The seam to the editor / OS / keyboard layer / clock.

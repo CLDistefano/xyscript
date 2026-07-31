@@ -4843,7 +4843,14 @@ impl AppHost {
                 return None;
             }
             let (rs, re) = (buf.rope_offset(abs_dec_lo + ws), buf.rope_offset(abs_dec_lo + we));
-            return Some(LintFixChoices { span: (rs, re), labels: sugs.clone(), replacements: sugs });
+            // Hunspell provides no explanation; `lint_explain_at` fills `message` from the mark.
+            return Some(LintFixChoices {
+                span: (rs, re),
+                labels: sugs.clone(),
+                replacements: sugs,
+                message: String::new(),
+                is_spelling: true,
+            });
         }
         let fixes = crate::lint::LintEngine::new(self.lint_dialect)
             .lint_region_fixes(&region_text, self.lint_flavor());
@@ -4857,10 +4864,39 @@ impl AppHost {
                     span: (rs, re),
                     labels: choices.iter().map(|(l, _)| l.clone()).collect(),
                     replacements: choices.iter().map(|(_, r)| r.clone()).collect(),
+                    message: String::new(), // the mark carries it; `lint_explain_at` supplies it
+                    is_spelling: *is_spelling,
                 });
             }
         }
         None
+    }
+
+    /// For the right-click popup: the underlined issue at rope offset `pos` — its EXPLANATION and
+    /// kind (read from the live mark, which already carries them) plus any correction suggestions
+    /// (from the fix path). Works for SPELLING and GRAMMAR underlines alike (Harper's sandbox
+    /// explains both). `None` when the click isn't on an underlined span. A no-op without `lint`.
+    pub fn lint_explain_at(&self, pos: usize) -> Option<LintFixChoices> {
+        #[cfg(feature = "lint")]
+        {
+            let doc = &self.docs[self.active];
+            if doc.read_only() {
+                return None;
+            }
+            let m = doc.lints().iter().find(|m| m.start <= pos && pos <= m.end)?;
+            let (mspan, is_spelling, message) = ((m.start, m.end), m.is_spelling(), m.message.clone());
+            // Suggestions for this issue (spelling or grammar), if any; else a message-only popup.
+            let (span, labels, replacements) = match self.compute_lint_fix_at(pos, false) {
+                Some(f) => (f.span, f.labels, f.replacements),
+                None => (mspan, Vec::new(), Vec::new()),
+            };
+            Some(LintFixChoices { span, labels, replacements, message, is_spelling })
+        }
+        #[cfg(not(feature = "lint"))]
+        {
+            let _ = pos;
+            None
+        }
     }
 
     /// The SPELLING correction choices for the word at rope offset `pos` (for the right-click spell

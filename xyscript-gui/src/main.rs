@@ -8185,7 +8185,8 @@ impl GuiApp {
                         // The CONTAINING glyph (`hit_leading`) so a click anywhere on the word lands
                         // inside its span.
                         let word_off = self.hit_leading(rel.x * s, rel.y * s);
-                        self.spell_menu = word_off.and_then(|o| self.editor.lint_context_at(o));
+                        // Any underlined issue (spelling OR grammar) → explanation + suggestions.
+                        self.spell_menu = word_off.and_then(|o| self.editor.lint_explain_at(o));
                         if self.spell_menu.is_some() {
                             self.spell_menu_pos = Some(p); // open the spell popup here
                             self.spell_menu_frames = 0; // reset the settle guard
@@ -8242,8 +8243,15 @@ impl GuiApp {
                                     .x;
                                 text_w = text_w.max(w);
                             }
-                            let item_w = text_w + 2.0 * ui.spacing().button_padding.x + 8.0;
+                            // Cap width so a long explanation wraps instead of stretching the popup.
+                            let item_w = (text_w + 2.0 * ui.spacing().button_padding.x + 8.0).min(360.0);
                             ui.set_width(item_w);
+                            // The issue's EXPLANATION at the top (Harper's description) — a wrapped,
+                            // non-clickable header. Empty for a plain Hunspell misspelling.
+                            if !cx.message.is_empty() {
+                                ui.add(egui::Label::new(egui::RichText::new(&cx.message).italics()).wrap());
+                                ui.separator();
+                            }
                             for (i, label) in cx.labels.iter().enumerate() {
                                 if item(ui, item_w, label) {
                                     pick = Some(SpellPick::Fix(i));
@@ -8252,7 +8260,8 @@ impl GuiApp {
                             if !cx.labels.is_empty() {
                                 ui.separator();
                             }
-                            if item(ui, item_w, "Add to dictionary") {
+                            // "Add to dictionary" only makes sense for a misspelled WORD, not a grammar span.
+                            if cx.is_spelling && item(ui, item_w, "Add to dictionary") {
                                 pick = Some(SpellPick::Learn);
                             }
                             if item(ui, item_w, "Check whole document") {

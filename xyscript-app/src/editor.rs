@@ -940,6 +940,11 @@ impl Editor {
     pub fn lint_context_at(&self, pos: usize) -> Option<xyscript_xpl::LintFixChoices> {
         self.host.lint_context_at(pos)
     }
+    /// The underlined issue at rope offset `pos` for the right-click popup — explanation + kind +
+    /// any suggestions — for SPELLING or GRAMMAR alike. `None` if the click isn't on an underline.
+    pub fn lint_explain_at(&self, pos: usize) -> Option<xyscript_xpl::LintFixChoices> {
+        self.host.lint_explain_at(pos)
+    }
     /// Apply a language correction: replace document range `span` with `replacement`.
     pub fn apply_lint_fix(&mut self, span: (usize, usize), replacement: &str) {
         use xyscript_xpl::Host;
@@ -5280,9 +5285,37 @@ mod tests {
         assert!(!cx.labels.is_empty(), "should offer suggestions");
         // A click on a correctly-spelled word → nothing.
         assert!(e.lint_context_at(1).is_none(), "'The' is not flagged");
-        // A click on a GRAMMAR issue ("has") → nothing (the spell menu is spelling-only).
+        // A click on a GRAMMAR issue ("has") → nothing (lint_context_at is spelling-only; the
+        // right-click popup uses `lint_explain_at`, which DOES cover grammar — see below).
         let has_at = e.document().text().find("has").unwrap() + 1;
-        assert!(e.lint_context_at(has_at).is_none(), "grammar issues don't open the spell menu");
+        assert!(e.lint_context_at(has_at).is_none(), "lint_context_at is spelling-only");
+    }
+
+    #[test]
+    #[cfg(feature = "lint")]
+    fn lint_explain_at_covers_spelling_and_grammar() {
+        let mut e = ed();
+        e.insert_str("The qick fox. I has a apple."); // 'qick' spelling; 'has'/'a' grammar
+        e.run_command("SPELLING on");
+        e.run_command("GRAMMAR on");
+        e.recheck_lints(0, 10_000);
+        // A SPELLING underline → flagged as spelling, with correction suggestions.
+        let (ss, se) = {
+            let m = e.lints().iter().find(|m| m.is_spelling()).expect("a spelling mark exists");
+            (m.start, m.end)
+        };
+        let sp = e.lint_explain_at((ss + se) / 2).expect("the spelling word is underlined");
+        assert!(sp.is_spelling && !sp.labels.is_empty(), "spelling → suggestions");
+        // A GRAMMAR underline → an explanation, NOT flagged as spelling (so no "Add to dictionary").
+        let (gs, ge) = {
+            let m = e.lints().iter().find(|m| !m.is_spelling()).expect("a grammar mark exists");
+            (m.start, m.end)
+        };
+        let gr = e.lint_explain_at((gs + ge) / 2).expect("the grammar span is underlined");
+        assert!(!gr.is_spelling, "grammar is not a spelling issue");
+        assert!(!gr.message.is_empty(), "grammar issue carries an explanation");
+        // A non-underlined word → nothing.
+        assert!(e.lint_explain_at(1).is_none(), "'The' is not underlined");
     }
 
     #[test]
