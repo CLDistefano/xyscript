@@ -8464,12 +8464,17 @@ impl GuiApp {
                         self.editor.host_mut().click_active_caret(off);
                         self.editor.dir_copy_path();
                     } else if resp.drag_started() {
-                        // Anchor on the LEADING edge of the character under the pointer, so a drag
-                        // that starts on a character includes it (rather than starting after it).
-                        // `hit_leading` reads the containing glyph's start straight from the layout —
-                        // exact for any font, unlike biasing the press by a GUESSED cell width, which
-                        // dropped the first char whenever the guess was too narrow for the real face.
-                        let anchor = self.hit_leading(rel.x * s, rel.y * s).unwrap_or(off);
+                        // Anchor on the LEADING edge of the character under the PRESS, so a drag that
+                        // starts on a character includes it. Two things have to be right:
+                        //  1. Use the PRESS ORIGIN, not `interact_pointer_pos()`. `drag_started` only
+                        //     fires once the pointer crosses egui's drag threshold (~6 px), so by then
+                        //     a rightward drag has already moved a char or two past where the button
+                        //     went down — sampling there dropped the first character(s).
+                        //  2. `hit_leading` reads the containing glyph's start straight from the
+                        //     layout — exact for any font, unlike biasing by a GUESSED cell width.
+                        let press = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                        let prel = press - canvas_rect.min;
+                        let anchor = self.hit_leading(prel.x * s, prel.y * s).unwrap_or(off);
                         self.drag_anchor = Some(anchor);
                         self.editor.host_mut().set_active_caret(anchor, None);
                     } else if click {
