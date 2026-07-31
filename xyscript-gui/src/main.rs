@@ -1149,6 +1149,10 @@ mod menu_tests {
         assert_eq!(leading_glyph_cursor(&buffer, g1x + g1w * 0.5, y).map(|c| c.index), Some(1));
         // Off the row (above it) → no containing glyph (caller falls back to nearest-boundary hit).
         assert_eq!(leading_glyph_cursor(&buffer, g0x + g0w * 0.5, -100.0), None);
+        // TRAILING edge (leftward-drag anchor): a press anywhere on glyph 0 anchors at its END (1),
+        // so a drag to the left still encloses char 0. Glyph 1's trailing edge is 2.
+        assert_eq!(glyph_edge_cursor(&buffer, g0x + g0w * 0.1, y, true).map(|c| c.index), Some(1));
+        assert_eq!(glyph_edge_cursor(&buffer, g1x + g1w * 0.5, y, true).map(|c| c.index), Some(2));
     }
 
     #[test]
@@ -4276,25 +4280,46 @@ impl GuiApp {
         self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
         r
     }
+
+    /// Like [`hit_leading`](Self::hit_leading) but the TRAILING (logical end) edge of the character
+    /// under `(x, y)`. Anchors a LEFTWARD drag-select on the pressed character: with the anchor at the
+    /// char's right edge, a drag to the left encloses it (mirror of `hit_leading` for rightward drags).
+    fn hit_trailing(&mut self, x: f32, y: f32) -> Option<usize> {
+        let (w, h) = self.pane_view.canvas_px; // PIXELS
+        let (buffer, win) = self.windowed_buffer(w, h);
+        let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
+        let r = glyph_edge_cursor(&buffer, x, y, true)
+            .or_else(|| buffer.hit(x, y))
+            .map(|cur| self.win_rope_at(&win, cur));
+        self.win_buffer = Some(buffer);
+        r
+    }
 }
 
-/// The cursor at the LEADING (logical start) edge of the character whose horizontal cell contains
-/// `x` on the visual row containing `y`. `None` when `(x, y)` is outside the laid-out glyphs (before
-/// the first / past the last glyph, an empty row, or off the text). Anchors a drag-select so a press
-/// anywhere on a character includes it. Free fn so it's unit-testable over a raw shaped buffer.
-fn leading_glyph_cursor(buffer: &Buffer, x: f32, y: f32) -> Option<Cursor> {
+/// The cursor at one EDGE of the character whose horizontal cell contains `x` on the visual row
+/// containing `y` — the LEADING (logical start) edge when `trailing` is false, else the TRAILING
+/// (logical end) edge. `None` when `(x, y)` is outside the laid-out glyphs (before the first / past
+/// the last glyph, an empty row, or off the text). Anchors a drag-select on the pressed character:
+/// leading for a rightward drag, trailing for a leftward one, so the char is enclosed either way.
+/// Free fn so it's unit-testable over a raw shaped buffer.
+fn glyph_edge_cursor(buffer: &Buffer, x: f32, y: f32, trailing: bool) -> Option<Cursor> {
     for run in buffer.layout_runs() {
         if y < run.line_top || y >= run.line_top + run.line_height {
             continue;
         }
         for g in run.glyphs.iter() {
             if x >= g.x && x < g.x + g.w {
-                return Some(Cursor::new(run.line_i, g.start));
+                return Some(Cursor::new(run.line_i, if trailing { g.end } else { g.start }));
             }
         }
         break; // row found, but x is before/after every glyph
     }
     None
+}
+
+/// The LEADING-edge cursor for the character under `(x, y)` — see [`glyph_edge_cursor`].
+fn leading_glyph_cursor(buffer: &Buffer, x: f32, y: f32) -> Option<Cursor> {
+    glyph_edge_cursor(buffer, x, y, false)
 }
 
 impl GuiApp {
@@ -8517,17 +8542,27 @@ impl GuiApp {
                         self.editor.host_mut().click_active_caret(off);
                         self.editor.dir_copy_path();
                     } else if resp.drag_started() {
-                        // Anchor on the LEADING edge of the character under the PRESS, so a drag that
-                        // starts on a character includes it. Two things have to be right:
+                        // Anchor on the pressed character so a drag that starts on it INCLUDES it,
+                        // whichever way it goes. Two things have to be right:
                         //  1. Use the PRESS ORIGIN, not `interact_pointer_pos()`. `drag_started` only
                         //     fires once the pointer crosses egui's drag threshold (~6 px), so by then
-                        //     a rightward drag has already moved a char or two past where the button
-                        //     went down — sampling there dropped the first character(s).
-                        //  2. `hit_leading` reads the containing glyph's start straight from the
-                        //     layout — exact for any font, unlike biasing by a GUESSED cell width.
+                        //     the pointer has already moved a char or two off where the button went
+                        //     down — sampling there dropped the edge character(s).
+                        //  2. Anchor on the char EDGE opposite the drag direction — its LEADING edge
+                        //     for a rightward drag, its TRAILING edge for a leftward one — so the
+                        //     selection encloses the pressed char either way. Read straight from the
+                        //     shaped layout (exact for any font), not a guessed cell width.
                         let press = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
                         let prel = press - canvas_rect.min;
-                        let anchor = self.hit_leading(prel.x * s, prel.y * s).unwrap_or(off);
+                        let dragging_left = p.x < press.x;
+                        let hx = prel.x * s;
+                        let hy = prel.y * s;
+                        let anchor = if dragging_left {
+                            self.hit_trailing(hx, hy)
+                        } else {
+                            self.hit_leading(hx, hy)
+                        }
+                        .unwrap_or(off);
                         self.drag_anchor = Some(anchor);
                         self.editor.host_mut().set_active_caret(anchor, None);
                     } else if click {
