@@ -426,6 +426,27 @@ fn truncate_path(path: &str, max: usize) -> String {
     format!("{head}...{tail}")
 }
 
+/// Cap a tab's FILENAME to `max` chars for the tab strip, keeping the meaningful start and the
+/// extension: "my-very-long-report-final.txt" → "my-very-long-report-fi….txt". Short names are
+/// returned unchanged (the full name shows on hover). Without this a long filename widens its tab to
+/// fit the whole thing.
+fn truncate_tab_name(name: &str, max: usize) -> String {
+    if name.chars().count() <= max {
+        return name.to_string();
+    }
+    // Preserve a short, sane extension (incl. its dot) at the end; a spaced/oversized "extension"
+    // (e.g. a name that just has a late dot) is treated as no extension.
+    let ext = name
+        .rsplit_once('.')
+        .map(|(_, e)| e)
+        .filter(|e| !e.is_empty() && e.chars().count() <= 5 && !e.contains(' '))
+        .map(|e| format!(".{e}"))
+        .unwrap_or_default();
+    let head_len = max.saturating_sub(1 + ext.chars().count()).max(1); // 1 for the "…"
+    let head: String = name.chars().take(head_len).collect();
+    format!("{head}…{ext}")
+}
+
 /// Paint token kinds onto the text and group into char-aligned colored runs.
 fn color_runs<'a>(text: &str, tokens: &'a [Token]) -> Vec<(usize, usize, Option<&'a TokenKind>)> {
     let n = text.len();
@@ -1142,6 +1163,24 @@ mod menu_tests {
         assert_eq!(t, r"C:...cript-gui\src");
         // Degenerate narrow width: just the last `n` chars.
         assert_eq!(truncate_path(p, 4), r"\src");
+    }
+
+    #[test]
+    fn truncate_tab_name_keeps_head_and_extension() {
+        // Within budget → unchanged.
+        assert_eq!(truncate_tab_name("report.txt", 28), "report.txt");
+        // Long name → capped at max, keeping the start and the extension.
+        let long = "my-very-long-report-final-v3.txt"; // 32 chars
+        let t = truncate_tab_name(long, 28);
+        assert_eq!(t.chars().count(), 28);
+        assert!(t.starts_with("my-very-long-report"), "keeps the start: {t}");
+        assert!(t.ends_with(".txt") && t.contains('…'), "keeps the extension + ellipsis: {t}");
+        // No extension → head + ellipsis.
+        let noext = truncate_tab_name("abcdefghijklmnopqrstuvwxyz012345", 10);
+        assert_eq!(noext.chars().count(), 10);
+        assert_eq!(noext, "abcdefghi…");
+        // Unicode filename counts by chars, not bytes.
+        assert_eq!(truncate_tab_name("café", 28), "café");
     }
 
     fn tree() -> Vec<MenuNode> {
@@ -7354,15 +7393,20 @@ impl GuiApp {
                         if is_hidden(t) {
                             continue;
                         }
-                        // name [lock if read-only] [* if modified]
-                        let mut label = t.name.clone();
+                        // truncated name [lock if read-only] [* if modified]. A long filename would
+                        // otherwise stretch its tab to fit; cap it and show the full name on hover.
+                        const TAB_NAME_MAX: usize = 28;
+                        let long = t.name.chars().count() > TAB_NAME_MAX;
+                        let mut label = truncate_tab_name(&t.name, TAB_NAME_MAX);
                         if t.read_only {
                             label.push_str(" 🔒");
                         }
                         if t.modified {
                             label.push_str(" *");
                         }
-                        if ui.selectable_label(i == active, label).clicked() {
+                        let resp = ui.selectable_label(i == active, label);
+                        let resp = if long { resp.on_hover_text(t.name.clone()) } else { resp };
+                        if resp.clicked() {
                             switch_to = Some(i);
                         }
                         let x = egui::RichText::new("×").color(x_glyph);
