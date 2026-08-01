@@ -1074,6 +1074,12 @@ pub enum ColorGround {
     /// `EMPHBGCOLOR` — the `EMPH` emphasis background band colour (`None`/default = the selection
     /// background, `SELBGCOLOR`). `$EMPHBGCOLOR`.
     EmphBg,
+    /// `MDCS` — the `MDC` block foreground: colour the SELECTION's persistent text-block foreground
+    /// layer (via the picker). Applied through `MDC <r g b>`.
+    MdcFg,
+    /// `MDCS/B` — the `MDC` block background layer for the SELECTION (via the picker). Applied
+    /// through `MDC/B <r g b>`.
+    MdcBg,
 }
 
 /// The text-caret shape (`CRSHAPE`). Read back via `$CRSHAPE`.

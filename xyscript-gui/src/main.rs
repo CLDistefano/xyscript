@@ -5751,6 +5751,15 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.colors.editor_bg", "Editor background…"), "BGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.selection_text", "Selection text…"), "SELFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.selection_bg", "Selection background…"), "SELBGCOLORS"),
+                        // `MDC` block colour: a PERSISTENT per-selection colour (saved with the file via
+                        // the `.xymeta` sidecar), distinct from the global selection colours above.
+                        m_sub(self.tr("menu.settings.appearance.colors.block", "Block colour (selection)"), vec![
+                            m_item(self.tr("menu.settings.appearance.colors.block.fg", "Text…"), "MDCS"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.bg", "Background…"), "MDCS/B"),
+                            MenuNode::Sep,
+                            m_item(self.tr("menu.settings.appearance.colors.block.clear_fg", "Clear text"), "MDC off"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.clear_bg", "Clear background"), "MDC/B off"),
+                        ]),
                         m_item(self.tr("menu.settings.appearance.colors.caret", "Caret…"), "CRCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.separators", "Separators…"), "SEPCOLORS"),
                         m_sub(self.tr("menu.settings.appearance.colors.tab_bg", "Tab bar background"), vec![
@@ -6355,6 +6364,10 @@ impl GuiApp {
             // EMPH emphasis colours default to the selection colours when unset — seed with those.
             ColorTarget::EmphFg => self.editor.emph_fg_override().unwrap_or(self.editor.sel_fg_color()),
             ColorTarget::EmphBg => self.editor.emph_bg_override().unwrap_or(self.editor.sel_bg_color()),
+            // MDC block colours have no single "current" value (they're per-span) — seed the picker
+            // with the editor's text / background colour as a sensible starting swatch.
+            ColorTarget::MdcFg => self.editor.fg_color(),
+            ColorTarget::MdcBg => self.editor.bg_color(),
         };
         self.color_picker = Some((target, egui::Color32::from_rgb(r, g, b)));
     }

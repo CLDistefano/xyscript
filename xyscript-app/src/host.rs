@@ -1317,6 +1317,8 @@ pub enum ColorTarget {
     PathBg,
     EmphFg,
     EmphBg,
+    MdcFg,
+    MdcBg,
 }
 
 impl ColorTarget {
@@ -1349,6 +1351,8 @@ impl ColorTarget {
             ColorTarget::PathBg => "$CWD path background colour".into(),
             ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
             ColorTarget::EmphBg => "EMPH emphasis background colour".into(),
+            ColorTarget::MdcFg => "Block colour — selection text".into(),
+            ColorTarget::MdcBg => "Block colour — selection background".into(),
         }
     }
     /// The setter command to run (with the chosen `R G B`) when the user accepts the picker.
@@ -1380,6 +1384,9 @@ impl ColorTarget {
             ColorTarget::PathBg => "PABGCOLOR",
             ColorTarget::EmphFg => "EMPHFGCOLOR",
             ColorTarget::EmphBg => "EMPHBGCOLOR",
+            // MDC colours the SELECTION's persistent block: bare = foreground, `/B` = background.
+            ColorTarget::MdcFg => return format!("MDC {r} {g} {b}"),
+            ColorTarget::MdcBg => return format!("MDC/B {r} {g} {b}"),
         };
         format!("{verb} {r} {g} {b}")
     }
@@ -8706,6 +8713,8 @@ impl Host for AppHost {
                     ColorGround::DwBg => ColorTarget::DwBg,
                     ColorGround::EmphFg => ColorTarget::EmphFg,
                     ColorGround::EmphBg => ColorTarget::EmphBg,
+                    ColorGround::MdcFg => ColorTarget::MdcFg,
+                    ColorGround::MdcBg => ColorTarget::MdcBg,
                 });
                 return Ok(Value::str(""));
             }
@@ -9961,6 +9970,12 @@ impl Host for AppHost {
                         self.emph_bg = Some(rgb);
                         "emphasis background"
                     }
+                    // MDC block colours are applied to the SELECTION through the `MDC` verb (an
+                    // `EditorOp::ModeColor`), never as a global `SetColor` — but the enum is shared,
+                    // so these arms exist only to keep the match exhaustive. Reaching them would be a
+                    // routing bug; do nothing to global state.
+                    ColorGround::MdcFg => "block text",
+                    ColorGround::MdcBg => "block background",
                 };
                 return Ok(Value::str(format!("{name} colour = {r} {g} {b}")));
             }

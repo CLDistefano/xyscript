@@ -3127,6 +3127,15 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenColorPicker(ground))?;
                 Ok(Flow::Next)
             }
+            // `MDCS` — colour-picker for the `MDC` block colour of the SELECTION: bare = foreground,
+            // `/B` (or `/BG`) = background. On accept the picker runs `MDC`/`MDC/B <r g b>`.
+            "MDCS" => {
+                let background =
+                    vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
+                let ground = if background { ColorGround::MdcBg } else { ColorGround::MdcFg };
+                self.host_op(EditorOp::OpenColorPicker(ground))?;
+                Ok(Flow::Next)
+            }
             // `HLCOLORS <kind>` — colour-picker dialog for a syntax-highlight token kind.
             "HLCOLORS" => {
                 let kind = args.trim();
@@ -4880,6 +4889,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR" => &["HSL"], // triple as H S L
         "MDC" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
+        "MDCS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
         "AB" => &["V"], // `/V` — verify (ask to save) before closing
         "ABD" => &["V"], // `/V` — verify (confirm) before deleting + closing
