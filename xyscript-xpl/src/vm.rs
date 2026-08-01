@@ -3050,6 +3050,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::FgColor(opt))?;
                 Ok(Flow::Next)
             }
+            "MDC" => {
+                // XyWrite-style "mode" colour: paint the SELECTION as a persistent block. `MDC <color>`
+                // sets the foreground, `MDC/B <color>` the background; `MDC off` (or bare `MDC`) clears
+                // that layer. Selection-only. Colours persist (the doc's `.xymeta` sidecar).
+                let background = vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
+                let arg = args.trim();
+                let rgb = if arg.is_empty() || arg.eq_ignore_ascii_case("off") || arg.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                    Some(parse_color("MDC", &args, hsl)?)
+                };
+                self.host_op(EditorOp::ModeColor { background, rgb })?;
+                Ok(Flow::Next)
+            }
             "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR"
             | "SEPCOLOR" | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR"
             | "SELFGCOLOR" | "FINDBGCOLOR" | "FINDFGCOLOR" | "SPELLCOLOR" | "GRAMMARCOLOR"
@@ -4864,6 +4879,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR" => &["HSL"], // triple as H S L
+        "MDC" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
         "AB" => &["V"], // `/V` — verify (ask to save) before closing
         "ABD" => &["V"], // `/V` — verify (confirm) before deleting + closing

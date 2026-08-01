@@ -3591,6 +3591,22 @@ impl GuiApp {
         } else {
             self.highlight_rects(&self.emph_highlights, None, &buffer, &win, w as i32, lh_px as i32)
         };
+        // MD block-background rects (`MD/B` colour-on-selection). Persistent per-doc spans in ROPE
+        // offsets — feed them one at a time through `highlight_rects` so each carries its own colour,
+        // then tag every rect with that colour. Painted at the BOTTOM of the z-order (under EMPH/FIND/
+        // selection), since these are user "block" backgrounds. Empty unless MD colours are set.
+        let mut md_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> = {
+            let bg = self.editor.bg_color_spans_raw();
+            let mut out = Vec::new();
+            for (ms, me, rgb) in bg {
+                for (x0, y0, x1, y1, _) in
+                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
+                {
+                    out.push((x0, y0, x1, y1, rgb));
+                }
+            }
+            out
+        };
         // Record the visible byte window so the live checker can scope to it (bounded work on huge
         // files). Decoded-byte offsets, matching what `recheck_lints`/`compute_lints` expect.
         self.lint_visible = Some((win.start_decoded, win.start_decoded + win.decoded_len));
@@ -3632,6 +3648,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut md_bg_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
         }
 
 
@@ -3642,6 +3662,11 @@ impl GuiApp {
         let mut canvas = vec![0u8; w * h * 4];
         for px in canvas.chunks_exact_mut(4) {
             px.copy_from_slice(&[br, bg_, bb, 255]);
+        }
+        // MD block backgrounds — the BOTTOM highlight layer, painted directly over the canvas fill and
+        // under everything else (EMPH/FIND/selection). Opaque, each rect in its own persisted colour.
+        for &(x0, y0, x1, y1, (r, g, b)) in &md_bg_rects {
+            fill_blend(&mut canvas, w, h, x0, y0, x1, y1, r, g, b, 1.0);
         }
         // Paint EMPH emphasis BEHIND the glyphs (and under FIND): an opaque band in EMPHBGCOLOR
         // (default: the selection background) so the emphasis text (EMPHFGCOLOR) reads as configured.

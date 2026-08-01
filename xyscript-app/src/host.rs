@@ -125,6 +125,144 @@ fn os_drive_current_dir(_letter: char) -> Option<PathBuf> {
     None
 }
 
+// ---- MDC block-colour sidecar (`.<name>.xymeta`) ----------------------------------------------
+// A document's MDC / FGCOLOR block colours live in a hidden companion file next to it, so they
+// survive close-and-reopen without touching the document's own bytes. The sidecar is DATA, never
+// executed — it can travel alongside arbitrary (even downloaded) files, so auto-running it would be
+// a code-execution vector. A content length+hash guard ties it to the exact bytes it was written
+// for: if another tool edited the file, the stored offsets no longer mean anything and the sidecar
+// is ignored (fail-closed). The body is sectioned (`[colors]`) so other metadata can join later.
+
+type ColorSpan = (usize, usize, (u8, u8, u8));
+
+/// FNV-1a 64-bit — a small, deterministic (version-stable) fingerprint of the saved bytes for the
+/// guard. Not a security boundary: a mismatch just means "ignore a stale sidecar," the safe default.
+fn xymeta_hash(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// The sidecar path for a document at `target`: `dir/.name.ext.xymeta` (leading dot). `None` for a
+/// pathless target — an untitled buffer has nothing to anchor a sidecar to.
+fn xymeta_path(target: &Path) -> Option<PathBuf> {
+    let name = target.file_name()?.to_string_lossy().into_owned();
+    let mut p = target.to_path_buf();
+    p.set_file_name(format!(".{name}.xymeta"));
+    Some(p)
+}
+
+/// Give a file the Windows HIDDEN attribute (a leading dot alone doesn't hide it there). No-op on
+/// Unix, where the dot prefix already hides it.
+#[cfg(windows)]
+fn set_file_hidden(p: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetFileAttributesW(name: *const u16, attrs: u32) -> i32;
+    }
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    let wide: Vec<u16> = p.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    unsafe {
+        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN);
+    }
+}
+#[cfg(not(windows))]
+fn set_file_hidden(_p: &Path) {}
+
+/// Write (or, with no colours, remove) the sidecar next to `target`, keyed to `bytes`. Best-effort:
+/// the caller ignores the outcome, since a sidecar problem must never fail a document save.
+fn xymeta_write(target: &Path, bytes: &[u8], fg: &[ColorSpan], bg: &[ColorSpan]) {
+    let Some(scp) = xymeta_path(target) else { return };
+    if fg.is_empty() && bg.is_empty() {
+        // Nothing to persist — drop any stale sidecar so a doc whose colours were cleared doesn't
+        // reopen still wearing them.
+        let _ = std::fs::remove_file(&scp);
+        return;
+    }
+    let mut s = String::new();
+    s.push_str("xymeta 1\n");
+    s.push_str(&format!("len {}\n", bytes.len()));
+    s.push_str(&format!("hash {:016x}\n", xymeta_hash(bytes)));
+    s.push_str("[colors]\n");
+    for &(a, b, (r, g, bl)) in fg {
+        s.push_str(&format!("fg {a} {b} {r} {g} {bl}\n"));
+    }
+    for &(a, b, (r, g, bl)) in bg {
+        s.push_str(&format!("bg {a} {b} {r} {g} {bl}\n"));
+    }
+    // Remove first: on Windows you can't truncate-create over a HIDDEN file (access denied), and
+    // this also clears the attribute so the fresh write starts clean — then re-hide it.
+    let _ = std::fs::remove_file(&scp);
+    if std::fs::write(&scp, s.as_bytes()).is_ok() {
+        set_file_hidden(&scp);
+    }
+}
+
+/// Read the sidecar next to `target`, returning its `(fg, bg)` spans ONLY if the guard matches
+/// `bytes` exactly (same length and hash). Any mismatch, missing file, unknown version, or parse
+/// slip yields `None` — the document then simply opens without stored colours.
+fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<(Vec<ColorSpan>, Vec<ColorSpan>)> {
+    let scp = xymeta_path(target)?;
+    let text = std::fs::read_to_string(&scp).ok()?;
+    let mut lines = text.lines();
+    if lines.next()?.trim() != "xymeta 1" {
+        return None; // unknown format/version → ignore
+    }
+    let mut len_ok = false;
+    let mut hash_ok = false;
+    let mut section = "";
+    let (mut fg, mut bg): (Vec<ColorSpan>, Vec<ColorSpan>) = (Vec::new(), Vec::new());
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(sec) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            section = if sec == "colors" { "colors" } else { "" }; // unknown section: skip its lines
+            continue;
+        }
+        if let Some(v) = line.strip_prefix("len ") {
+            len_ok = v.trim().parse::<usize>().ok() == Some(bytes.len());
+            continue;
+        }
+        if let Some(v) = line.strip_prefix("hash ") {
+            hash_ok = v.trim().eq_ignore_ascii_case(&format!("{:016x}", xymeta_hash(bytes)));
+            continue;
+        }
+        if section == "colors" {
+            if let Some((is_bg, sp)) = parse_xymeta_color(line) {
+                if is_bg {
+                    bg.push(sp)
+                } else {
+                    fg.push(sp)
+                }
+            }
+        }
+    }
+    // Guard: if the bytes changed under the sidecar, its offsets are meaningless — ignore it.
+    (len_ok && hash_ok).then_some((fg, bg))
+}
+
+/// Parse one `fg|bg <start> <end> <r> <g> <b>` colour line. `None` on any malformed/zero-width field.
+fn parse_xymeta_color(line: &str) -> Option<(bool, ColorSpan)> {
+    let mut it = line.split_whitespace();
+    let is_bg = match it.next()? {
+        "fg" => false,
+        "bg" => true,
+        _ => return None,
+    };
+    let s: usize = it.next()?.parse().ok()?;
+    let e: usize = it.next()?.parse().ok()?;
+    let r: u8 = it.next()?.parse().ok()?;
+    let g: u8 = it.next()?.parse().ok()?;
+    let b: u8 = it.next()?.parse().ok()?;
+    (e > s).then_some((is_bg, (s, e, (r, g, b))))
+}
+
 /// Make `path` absolute and lexically clean: resolve `.`/`..` by pure path logic (never touching
 /// the filesystem) and drop any `\\?\` verbatim prefix. Unlike [`std::fs::canonicalize`], this does
 /// NOT resolve symlinks or `subst`ed drives — so a `subst X: C:\dir` path stays `X:\…` instead of
@@ -5874,7 +6012,13 @@ impl AppHost {
         let mut doc = Document::new();
         let msg = if exists {
             let bytes = self.read_doc_bytes(&key)?; // genuine read errors stay trappable
+            // Restore MDC/FGCOLOR block colours from the hidden `.xymeta` sidecar (guard read BEFORE
+            // `load` consumes the bytes; applied after). Ignored on a guard mismatch / no sidecar.
+            let restore = (!self.virtual_fs).then(|| xymeta_read(&target, &bytes)).flatten();
             doc.load(bytes, target.clone());
+            if let Some((fg, bg)) = restore {
+                doc.set_color_spans_raw(fg, bg);
+            }
             doc.set_read_only(read_only);
             let name = doc.file_name().unwrap_or_else(|| key.clone());
             if read_only {
@@ -6074,7 +6218,11 @@ impl AppHost {
             // listing behind to keep picking); the default replaces the listing in place.
             let bytes = self.read_doc_bytes(&entry.path.to_string_lossy())?;
             let mut doc = Document::new();
+            let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
+            if let Some((fg, bg)) = restore {
+                doc.set_color_spans_raw(fg, bg);
+            }
             if self.new_window {
                 self.add_or_reuse(doc);
             } else {
@@ -6350,7 +6498,11 @@ impl AppHost {
         } else {
             let bytes = self.read_doc_bytes(&entry.path.to_string_lossy())?;
             let mut doc = Document::new();
+            let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
+            if let Some((fg, bg)) = restore {
+                doc.set_color_spans_raw(fg, bg);
+            }
             doc.share_grammars(self.highlight_grammars.clone());
             // `DIRWNW on` (default) opens a new tab; `off` reuses the ACTIVE one. Unsaved work is
             // never discarded to do so — a modified buffer is left alone and the file opens beside
@@ -6547,6 +6699,7 @@ impl AppHost {
                         let bytes = self.docs[self.active].save_bytes();
                         match self.write_doc_bytes(&path, &bytes) {
                             Ok(()) => {
+                                self.sync_color_sidecar(&self.docs[self.active], &path, &bytes);
                                 self.docs[self.active].mark_saved();
                                 let name = self.close_active_buffer();
                                 Some(format!("saved + closed {name}"))
@@ -6590,7 +6743,10 @@ impl AppHost {
                     let key = path.to_string_lossy().into_owned();
                     let bytes = self.docs[self.active].save_bytes();
                     match self.write_doc_bytes(&key, &bytes) {
-                        Ok(()) => Some(format!("saved copy to {name}")),
+                        Ok(()) => {
+                            self.sync_color_sidecar(&self.docs[self.active], &key, &bytes);
+                            Some(format!("saved copy to {name}"))
+                        }
                         Err(e) => Some(format!("save failed: {}", e.message())),
                     }
                 }
@@ -6604,6 +6760,7 @@ impl AppHost {
                     match self.write_doc_bytes(&key, &bytes) {
                         Ok(()) => {
                             self.docs[self.active].set_path(path);
+                            self.sync_color_sidecar(&self.docs[self.active], &key, &bytes);
                             self.docs[self.active].mark_saved();
                             let closed = self.close_active_buffer();
                             Some(format!("stored + closed {closed}"))
@@ -6621,6 +6778,7 @@ impl AppHost {
                     match self.write_doc_bytes(&key, &bytes) {
                         Ok(()) => {
                             self.docs[self.active].set_path(path);
+                            self.sync_color_sidecar(&self.docs[self.active], &key, &bytes);
                             self.docs[self.active].mark_saved();
                             Some(self.tr_fmt("msg.save.written", "saved {name}", &[("name", &name)]))
                         }
@@ -7293,6 +7451,7 @@ impl AppHost {
             };
             let bytes = self.docs[i].save_bytes();
             self.write_doc_bytes(&path, &bytes)?;
+            self.sync_color_sidecar(&self.docs[i], &path, &bytes);
             self.docs[i].mark_saved();
             saved += 1;
         }
@@ -7336,6 +7495,20 @@ impl AppHost {
             XplError::trappable(format!("cannot finalize {path}: {e}"))
         })?;
         Ok(())
+    }
+
+    /// After a full-document save, mirror `doc`'s `MDC` / `FGCOLOR` block colours into its hidden
+    /// `.xymeta` sidecar (or remove the sidecar when the doc has none). `path` is the SAME string
+    /// handed to [`write_doc_bytes`](Self::write_doc_bytes), resolved identically, and `bytes` are
+    /// the bytes just written — together they key the sidecar's content guard. Best-effort: a
+    /// sidecar problem never turns a good save into a failure, and the virtual test FS keeps none.
+    fn sync_color_sidecar(&self, doc: &Document, path: &str, bytes: &[u8]) {
+        if self.virtual_fs {
+            return;
+        }
+        let target = self.resolve_path(path);
+        let (fg, bg) = doc.color_spans_raw();
+        xymeta_write(&target, bytes, fg, bg);
     }
 }
 
@@ -8322,6 +8495,7 @@ impl Host for AppHost {
                 };
                 let bytes = self.file_doc().save_bytes();
                 self.write_doc_bytes(&path.to_string_lossy(), &bytes)?;
+                self.sync_color_sidecar(self.file_doc(), &path.to_string_lossy(), &bytes);
                 self.file_doc_mut().set_path(path.clone());
                 self.file_doc_mut().mark_saved();
                 let name = path
@@ -8360,6 +8534,7 @@ impl Host for AppHost {
                 }
                 let bytes = self.file_doc().save_bytes();
                 self.write_doc_bytes(&key, &bytes)?;
+                self.sync_color_sidecar(self.file_doc(), &key, &bytes);
                 return Ok(Value::str(format!("saved copy to {name}")));
             }
             EditorOp::Store { path, force } => {
@@ -8395,6 +8570,7 @@ impl Host for AppHost {
                 // Save (adopting the path if one was given), then close the tab.
                 let bytes = self.file_doc().save_bytes();
                 self.write_doc_bytes(&key, &bytes)?;
+                self.sync_color_sidecar(self.file_doc(), &key, &bytes);
                 self.file_doc_mut().set_path(target);
                 self.file_doc_mut().mark_saved();
                 let closed = self.close_active_buffer();
@@ -8427,6 +8603,7 @@ impl Host for AppHost {
                 }
                 let bytes = self.file_doc().save_bytes();
                 self.write_doc_bytes(&key, &bytes)?;
+                self.sync_color_sidecar(self.file_doc(), &key, &bytes);
                 self.file_doc_mut().set_path(target);
                 self.file_doc_mut().mark_saved();
                 return Ok(Value::str(self.tr_fmt("msg.save.written", "saved {name}", &[("name", &name)])));
@@ -8685,7 +8862,11 @@ impl Host for AppHost {
                 };
                 let key = path.to_string_lossy().into_owned();
                 let bytes = self.read_doc_bytes(&key)?;
+                let restore = (!self.virtual_fs).then(|| xymeta_read(&path, &bytes)).flatten();
                 self.file_doc_mut().load(bytes, path.clone());
+                if let Some((fg, bg)) = restore {
+                    self.file_doc_mut().set_color_spans_raw(fg, bg);
+                }
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -9660,6 +9841,26 @@ impl Host for AppHost {
                         format!("foreground: {r} {g} {b}")
                     }
                     (None, None) => "FGCOLOR default: select text first (nothing to clear)".to_string(),
+                };
+                return Ok(Value::str(msg));
+            }
+            EditorOp::ModeColor { background, rgb } => {
+                // XyWrite-style block colour on the SELECTION — foreground or background layer.
+                let sel = self.docs[self.active].selection_range();
+                let msg = match sel {
+                    Some((s, e)) => {
+                        if background {
+                            self.docs[self.active].set_bg_color_span(s, e, rgb);
+                        } else {
+                            self.docs[self.active].set_color_span(s, e, rgb);
+                        }
+                        let layer = if background { "background" } else { "foreground" };
+                        match rgb {
+                            Some((r, g, b)) => format!("selection {layer}: {r} {g} {b}"),
+                            None => format!("selection {layer} cleared"),
+                        }
+                    }
+                    None => "MDC: select text first".to_string(),
                 };
                 return Ok(Value::str(msg));
             }

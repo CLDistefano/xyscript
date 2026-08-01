@@ -539,6 +539,11 @@ pub enum EditorOp {
     /// default` (clear the selection's colour, or reset the global to its default). `$FGCOLOR`
     /// still reads the global.
     FgColor(Option<(u8, u8, u8)>),
+    /// `MD <color>` / `MD/B <color>` — colour the SELECTION as a persistent block (XyWrite "mode"):
+    /// foreground when `background` is false, background when true. `rgb == None` (`MD off`) clears
+    /// that layer over the selection. Selection-only (a no-op with a note otherwise). The spans
+    /// follow edits and persist to the doc's `.xymeta` sidecar.
+    ModeColor { background: bool, rgb: Option<(u8, u8, u8)> },
     /// `HLCOLOR <kind> <r g b>` — set the syntax-highlight colour for a token kind (by name).
     /// `color = None` (`HLCOLOR <kind> default`) clears it → that kind renders in `FGCOLOR`.
     /// ANY kind name is accepted (2026-06-18 decision: arbitrary string kinds) — a built-in name

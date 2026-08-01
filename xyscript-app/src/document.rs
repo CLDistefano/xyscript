@@ -198,11 +198,15 @@ pub struct Document {
     /// Cached highlight tokens for the current buffer (empty when off). Refreshed
     /// after every text mutation; byte offsets into the UTF-8 source.
     tokens: Vec<Token>,
-    /// Transient per-selection foreground colours (`FGCOLOR` on a selection): `(start, end, rgb)`
-    /// in ROPE-byte offsets (like `Op.at`, so `record` can track them across edits). Session-only:
-    /// never serialized — a template (`|DP;FGCOLOR …|`) is the persistence path. Sorted,
-    /// non-overlapping. Converted to decoded offsets for the renderer by `color_spans_decoded`.
+    /// Per-selection FOREGROUND colour spans (`FGCOLOR`/`MD` on a selection): `(start, end, rgb)` in
+    /// ROPE-byte offsets (like `Op.at`, so `record` tracks them across edits). Sorted, non-overlapping.
+    /// Converted to decoded offsets for the renderer by `color_spans_decoded`. Persisted to the doc's
+    /// `.xymeta` sidecar (phase 2); independent of `bg_spans`.
     color_spans: Vec<(usize, usize, (u8, u8, u8))>,
+    /// Per-selection BACKGROUND colour spans (`MD/B` on a selection) — an INDEPENDENT layer from
+    /// `color_spans`, drawn as rectangles behind the glyphs (a bg block can cover a fg-coloured word).
+    /// Same rope-offset, edit-following, non-overlapping model. `bg_color_spans_decoded` for the renderer.
+    bg_spans: Vec<(usize, usize, (u8, u8, u8))>,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -286,6 +290,7 @@ impl Clone for Document {
             highlighter: self.highlighter.clone(),
             tokens: self.tokens.clone(),
             color_spans: self.color_spans.clone(),
+            bg_spans: self.bg_spans.clone(),
             lints: self.lints.clone(),
             gen: self.gen,
             dir: self.dir.clone(),
@@ -315,6 +320,7 @@ impl Default for Document {
             highlighter: None, // quiet screen by default
             tokens: Vec::new(),
             color_spans: Vec::new(),
+            bg_spans: Vec::new(),
             lints: Vec::new(),
             gen: 0,
             dir: None,
@@ -692,11 +698,25 @@ impl Document {
     /// then — for a set — the new span is added. Keeps the list sorted and non-overlapping. Bumps
     /// `gen` so the renderer re-colours. Used by `FGCOLOR <rgb>` / `FGCOLOR default` on a selection.
     pub fn set_color_span(&mut self, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
+        Self::set_span_in(&mut self.color_spans, start, end, color);
+        self.gen = self.gen.wrapping_add(1);
+    }
+
+    /// Like [`set_color_span`](Self::set_color_span) but for the BACKGROUND layer (`MD/B`).
+    pub fn set_bg_color_span(&mut self, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
+        Self::set_span_in(&mut self.bg_spans, start, end, color);
+        self.gen = self.gen.wrapping_add(1);
+    }
+
+    /// Apply (or, with `color == None`, CLEAR) a colour over ROPE range `[start, end)` in one span
+    /// list: subtract any overlap first (interval subtraction), then — for a set — add the new span.
+    /// Keeps the list sorted and non-overlapping. Shared by the FG and BG layers.
+    fn set_span_in(list: &mut Vec<(usize, usize, (u8, u8, u8))>, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
         if start >= end {
             return;
         }
         let mut out: Vec<(usize, usize, (u8, u8, u8))> = Vec::new();
-        for &(ss, se, c) in &self.color_spans {
+        for &(ss, se, c) in list.iter() {
             if se <= start || ss >= end {
                 out.push((ss, se, c)); // no overlap — keep
             } else {
@@ -713,21 +733,25 @@ impl Document {
             out.push((start, end, rgb));
         }
         out.sort_by_key(|&(s, _, _)| s);
-        self.color_spans = out;
-        self.gen = self.gen.wrapping_add(1);
+        *list = out;
     }
 
-    /// Shift the transient colour spans to follow an edit at byte `at` that removed `removed` and
-    /// inserted `inserted` bytes (called from `record`, so colours track typing/deletion). Points
-    /// inside the removed range collapse to `at`; spans emptied by the edit are dropped.
+    /// Shift BOTH colour layers to follow an edit at byte `at` that removed `removed` and inserted
+    /// `inserted` bytes (called from `record`, so colours track typing/deletion). Points inside the
+    /// removed range collapse to `at`; spans emptied by the edit are dropped.
     fn adjust_color_spans(&mut self, at: usize, removed: usize, inserted: usize) {
-        if self.color_spans.is_empty() {
+        Self::shift_spans(&mut self.color_spans, at, removed, inserted);
+        Self::shift_spans(&mut self.bg_spans, at, removed, inserted);
+    }
+
+    /// Edit-follow one span list. Per-edge "gravity" so text typed AT a boundary isn't swept into the
+    /// colour: START has right gravity (an insert at the start excludes the new text), END has left
+    /// gravity (an insert at the end stays put). A point inside a deletion collapses to `at`; an
+    /// insert strictly INSIDE the span grows it.
+    fn shift_spans(list: &mut Vec<(usize, usize, (u8, u8, u8))>, at: usize, removed: usize, inserted: usize) {
+        if list.is_empty() {
             return;
         }
-        // Per-edge "gravity" so text typed AT a boundary isn't swept into the colour: the START
-        // has right gravity (an insert at the start pushes it along, excluding the new text), the
-        // END has left gravity (an insert at the end stays put). A point inside a deletion
-        // collapses to `at`. An insert strictly INSIDE the span grows it.
         let shift = |x: usize, left_gravity: bool| -> usize {
             let before = if left_gravity { x <= at } else { x < at };
             if before {
@@ -738,7 +762,7 @@ impl Document {
                 at
             }
         };
-        self.color_spans.retain_mut(|s| {
+        list.retain_mut(|s| {
             s.0 = shift(s.0, false); // start: right gravity
             s.1 = shift(s.1, true); // end: left gravity
             s.0 < s.1
@@ -785,6 +809,35 @@ impl Document {
             .collect()
     }
 
+    /// The BACKGROUND colour spans in DECODED-byte offsets (what the renderer's rectangle pass uses).
+    pub fn bg_color_spans_decoded(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.bg_spans
+            .iter()
+            .map(|&(s, e, c)| (self.buffer.decoded_offset(s), self.buffer.decoded_offset(e), c))
+            .collect()
+    }
+
+    /// The raw ROPE-offset colour spans (FG, BG) — for sidecar persistence (phase 2), which needs the
+    /// offsets into the saved text, not the decoded-render offsets.
+    pub fn color_spans_raw(&self) -> (&[(usize, usize, (u8, u8, u8))], &[(usize, usize, (u8, u8, u8))]) {
+        (&self.color_spans, &self.bg_spans)
+    }
+
+    /// Install `MDC` foreground/background spans wholesale (raw rope offsets), replacing any current
+    /// ones — used by the host to restore a document's block colours from its `.xymeta` sidecar right
+    /// after [`load`](Self::load). Sorted by start; the renderer and edit-tracking expect that order.
+    pub fn set_color_spans_raw(
+        &mut self,
+        fg: Vec<(usize, usize, (u8, u8, u8))>,
+        bg: Vec<(usize, usize, (u8, u8, u8))>,
+    ) {
+        self.color_spans = fg;
+        self.bg_spans = bg;
+        self.color_spans.sort_by_key(|s| s.0);
+        self.bg_spans.sort_by_key(|s| s.0);
+        self.gen = self.gen.wrapping_add(1);
+    }
+
     /// Replace the document's content from freshly-read file **bytes**, adopting
     /// `path`. The bytes are stored **verbatim** (never transformed) — the
     /// byte-exact-round-trip guarantee. The encoding view is chosen by a
@@ -797,6 +850,10 @@ impl Document {
         self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
         self.buffer = Buffer::from_bytes(bytes, enc);
         self.buffer.set_caret(0, None); // top of file on open
+        // A fresh file starts with no block colours; any belong to the OLD content. The host restores
+        // them from the `.xymeta` sidecar right after (when the guard matches the new bytes).
+        self.color_spans.clear();
+        self.bg_spans.clear();
         self.undo.clear();
         self.redo.clear();
         self.coalescing = false;

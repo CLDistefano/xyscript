@@ -160,6 +160,16 @@ impl Editor {
     pub fn color_spans(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
         self.host.active_doc().color_spans_decoded()
     }
+    /// The active document's per-selection BACKGROUND colour spans (`MD/B`), in DECODED-byte offsets,
+    /// each `(start, end, rgb)` — the renderer draws these as rectangles behind the glyphs.
+    pub fn bg_color_spans(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.host.active_doc().bg_color_spans_decoded()
+    }
+    /// The active document's `MDC/B` background spans in RAW rope-byte offsets, `(start, end, rgb)` —
+    /// what `highlight_rects` (wrap-aware pixel geometry) expects, mirroring `emph_highlights`.
+    pub fn bg_color_spans_raw(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.host.active_doc().color_spans_raw().1.to_vec()
+    }
     /// The active highlighter's name, or `None` when off.
     pub fn highlighter_name(&self) -> Option<&str> {
         self.host.active_doc().highlighter_name()
@@ -3403,6 +3413,88 @@ mod tests {
         e.run_command("FGCOLOR 1 2 3");
         assert_eq!(e.fg_color(), (1, 2, 3));
         assert!(e.color_spans().is_empty(), "no selection → global, no span");
+    }
+
+    #[test]
+    fn mdc_paints_persistent_fg_and_bg_block_spans_that_track_edits() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF"); // top of file; caret in "hello"
+        e.run_command("DW"); // define (select) "hello"
+        assert!(e.document().has_selection());
+        // `MDC/B` paints the BACKGROUND layer; the foreground layer stays empty.
+        e.run_command("MDC/B 0 0 255");
+        assert_eq!(e.bg_color_spans(), vec![(0, 5, (0, 0, 255))], "MDC/B colours the selection bg");
+        assert!(e.color_spans().is_empty(), "bg layer is independent of the fg layer");
+        // A plain `MDC` paints the FOREGROUND layer over the same run — the two coexist.
+        e.run_command("TF");
+        e.run_command("DW"); // re-select "hello"
+        e.run_command("MDC 255 0 0");
+        assert_eq!(e.color_spans(), vec![(0, 5, (255, 0, 0))], "MDC colours the selection fg");
+        assert_eq!(e.bg_color_spans(), vec![(0, 5, (0, 0, 255))], "bg span still stands");
+        // Insert at the very start → BOTH layers shift right (the new text is uncoloured).
+        e.run_command("TF");
+        e.run_command(r#"INSERT "XYZ""#);
+        assert_eq!(e.color_spans(), vec![(3, 8, (255, 0, 0))], "fg span follows the edit");
+        assert_eq!(e.bg_color_spans(), vec![(3, 8, (0, 0, 255))], "bg span follows the edit");
+        // `MDC/B off` clears just the background layer, leaving the foreground.
+        e.run_command("DFA");
+        e.run_command("MDC/B off");
+        assert!(e.bg_color_spans().is_empty(), "MDC/B off clears the bg layer");
+        assert_eq!(e.color_spans(), vec![(3, 8, (255, 0, 0))], "fg layer untouched");
+        // Bare `MDC` over the covering selection clears the foreground layer too.
+        e.run_command("MDC");
+        assert!(e.color_spans().is_empty(), "bare MDC over a selection clears the fg layer");
+    }
+
+    #[test]
+    fn mdc_colours_persist_across_save_and_reopen_via_sidecar() {
+        // Real filesystem (NOT the virtual FS) — the sidecar is a genuine hidden companion file.
+        let base = std::env::temp_dir().join(format!("xyscript-xymeta-{:p}", &"mdc"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        // Session 1: type, colour a block (fg + bg), save.
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt"); // fresh named buffer, ready to SAVE
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW"); // select "hello"
+        e.run_command("MDC 255 0 0"); // foreground
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDC/B 0 0 255"); // background
+        e.run_command("SAVE");
+        let sidecar = base.join(".doc.txt.xymeta");
+        assert!(sidecar.exists(), "a hidden .xymeta sidecar is written next to the file");
+
+        // Session 2: reopen — both colour layers come back.
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.run_command("OPEN doc.txt");
+        assert_eq!(e2.color_spans(), vec![(0, 5, (255, 0, 0))], "fg block restored on reopen");
+        assert_eq!(e2.bg_color_spans(), vec![(0, 5, (0, 0, 255))], "bg block restored on reopen");
+
+        // Guard: an out-of-band edit changes the bytes → the content guard fails → colours dropped
+        // (the offsets would be meaningless against different content).
+        std::fs::write(base.join("doc.txt"), b"totally different content here").unwrap();
+        let mut e3 = ed();
+        e3.run_command(&format!("CD {}", base.display()));
+        e3.run_command("OPEN doc.txt");
+        assert!(e3.color_spans().is_empty(), "stale sidecar ignored after an out-of-band edit");
+        assert!(e3.bg_color_spans().is_empty(), "stale sidecar ignored (bg layer)");
+
+        // Clearing every colour and re-saving removes the sidecar (no orphan metadata).
+        e2.run_command("DFA");
+        e2.run_command("MDC off");
+        e2.run_command("DFA");
+        e2.run_command("MDC/B off");
+        e2.run_command("SAVE");
+        assert!(!sidecar.exists(), "the sidecar is removed once the document has no colours");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
