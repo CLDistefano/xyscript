@@ -125,8 +125,8 @@ fn os_drive_current_dir(_letter: char) -> Option<PathBuf> {
     None
 }
 
-// ---- MDC block-colour sidecar (`.<name>.xymeta`) ----------------------------------------------
-// A document's MDC / FGCOLOR block colours live in a hidden companion file next to it, so they
+// ---- MDA block-colour sidecar (`.<name>.xymeta`) ----------------------------------------------
+// A document's MDA / FGCOLOR block colours live in a hidden companion file next to it, so they
 // survive close-and-reopen without touching the document's own bytes. The sidecar is DATA, never
 // executed — it can travel alongside arbitrary (even downloaded) files, so auto-running it would be
 // a code-execution vector. A content length+hash guard ties it to the exact bytes it was written
@@ -173,13 +173,19 @@ fn set_file_hidden(p: &Path) {
 #[cfg(not(windows))]
 fn set_file_hidden(_p: &Path) {}
 
-/// Write (or, with no colours, remove) the sidecar next to `target`, keyed to `bytes`. Best-effort:
-/// the caller ignores the outcome, since a sidecar problem must never fail a document save.
-fn xymeta_write(target: &Path, bytes: &[u8], fg: &[ColorSpan], bg: &[ColorSpan]) {
+/// Write (or, with nothing to persist, remove) the sidecar next to `target`, keyed to `bytes`.
+/// Best-effort: the caller ignores the outcome, since a sidecar problem must never fail a save.
+fn xymeta_write(
+    target: &Path,
+    bytes: &[u8],
+    fg: &[ColorSpan],
+    bg: &[ColorSpan],
+    attrs: &[(usize, usize, u8)],
+) {
     let Some(scp) = xymeta_path(target) else { return };
-    if fg.is_empty() && bg.is_empty() {
-        // Nothing to persist — drop any stale sidecar so a doc whose colours were cleared doesn't
-        // reopen still wearing them.
+    if fg.is_empty() && bg.is_empty() && attrs.is_empty() {
+        // Nothing to persist — drop any stale sidecar so a doc whose styling was cleared doesn't
+        // reopen still wearing it.
         let _ = std::fs::remove_file(&scp);
         return;
     }
@@ -187,12 +193,20 @@ fn xymeta_write(target: &Path, bytes: &[u8], fg: &[ColorSpan], bg: &[ColorSpan])
     s.push_str("xymeta 1\n");
     s.push_str(&format!("len {}\n", bytes.len()));
     s.push_str(&format!("hash {:016x}\n", xymeta_hash(bytes)));
-    s.push_str("[colors]\n");
-    for &(a, b, (r, g, bl)) in fg {
-        s.push_str(&format!("fg {a} {b} {r} {g} {bl}\n"));
+    if !fg.is_empty() || !bg.is_empty() {
+        s.push_str("[colors]\n");
+        for &(a, b, (r, g, bl)) in fg {
+            s.push_str(&format!("fg {a} {b} {r} {g} {bl}\n"));
+        }
+        for &(a, b, (r, g, bl)) in bg {
+            s.push_str(&format!("bg {a} {b} {r} {g} {bl}\n"));
+        }
     }
-    for &(a, b, (r, g, bl)) in bg {
-        s.push_str(&format!("bg {a} {b} {r} {g} {bl}\n"));
+    if !attrs.is_empty() {
+        s.push_str("[attrs]\n");
+        for &(a, b, bits) in attrs {
+            s.push_str(&format!("at {a} {b} {bits}\n"));
+        }
     }
     // Remove first: on Windows you can't truncate-create over a HIDDEN file (access denied), and
     // this also clears the attribute so the fresh write starts clean — then re-hide it.
@@ -202,10 +216,13 @@ fn xymeta_write(target: &Path, bytes: &[u8], fg: &[ColorSpan], bg: &[ColorSpan])
     }
 }
 
-/// Read the sidecar next to `target`, returning its `(fg, bg)` spans ONLY if the guard matches
-/// `bytes` exactly (same length and hash). Any mismatch, missing file, unknown version, or parse
-/// slip yields `None` — the document then simply opens without stored colours.
-fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<(Vec<ColorSpan>, Vec<ColorSpan>)> {
+/// Read the sidecar next to `target`, returning its `(fg, bg, attrs)` spans ONLY if the guard matches
+/// `bytes` exactly (same length and hash). Any mismatch, missing file, unknown version, or parse slip
+/// yields `None` — the document then simply opens without stored styling.
+fn xymeta_read(
+    target: &Path,
+    bytes: &[u8],
+) -> Option<(Vec<ColorSpan>, Vec<ColorSpan>, Vec<(usize, usize, u8)>)> {
     let scp = xymeta_path(target)?;
     let text = std::fs::read_to_string(&scp).ok()?;
     let mut lines = text.lines();
@@ -216,13 +233,18 @@ fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<(Vec<ColorSpan>, Vec<Color
     let mut hash_ok = false;
     let mut section = "";
     let (mut fg, mut bg): (Vec<ColorSpan>, Vec<ColorSpan>) = (Vec::new(), Vec::new());
+    let mut attrs: Vec<(usize, usize, u8)> = Vec::new();
     for line in lines {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
         if let Some(sec) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            section = if sec == "colors" { "colors" } else { "" }; // unknown section: skip its lines
+            section = match sec {
+                "colors" => "colors",
+                "attrs" => "attrs",
+                _ => "", // unknown section: skip its lines
+            };
             continue;
         }
         if let Some(v) = line.strip_prefix("len ") {
@@ -233,18 +255,38 @@ fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<(Vec<ColorSpan>, Vec<Color
             hash_ok = v.trim().eq_ignore_ascii_case(&format!("{:016x}", xymeta_hash(bytes)));
             continue;
         }
-        if section == "colors" {
-            if let Some((is_bg, sp)) = parse_xymeta_color(line) {
-                if is_bg {
-                    bg.push(sp)
-                } else {
-                    fg.push(sp)
+        match section {
+            "colors" => {
+                if let Some((is_bg, sp)) = parse_xymeta_color(line) {
+                    if is_bg {
+                        bg.push(sp)
+                    } else {
+                        fg.push(sp)
+                    }
                 }
             }
+            "attrs" => {
+                if let Some(sp) = parse_xymeta_attr(line) {
+                    attrs.push(sp);
+                }
+            }
+            _ => {}
         }
     }
     // Guard: if the bytes changed under the sidecar, its offsets are meaningless — ignore it.
-    (len_ok && hash_ok).then_some((fg, bg))
+    (len_ok && hash_ok).then_some((fg, bg, attrs))
+}
+
+/// Parse one `at <start> <end> <bits>` attribute line. `None` on any malformed/zero-width/empty field.
+fn parse_xymeta_attr(line: &str) -> Option<(usize, usize, u8)> {
+    let mut it = line.split_whitespace();
+    if it.next()? != "at" {
+        return None;
+    }
+    let s: usize = it.next()?.parse().ok()?;
+    let e: usize = it.next()?.parse().ok()?;
+    let bits: u8 = it.next()?.parse().ok()?;
+    (e > s && bits != 0).then_some((s, e, bits))
 }
 
 /// Parse one `fg|bg <start> <end> <r> <g> <b>` colour line. `None` on any malformed/zero-width field.
@@ -1317,8 +1359,8 @@ pub enum ColorTarget {
     PathBg,
     EmphFg,
     EmphBg,
-    MdcFg,
-    MdcBg,
+    MdaFg,
+    MdaBg,
 }
 
 impl ColorTarget {
@@ -1351,8 +1393,8 @@ impl ColorTarget {
             ColorTarget::PathBg => "$CWD path background colour".into(),
             ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
             ColorTarget::EmphBg => "EMPH emphasis background colour".into(),
-            ColorTarget::MdcFg => "Block colour — selection text".into(),
-            ColorTarget::MdcBg => "Block colour — selection background".into(),
+            ColorTarget::MdaFg => "Block colour — selection text".into(),
+            ColorTarget::MdaBg => "Block colour — selection background".into(),
         }
     }
     /// The setter command to run (with the chosen `R G B`) when the user accepts the picker.
@@ -1384,9 +1426,9 @@ impl ColorTarget {
             ColorTarget::PathBg => "PABGCOLOR",
             ColorTarget::EmphFg => "EMPHFGCOLOR",
             ColorTarget::EmphBg => "EMPHBGCOLOR",
-            // MDC colours the SELECTION's persistent block: bare = foreground, `/B` = background.
-            ColorTarget::MdcFg => return format!("MDC {r} {g} {b}"),
-            ColorTarget::MdcBg => return format!("MDC/B {r} {g} {b}"),
+            // MDA colours the SELECTION's persistent block: bare = foreground, `/B` = background.
+            ColorTarget::MdaFg => return format!("MDA {r} {g} {b}"),
+            ColorTarget::MdaBg => return format!("MDA/B {r} {g} {b}"),
         };
         format!("{verb} {r} {g} {b}")
     }
@@ -6019,12 +6061,12 @@ impl AppHost {
         let mut doc = Document::new();
         let msg = if exists {
             let bytes = self.read_doc_bytes(&key)?; // genuine read errors stay trappable
-            // Restore MDC/FGCOLOR block colours from the hidden `.xymeta` sidecar (guard read BEFORE
+            // Restore MDA/FGCOLOR block colours from the hidden `.xymeta` sidecar (guard read BEFORE
             // `load` consumes the bytes; applied after). Ignored on a guard mismatch / no sidecar.
             let restore = (!self.virtual_fs).then(|| xymeta_read(&target, &bytes)).flatten();
             doc.load(bytes, target.clone());
-            if let Some((fg, bg)) = restore {
-                doc.set_color_spans_raw(fg, bg);
+            if let Some((fg, bg, attrs)) = restore {
+                doc.set_color_spans_raw(fg, bg, attrs);
             }
             doc.set_read_only(read_only);
             let name = doc.file_name().unwrap_or_else(|| key.clone());
@@ -6227,8 +6269,8 @@ impl AppHost {
             let mut doc = Document::new();
             let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
-            if let Some((fg, bg)) = restore {
-                doc.set_color_spans_raw(fg, bg);
+            if let Some((fg, bg, attrs)) = restore {
+                doc.set_color_spans_raw(fg, bg, attrs);
             }
             if self.new_window {
                 self.add_or_reuse(doc);
@@ -6507,8 +6549,8 @@ impl AppHost {
             let mut doc = Document::new();
             let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
-            if let Some((fg, bg)) = restore {
-                doc.set_color_spans_raw(fg, bg);
+            if let Some((fg, bg, attrs)) = restore {
+                doc.set_color_spans_raw(fg, bg, attrs);
             }
             doc.share_grammars(self.highlight_grammars.clone());
             // `DIRWNW on` (default) opens a new tab; `off` reuses the ACTIVE one. Unsaved work is
@@ -7504,7 +7546,7 @@ impl AppHost {
         Ok(())
     }
 
-    /// After a full-document save, mirror `doc`'s `MDC` / `FGCOLOR` block colours into its hidden
+    /// After a full-document save, mirror `doc`'s `MDA` / `FGCOLOR` block colours into its hidden
     /// `.xymeta` sidecar (or remove the sidecar when the doc has none). `path` is the SAME string
     /// handed to [`write_doc_bytes`](Self::write_doc_bytes), resolved identically, and `bytes` are
     /// the bytes just written — together they key the sidecar's content guard. Best-effort: a
@@ -7515,7 +7557,7 @@ impl AppHost {
         }
         let target = self.resolve_path(path);
         let (fg, bg) = doc.color_spans_raw();
-        xymeta_write(&target, bytes, fg, bg);
+        xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw());
     }
 }
 
@@ -8713,8 +8755,8 @@ impl Host for AppHost {
                     ColorGround::DwBg => ColorTarget::DwBg,
                     ColorGround::EmphFg => ColorTarget::EmphFg,
                     ColorGround::EmphBg => ColorTarget::EmphBg,
-                    ColorGround::MdcFg => ColorTarget::MdcFg,
-                    ColorGround::MdcBg => ColorTarget::MdcBg,
+                    ColorGround::MdaFg => ColorTarget::MdaFg,
+                    ColorGround::MdaBg => ColorTarget::MdaBg,
                 });
                 return Ok(Value::str(""));
             }
@@ -8873,8 +8915,8 @@ impl Host for AppHost {
                 let bytes = self.read_doc_bytes(&key)?;
                 let restore = (!self.virtual_fs).then(|| xymeta_read(&path, &bytes)).flatten();
                 self.file_doc_mut().load(bytes, path.clone());
-                if let Some((fg, bg)) = restore {
-                    self.file_doc_mut().set_color_spans_raw(fg, bg);
+                if let Some((fg, bg, attrs)) = restore {
+                    self.file_doc_mut().set_color_spans_raw(fg, bg, attrs);
                 }
                 let name = path
                     .file_name()
@@ -9869,7 +9911,34 @@ impl Host for AppHost {
                             None => format!("selection {layer} cleared"),
                         }
                     }
-                    None => "MDC: select text first".to_string(),
+                    None => "MDA: select text first".to_string(),
+                };
+                return Ok(Value::str(msg));
+            }
+            EditorOp::ModeAttr { attrs } => {
+                // XyWrite-style block ATTRIBUTES (bold/italic/underline) on the SELECTION.
+                let sel = self.docs[self.active].selection_range();
+                let msg = match sel {
+                    Some((s, e)) => {
+                        self.docs[self.active].set_attr_span(s, e, attrs);
+                        match attrs {
+                            Some(a) => {
+                                let mut parts = Vec::new();
+                                if a & xyscript_xpl::ATTR_BOLD != 0 {
+                                    parts.push("bold");
+                                }
+                                if a & xyscript_xpl::ATTR_ITALIC != 0 {
+                                    parts.push("italic");
+                                }
+                                if a & xyscript_xpl::ATTR_UNDERLINE != 0 {
+                                    parts.push("underline");
+                                }
+                                format!("selection: {}", parts.join(" "))
+                            }
+                            None => "selection attributes cleared".to_string(),
+                        }
+                    }
+                    None => "MDA: select text first".to_string(),
                 };
                 return Ok(Value::str(msg));
             }
@@ -9970,12 +10039,12 @@ impl Host for AppHost {
                         self.emph_bg = Some(rgb);
                         "emphasis background"
                     }
-                    // MDC block colours are applied to the SELECTION through the `MDC` verb (an
+                    // MDA block colours are applied to the SELECTION through the `MDA` verb (an
                     // `EditorOp::ModeColor`), never as a global `SetColor` — but the enum is shared,
                     // so these arms exist only to keep the match exhaustive. Reaching them would be a
                     // routing bug; do nothing to global state.
-                    ColorGround::MdcFg => "block text",
-                    ColorGround::MdcBg => "block background",
+                    ColorGround::MdaFg => "block text",
+                    ColorGround::MdaBg => "block background",
                 };
                 return Ok(Value::str(format!("{name} colour = {r} {g} {b}")));
             }

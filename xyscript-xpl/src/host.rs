@@ -19,6 +19,27 @@
 use crate::error::VmResult;
 use crate::value::Value;
 
+/// `MDA` text-attribute bits — the payload of a [`EditorOp::ModeAttr`] and of the document's
+/// attribute spans. Independent flags; the `MDA` keywords select combinations.
+pub const ATTR_BOLD: u8 = 1 << 0;
+pub const ATTR_ITALIC: u8 = 1 << 1;
+pub const ATTR_UNDERLINE: u8 = 1 << 2;
+
+/// Map an `MDA` attribute keyword to its action. `None` = not an attribute keyword (so the argument
+/// is treated as a colour); `Some(None)` = `NM` (normal — strip attributes); `Some(Some(bits))` = set
+/// that bitset. Keywords: `BO` bold, `IT` italic, `BI` bold+italic, `UL` underline, `BU` bold+underline.
+pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
+    match word.trim().to_ascii_uppercase().as_str() {
+        "BO" => Some(Some(ATTR_BOLD)),
+        "IT" => Some(Some(ATTR_ITALIC)),
+        "BI" => Some(Some(ATTR_BOLD | ATTR_ITALIC)),
+        "UL" => Some(Some(ATTR_UNDERLINE)),
+        "BU" => Some(Some(ATTR_BOLD | ATTR_UNDERLINE)),
+        "NM" | "NORMAL" => Some(None),
+        _ => None,
+    }
+}
+
 /// Editor/text operations the interpreter can request. The host (Stage 2's text
 /// engine, or the test stub) applies them. The set grows as editor verbs are
 /// registered.
@@ -539,11 +560,15 @@ pub enum EditorOp {
     /// default` (clear the selection's colour, or reset the global to its default). `$FGCOLOR`
     /// still reads the global.
     FgColor(Option<(u8, u8, u8)>),
-    /// `MD <color>` / `MD/B <color>` — colour the SELECTION as a persistent block (XyWrite "mode"):
-    /// foreground when `background` is false, background when true. `rgb == None` (`MD off`) clears
+    /// `MDA <color>` / `MDA/B <color>` — colour the SELECTION as a persistent block (XyWrite "mode"):
+    /// foreground when `background` is false, background when true. `rgb == None` (`MDA off`) clears
     /// that layer over the selection. Selection-only (a no-op with a note otherwise). The spans
     /// follow edits and persist to the doc's `.xymeta` sidecar.
     ModeColor { background: bool, rgb: Option<(u8, u8, u8)> },
+    /// `MDA BO|IT|BI|UL|BU` — apply persistent TEXT ATTRIBUTES (bold / italic / underline, a bitset of
+    /// `ATTR_*`) to the SELECTION as an independent block layer; `attrs == None` (`MDA NM`) strips them.
+    /// Selection-only, edit-following, persisted to the `.xymeta` sidecar's `[attrs]` section.
+    ModeAttr { attrs: Option<u8> },
     /// `HLCOLOR <kind> <r g b>` — set the syntax-highlight colour for a token kind (by name).
     /// `color = None` (`HLCOLOR <kind> default`) clears it → that kind renders in `FGCOLOR`.
     /// ANY kind name is accepted (2026-06-18 decision: arbitrary string kinds) — a built-in name
@@ -1074,12 +1099,12 @@ pub enum ColorGround {
     /// `EMPHBGCOLOR` — the `EMPH` emphasis background band colour (`None`/default = the selection
     /// background, `SELBGCOLOR`). `$EMPHBGCOLOR`.
     EmphBg,
-    /// `MDCS` — the `MDC` block foreground: colour the SELECTION's persistent text-block foreground
-    /// layer (via the picker). Applied through `MDC <r g b>`.
-    MdcFg,
-    /// `MDCS/B` — the `MDC` block background layer for the SELECTION (via the picker). Applied
-    /// through `MDC/B <r g b>`.
-    MdcBg,
+    /// `MDAS` — the `MDA` block foreground: colour the SELECTION's persistent text-block foreground
+    /// layer (via the picker). Applied through `MDA <r g b>`.
+    MdaFg,
+    /// `MDAS/B` — the `MDA` block background layer for the SELECTION (via the picker). Applied
+    /// through `MDA/B <r g b>`.
+    MdaBg,
 }
 
 /// The text-caret shape (`CRSHAPE`). Read back via `$CRSHAPE`.

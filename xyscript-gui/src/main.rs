@@ -2670,6 +2670,26 @@ impl GuiApp {
             };
             a.weight(e_weight).style(e_style)
         };
+        // Like `mono()` but with a colour and the `MDA` bold/italic bits folded in: a set bold/italic
+        // bit forces that face, otherwise the base `EDSTYLE` weight/slant applies (attributes ADD
+        // emphasis on top of the document's font style). Underline is not a cosmic attr — drawn later.
+        let mono_attr = |color: CColor, attr: u8| -> Attrs {
+            let base = match &fam {
+                Some(n) => Attrs::new().family(Family::Name(n)),
+                None => Attrs::new().family(Family::Monospace),
+            };
+            let weight = if attr & xyscript_app::document::ATTR_BOLD != 0 {
+                cosmic_text::Weight::BOLD
+            } else {
+                e_weight
+            };
+            let style = if attr & xyscript_app::document::ATTR_ITALIC != 0 {
+                cosmic_text::Style::Italic
+            } else {
+                e_style
+            };
+            base.weight(weight).style(style).color(color)
+        };
         // Foreground colour (`FGCOLOR`): the default text colour. Syntax-highlighted tokens keep
         // their theme colour; un-kinded (plain) text uses the configured foreground.
         let (fr, fg_, fb) = self.editor.fg_color();
@@ -2747,6 +2767,25 @@ impl GuiApp {
                 })
                 .collect()
         };
+        // `MDA` text attributes (bold/italic/underline) per selection, rebased to window-local display
+        // offsets like `manual`. `attr_spans` are DECODED offsets. Bold/italic feed the per-glyph
+        // weight/slant below; the underline bit is drawn as a rect in `raster` (cosmic has no glyph
+        // underline attr, same as the lint underlines).
+        let attr_disp: Vec<(usize, usize, u8)> = self
+            .editor
+            .attr_spans()
+            .iter()
+            .filter_map(|&(ms, me, bits)| {
+                let s = ms.max(lo);
+                let e = me.min(hi);
+                if s >= e {
+                    return None;
+                }
+                let sd = decoded_to_display(s - lo, &win.cr);
+                let ed = decoded_to_display(e - lo, &win.cr);
+                (sd < ed).then_some((sd, ed, bits))
+            })
+            .collect();
         // Effective colour per display byte: default FGCOLOR, overridden by the token colour, then a
         // manual FGCOLOR span, then a FIND-match colour (highest priority). Filled from char-aligned
         // ranges, so grouping by char below stays on valid UTF-8 boundaries.
@@ -2765,6 +2804,12 @@ impl GuiApp {
         }
         for &(s, e, cc) in &find_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
+        }
+        // Per display byte: the `MDA` bold/italic bits (underline is drawn separately). Grouped with
+        // the colour into the AttrsList runs below, so a bold/italic block shapes with the right face.
+        let mut cattrs = vec![0u8; n];
+        for &(s, e, bits) in &attr_disp {
+            cattrs[s..e.min(n)].iter_mut().for_each(|slot| *slot = bits);
         }
         // ---- Incremental per-line build (the shaped-line cache) --------------------------------
         // Rather than `set_rich_text` the whole window every frame (which RE-SHAPES every line — the
@@ -2823,29 +2868,31 @@ impl GuiApp {
         for (li, &(a, b)) in segs.iter().enumerate() {
             let text = &display[a..b];
             let lc = &colors[a..b];
+            let la = &cattrs[a..b];
             let sig = {
                 let mut h = std::collections::hash_map::DefaultHasher::new();
                 text.hash(&mut h);
                 lc.hash(&mut h);
+                la.hash(&mut h);
                 h.finish()
             };
             let line = by_sig.get_mut(&sig).and_then(|v| v.pop()).unwrap_or_else(|| {
-                // Cache miss: build the line's `AttrsList` by grouping same-colour char runs (line-local
-                // ranges), matching what `set_rich_text` produced from the window-wide spans.
+                // Cache miss: build the line's `AttrsList` by grouping runs with the same (colour,
+                // attribute) pair, matching what `set_rich_text` produced from the window-wide spans.
                 let mut al = AttrsList::new(&mono());
-                let (mut rs, mut rc): (usize, Option<CColor>) = (0, None);
+                let (mut rs, mut rc): (usize, Option<(CColor, u8)>) = (0, None);
                 for (i, _) in text.char_indices() {
-                    let c = lc[i];
-                    if rc != Some(c) {
-                        if let Some(pc) = rc {
-                            al.add_span(rs..i, &mono().color(pc));
+                    let key = (lc[i], la[i]);
+                    if rc != Some(key) {
+                        if let Some((pc, pa)) = rc {
+                            al.add_span(rs..i, &mono_attr(pc, pa));
                         }
                         rs = i;
-                        rc = Some(c);
+                        rc = Some(key);
                     }
                 }
-                if let Some(pc) = rc {
-                    al.add_span(rs..text.len(), &mono().color(pc));
+                if let Some((pc, pa)) = rc {
+                    al.add_span(rs..text.len(), &mono_attr(pc, pa));
                 }
                 let mut bl =
                     BufferLine::new(text.to_string(), LineEnding::default(), al, Shaping::Advanced);
@@ -3607,6 +3654,24 @@ impl GuiApp {
             }
             out
         };
+        // `MDA` underline rects — the wrap-aware pixel geometry of every attribute span carrying the
+        // underline bit (drawn as a solid line under the glyphs, in the text colour, since cosmic has
+        // no glyph underline attribute). Bold/italic ride the glyphs' AttrsList and need no rects here.
+        let mut mda_underline_rects: Vec<(i32, i32, i32, i32)> = {
+            let ul_bit = xyscript_app::document::ATTR_UNDERLINE;
+            let mut out = Vec::new();
+            for (ms, me, bits) in self.editor.attr_spans_raw() {
+                if bits & ul_bit == 0 {
+                    continue;
+                }
+                for (x0, y0, x1, y1, _) in
+                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
+                {
+                    out.push((x0, y0, x1, y1));
+                }
+            }
+            out
+        };
         // Record the visible byte window so the live checker can scope to it (bounded work on huge
         // files). Decoded-byte offsets, matching what `recheck_lints`/`compute_lints` expect.
         self.lint_visible = Some((win.start_decoded, win.start_decoded + win.decoded_len));
@@ -3649,6 +3714,10 @@ impl GuiApp {
                 r.2 -= hshift;
             }
             for r in &mut md_bg_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
+            for r in &mut mda_underline_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
@@ -3810,6 +3879,18 @@ impl GuiApp {
                     }
                     _ => unreachable!("UnderlineStyle::shape() only ever yields a thin variant"),
                 }
+            }
+        }
+
+        // `MDA` underlines: a solid line in the TEXT colour just under each underlined span, opaque
+        // (a real typographic underline, unlike the faint lint marks). Painted on top of the glyphs.
+        if !mda_underline_rects.is_empty() {
+            let (ur, ug, ub) = self.editor.fg_color();
+            let thick = (scale.round()).max(1.0) as i32; // ~1 logical px
+            let lift = (lh_px * 0.10).round().max(1.0) as i32; // sit just below the glyph baseline
+            for &(x0, _y0, x1, y1) in &mda_underline_rects {
+                let base = y1 - lift;
+                fill_blend(&mut canvas, w, h, x0, base, x1, base + thick, ur, ug, ub, 1.0);
             }
         }
 
@@ -5751,14 +5832,22 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.colors.editor_bg", "Editor background…"), "BGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.selection_text", "Selection text…"), "SELFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.selection_bg", "Selection background…"), "SELBGCOLORS"),
-                        // `MDC` block colour: a PERSISTENT per-selection colour (saved with the file via
-                        // the `.xymeta` sidecar), distinct from the global selection colours above.
-                        m_sub(self.tr("menu.settings.appearance.colors.block", "Block colour (selection)"), vec![
-                            m_item(self.tr("menu.settings.appearance.colors.block.fg", "Text…"), "MDCS"),
-                            m_item(self.tr("menu.settings.appearance.colors.block.bg", "Background…"), "MDCS/B"),
+                        // `MDA` block styling: PERSISTENT per-selection colour + text attributes (saved
+                        // with the file via the `.xymeta` sidecar), distinct from the global selection
+                        // colours above. Colours open a picker; attributes apply straight away.
+                        m_sub(self.tr("menu.settings.appearance.colors.block", "Block style (selection)"), vec![
+                            m_item(self.tr("menu.settings.appearance.colors.block.fg", "Text colour…"), "MDAS"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.bg", "Background colour…"), "MDAS/B"),
                             MenuNode::Sep,
-                            m_item(self.tr("menu.settings.appearance.colors.block.clear_fg", "Clear text"), "MDC off"),
-                            m_item(self.tr("menu.settings.appearance.colors.block.clear_bg", "Clear background"), "MDC/B off"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.bold", "Bold"), "MDA BO"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.italic", "Italic"), "MDA IT"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.bolditalic", "Bold italic"), "MDA BI"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.underline", "Underline"), "MDA UL"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.boldunderline", "Bold underline"), "MDA BU"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.normal", "Normal (clear attributes)"), "MDA NM"),
+                            MenuNode::Sep,
+                            m_item(self.tr("menu.settings.appearance.colors.block.clear_fg", "Clear text colour"), "MDA off"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.clear_bg", "Clear background colour"), "MDA/B off"),
                         ]),
                         m_item(self.tr("menu.settings.appearance.colors.caret", "Caret…"), "CRCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.separators", "Separators…"), "SEPCOLORS"),
@@ -6364,10 +6453,10 @@ impl GuiApp {
             // EMPH emphasis colours default to the selection colours when unset — seed with those.
             ColorTarget::EmphFg => self.editor.emph_fg_override().unwrap_or(self.editor.sel_fg_color()),
             ColorTarget::EmphBg => self.editor.emph_bg_override().unwrap_or(self.editor.sel_bg_color()),
-            // MDC block colours have no single "current" value (they're per-span) — seed the picker
+            // MDA block colours have no single "current" value (they're per-span) — seed the picker
             // with the editor's text / background colour as a sensible starting swatch.
-            ColorTarget::MdcFg => self.editor.fg_color(),
-            ColorTarget::MdcBg => self.editor.bg_color(),
+            ColorTarget::MdaFg => self.editor.fg_color(),
+            ColorTarget::MdaBg => self.editor.bg_color(),
         };
         self.color_picker = Some((target, egui::Color32::from_rgb(r, g, b)));
     }

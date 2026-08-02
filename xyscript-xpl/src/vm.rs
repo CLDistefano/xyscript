@@ -3050,17 +3050,25 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::FgColor(opt))?;
                 Ok(Flow::Next)
             }
-            "MDC" => {
-                // XyWrite-style "mode" colour: paint the SELECTION as a persistent block. `MDC <color>`
-                // sets the foreground, `MDC/B <color>` the background; `MDC off` (or bare `MDC`) clears
-                // that layer. Selection-only. Colours persist (the doc's `.xymeta` sidecar).
-                let background = vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
+            "MDA" => {
+                // XyWrite-style "mode attribute" on the SELECTION as a persistent block. Two kinds:
+                //   • an ATTRIBUTE keyword — `MDA BO|IT|BI|UL|BU` (bold/italic/underline combos), `MDA NM`
+                //     strips attributes;
+                //   • a COLOUR — `MDA <color>` foreground, `MDA/B <color>` background, `MDA off` (or bare
+                //     `MDA`) clears that colour layer.
+                // Attributes and colours are INDEPENDENT layers; all persist to the `.xymeta` sidecar.
                 let arg = args.trim();
+                // An attribute keyword wins (colours never look like `BO`/`IT`/…); anything else is a colour.
+                if let Some(attr_action) = crate::host::parse_mda_attr(arg) {
+                    self.host_op(EditorOp::ModeAttr { attrs: attr_action })?;
+                    return Ok(Flow::Next);
+                }
+                let background = vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
                 let rgb = if arg.is_empty() || arg.eq_ignore_ascii_case("off") || arg.eq_ignore_ascii_case("default") {
                     None
                 } else {
                     let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
-                    Some(parse_color("MDC", &args, hsl)?)
+                    Some(parse_color("MDA", &args, hsl)?)
                 };
                 self.host_op(EditorOp::ModeColor { background, rgb })?;
                 Ok(Flow::Next)
@@ -3127,12 +3135,12 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenColorPicker(ground))?;
                 Ok(Flow::Next)
             }
-            // `MDCS` — colour-picker for the `MDC` block colour of the SELECTION: bare = foreground,
-            // `/B` (or `/BG`) = background. On accept the picker runs `MDC`/`MDC/B <r g b>`.
-            "MDCS" => {
+            // `MDAS` — colour-picker for the `MDA` block colour of the SELECTION: bare = foreground,
+            // `/B` (or `/BG`) = background. On accept the picker runs `MDA`/`MDA/B <r g b>`.
+            "MDAS" => {
                 let background =
                     vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
-                let ground = if background { ColorGround::MdcBg } else { ColorGround::MdcFg };
+                let ground = if background { ColorGround::MdaBg } else { ColorGround::MdaFg };
                 self.host_op(EditorOp::OpenColorPicker(ground))?;
                 Ok(Flow::Next)
             }
@@ -4888,8 +4896,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR" => &["HSL"], // triple as H S L
-        "MDC" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
-        "MDCS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
+        "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
+        "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
         "AB" => &["V"], // `/V` — verify (ask to save) before closing
         "ABD" => &["V"], // `/V` — verify (confirm) before deleting + closing

@@ -170,6 +170,12 @@ struct Unit {
     anchor_after: Option<usize>,
 }
 
+/// `MDA` text-attribute bits, stored per span in [`Document::attr_spans`] and persisted in the
+/// `.xymeta` sidecar's `[attrs]` section. Independent flags — the `MDA` keywords map to combinations
+/// (`BO`→bold, `IT`→italic, `BI`→bold+italic, `UL`→underline, `BU`→bold+underline). Defined once in
+/// `xyscript-xpl` (the verb layer that parses the keywords) and re-exported here for the app/GUI.
+pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_UNDERLINE};
+
 /// A text document: a buffer, undo/redo history, and file identity.
 #[derive(Debug)]
 pub struct Document {
@@ -203,10 +209,15 @@ pub struct Document {
     /// Converted to decoded offsets for the renderer by `color_spans_decoded`. Persisted to the doc's
     /// `.xymeta` sidecar (phase 2); independent of `bg_spans`.
     color_spans: Vec<(usize, usize, (u8, u8, u8))>,
-    /// Per-selection BACKGROUND colour spans (`MD/B` on a selection) — an INDEPENDENT layer from
+    /// Per-selection BACKGROUND colour spans (`MDA/B` on a selection) — an INDEPENDENT layer from
     /// `color_spans`, drawn as rectangles behind the glyphs (a bg block can cover a fg-coloured word).
     /// Same rope-offset, edit-following, non-overlapping model. `bg_color_spans_decoded` for the renderer.
     bg_spans: Vec<(usize, usize, (u8, u8, u8))>,
+    /// Per-selection TEXT-ATTRIBUTE spans (`MDA BO|IT|BI|UL|BU`) — a THIRD independent layer, the value
+    /// a bitset of [`ATTR_BOLD`]/[`ATTR_ITALIC`]/[`ATTR_UNDERLINE`]. Same rope-offset, edit-following,
+    /// non-overlapping model as the colour layers; rendered as glyph weight/slant + a drawn underline.
+    /// Persisted to the `.xymeta` sidecar's `[attrs]` section. `attr_spans_decoded` for the renderer.
+    attr_spans: Vec<(usize, usize, u8)>,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -291,6 +302,7 @@ impl Clone for Document {
             tokens: self.tokens.clone(),
             color_spans: self.color_spans.clone(),
             bg_spans: self.bg_spans.clone(),
+            attr_spans: self.attr_spans.clone(),
             lints: self.lints.clone(),
             gen: self.gen,
             dir: self.dir.clone(),
@@ -321,6 +333,7 @@ impl Default for Document {
             tokens: Vec::new(),
             color_spans: Vec::new(),
             bg_spans: Vec::new(),
+            attr_spans: Vec::new(),
             lints: Vec::new(),
             gen: 0,
             dir: None,
@@ -702,20 +715,29 @@ impl Document {
         self.gen = self.gen.wrapping_add(1);
     }
 
-    /// Like [`set_color_span`](Self::set_color_span) but for the BACKGROUND layer (`MD/B`).
+    /// Like [`set_color_span`](Self::set_color_span) but for the BACKGROUND layer (`MDA/B`).
     pub fn set_bg_color_span(&mut self, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
         Self::set_span_in(&mut self.bg_spans, start, end, color);
         self.gen = self.gen.wrapping_add(1);
     }
 
-    /// Apply (or, with `color == None`, CLEAR) a colour over ROPE range `[start, end)` in one span
+    /// Apply (or, with `attrs == None`, CLEAR) `MDA` text attributes over ROPE range `[start, end)`.
+    /// Replace semantics like the colour layers — the region's attributes become exactly `attrs` (a
+    /// bitset of [`ATTR_BOLD`]/[`ATTR_ITALIC`]/[`ATTR_UNDERLINE`]); `None` (or an empty set) strips them.
+    pub fn set_attr_span(&mut self, start: usize, end: usize, attrs: Option<u8>) {
+        // An all-zero bitset means "no attributes" — treat it as a clear so we never store an empty span.
+        Self::set_span_in(&mut self.attr_spans, start, end, attrs.filter(|&a| a != 0));
+        self.gen = self.gen.wrapping_add(1);
+    }
+
+    /// Apply (or, with `value == None`, CLEAR) a payload over ROPE range `[start, end)` in one span
     /// list: subtract any overlap first (interval subtraction), then — for a set — add the new span.
-    /// Keeps the list sorted and non-overlapping. Shared by the FG and BG layers.
-    fn set_span_in(list: &mut Vec<(usize, usize, (u8, u8, u8))>, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
+    /// Keeps the list sorted and non-overlapping. Shared by the FG / BG colour and attribute layers.
+    fn set_span_in<P: Copy>(list: &mut Vec<(usize, usize, P)>, start: usize, end: usize, value: Option<P>) {
         if start >= end {
             return;
         }
-        let mut out: Vec<(usize, usize, (u8, u8, u8))> = Vec::new();
+        let mut out: Vec<(usize, usize, P)> = Vec::new();
         for &(ss, se, c) in list.iter() {
             if se <= start || ss >= end {
                 out.push((ss, se, c)); // no overlap — keep
@@ -729,26 +751,27 @@ impl Document {
                 // the covered middle [max(ss,start), min(se,end)) is dropped
             }
         }
-        if let Some(rgb) = color {
-            out.push((start, end, rgb));
+        if let Some(v) = value {
+            out.push((start, end, v));
         }
         out.sort_by_key(|&(s, _, _)| s);
         *list = out;
     }
 
-    /// Shift BOTH colour layers to follow an edit at byte `at` that removed `removed` and inserted
-    /// `inserted` bytes (called from `record`, so colours track typing/deletion). Points inside the
-    /// removed range collapse to `at`; spans emptied by the edit are dropped.
+    /// Shift ALL span layers (both colours + attributes) to follow an edit at byte `at` that removed
+    /// `removed` and inserted `inserted` bytes (called from `record`, so they track typing/deletion).
+    /// Points inside the removed range collapse to `at`; spans emptied by the edit are dropped.
     fn adjust_color_spans(&mut self, at: usize, removed: usize, inserted: usize) {
         Self::shift_spans(&mut self.color_spans, at, removed, inserted);
         Self::shift_spans(&mut self.bg_spans, at, removed, inserted);
+        Self::shift_spans(&mut self.attr_spans, at, removed, inserted);
     }
 
     /// Edit-follow one span list. Per-edge "gravity" so text typed AT a boundary isn't swept into the
     /// colour: START has right gravity (an insert at the start excludes the new text), END has left
     /// gravity (an insert at the end stays put). A point inside a deletion collapses to `at`; an
     /// insert strictly INSIDE the span grows it.
-    fn shift_spans(list: &mut Vec<(usize, usize, (u8, u8, u8))>, at: usize, removed: usize, inserted: usize) {
+    fn shift_spans<P>(list: &mut Vec<(usize, usize, P)>, at: usize, removed: usize, inserted: usize) {
         if list.is_empty() {
             return;
         }
@@ -817,24 +840,41 @@ impl Document {
             .collect()
     }
 
-    /// The raw ROPE-offset colour spans (FG, BG) — for sidecar persistence (phase 2), which needs the
-    /// offsets into the saved text, not the decoded-render offsets.
+    /// The text-attribute spans in DECODED-byte offsets (what the renderer reads for glyph weight/
+    /// slant and the drawn underline).
+    pub fn attr_spans_decoded(&self) -> Vec<(usize, usize, u8)> {
+        self.attr_spans
+            .iter()
+            .map(|&(s, e, a)| (self.buffer.decoded_offset(s), self.buffer.decoded_offset(e), a))
+            .collect()
+    }
+
+    /// The raw ROPE-offset colour spans (FG, BG) — for sidecar persistence, which needs the offsets
+    /// into the saved text, not the decoded-render offsets.
     pub fn color_spans_raw(&self) -> (&[(usize, usize, (u8, u8, u8))], &[(usize, usize, (u8, u8, u8))]) {
         (&self.color_spans, &self.bg_spans)
     }
 
-    /// Install `MDC` foreground/background spans wholesale (raw rope offsets), replacing any current
-    /// ones — used by the host to restore a document's block colours from its `.xymeta` sidecar right
-    /// after [`load`](Self::load). Sorted by start; the renderer and edit-tracking expect that order.
+    /// The raw ROPE-offset text-attribute spans — for sidecar persistence (the `[attrs]` section).
+    pub fn attr_spans_raw(&self) -> &[(usize, usize, u8)] {
+        &self.attr_spans
+    }
+
+    /// Install `MDA` foreground/background/attribute spans wholesale (raw rope offsets), replacing any
+    /// current ones — used by the host to restore a document's block styling from its `.xymeta` sidecar
+    /// right after [`load`](Self::load). Sorted by start; the renderer and edit-tracking expect order.
     pub fn set_color_spans_raw(
         &mut self,
         fg: Vec<(usize, usize, (u8, u8, u8))>,
         bg: Vec<(usize, usize, (u8, u8, u8))>,
+        attrs: Vec<(usize, usize, u8)>,
     ) {
         self.color_spans = fg;
         self.bg_spans = bg;
+        self.attr_spans = attrs;
         self.color_spans.sort_by_key(|s| s.0);
         self.bg_spans.sort_by_key(|s| s.0);
+        self.attr_spans.sort_by_key(|s| s.0);
         self.gen = self.gen.wrapping_add(1);
     }
 
@@ -854,6 +894,7 @@ impl Document {
         // them from the `.xymeta` sidecar right after (when the guard matches the new bytes).
         self.color_spans.clear();
         self.bg_spans.clear();
+        self.attr_spans.clear();
         self.undo.clear();
         self.redo.clear();
         self.coalescing = false;
