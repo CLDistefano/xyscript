@@ -323,9 +323,20 @@ fn format_diagnostics(diags: &[SourceDiagnostic], world: &dyn World) -> String {
 
 /// Compile a GFM document (preamble + translated body) to a typst paged document, styled per the
 /// user's [`PreviewFonts`] choice.
-fn compile_gfm(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<PagedDocument, String> {
+fn compile_gfm(
+    source: &str,
+    fonts: &PreviewFonts,
+    doc_dir: &Path,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<PagedDocument, String> {
     let (preamble, blobs) = gfm_preamble(fonts);
-    compile_markup(format!("{preamble}{}\n", crate::gfm::to_typst(source)), blobs, doc_dir)
+    // With a styler, the document's MDA colours/attributes are spliced into the body as Typst markup
+    // so they print; without one, this is the plain GFM→Typst translation.
+    let body = match styler {
+        Some(s) => crate::gfm::to_typst_styled(source, s),
+        None => crate::gfm::to_typst(source),
+    };
+    compile_markup(format!("{preamble}{body}\n"), blobs, doc_dir)
 }
 
 /// Compile an HTML document the same way: [`crate::html`] translates it to a typst body, which gets
@@ -386,19 +397,26 @@ fn to_raster(doc: &PagedDocument, scale: f32) -> Result<(Vec<u8>, u32, u32), Str
 
 /// Render a GFM document to PDF bytes, styled per `fonts`. Errors (compile/layout failures) are
 /// returned as a message so the caller can surface them trappably.
-pub fn gfm_to_pdf(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_gfm(source, fonts, doc_dir)?)
+pub fn gfm_to_pdf(
+    source: &str,
+    doc_dir: &Path,
+    fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_pdf_bytes(&compile_gfm(source, fonts, doc_dir, styler)?)
 }
 
 /// Render a GFM document (all pages, stacked) to a raster RGBA image (the GUI live-preview path, 8d),
-/// styled per `fonts`. `doc_dir` roots `#image`/`#read` file resolution.
+/// styled per `fonts`. `doc_dir` roots `#image`/`#read` file resolution. `styler` splices the
+/// document's MDA styling into the output (`None` = plain).
 pub fn gfm_to_image(
     source: &str,
     doc_dir: &Path,
     scale: f32,
     fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_gfm(source, fonts, doc_dir)?, scale)
+    to_raster(&compile_gfm(source, fonts, doc_dir, styler)?, scale)
 }
 
 /// Render an HTML document to PDF bytes, styled per `fonts` (structural conversion — see
@@ -446,7 +464,7 @@ mod tests {
     fn renders_gfm_to_a_valid_pdf() {
         let md = "# Title\n\nA paragraph with **bold**, `code`, and a [link](http://x).\n\n\
                   - one\n- two\n\n```rust\nfn main() {}\n```\n";
-        let pdf = gfm_to_pdf(md, dot(), &dflt()).expect("should produce a PDF");
+        let pdf = gfm_to_pdf(md, dot(), &dflt(), None).expect("should produce a PDF");
         assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
         assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
         assert!(pdf.ends_with(b"%%EOF\n") || pdf.ends_with(b"%%EOF"), "missing EOF marker");
@@ -456,14 +474,33 @@ mod tests {
     fn tricky_metacharacters_do_not_break_compilation() {
         // The escaping in `gfm.rs` must keep `#`/`$`/etc. from injecting typst.
         let md = "Loose # hash, $ dollar, * star, <angle>, @at, and #raw inside text.\n";
-        let pdf = gfm_to_pdf(md, dot(), &dflt()).expect("escaping should keep typst happy");
+        let pdf = gfm_to_pdf(md, dot(), &dflt(), None).expect("escaping should keep typst happy");
         assert!(pdf.starts_with(b"%PDF-"));
     }
 
     #[test]
     fn empty_document_still_compiles() {
-        let pdf = gfm_to_pdf("", dot(), &dflt()).expect("empty doc");
+        let pdf = gfm_to_pdf("", dot(), &dflt(), None).expect("empty doc");
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn mda_styled_gfm_compiles_to_a_valid_pdf() {
+        // The spliced MDA styling (attributes + colours + reverse) must produce Typst the engine
+        // accepts — end-to-end proof the pre-pass output compiles.
+        use xyscript_xpl::{ATTR_BOLD, ATTR_REVERSE, ATTR_UNDERLINE};
+        let md = "The quick brown fox jumps over the lazy dog.\n";
+        let styler = crate::gfm::Styler::new(
+            md,
+            vec![(4, 9, (200, 0, 0))],                    // "quick" red
+            vec![(16, 19, (255, 255, 0))],                // "fox" yellow background
+            vec![(10, 15, ATTR_BOLD | ATTR_UNDERLINE), (40, 43, ATTR_REVERSE)], // "brown" bold+ul, "dog" reverse
+            (0, 0, 0),
+            (255, 255, 255),
+        );
+        let pdf = gfm_to_pdf(md, dot(), &dflt(), Some(&styler)).expect("styled GFM should compile");
+        assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
+        assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
     }
 
     #[test]
@@ -546,14 +583,14 @@ mod tests {
             code: Some("Also Not Installed 9000".into()),
             ..dflt()
         };
-        let pdf = gfm_to_pdf("# Hi\n\nbody `code`\n", dot(), &fonts).expect("still compiles");
+        let pdf = gfm_to_pdf("# Hi\n\nbody `code`\n", dot(), &fonts, None).expect("still compiles");
         assert!(pdf.starts_with(b"%PDF-"));
     }
 
     #[test]
     fn renders_gfm_to_a_raster_image() {
         let (rgba, w, h) =
-            gfm_to_image("# Title\n\nbody **text**\n", dot(), 1.0, &dflt()).expect("image");
+            gfm_to_image("# Title\n\nbody **text**\n", dot(), 1.0, &dflt(), None).expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize); // RGBA
         assert!(rgba.iter().any(|&b| b != 0)); // not all-transparent/black

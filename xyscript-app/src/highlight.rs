@@ -381,7 +381,7 @@ fn highlight_markdown(source: &str) -> Vec<Token> {
 }
 
 /// Byte offset of the start of each (0-based) source line.
-fn line_start_offsets(s: &str) -> Vec<usize> {
+pub(crate) fn line_start_offsets(s: &str) -> Vec<usize> {
     let mut v = vec![0];
     for (i, b) in s.bytes().enumerate() {
         if b == b'\n' {
@@ -393,7 +393,7 @@ fn line_start_offsets(s: &str) -> Vec<usize> {
 
 /// Convert a comrak [`Sourcepos`] (1-based line/byte-column, inclusive end) to a
 /// half-open byte range `[start, end)` into the source.
-fn sourcepos_to_bytes(sp: Sourcepos, line_starts: &[usize], len: usize) -> Option<(usize, usize)> {
+pub(crate) fn sourcepos_to_bytes(sp: Sourcepos, line_starts: &[usize], len: usize) -> Option<(usize, usize)> {
     if sp.start.line == 0 || sp.start.column == 0 || sp.end.line == 0 || sp.end.column == 0 {
         return None; // synthetic / unknown position
     }

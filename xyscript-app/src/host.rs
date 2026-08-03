@@ -6214,6 +6214,21 @@ impl AppHost {
             .unwrap_or_else(|| self.cwd.clone())
     }
 
+    /// Build the MDA styling overlay for the active document's preview/PDF render. `source` is the
+    /// text being rendered (`buffer().text()`); the spans are taken in DECODED offsets so they line up
+    /// with `source` for any encoding. Reverse video uses the document's current FGCOLOR/BGCOLOR.
+    pub fn mda_styler(&self, source: &str) -> crate::gfm::Styler {
+        let doc = &self.docs[self.active];
+        crate::gfm::Styler::new(
+            source,
+            doc.color_spans_decoded(),
+            doc.bg_color_spans_decoded(),
+            doc.attr_spans_decoded(),
+            self.fg_color,
+            self.bg_color,
+        )
+    }
+
     /// Record the current `$CWD` as the remembered directory for its drive, so a later bare `X:`
     /// returns here. Called whenever the cwd changes (and once at startup).
     fn remember_current_drive(&mut self) {
@@ -9629,7 +9644,8 @@ impl Host for AppHost {
                 let pdf = match self.docs[self.active].render_kind() {
                     crate::document::RenderKind::Typst => crate::pdf::typst_to_pdf(&source, &doc_dir),
                     crate::document::RenderKind::Gfm => {
-                        crate::pdf::gfm_to_pdf(&source, &doc_dir, &self.preview_fonts())
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::gfm_to_pdf(&source, &doc_dir, &self.preview_fonts(), Some(&styler))
                     }
                     crate::document::RenderKind::Html => {
                         crate::pdf::html_to_pdf(&source, &doc_dir, &self.preview_fonts())

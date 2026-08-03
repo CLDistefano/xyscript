@@ -8199,7 +8199,10 @@ impl GuiApp {
                     let res = match kind {
                         RenderKind::Typst => xyscript_app::typst_to_image(&cur, &doc_dir, scale),
                         RenderKind::Gfm => {
-                            xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts)
+                            // Splice the document's MDA styling into the preview so it matches the
+                            // editor canvas (bold/italic/underline/colour/reverse).
+                            let styler = self.editor.host().mda_styler(&cur);
+                            xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler))
                         }
                         RenderKind::Html => {
                             xyscript_app::html_to_image(&cur, &doc_dir, scale, &fonts)

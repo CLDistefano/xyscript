@@ -26,124 +26,245 @@ use crate::typst_esc::{escape_text, typst_str};
 use comrak::nodes::{AstNode, ListType, NodeValue};
 use comrak::{parse_document, Arena, Options};
 
+type ColorSpan = (usize, usize, (u8, u8, u8));
+type AttrSpan = (usize, usize, u8);
+
+/// Overlay of the document's `MDA` styling (foreground/background colours + text attributes) for the
+/// preview/PDF pre-pass: as `to_typst` walks the comrak AST, each prose TEXT node's source byte range
+/// is intersected with these spans and the covered sub-runs are wrapped in the matching Typst markup
+/// (`#strong` / `#emph` / `#underline` / `#text(fill:)` / `#highlight(fill:)` / reverse). This lets the
+/// on-screen `MDA` styling print, without it being part of the Markdown source. Offsets are the same
+/// rope-byte offsets the editor stores (== source byte offsets for a UTF-8 document).
+pub struct Styler {
+    line_starts: Vec<usize>,
+    fg: Vec<ColorSpan>,
+    bg: Vec<ColorSpan>,
+    attr: Vec<AttrSpan>,
+    def_fg: (u8, u8, u8), // the document's FGCOLOR/BGCOLOR — used to render `RV` reverse video
+    def_bg: (u8, u8, u8),
+}
+
+impl Styler {
+    pub fn new(
+        source: &str,
+        fg: Vec<ColorSpan>,
+        bg: Vec<ColorSpan>,
+        attr: Vec<AttrSpan>,
+        def_fg: (u8, u8, u8),
+        def_bg: (u8, u8, u8),
+    ) -> Self {
+        Styler { line_starts: crate::highlight::line_start_offsets(source), fg, bg, attr, def_fg, def_bg }
+    }
+
+    /// Whether there is any styling at all (empty → the walk behaves exactly like plain `to_typst`).
+    fn is_empty(&self) -> bool {
+        self.fg.is_empty() && self.bg.is_empty() && self.attr.is_empty()
+    }
+
+    /// The payload of the span covering byte offset `at` in a sorted, non-overlapping list.
+    fn cover<T: Copy>(list: &[(usize, usize, T)], at: usize) -> Option<T> {
+        list.iter().find(|&&(s, e, _)| s <= at && at < e).map(|&(_, _, v)| v)
+    }
+
+    /// Emit `literal` (a Text node whose content starts at source byte `src_start`) with any MDA
+    /// styling that covers it spliced in as Typst wrappers. Falls back to plain escaped text when the
+    /// node carries no styling — or when its literal length doesn't match the source range (an escaped
+    /// entity etc.), where the offset mapping wouldn't be reliable.
+    fn emit_text(&self, src_start: usize, literal: &str, out: &mut String) {
+        let end = src_start + literal.len();
+        // Boundaries inside [src_start, end): every span edge from all three layers, plus the ends.
+        let mut cuts = vec![src_start, end];
+        for &(s, e, _) in self.fg.iter().chain(self.bg.iter()) {
+            if s > src_start && s < end { cuts.push(s); }
+            if e > src_start && e < end { cuts.push(e); }
+        }
+        for &(s, e, _) in &self.attr {
+            if s > src_start && s < end { cuts.push(s); }
+            if e > src_start && e < end { cuts.push(e); }
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        for w in cuts.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let piece = escape_text(&literal[a - src_start..b - src_start]);
+            let attr = Self::cover(&self.attr, a).unwrap_or(0);
+            let mut s = piece;
+            // Attributes nest innermost; colour/background outermost. Reverse video overrides the
+            // colour layers (it defines its own fg/bg from the document colours).
+            if attr & xyscript_xpl::ATTR_BOLD != 0 {
+                s = format!("#strong[{s}]");
+            }
+            if attr & xyscript_xpl::ATTR_ITALIC != 0 {
+                s = format!("#emph[{s}]");
+            }
+            if attr & xyscript_xpl::ATTR_UNDERLINE != 0 {
+                s = format!("#underline[{s}]");
+            }
+            if attr & xyscript_xpl::ATTR_REVERSE != 0 {
+                s = format!("#highlight(fill: {})[#text(fill: {})[{s}]]", rgb(self.def_fg), rgb(self.def_bg));
+            } else {
+                if let Some(c) = Self::cover(&self.fg, a) {
+                    s = format!("#text(fill: {})[{s}]", rgb(c));
+                }
+                if let Some(c) = Self::cover(&self.bg, a) {
+                    s = format!("#highlight(fill: {})[{s}]", rgb(c));
+                }
+            }
+            out.push_str(&s);
+        }
+    }
+}
+
+/// A Typst `rgb(r, g, b)` colour literal.
+fn rgb((r, g, b): (u8, u8, u8)) -> String {
+    format!("rgb({r}, {g}, {b})")
+}
+
 /// Convert a GFM document to a typst markup **body** (no page/font preamble —
 /// that is the renderer's concern in 8c).
 pub fn to_typst(source: &str) -> String {
+    to_typst_impl(source, None)
+}
+
+/// Like [`to_typst`], but splice the document's `MDA` styling (colours + attributes) into the output
+/// so it prints — the preview/PDF pre-pass. An empty styler is identical to plain [`to_typst`].
+pub fn to_typst_styled(source: &str, styler: &Styler) -> String {
+    to_typst_impl(source, (!styler.is_empty()).then_some(styler))
+}
+
+fn to_typst_impl(source: &str, styler: Option<&Styler>) -> String {
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.strikethrough = true;
     options.extension.table = true;
     options.extension.autolink = true;
     options.extension.tasklist = true;
+    options.render.sourcepos = styler.is_some(); // only pay for source positions when styling
     let root = parse_document(&arena, source, &options);
 
+    let em = Emitter { styler };
     let mut out = String::new();
-    emit(root, &mut out);
+    em.emit(root, &mut out);
     out.truncate(out.trim_end().len()); // drop the trailing block separator
     out
 }
 
-fn emit<'a>(node: &'a AstNode<'a>, out: &mut String) {
-    let ast = node.data.borrow();
-    match &ast.value {
-        NodeValue::Document => emit_children(node, out),
+/// Carries the optional MDA [`Styler`] through the recursive walk; without it, output is byte-for-byte
+/// what the original free-function walk produced.
+struct Emitter<'s> {
+    styler: Option<&'s Styler>,
+}
 
-        NodeValue::Heading(h) => {
-            for _ in 0..h.level {
-                out.push('=');
+impl<'s> Emitter<'s> {
+    fn emit<'a>(&self, node: &'a AstNode<'a>, out: &mut String) {
+        let ast = node.data.borrow();
+        match &ast.value {
+            NodeValue::Document => self.emit_children(node, out),
+
+            NodeValue::Heading(h) => {
+                for _ in 0..h.level {
+                    out.push('=');
+                }
+                out.push(' ');
+                self.emit_children(node, out);
+                out.push_str("\n\n");
             }
-            out.push(' ');
-            emit_children(node, out);
-            out.push_str("\n\n");
-        }
-        NodeValue::Paragraph => {
-            emit_children(node, out);
-            out.push_str("\n\n");
-        }
-
-        NodeValue::Text(t) => out.push_str(&escape_text(t)),
-        NodeValue::SoftBreak => out.push(' '),
-        NodeValue::LineBreak => out.push_str("#linebreak()"),
-
-        NodeValue::Emph => wrap(node, out, "#emph[", "]"),
-        NodeValue::Strong => wrap(node, out, "#strong[", "]"),
-        NodeValue::Strikethrough => wrap(node, out, "#strike[", "]"),
-
-        NodeValue::Code(c) => {
-            out.push_str("#raw(");
-            out.push_str(&typst_str(&c.literal));
-            out.push(')');
-        }
-        NodeValue::CodeBlock(cb) => {
-            out.push_str("#raw(");
-            out.push_str(&typst_str(&cb.literal));
-            out.push_str(", block: true");
-            let lang = cb.info.split_whitespace().next().unwrap_or("");
-            if !lang.is_empty() {
-                out.push_str(", lang: ");
-                out.push_str(&typst_str(lang));
+            NodeValue::Paragraph => {
+                self.emit_children(node, out);
+                out.push_str("\n\n");
             }
-            out.push_str(")\n\n");
-        }
 
-        NodeValue::BlockQuote => {
-            out.push_str("#quote(block: true)[");
-            out.push_str(block_children(node).trim_end());
-            out.push_str("]\n\n");
-        }
+            NodeValue::Text(t) => match self
+                .styler
+                .and_then(|s| crate::highlight::sourcepos_to_bytes(ast.sourcepos, &s.line_starts, usize::MAX).map(|r| (s, r)))
+            {
+                // Style only when the node's source range matches its literal length (plain prose);
+                // otherwise the byte mapping is unreliable, so emit escaped text unchanged.
+                Some((s, (start, end))) if end - start == t.len() => s.emit_text(start, t, out),
+                _ => out.push_str(&escape_text(t)),
+            },
+            NodeValue::SoftBreak => out.push(' '),
+            NodeValue::LineBreak => out.push_str("#linebreak()"),
 
-        NodeValue::List(nl) => {
-            let ordered = matches!(nl.list_type, ListType::Ordered);
-            out.push_str(if ordered { "#enum(" } else { "#list(" });
-            if ordered && nl.start != 1 {
-                out.push_str(&format!("start: {}, ", nl.start));
+            NodeValue::Emph => self.wrap(node, out, "#emph[", "]"),
+            NodeValue::Strong => self.wrap(node, out, "#strong[", "]"),
+            NodeValue::Strikethrough => self.wrap(node, out, "#strike[", "]"),
+
+            NodeValue::Code(c) => {
+                out.push_str("#raw(");
+                out.push_str(&typst_str(&c.literal));
+                out.push(')');
             }
-            for item in node.children() {
-                out.push('[');
-                out.push_str(block_children(item).trim_end());
-                out.push_str("], ");
+            NodeValue::CodeBlock(cb) => {
+                out.push_str("#raw(");
+                out.push_str(&typst_str(&cb.literal));
+                out.push_str(", block: true");
+                let lang = cb.info.split_whitespace().next().unwrap_or("");
+                if !lang.is_empty() {
+                    out.push_str(", lang: ");
+                    out.push_str(&typst_str(lang));
+                }
+                out.push_str(")\n\n");
             }
-            out.push_str(")\n\n");
-        }
 
-        NodeValue::ThematicBreak => out.push_str("#line(length: 100%)\n\n"),
+            NodeValue::BlockQuote => {
+                out.push_str("#quote(block: true)[");
+                out.push_str(self.block_children(node).trim_end());
+                out.push_str("]\n\n");
+            }
 
-        NodeValue::Link(nl) => {
-            out.push_str("#link(");
-            out.push_str(&typst_str(&nl.url));
-            out.push(')');
-            wrap(node, out, "[", "]");
-        }
-        // Render images as a clickable link to their source (typst `#image`
-        // needs a readable path; remote/relative srcs would fail to load).
-        NodeValue::Image(nl) => {
-            out.push_str("#link(");
-            out.push_str(&typst_str(&nl.url));
-            out.push(')');
-            wrap(node, out, "[", "]");
-        }
-
-        NodeValue::Table(nt) => {
-            let ncols = nt.num_columns.max(1);
-            out.push_str(&format!("#table(columns: {ncols}, "));
-            for row in node.children() {
-                let is_header = matches!(row.data.borrow().value, NodeValue::TableRow(true));
-                for cell in row.children() {
+            NodeValue::List(nl) => {
+                let ordered = matches!(nl.list_type, ListType::Ordered);
+                out.push_str(if ordered { "#enum(" } else { "#list(" });
+                if ordered && nl.start != 1 {
+                    out.push_str(&format!("start: {}, ", nl.start));
+                }
+                for item in node.children() {
                     out.push('[');
-                    let content = block_children(cell);
-                    let content = content.trim();
-                    if is_header {
-                        out.push_str("#strong[");
-                        out.push_str(content);
-                        out.push(']');
-                    } else {
-                        out.push_str(content);
-                    }
+                    out.push_str(self.block_children(item).trim_end());
                     out.push_str("], ");
                 }
+                out.push_str(")\n\n");
             }
-            out.push_str(")\n\n");
-        }
+
+            NodeValue::ThematicBreak => out.push_str("#line(length: 100%)\n\n"),
+
+            NodeValue::Link(nl) => {
+                out.push_str("#link(");
+                out.push_str(&typst_str(&nl.url));
+                out.push(')');
+                self.wrap(node, out, "[", "]");
+            }
+            // Render images as a clickable link to their source (typst `#image`
+            // needs a readable path; remote/relative srcs would fail to load).
+            NodeValue::Image(nl) => {
+                out.push_str("#link(");
+                out.push_str(&typst_str(&nl.url));
+                out.push(')');
+                self.wrap(node, out, "[", "]");
+            }
+
+            NodeValue::Table(nt) => {
+                let ncols = nt.num_columns.max(1);
+                out.push_str(&format!("#table(columns: {ncols}, "));
+                for row in node.children() {
+                    let is_header = matches!(row.data.borrow().value, NodeValue::TableRow(true));
+                    for cell in row.children() {
+                        out.push('[');
+                        let content = self.block_children(cell);
+                        let content = content.trim();
+                        if is_header {
+                            out.push_str("#strong[");
+                            out.push_str(content);
+                            out.push(']');
+                        } else {
+                            out.push_str(content);
+                        }
+                        out.push_str("], ");
+                    }
+                }
+                out.push_str(")\n\n");
+            }
 
         // A raw HTML BLOCK is a self-contained run of markup, so hand it to the same structural
         // converter `DOCTYPE html` uses: a table or figure written in HTML inside a Markdown file
@@ -162,31 +283,32 @@ fn emit<'a>(node: &'a AstNode<'a>, out: &mut String) {
         // the text that follows. Left as escaped text until there's a fragment accumulator.
         NodeValue::HtmlInline(h) => out.push_str(&escape_text(h)),
 
-        // TableRow/TableCell/Item are handled by their parents; anything else
-        // (footnotes, etc.) degrades to rendering its children.
-        _ => emit_children(node, out),
+            // TableRow/TableCell/Item are handled by their parents; anything else
+            // (footnotes, etc.) degrades to rendering its children.
+            _ => self.emit_children(node, out),
+        }
     }
-}
 
-fn emit_children<'a>(node: &'a AstNode<'a>, out: &mut String) {
-    for child in node.children() {
-        emit(child, out);
+    fn emit_children<'a>(&self, node: &'a AstNode<'a>, out: &mut String) {
+        for child in node.children() {
+            self.emit(child, out);
+        }
     }
-}
 
-/// Emit `open`, the node's children, then `close` (for inline wrappers).
-fn wrap<'a>(node: &'a AstNode<'a>, out: &mut String, open: &str, close: &str) {
-    out.push_str(open);
-    emit_children(node, out);
-    out.push_str(close);
-}
+    /// Emit `open`, the node's children, then `close` (for inline wrappers).
+    fn wrap<'a>(&self, node: &'a AstNode<'a>, out: &mut String, open: &str, close: &str) {
+        out.push_str(open);
+        self.emit_children(node, out);
+        out.push_str(close);
+    }
 
-/// Render a node's children into a fresh string (for block content placed inside
-/// a `[…]` content block, e.g. list items / table cells / quotes).
-fn block_children<'a>(node: &'a AstNode<'a>) -> String {
-    let mut s = String::new();
-    emit_children(node, &mut s);
-    s
+    /// Render a node's children into a fresh string (for block content placed inside
+    /// a `[…]` content block, e.g. list items / table cells / quotes).
+    fn block_children<'a>(&self, node: &'a AstNode<'a>) -> String {
+        let mut s = String::new();
+        self.emit_children(node, &mut s);
+        s
+    }
 }
 
 // Text/string escaping lives in `typst_esc` — shared with the HTML converter, which faces the same
@@ -207,6 +329,43 @@ mod tests {
         assert_eq!(to_typst("a *b* **c**"), "a #emph[b] #strong[c]");
         assert_eq!(to_typst("~~gone~~"), "#strike[gone]");
         assert_eq!(to_typst("use `x` here"), "use #raw(\"x\") here");
+    }
+
+    #[test]
+    fn mda_styling_splices_typst_into_the_body() {
+        use xyscript_xpl::{ATTR_BOLD, ATTR_REVERSE, ATTR_UNDERLINE};
+        let src = "hello world";
+        // Bold over "hello" (attr layer), red foreground over "world" (fg colour layer).
+        let styler = Styler::new(
+            src,
+            vec![(6, 11, (255, 0, 0))], // fg: "world"
+            vec![],
+            vec![(0, 5, ATTR_BOLD)], // attr: "hello" bold
+            (0, 0, 0),
+            (255, 255, 255),
+        );
+        assert_eq!(
+            to_typst_styled(src, &styler),
+            "#strong[hello] #text(fill: rgb(255, 0, 0))[world]"
+        );
+
+        // Underline + reverse over the whole word; reverse defines its own fg/bg from the doc colours.
+        let styler2 = Styler::new(
+            "boo",
+            vec![],
+            vec![],
+            vec![(0, 3, ATTR_UNDERLINE | ATTR_REVERSE)],
+            (10, 20, 30),
+            (200, 210, 220),
+        );
+        assert_eq!(
+            to_typst_styled("boo", &styler2),
+            "#highlight(fill: rgb(10, 20, 30))[#text(fill: rgb(200, 210, 220))[#underline[boo]]]"
+        );
+
+        // An empty styler is identical to plain to_typst (no regression when nothing is styled).
+        let empty = Styler::new(src, vec![], vec![], vec![], (0, 0, 0), (255, 255, 255));
+        assert_eq!(to_typst_styled(src, &empty), to_typst(src));
     }
 
     #[test]

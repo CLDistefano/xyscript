@@ -32,7 +32,7 @@ fn greet(name: &str) {
 "###;
 
 fn main() {
-    let pdf = gfm_to_pdf(SAMPLE, std::path::Path::new("."), &PreviewFonts::default()).expect("render");
+    let pdf = gfm_to_pdf(SAMPLE, std::path::Path::new("."), &PreviewFonts::default(), None).expect("render");
     std::fs::write("gfm_out.pdf", &pdf).unwrap();
     println!("wrote gfm_out.pdf ({} bytes)", pdf.len());
 }
