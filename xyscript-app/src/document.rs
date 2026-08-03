@@ -174,7 +174,7 @@ struct Unit {
 /// `.xymeta` sidecar's `[attrs]` section. Independent flags — the `MDA` keywords map to combinations
 /// (`BO`→bold, `IT`→italic, `BI`→bold+italic, `UL`→underline, `BU`→bold+underline). Defined once in
 /// `xyscript-xpl` (the verb layer that parses the keywords) and re-exported here for the app/GUI.
-pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_UNDERLINE};
+pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
 
 /// A text document: a buffer, undo/redo history, and file identity.
 #[derive(Debug)]
@@ -743,7 +743,12 @@ impl Document {
     /// Apply (or, with `value == None`, CLEAR) a payload over ROPE range `[start, end)` in one span
     /// list: subtract any overlap first (interval subtraction), then — for a set — add the new span.
     /// Keeps the list sorted and non-overlapping. Shared by the FG / BG colour and attribute layers.
-    fn set_span_in<P: Copy>(list: &mut Vec<(usize, usize, P)>, start: usize, end: usize, value: Option<P>) {
+    fn set_span_in<P: Copy + PartialEq>(
+        list: &mut Vec<(usize, usize, P)>,
+        start: usize,
+        end: usize,
+        value: Option<P>,
+    ) {
         if start >= end {
             return;
         }
@@ -765,7 +770,16 @@ impl Document {
             out.push((start, end, v));
         }
         out.sort_by_key(|&(s, _, _)| s);
-        *list = out;
+        // Coalesce touching runs of the SAME value into one span — otherwise typing char-by-char in a
+        // TYPING MODE would leave a trail of 1-byte spans (bloating the list and the `.xymeta` sidecar).
+        let mut merged: Vec<(usize, usize, P)> = Vec::with_capacity(out.len());
+        for span in out {
+            match merged.last_mut() {
+                Some(prev) if prev.1 == span.0 && prev.2 == span.2 => prev.1 = span.1,
+                _ => merged.push(span),
+            }
+        }
+        *list = merged;
     }
 
     /// Shift ALL span layers (both colours + attributes) to follow an edit at byte `at` that removed

@@ -2811,6 +2811,18 @@ impl GuiApp {
         for &(s, e, bits) in &attr_disp {
             cattrs[s..e.min(n)].iter_mut().for_each(|slot| *slot = bits);
         }
+        // `MDA RV` reverse video: paint the glyph in the current BGCOLOR (the background rect is drawn
+        // in FGCOLOR in `raster`). Dynamic — reads the live editor colours, so it stays inverted across
+        // a theme change. Applied LAST so a reversed run always reads as inverted.
+        let rev_glyph = {
+            let (br, bg_, bb) = self.editor.bg_color();
+            CColor::rgb(br, bg_, bb)
+        };
+        for i in 0..n {
+            if cattrs[i] & xyscript_app::document::ATTR_REVERSE != 0 {
+                colors[i] = rev_glyph;
+            }
+        }
         // ---- Incremental per-line build (the shaped-line cache) --------------------------------
         // Rather than `set_rich_text` the whole window every frame (which RE-SHAPES every line — the
         // killer on a 25 000-char paragraph), split the window into one `BufferLine` per logical line
@@ -3654,20 +3666,66 @@ impl GuiApp {
             }
             out
         };
-        // `MDA` underline rects — the wrap-aware pixel geometry of every attribute span carrying the
-        // underline bit (drawn as a solid line under the glyphs, in the text colour, since cosmic has
-        // no glyph underline attribute). Bold/italic ride the glyphs' AttrsList and need no rects here.
-        let mut mda_underline_rects: Vec<(i32, i32, i32, i32)> = {
-            let ul_bit = xyscript_app::document::ATTR_UNDERLINE;
+        // `MDA RV` reverse-video backgrounds — a rect in the current FGCOLOR behind each reversed span
+        // (the glyphs are painted in BGCOLOR above). Same bottom layer as `md_bg_rects`.
+        let mut mda_reverse_rects: Vec<(i32, i32, i32, i32)> = {
+            let rv_bit = xyscript_app::document::ATTR_REVERSE;
             let mut out = Vec::new();
             for (ms, me, bits) in self.editor.attr_spans_raw() {
-                if bits & ul_bit == 0 {
+                if bits & rv_bit == 0 {
                     continue;
                 }
                 for (x0, y0, x1, y1, _) in
                     self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
                 {
                     out.push((x0, y0, x1, y1));
+                }
+            }
+            out
+        };
+        // `MDA` underline rects — the wrap-aware pixel geometry of every attribute span carrying the
+        // underline bit (drawn as a solid line under the glyphs, in the text colour, since cosmic has
+        // no glyph underline attribute). Bold/italic ride the glyphs' AttrsList and need no rects here.
+        let mut mda_underline_rects: Vec<(i32, i32, i32, i32)> = {
+            let ul_bit = xyscript_app::document::ATTR_UNDERLINE;
+            // `ULSPACES off` breaks the underline at inter-word spaces/tabs — draw only the non-blank
+            // runs; `on` (default) underlines the whole span, spaces included.
+            let ul_spaces = self.editor.ul_spaces();
+            let doc_idx = self.editor.active_index();
+            let mut out = Vec::new();
+            for (ms, me, bits) in self.editor.attr_spans_raw() {
+                if bits & ul_bit == 0 {
+                    continue;
+                }
+                // The rope sub-ranges to underline: the whole span, or its non-blank runs.
+                let ranges: Vec<(usize, usize)> = if ul_spaces {
+                    vec![(ms, me)]
+                } else {
+                    let bytes = self.editor.doc(doc_idx).slice_bytes(ms, me);
+                    let mut v = Vec::new();
+                    let mut run: Option<usize> = None; // start of the current non-blank run (byte index)
+                    for (i, &b) in bytes.iter().enumerate() {
+                        // ASCII space/tab are standalone bytes (never UTF-8 continuation bytes), so a
+                        // byte-level split stays on char boundaries for any encoding.
+                        if b == b' ' || b == b'\t' {
+                            if let Some(rs) = run.take() {
+                                v.push((ms + rs, ms + i));
+                            }
+                        } else if run.is_none() {
+                            run = Some(i);
+                        }
+                    }
+                    if let Some(rs) = run {
+                        v.push((ms + rs, me));
+                    }
+                    v
+                };
+                for (a, b) in ranges {
+                    for (x0, y0, x1, y1, _) in
+                        self.highlight_rects(&[(a, b)], None, &buffer, &win, w as i32, lh_px as i32)
+                    {
+                        out.push((x0, y0, x1, y1));
+                    }
                 }
             }
             out
@@ -3721,6 +3779,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut mda_reverse_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
         }
 
 
@@ -3736,6 +3798,14 @@ impl GuiApp {
         // under everything else (EMPH/FIND/selection). Opaque, each rect in its own persisted colour.
         for &(x0, y0, x1, y1, (r, g, b)) in &md_bg_rects {
             fill_blend(&mut canvas, w, h, x0, y0, x1, y1, r, g, b, 1.0);
+        }
+        // `MDA RV` reverse-video backgrounds — an opaque FGCOLOR rect behind each reversed span (its
+        // glyphs were set to BGCOLOR above), at the same bottom layer.
+        if !mda_reverse_rects.is_empty() {
+            let (fr2, fg2, fb2) = self.editor.fg_color();
+            for &(x0, y0, x1, y1) in &mda_reverse_rects {
+                fill_blend(&mut canvas, w, h, x0, y0, x1, y1, fr2, fg2, fb2, 1.0);
+            }
         }
         // Paint EMPH emphasis BEHIND the glyphs (and under FIND): an opaque band in EMPHBGCOLOR
         // (default: the selection background) so the emphasis text (EMPHFGCOLOR) reads as configured.
@@ -5844,6 +5914,7 @@ impl GuiApp {
                             m_item(self.tr("menu.settings.appearance.colors.block.bolditalic", "Bold italic"), "MDA BI"),
                             m_item(self.tr("menu.settings.appearance.colors.block.underline", "Underline"), "MDA UL"),
                             m_item(self.tr("menu.settings.appearance.colors.block.boldunderline", "Bold underline"), "MDA BU"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.reverse", "Reverse video"), "MDA RV"),
                             m_item(self.tr("menu.settings.appearance.colors.block.normal", "Normal (clear attributes)"), "MDA NM"),
                             MenuNode::Sep,
                             m_item(self.tr("menu.settings.appearance.colors.block.clear_fg", "Clear text colour"), "MDA off"),

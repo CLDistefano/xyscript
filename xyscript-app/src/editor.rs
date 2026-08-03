@@ -180,6 +180,10 @@ impl Editor {
     pub fn attr_spans_raw(&self) -> Vec<(usize, usize, u8)> {
         self.host.active_doc().attr_spans_raw().to_vec()
     }
+    /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`).
+    pub fn ul_spaces(&self) -> bool {
+        self.host.ul_spaces()
+    }
     /// The active highlighter's name, or `None` when off.
     pub fn highlighter_name(&self) -> Option<&str> {
         self.host.active_doc().highlighter_name()
@@ -3509,7 +3513,7 @@ mod tests {
 
     #[test]
     fn mda_text_attributes_track_edits_and_are_independent_of_colours() {
-        use crate::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_UNDERLINE};
+        use crate::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
         let mut e = ed();
         e.host_mut().virtual_fs = true;
         e.run_command(r#"INSERT "hello world""#);
@@ -3536,6 +3540,10 @@ mod tests {
         e.run_command("DFA");
         e.run_command("MDA UL");
         assert_eq!(e.attr_spans(), vec![(0, 14, ATTR_UNDERLINE)], "MDA UL replaces the attribute set");
+        // `MDA RV` (reverse) is just another attribute bit — it SETS (replaces) the region's attrs.
+        e.run_command("DFA");
+        e.run_command("MDA RV");
+        assert_eq!(e.attr_spans(), vec![(0, 14, ATTR_REVERSE)], "MDA RV sets the reverse bit");
         // `MDA NM` (normal) strips attributes over the selection; the colour layer is untouched.
         e.run_command("DFA");
         e.run_command("MDA NM");
@@ -3596,6 +3604,69 @@ mod tests {
         e.run_command("DW");
         e.run_command("MDA/B 0 0 255");
         assert!(e.modified(), "a background block colour also marks the doc modified");
+    }
+
+    #[test]
+    fn mda_typing_mode_styles_subsequently_typed_text() {
+        use crate::document::{ATTR_BOLD, ATTR_UNDERLINE};
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // No selection → typing mode. `insert_str` is the interactive (TypeText) path a keystroke takes.
+        e.run_command("MDA BU"); // bold + underline typing mode ON
+        e.insert_str("hello");
+        assert_eq!(
+            e.attr_spans(),
+            vec![(0, 5, ATTR_BOLD | ATTR_UNDERLINE)],
+            "typed text takes the mode's attributes, coalesced into one span"
+        );
+        // A colour layer can be armed too — it stacks with the attribute mode.
+        e.run_command("MDA 255 0 0"); // fg-red typing mode ON (attr mode still on)
+        e.insert_str("X");
+        assert_eq!(e.color_spans(), vec![(5, 6, (255, 0, 0))], "new text gets the fg colour");
+        assert_eq!(
+            e.attr_spans(),
+            vec![(0, 6, ATTR_BOLD | ATTR_UNDERLINE)],
+            "attribute mode still applies and coalesces with the prior run"
+        );
+        // Bare `MDA` cancels the fg colour AND attribute modes; later text is unstyled.
+        e.run_command("MDA");
+        e.insert_str("Y");
+        assert_eq!(e.color_spans(), vec![(5, 6, (255, 0, 0))], "fg mode off — no new colour span");
+        assert_eq!(
+            e.attr_spans(),
+            vec![(0, 6, ATTR_BOLD | ATTR_UNDERLINE)],
+            "attribute mode off — the 'Y' is not styled"
+        );
+    }
+
+    #[test]
+    fn mda_typing_mode_styles_kbd_bound_inserts_so_spaces_join_the_run() {
+        use crate::document::ATTR_UNDERLINE;
+        // A KBD-bound key (e.g. the spacebar, `57=" "`) inserts via the `INSERT`/InsertText path, not
+        // the OS-text `TypeText` path — the typing mode must catch it too, or a typed space would leave
+        // a gap in the underline. `insert_literal` is that InsertText path.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command("MDA UL");
+        e.insert_str("ab"); // OS-text path (letters)
+        e.insert_literal(" "); // KBD-bound space (InsertText path)
+        e.insert_str("cd");
+        assert_eq!(
+            e.attr_spans(),
+            vec![(0, 5, ATTR_UNDERLINE)],
+            "the KBD-bound space is styled, so the underline run is contiguous across it"
+        );
+    }
+
+    #[test]
+    fn ulspaces_toggles_and_reads_back() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert!(e.ul_spaces(), "ULSPACES on by default");
+        e.run_command("ULSPACES off");
+        assert!(!e.ul_spaces(), "ULSPACES off");
+        e.run_command("ULSPACES"); // bare toggles
+        assert!(e.ul_spaces(), "bare ULSPACES toggles back on");
     }
 
     #[test]
@@ -10672,3 +10743,4 @@ mod tests {
         assert!(e.input_request().is_none());
     }
 }
+

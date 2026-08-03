@@ -277,6 +277,24 @@ fn xymeta_read(
     (len_ok && hash_ok).then_some((fg, bg, attrs))
 }
 
+/// Human-readable names for an `MDA` attribute bitset (e.g. "bold underline"), for status messages.
+fn mda_attr_names(a: u8) -> String {
+    let mut parts = Vec::new();
+    if a & xyscript_xpl::ATTR_BOLD != 0 {
+        parts.push("bold");
+    }
+    if a & xyscript_xpl::ATTR_ITALIC != 0 {
+        parts.push("italic");
+    }
+    if a & xyscript_xpl::ATTR_UNDERLINE != 0 {
+        parts.push("underline");
+    }
+    if a & xyscript_xpl::ATTR_REVERSE != 0 {
+        parts.push("reverse");
+    }
+    parts.join(" ")
+}
+
 /// Parse one `at <start> <end> <bits>` attribute line. `None` on any malformed/zero-width/empty field.
 fn parse_xymeta_attr(line: &str) -> Option<(usize, usize, u8)> {
     let mut it = line.split_whitespace();
@@ -2087,6 +2105,12 @@ pub struct AppHost {
     pending_open: Option<PendingOpen>,
     /// Autosave interval in seconds (`AUTOSAVE`; 0 = off; read as `$AU`). GUI does the timing.
     autosave_secs: u64,
+    /// `MDA` TYPING MODE: when a set of these is active (an `MDA`/`MDA/B` run with NO selection),
+    /// each subsequently TYPED run of text is styled with it — XyWrite's modal "MD". Three independent
+    /// layers, mirroring the span layers. A bare `MDA` clears fg+attr, `MDA/B` clears bg. Session-only.
+    mda_type_fg: Option<(u8, u8, u8)>,
+    mda_type_bg: Option<(u8, u8, u8)>,
+    mda_type_attr: Option<u8>,
     /// Tab width in spaces (`$TB`), set by `TB <n>`.
     tab_width: usize,
     /// Soft tabs (`TABSPACES`): `TAB`/indent inserts `tab_width` spaces instead of a tab. `$TABSPACES`.
@@ -2275,6 +2299,9 @@ pub struct AppHost {
     /// leftover empty untitled tab pruned — so a scratch never lingers beside real files (it reappears
     /// when the last document closes). On (default). (`UNTITLEDTAB`; `$UNTITLEDTAB`.)
     untitled_auto_close: bool,
+    /// Whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES`; `$ULSPACES`).
+    /// On (default) = one continuous underline; off = broken at spaces/tabs (word glyphs only).
+    ul_spaces: bool,
     /// SMTP config for `SENDMAIL` (email feature). Session-only — `mail_pass` is NEVER persisted; set
     /// it each session (or leave empty to fall back to the `XYSCRIPT_MAILPASS` env var).
     #[cfg(feature = "email")]
@@ -2524,6 +2551,9 @@ impl AppHost {
             pending_close: None,
             pending_open: None,
             autosave_secs: 0, // off by default
+            mda_type_fg: None,
+            mda_type_bg: None,
+            mda_type_attr: None,
             tab_width: 4,
             tab_soft: false,
             tab_indent: false,
@@ -2663,6 +2693,7 @@ impl AppHost {
             wrap: true,
             wrap_hang: 0,
             untitled_auto_close: true,
+            ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
             #[cfg(feature = "email")]
@@ -2993,6 +3024,10 @@ impl AppHost {
     /// Whether the blank untitled tab is auto-closed on open (`UNTITLEDTAB`/`$UNTITLEDTAB`).
     pub fn untitled_tab(&self) -> bool {
         self.untitled_auto_close
+    }
+    /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`/`$ULSPACES`).
+    pub fn ul_spaces(&self) -> bool {
+        self.ul_spaces
     }
     /// Clear the command-line contents WITHOUT touching focus — used by `CMBLANK on` after a command
     /// runs (the resting-focus rule has already decided where focus lands). Unlike `BlankCmdLine`,
@@ -7301,6 +7336,7 @@ impl AppHost {
         put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
+        put(&mut s, "Underline the spaces between words in MDA underline styling — on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
         // Syntax-highlight theme — emit only the kinds that differ from the built-in defaults:
@@ -7559,6 +7595,30 @@ impl AppHost {
         let (fg, bg) = doc.color_spans_raw();
         xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw());
     }
+
+    /// Apply the active `MDA` TYPING MODE (if any) to the run just typed — the rope range from `from`
+    /// to the current caret. A no-op when no mode is active or nothing was inserted. Each active layer
+    /// (fg colour / bg colour / attributes) paints its span, exactly as an `MDA` on a selection would.
+    fn apply_mda_typing_style(&mut self, from: usize) {
+        let (fg, bg, at) = (self.mda_type_fg, self.mda_type_bg, self.mda_type_attr);
+        if fg.is_none() && bg.is_none() && at.is_none() {
+            return;
+        }
+        let doc = self.active();
+        let to = doc.buffer().cursor();
+        if to <= from {
+            return; // caret didn't advance (e.g. an empty insert)
+        }
+        if let Some(rgb) = fg {
+            doc.set_color_span(from, to, Some(rgb));
+        }
+        if let Some(rgb) = bg {
+            doc.set_bg_color_span(from, to, Some(rgb));
+        }
+        if let Some(a) = at {
+            doc.set_attr_span(from, to, Some(a));
+        }
+    }
 }
 
 impl Host for AppHost {
@@ -7725,10 +7785,22 @@ impl Host for AppHost {
             return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
         }
         match op {
-            EditorOp::InsertText(s) => self.active().insert(&s),
+            EditorOp::InsertText(s) => {
+                // A KBD-bound character insert (e.g. the spacebar, `57=" "`) comes through here rather
+                // than `TypeText`, so the `MDA` typing mode must style it too — otherwise typed spaces
+                // (and any user-bound literal keys) would break the run's styling. Document target only.
+                let from = matches!(self.target, Target::Document)
+                    .then(|| self.active().buffer().cursor());
+                self.active().insert(&s);
+                if let Some(from) = from {
+                    self.apply_mda_typing_style(from);
+                }
+            }
             EditorOp::TypeText(s) => {
                 // Interactive typing: apply TYPEPAIRS to a single bracket/quote char in the document;
                 // everything else (multi-char, cmline focus, mode off) is a plain insert.
+                let style_from = matches!(self.target, Target::Document)
+                    .then(|| self.active().buffer().cursor());
                 let paired = self.type_pairs
                     && matches!(self.target, Target::Document)
                     && {
@@ -7740,6 +7812,10 @@ impl Host for AppHost {
                     };
                 if !paired {
                     self.active().insert(&s);
+                }
+                // `MDA` typing mode: style the run just typed (in the document only).
+                if let Some(from) = style_from {
+                    self.apply_mda_typing_style(from);
                 }
             }
             EditorOp::Delete(DeleteKind::Back) => {
@@ -9911,7 +9987,28 @@ impl Host for AppHost {
                             None => format!("selection {layer} cleared"),
                         }
                     }
-                    None => "MDA: select text first".to_string(),
+                    // No selection → TYPING MODE (XyWrite's modal "MD"): a colour turns the mode on so
+                    // subsequently typed text is styled; a bare `MDA`/`MDA/B` (rgb None) turns it off —
+                    // `MDA` clears the fg colour AND attribute modes, `MDA/B` clears the bg mode.
+                    None => match (rgb, background) {
+                        (Some((r, g, b)), true) => {
+                            self.mda_type_bg = Some((r, g, b));
+                            format!("MDA/B typing on: {r} {g} {b}")
+                        }
+                        (Some((r, g, b)), false) => {
+                            self.mda_type_fg = Some((r, g, b));
+                            format!("MDA typing on: {r} {g} {b}")
+                        }
+                        (None, true) => {
+                            self.mda_type_bg = None;
+                            "MDA/B typing off".to_string()
+                        }
+                        (None, false) => {
+                            self.mda_type_fg = None;
+                            self.mda_type_attr = None;
+                            "MDA typing off".to_string()
+                        }
+                    },
                 };
                 return Ok(Value::str(msg));
             }
@@ -9922,23 +10019,21 @@ impl Host for AppHost {
                     Some((s, e)) => {
                         self.docs[self.active].set_attr_span(s, e, attrs);
                         match attrs {
-                            Some(a) => {
-                                let mut parts = Vec::new();
-                                if a & xyscript_xpl::ATTR_BOLD != 0 {
-                                    parts.push("bold");
-                                }
-                                if a & xyscript_xpl::ATTR_ITALIC != 0 {
-                                    parts.push("italic");
-                                }
-                                if a & xyscript_xpl::ATTR_UNDERLINE != 0 {
-                                    parts.push("underline");
-                                }
-                                format!("selection: {}", parts.join(" "))
-                            }
+                            Some(a) => format!("selection: {}", mda_attr_names(a)),
                             None => "selection attributes cleared".to_string(),
                         }
                     }
-                    None => "MDA: select text first".to_string(),
+                    // No selection → attribute TYPING MODE: a keyword turns it on, `MDA NM` turns it off.
+                    None => match attrs {
+                        Some(a) => {
+                            self.mda_type_attr = Some(a);
+                            format!("MDA typing on: {}", mda_attr_names(a))
+                        }
+                        None => {
+                            self.mda_type_attr = None;
+                            "MDA attribute typing off".to_string()
+                        }
+                    },
                 };
                 return Ok(Value::str(msg));
             }
@@ -10167,6 +10262,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!(
                     "UNTITLEDTAB {}",
                     if self.untitled_auto_close { "on" } else { "off" }
+                )));
+            }
+            EditorOp::SetUlSpaces(opt) => {
+                self.ul_spaces = opt.unwrap_or(!self.ul_spaces);
+                return Ok(Value::str(format!(
+                    "ULSPACES {}",
+                    if self.ul_spaces { "on" } else { "off" }
                 )));
             }
             #[cfg(feature = "email")]
@@ -10881,6 +10983,7 @@ impl Host for AppHost {
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
+            "ULSPACES" => Some(Value::Int(if self.ul_spaces { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),
             #[cfg(feature = "email")]

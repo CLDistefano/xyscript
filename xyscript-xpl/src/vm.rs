@@ -3368,6 +3368,23 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetUntitledTab(want))?;
                 Ok(Flow::Next)
             }
+            // `ULSPACES on|off` (bare = toggle) — whether an `MDA` UNDERLINE runs through the spaces
+            // between words (on, default) or breaks at them so only word glyphs are underlined (off).
+            // `$ULSPACES`.
+            "ULSPACES" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "ULSPACES: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetUlSpaces(want))?;
+                Ok(Flow::Next)
+            }
             // Email verbs are listed in BUILTIN_VERBS unconditionally (so they're documented + HELP-able),
             // but the implementation is behind the `email` cargo feature. A build without it reports this
             // rather than "unknown command".

@@ -24,10 +24,14 @@ use crate::value::Value;
 pub const ATTR_BOLD: u8 = 1 << 0;
 pub const ATTR_ITALIC: u8 = 1 << 1;
 pub const ATTR_UNDERLINE: u8 = 1 << 2;
+/// Reverse video: render the text in the current `BGCOLOR` over a `FGCOLOR` background (dynamic — it
+/// tracks the editor colours, so it stays inverted across a theme change).
+pub const ATTR_REVERSE: u8 = 1 << 3;
 
 /// Map an `MDA` attribute keyword to its action. `None` = not an attribute keyword (so the argument
 /// is treated as a colour); `Some(None)` = `NM` (normal — strip attributes); `Some(Some(bits))` = set
-/// that bitset. Keywords: `BO` bold, `IT` italic, `BI` bold+italic, `UL` underline, `BU` bold+underline.
+/// that bitset. Keywords: `BO` bold, `IT` italic, `BI` bold+italic, `UL` underline, `BU` bold+underline,
+/// `RV` reverse video.
 pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
     match word.trim().to_ascii_uppercase().as_str() {
         "BO" => Some(Some(ATTR_BOLD)),
@@ -35,6 +39,7 @@ pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
         "BI" => Some(Some(ATTR_BOLD | ATTR_ITALIC)),
         "UL" => Some(Some(ATTR_UNDERLINE)),
         "BU" => Some(Some(ATTR_BOLD | ATTR_UNDERLINE)),
+        "RV" | "REVERSE" => Some(Some(ATTR_REVERSE)),
         "NM" | "NORMAL" => Some(None),
         _ => None,
     }
@@ -456,6 +461,10 @@ pub enum EditorOp {
     /// untitled tabs, so a blank scratch never lingers beside real files; it reappears when the last
     /// document is closed. Off keeps the untitled tab as its own tab. `$UNTITLEDTAB`.
     SetUntitledTab(Option<bool>),
+    /// Toggle whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES on|off`;
+    /// `None` toggles). On (default) draws one continuous underline; off breaks it at spaces/tabs so
+    /// only word glyphs are underlined. `$ULSPACES`.
+    SetUlSpaces(Option<bool>),
     /// `SMTPURL`/`MAILUSER`/`MAILFROM`/`MAILPASS <value>` — set one SMTP config field (`field` is
     /// `url`|`user`|`from`|`pass`). Session-only; the password is never persisted. (email feature.)
     #[cfg(feature = "email")]
