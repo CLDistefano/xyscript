@@ -547,6 +547,83 @@ a sweeping change such as a global #raw("CH") collapses to a single undo step, s
 rolls the whole pass back.
 
 // ===================================================================================================
+= Styling Text with MDA
+
+XyWrite had a "mode" command — #raw("MD") — for stamping typographic modes onto a stretch of text:
+boldface, italics, and colors on screen. XyScript brings the idea back as #raw("MDA") ("mode
+attribute"). It styles *blocks of text inside a document* — colors and attributes — without turning the
+text into Markdown or Typst markup, and the styling sticks with the file between edits.
+
+Three independent layers stack freely, so a run of text can be bold red on a pale background all at
+once: a *foreground color*, a *background color*, and a set of *text attributes* (bold, italic,
+underline, reverse video).
+
+== Styling a selection
+
+Select some text, then apply a layer:
+
+/ #raw("MDA <r g b>"): color the selected text (the foreground). A color name works too — #raw("MDA red") — and #raw("/HSL") reads the triple as hue / saturation / lightness.
+/ #raw("MDA/B <r g b>"): color the *background* behind the selection.
+/ #raw("MDA BO") / #raw("IT") / #raw("BI") / #raw("UL") / #raw("BU"): bold / italic / bold-italic / underlined / bold-underlined.
+/ #raw("MDA RV"): reverse video — the text is drawn in the background color over a foreground-colored block, so it stays inverted even if you switch themes.
+
+The attribute keywords *replace* whatever attributes the region had — they do not accumulate — so
+#raw("MDA BI") makes a run bold-italic in one step, and #raw("MDA NM") ("normal") strips the attributes
+off again. To remove a color layer, use #raw("MDA off") (foreground) or #raw("MDA/B off") (background).
+
+The spans follow your edits: type ahead of a styled block and it shifts along; type inside it and it
+grows; undo and redo re-track it. The three layers are independent, so clearing one leaves the others
+alone. #raw("FGCOLOR") on a selection writes the *same* foreground layer — it is the color-only door
+into the same mechanism, and it persists the same way.
+
+== The picker and the menu
+
+#raw("MDAS") opens a color picker for the selection instead of typing numbers — bare for the
+foreground, #raw("MDAS/B") for the background. Everything is on the menu as well, under *Settings ▸
+Appearance ▸ Colors ▸ Block style*: the two color pickers, the attributes, and *Normal* to clear them.
+
+== Styling as you type
+
+With *nothing selected*, #raw("MDA") becomes a *typing mode* — the modern form of XyWrite's modal "MD".
+Arm a mode and everything you type next is styled with it, and the layers stack:
+
+#ex("MDA BO
+MDA 0 0 255
+The next words come out bold blue.")
+
+To turn a mode off, run the bare command: #raw("MDA") cancels the foreground-color and attribute modes,
+#raw("MDA/B") cancels the background mode, and #raw("MDA NM") cancels just the attributes.
+
+Typing modes are *per file* — each tab keeps its own, so switching files never carries one document's
+mode into another. When a mode is armed, the status line shows a small reverse-video tag at the left:
+the attribute letters (#raw("B"), #raw("I"), #raw("U"), #raw("R")) and a swatch of the armed
+foreground / background color, so you can see at a glance what the next keystrokes will look like.
+
+== How the styling is stored
+
+MDA styling is *not* written into your document's bytes — the text stays plain. Instead, when you save,
+XyScript writes a small hidden companion file beside it, named #raw(".<filename>.xymeta"). Reopen the
+file and the styling comes back exactly. That sidecar is guarded by a checksum of the file's contents:
+if the file was changed by another program, the stored positions no longer line up, and the styling is
+quietly ignored rather than misapplied.
+
+The sidecar is plain data, never executed, and it keeps step with the file — it follows a
+#raw("RENAME"), and it is deleted when you delete the file. Because styling counts as an unsaved change,
+the tab's modified marker (and autosave, and the save-on-close prompt) all notice it, so a styling-only
+change will not slip away unsaved.
+
+== Styling in the preview and PDF
+
+For a Markdown/GFM document, MDA styling is not only on screen: it is woven into the #raw("PV") preview
+and the #raw("TOPDF") export, so it prints as it appears — including underline, color, and reverse
+video, which Markdown itself cannot express. It applies to ordinary prose; styling that happens to fall
+inside Markdown syntax (a code span, a link's target) is left to render plainly. A document authored
+directly in Typst styles itself in Typst markup, so there MDA stays a screen-only overlay.
+
+One related knob: #raw("ULSPACES on|off") (default *on*) chooses whether an underline runs through the
+spaces between words or breaks at them — in both selection styling and the typing mode.
+
+// ===================================================================================================
 = Files, Tabs, and Directories
 
 This chapter is the on-disk view of XyScript: opening and saving files, listing directories, juggling
