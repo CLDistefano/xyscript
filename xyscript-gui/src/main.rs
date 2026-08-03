@@ -6680,21 +6680,58 @@ impl GuiApp {
     fn status_text(&self, ui: &egui::Ui, text: &str, cwd_len: usize) -> egui::WidgetText {
         let fg = self.editor.host().path_fg_color();
         let bg = self.editor.host().path_bg_color();
-        if cwd_len == 0 || cwd_len > text.len() || (fg.is_none() && bg.is_none()) {
-            return text.to_owned().into();
+        // An `MDA` live-typing indicator flags that subsequently typed text will be styled, and shows
+        // WHAT: reverse-video attribute letters (B/I/U/R) plus a colour swatch (the actual armed
+        // foreground / background colour). Per-document, so it appears only for the current file. Plain
+        // ASCII + coloured backgrounds — no Unicode glyph (a symbol tofus in an arbitrary UI font).
+        let (tfg, tbg, tattr) = self.editor.mda_typing();
+        let mda = tfg.is_some() || tbg.is_some() || tattr.is_some();
+        let has_cwd = cwd_len != 0 && cwd_len <= text.len() && (fg.is_some() || bg.is_some());
+        if !mda && !has_cwd {
+            return text.to_owned().into(); // fast path — unchanged when there's nothing to decorate
         }
         use egui::text::{LayoutJob, TextFormat};
         let font = egui::TextStyle::Body.resolve(ui.style());
         let col = |c: Option<(u8, u8, u8)>| {
             c.map(|(r, g, b)| egui::Color32::from_rgb(r, g, b)).unwrap_or(egui::Color32::PLACEHOLDER)
         };
-        let mut prefix = TextFormat::simple(font.clone(), col(fg));
-        if let Some((r, g, b)) = bg {
-            prefix.background = egui::Color32::from_rgb(r, g, b);
-        }
         let mut job = LayoutJob::default();
-        job.append(&text[..cwd_len], 0.0, prefix);
-        job.append(&text[cwd_len..], 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
+        if mda {
+            use xyscript_app::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
+            // Reverse-video block of attribute letters (only the armed ones).
+            if let Some(a) = tattr {
+                let mut letters = String::new();
+                if a & ATTR_BOLD != 0 { letters.push('B'); }
+                if a & ATTR_ITALIC != 0 { letters.push('I'); }
+                if a & ATTR_UNDERLINE != 0 { letters.push('U'); }
+                if a & ATTR_REVERSE != 0 { letters.push('R'); }
+                if !letters.is_empty() {
+                    let (uf, ub) = (self.editor.ui_fg_color(), self.editor.ui_bg_color());
+                    let mut fmt =
+                        TextFormat::simple(font.clone(), egui::Color32::from_rgb(ub.0, ub.1, ub.2));
+                    fmt.background = egui::Color32::from_rgb(uf.0, uf.1, uf.2);
+                    job.append(&format!(" {letters} "), 0.0, fmt);
+                }
+            }
+            // Colour swatches: a filled block of the actual armed foreground / background colour (two
+            // blank spaces whose BACKGROUND is the colour — glyph-free, so it can't tofu).
+            for c in [tfg, tbg].into_iter().flatten() {
+                let mut sw = TextFormat::simple(font.clone(), egui::Color32::from_rgb(c.0, c.1, c.2));
+                sw.background = egui::Color32::from_rgb(c.0, c.1, c.2);
+                job.append("  ", 0.0, sw);
+            }
+            job.append(" ", 0.0, TextFormat::simple(font.clone(), egui::Color32::PLACEHOLDER));
+        }
+        if has_cwd {
+            let mut prefix = TextFormat::simple(font.clone(), col(fg));
+            if let Some((r, g, b)) = bg {
+                prefix.background = egui::Color32::from_rgb(r, g, b);
+            }
+            job.append(&text[..cwd_len], 0.0, prefix);
+            job.append(&text[cwd_len..], 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
+        } else {
+            job.append(text, 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
+        }
         job.into()
     }
 

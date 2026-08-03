@@ -223,6 +223,12 @@ pub struct Document {
     /// keeps styling-only changes in autosave and the save-on-close prompt. Cleared by `mark_saved` /
     /// `load`; NOT set by sidecar restore (a freshly-opened styled doc matches disk).
     styling_dirty: bool,
+    /// The `MDA` live-typing mode for THIS document (session-only, never saved): when a layer is set,
+    /// each run typed into the doc is styled with it (`apply_typing_style`). Per-document — armed with a
+    /// no-selection `MDA` and carried with the tab, so switching files doesn't inherit another's mode.
+    mda_type_fg: Option<(u8, u8, u8)>,
+    mda_type_bg: Option<(u8, u8, u8)>,
+    mda_type_attr: Option<u8>,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -309,6 +315,9 @@ impl Clone for Document {
             bg_spans: self.bg_spans.clone(),
             attr_spans: self.attr_spans.clone(),
             styling_dirty: self.styling_dirty,
+            mda_type_fg: self.mda_type_fg,
+            mda_type_bg: self.mda_type_bg,
+            mda_type_attr: self.mda_type_attr,
             lints: self.lints.clone(),
             gen: self.gen,
             dir: self.dir.clone(),
@@ -341,6 +350,9 @@ impl Default for Document {
             bg_spans: Vec::new(),
             attr_spans: Vec::new(),
             styling_dirty: false,
+            mda_type_fg: None,
+            mda_type_bg: None,
+            mda_type_attr: None,
             lints: Vec::new(),
             gen: 0,
             dir: None,
@@ -728,6 +740,58 @@ impl Document {
         Self::set_span_in(&mut self.bg_spans, start, end, color);
         self.gen = self.gen.wrapping_add(1);
         self.styling_dirty = true;
+    }
+
+    // ---- MDA live-typing mode (per-document) -------------------------------------------------------
+
+    /// Arm/clear the typing-mode FOREGROUND colour (`Some` sets it, `None` clears it).
+    pub fn set_typing_fg(&mut self, c: Option<(u8, u8, u8)>) {
+        self.mda_type_fg = c;
+    }
+    /// Arm/clear the typing-mode BACKGROUND colour.
+    pub fn set_typing_bg(&mut self, c: Option<(u8, u8, u8)>) {
+        self.mda_type_bg = c;
+    }
+    /// Arm/clear the typing-mode text ATTRIBUTES (`None`/`0` clears).
+    pub fn set_typing_attr(&mut self, a: Option<u8>) {
+        self.mda_type_attr = a.filter(|&a| a != 0);
+    }
+    /// A bare `MDA` cancels the foreground-colour AND attribute typing modes (the non-`/B` layers).
+    pub fn clear_typing_fg_attr(&mut self) {
+        self.mda_type_fg = None;
+        self.mda_type_attr = None;
+    }
+    /// Whether any `MDA` typing-mode layer is armed for this document (for the status indicator).
+    pub fn mda_typing_active(&self) -> bool {
+        self.mda_type_fg.is_some() || self.mda_type_bg.is_some() || self.mda_type_attr.is_some()
+    }
+    /// The armed `MDA` typing-mode layers `(foreground, background, attributes)` — for an informative
+    /// status indicator (colour swatches + attribute letters).
+    pub fn mda_typing(&self) -> (Option<(u8, u8, u8)>, Option<(u8, u8, u8)>, Option<u8>) {
+        (self.mda_type_fg, self.mda_type_bg, self.mda_type_attr)
+    }
+
+    /// Style the run just typed — the range from `from` to the current caret — with any armed typing
+    /// mode. A no-op when no mode is active or nothing advanced. Each layer paints its span, exactly as
+    /// an `MDA` on a selection would.
+    pub fn apply_typing_style(&mut self, from: usize) {
+        let (fg, bg, at) = (self.mda_type_fg, self.mda_type_bg, self.mda_type_attr);
+        if fg.is_none() && bg.is_none() && at.is_none() {
+            return;
+        }
+        let to = self.buffer.cursor();
+        if to <= from {
+            return; // caret didn't advance (e.g. an empty insert)
+        }
+        if let Some(rgb) = fg {
+            self.set_color_span(from, to, Some(rgb));
+        }
+        if let Some(rgb) = bg {
+            self.set_bg_color_span(from, to, Some(rgb));
+        }
+        if let Some(a) = at {
+            self.set_attr_span(from, to, Some(a));
+        }
     }
 
     /// Apply (or, with `attrs == None`, CLEAR) `MDA` text attributes over ROPE range `[start, end)`.

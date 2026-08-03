@@ -184,6 +184,14 @@ impl Editor {
     pub fn ul_spaces(&self) -> bool {
         self.host.ul_spaces()
     }
+    /// Whether the active document has an `MDA` live-typing mode armed (status-line indicator).
+    pub fn mda_typing_active(&self) -> bool {
+        self.host.mda_typing_active()
+    }
+    /// The active document's armed `MDA` typing layers `(fg, bg, attrs)` (status-line indicator).
+    pub fn mda_typing(&self) -> (Option<(u8, u8, u8)>, Option<(u8, u8, u8)>, Option<u8>) {
+        self.host.mda_typing()
+    }
     /// The active highlighter's name, or `None` when off.
     pub fn highlighter_name(&self) -> Option<&str> {
         self.host.active_doc().highlighter_name()
@@ -3696,6 +3704,27 @@ mod tests {
             vec![(0, 6, ATTR_BOLD | ATTR_UNDERLINE)],
             "attribute mode off — the 'Y' is not styled"
         );
+    }
+
+    #[test]
+    fn mda_typing_mode_is_per_file() {
+        // The live-typing mode belongs to the document, not the session — switching tabs must not carry
+        // one file's mode into another.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command("NEW a.txt");
+        e.run_command("MDA BO"); // arm bold typing on a.txt
+        assert!(e.mda_typing_active(), "mode is armed on a.txt");
+
+        e.run_command("NEW b.txt"); // switch to a different file
+        assert!(!e.mda_typing_active(), "b.txt does not inherit a.txt's mode");
+        e.insert_str("plain");
+        assert!(e.attr_spans().is_empty(), "text typed in b.txt is unstyled");
+
+        e.run_command("BUFPREV"); // back to a.txt
+        assert!(e.mda_typing_active(), "a.txt still has its own mode");
+        e.insert_str("X");
+        assert!(!e.attr_spans().is_empty(), "typing in a.txt is styled");
     }
 
     #[test]

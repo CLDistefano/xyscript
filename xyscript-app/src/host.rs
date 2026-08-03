@@ -2126,12 +2126,6 @@ pub struct AppHost {
     pending_open: Option<PendingOpen>,
     /// Autosave interval in seconds (`AUTOSAVE`; 0 = off; read as `$AU`). GUI does the timing.
     autosave_secs: u64,
-    /// `MDA` TYPING MODE: when a set of these is active (an `MDA`/`MDA/B` run with NO selection),
-    /// each subsequently TYPED run of text is styled with it — XyWrite's modal "MD". Three independent
-    /// layers, mirroring the span layers. A bare `MDA` clears fg+attr, `MDA/B` clears bg. Session-only.
-    mda_type_fg: Option<(u8, u8, u8)>,
-    mda_type_bg: Option<(u8, u8, u8)>,
-    mda_type_attr: Option<u8>,
     /// Tab width in spaces (`$TB`), set by `TB <n>`.
     tab_width: usize,
     /// Soft tabs (`TABSPACES`): `TAB`/indent inserts `tab_width` spaces instead of a tab. `$TABSPACES`.
@@ -2572,9 +2566,6 @@ impl AppHost {
             pending_close: None,
             pending_open: None,
             autosave_secs: 0, // off by default
-            mda_type_fg: None,
-            mda_type_bg: None,
-            mda_type_attr: None,
             tab_width: 4,
             tab_soft: false,
             tab_indent: false,
@@ -3049,6 +3040,14 @@ impl AppHost {
     /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`/`$ULSPACES`).
     pub fn ul_spaces(&self) -> bool {
         self.ul_spaces
+    }
+    /// Whether the active document has an `MDA` live-typing mode armed (for the status-line indicator).
+    pub fn mda_typing_active(&self) -> bool {
+        self.docs[self.active].mda_typing_active()
+    }
+    /// The active document's armed `MDA` typing layers `(fg, bg, attrs)` (for the status indicator).
+    pub fn mda_typing(&self) -> (Option<(u8, u8, u8)>, Option<(u8, u8, u8)>, Option<u8>) {
+        self.docs[self.active].mda_typing()
     }
     /// Clear the command-line contents WITHOUT touching focus — used by `CMBLANK on` after a command
     /// runs (the resting-focus rule has already decided where focus lands). Unlike `BlankCmdLine`,
@@ -7638,30 +7637,6 @@ impl AppHost {
         let (fg, bg) = doc.color_spans_raw();
         xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw());
     }
-
-    /// Apply the active `MDA` TYPING MODE (if any) to the run just typed — the rope range from `from`
-    /// to the current caret. A no-op when no mode is active or nothing was inserted. Each active layer
-    /// (fg colour / bg colour / attributes) paints its span, exactly as an `MDA` on a selection would.
-    fn apply_mda_typing_style(&mut self, from: usize) {
-        let (fg, bg, at) = (self.mda_type_fg, self.mda_type_bg, self.mda_type_attr);
-        if fg.is_none() && bg.is_none() && at.is_none() {
-            return;
-        }
-        let doc = self.active();
-        let to = doc.buffer().cursor();
-        if to <= from {
-            return; // caret didn't advance (e.g. an empty insert)
-        }
-        if let Some(rgb) = fg {
-            doc.set_color_span(from, to, Some(rgb));
-        }
-        if let Some(rgb) = bg {
-            doc.set_bg_color_span(from, to, Some(rgb));
-        }
-        if let Some(a) = at {
-            doc.set_attr_span(from, to, Some(a));
-        }
-    }
 }
 
 impl Host for AppHost {
@@ -7836,7 +7811,7 @@ impl Host for AppHost {
                     .then(|| self.active().buffer().cursor());
                 self.active().insert(&s);
                 if let Some(from) = from {
-                    self.apply_mda_typing_style(from);
+                    self.active().apply_typing_style(from);
                 }
             }
             EditorOp::TypeText(s) => {
@@ -7858,7 +7833,7 @@ impl Host for AppHost {
                 }
                 // `MDA` typing mode: style the run just typed (in the document only).
                 if let Some(from) = style_from {
-                    self.apply_mda_typing_style(from);
+                    self.active().apply_typing_style(from);
                 }
             }
             EditorOp::Delete(DeleteKind::Back) => {
@@ -10038,20 +10013,19 @@ impl Host for AppHost {
                     // `MDA` clears the fg colour AND attribute modes, `MDA/B` clears the bg mode.
                     None => match (rgb, background) {
                         (Some((r, g, b)), true) => {
-                            self.mda_type_bg = Some((r, g, b));
+                            self.docs[self.active].set_typing_bg(Some((r, g, b)));
                             format!("MDA/B typing on: {r} {g} {b}")
                         }
                         (Some((r, g, b)), false) => {
-                            self.mda_type_fg = Some((r, g, b));
+                            self.docs[self.active].set_typing_fg(Some((r, g, b)));
                             format!("MDA typing on: {r} {g} {b}")
                         }
                         (None, true) => {
-                            self.mda_type_bg = None;
+                            self.docs[self.active].set_typing_bg(None);
                             "MDA/B typing off".to_string()
                         }
                         (None, false) => {
-                            self.mda_type_fg = None;
-                            self.mda_type_attr = None;
+                            self.docs[self.active].clear_typing_fg_attr();
                             "MDA typing off".to_string()
                         }
                     },
@@ -10072,11 +10046,11 @@ impl Host for AppHost {
                     // No selection → attribute TYPING MODE: a keyword turns it on, `MDA NM` turns it off.
                     None => match attrs {
                         Some(a) => {
-                            self.mda_type_attr = Some(a);
+                            self.docs[self.active].set_typing_attr(Some(a));
                             format!("MDA typing on: {}", mda_attr_names(a))
                         }
                         None => {
-                            self.mda_type_attr = None;
+                            self.docs[self.active].set_typing_attr(None);
                             "MDA attribute typing off".to_string()
                         }
                     },
