@@ -357,6 +357,10 @@ impl Editor {
     pub fn set_active_buffer(&mut self, i: usize) {
         self.host.set_active(i);
     }
+    /// The active document's stable id — lets the GUI remember scroll position per document.
+    pub fn active_doc_id(&self) -> crate::panes::DocId {
+        self.host.active_doc().id()
+    }
     /// Whether the `*Shell Output*` tab should be shown in the tab strip (`SW`/`$SW`).
     pub fn shell_output_visible(&self) -> bool {
         self.host.shell_output_visible()

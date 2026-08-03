@@ -2075,6 +2075,12 @@ struct GuiApp {
     /// The pane focused as of last frame — compared each frame to detect a focus change (a `TW`
     /// verb or a click in another pane) so `pane_view` can be swapped to the newly focused pane.
     last_focus: Option<xyscript_app::PaneId>,
+    /// SINGLE-PANE per-document scroll memory, keyed by the stable `DocId`: switching tabs (or
+    /// `BUFNEXT`/`LISTTABS`/…) returns you to where you were in each file instead of snapping to the
+    /// caret. Swapped through on an active-document change, mirroring `pane_views` for split panes.
+    doc_scroll: std::collections::HashMap<xyscript_app::DocId, PaneView>,
+    /// The active document as of last frame — compared each frame to detect a tab/buffer switch.
+    last_active_doc: Option<xyscript_app::DocId>,
     /// A click that just focused a non-focused pane: its SCREEN position, applied as a caret placement
     /// on the NEXT frame once that pane is focused + rendered (its window is only hit-testable then).
     /// Gives a single physical click both focus + caret, instead of needing a second click.
@@ -2285,6 +2291,8 @@ impl GuiApp {
             pane_view: PaneView { scroll_line: 0, scroll_vertical: 0.0, follow: true, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0) },
             pane_views: std::collections::HashMap::new(),
             last_focus: None,
+            doc_scroll: std::collections::HashMap::new(),
+            last_active_doc: None,
             pending_pane_click: None,
             pane_wrap: std::collections::HashMap::new(),
             drag_anchor: None,
@@ -8345,6 +8353,26 @@ impl GuiApp {
                 self.pane_view = self.pane_views.remove(&focused_pane).unwrap_or_default();
             }
             self.last_focus = Some(focused_pane);
+        }
+        // SINGLE PANE: remember scroll PER DOCUMENT. On a tab/buffer switch, stash the outgoing doc's
+        // viewport and load the incoming doc's — so returning to a file lands where you left it instead
+        // of snapping to its caret (`follow`). A doc not yet viewed follows the caret (top). Skipped in a
+        // split, where `pane_views` already keeps per-pane scroll (above).
+        if !multi {
+            let cur_doc = self.editor.active_doc_id();
+            if self.last_active_doc != Some(cur_doc) {
+                if let Some(old) = self.last_active_doc {
+                    self.doc_scroll.insert(old, self.pane_view.clone());
+                    self.pane_view = match self.doc_scroll.remove(&cur_doc) {
+                        Some(mut v) => {
+                            v.follow = false; // honour the saved scroll, don't jump to the caret
+                            v
+                        }
+                        None => PaneView { follow: true, ..PaneView::default() },
+                    };
+                }
+                self.last_active_doc = Some(cur_doc);
+            }
         }
         let sb_w = if multi { 0.0 } else { 12.0_f32 }; // vertical scrollbar strip at the far right
         let gutter_w = if self.editor.line_numbers() && !multi {
