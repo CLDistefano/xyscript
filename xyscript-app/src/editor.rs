@@ -3583,6 +3583,65 @@ mod tests {
     }
 
     #[test]
+    fn deleting_a_file_removes_its_xymeta_sidecar() {
+        let base = std::env::temp_dir().join(format!("xyscript-xymeta-del-{:p}", &"del"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA BO");
+        e.run_command("SAVE");
+        let sidecar = base.join(".doc.txt.xymeta");
+        assert!(sidecar.exists(), "sidecar written for the styled doc");
+
+        // `ERNV` (erase, no verify) deletes the file immediately — the sidecar must go with it.
+        e.run_command("ERNV doc.txt");
+        assert!(!base.join("doc.txt").exists(), "the file was deleted");
+        assert!(!sidecar.exists(), "the .xymeta sidecar is deleted alongside the file");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn renaming_a_file_moves_its_xymeta_sidecar() {
+        let base = std::env::temp_dir().join(format!("xyscript-xymeta-ren-{:p}", &"ren"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW old.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA UL");
+        e.run_command("SAVE");
+        assert!(base.join(".old.txt.xymeta").exists(), "sidecar written under the old name");
+
+        e.run_command("RENAME old.txt new.txt");
+        assert!(base.join("new.txt").exists(), "file renamed");
+        assert!(!base.join(".old.txt.xymeta").exists(), "no orphan sidecar at the old name");
+        assert!(base.join(".new.txt.xymeta").exists(), "sidecar followed the rename");
+
+        // And the styling actually survives: open the renamed file and the underline span is restored.
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.run_command("OPEN new.txt");
+        assert_eq!(
+            e2.attr_spans(),
+            vec![(0, 5, crate::document::ATTR_UNDERLINE)],
+            "MDA styling restored from the moved sidecar"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn mda_styling_marks_the_document_dirty_until_saved() {
         // Styling doesn't ride the undo stack, but it IS persisted, so it must flip the modified flag
         // — otherwise autosave and the save-on-close prompt would silently skip a styling-only change.

@@ -3323,6 +3323,27 @@ impl GuiApp {
         rects
     }
 
+    /// Clamp each rect's right edge to the actual text extent on its visual row, so a span that crosses
+    /// a soft-wrap stops under the last glyph rather than running out to the right margin. Used for the
+    /// `MDA` underline and reverse-video rects — where `highlight_rects`' band-to-margin fill (right for
+    /// a selection/FIND highlight) would otherwise paint under the empty margin past a wrap. The row's
+    /// text-right edge is the layout run's `line_w` plus any hanging-indent offset. Call BEFORE the
+    /// horizontal-scroll (`hshift`) adjustment, so the rects and the layout runs share coordinates.
+    fn clamp_rects_to_text(&self, rects: &mut [(i32, i32, i32, i32)], buffer: &Buffer) {
+        if rects.is_empty() {
+            return;
+        }
+        let rows: Vec<(i32, i32)> = buffer
+            .layout_runs()
+            .map(|r| (r.line_top as i32, self.wi_offset_at_y(r.line_top) as i32 + r.line_w.ceil() as i32))
+            .collect();
+        for rect in rects.iter_mut() {
+            if let Some(&(_, right)) = rows.iter().find(|&&(y, _)| (y - rect.1).abs() <= 1) {
+                rect.2 = rect.2.min(right);
+            }
+        }
+    }
+
     /// Single-glyph rects for the `BALPAIRS` matched-bracket pair at/adjacent to the caret. Each
     /// bracket is one ASCII char, so a `(p, p+1)` span on a single visual row — no wrap handling. Off-
     /// screen brackets clamp out to nothing. Empty unless `BALPAIRS` is on and the caret is on a
@@ -3730,6 +3751,12 @@ impl GuiApp {
             }
             out
         };
+        // `highlight_rects` fills a soft-WRAPPED row out to the right margin (correct for a selection/
+        // FIND band, but for an MDA underline or reverse-video block it paints under the empty margin
+        // past the wrap). Clamp both to the actual text extent on each row so a wrapped span stops
+        // under its last glyph. Done here — before the `hshift` loop — so rects and layout share coords.
+        self.clamp_rects_to_text(&mut mda_underline_rects, &buffer);
+        self.clamp_rects_to_text(&mut mda_reverse_rects, &buffer);
         // Record the visible byte window so the live checker can scope to it (bounded work on huge
         // files). Decoded-byte offsets, matching what `recheck_lints`/`compute_lints` expect.
         self.lint_visible = Some((win.start_decoded, win.start_decoded + win.decoded_len));

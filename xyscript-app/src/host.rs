@@ -155,6 +155,27 @@ fn xymeta_path(target: &Path) -> Option<PathBuf> {
     Some(p)
 }
 
+/// Best-effort removal of a document's hidden `.xymeta` sidecar when the file itself is deleted, so no
+/// orphan metadata is left behind. A no-op when there is no sidecar (and harmless for a directory
+/// target — `.<dir>.xymeta` simply won't exist).
+fn remove_xymeta_sidecar(target: &Path) {
+    if let Some(scp) = xymeta_path(target) {
+        let _ = std::fs::remove_file(scp);
+    }
+}
+
+/// Best-effort: move a document's hidden `.xymeta` sidecar to follow a rename/move of the file, so its
+/// MDA styling stays attached (and no orphan is left at the old name). A no-op when the source file
+/// has no sidecar. `to` is the FINAL destination path (after any "rename into a directory" join).
+fn rename_xymeta_sidecar(from: &Path, to: &Path) {
+    if let (Some(src), Some(dst)) = (xymeta_path(from), xymeta_path(to)) {
+        if src.exists() {
+            let _ = std::fs::remove_file(&dst); // Windows won't rename onto an existing hidden file
+            let _ = std::fs::rename(&src, &dst); // keeps the hidden attribute across the move
+        }
+    }
+}
+
 /// Give a file the Windows HIDDEN attribute (a leading dot alone doesn't hide it there). No-op on
 /// Unix, where the dot prefix already hides it.
 #[cfg(windows)]
@@ -6691,6 +6712,7 @@ impl AppHost {
         };
         Some(match res {
             Ok(()) => {
+                remove_xymeta_sidecar(&path); // don't orphan the MDA sidecar
                 self.refresh_listing();
                 format!("deleted {name}")
             }
@@ -6749,6 +6771,9 @@ impl AppHost {
         };
         match res {
             Ok(()) => {
+                if !self.virtual_fs {
+                    remove_xymeta_sidecar(path); // don't orphan the MDA sidecar
+                }
                 let _ = self.close_active_buffer();
                 self.recently_closed.retain(|(p, _)| p != path); // deleted → not reopenable
                 format!("deleted {name}")
@@ -6829,6 +6854,9 @@ impl AppHost {
                     };
                     match res {
                         Ok(()) => {
+                            if !self.virtual_fs {
+                                remove_xymeta_sidecar(&path); // don't orphan the MDA sidecar
+                            }
                             self.refresh_listings_after_delete(&path);
                             Some(format!("deleted {name}"))
                         }
@@ -8562,6 +8590,7 @@ impl Host for AppHost {
                 let res =
                     if p.is_dir() { std::fs::remove_dir(&p) } else { std::fs::remove_file(&p) };
                 res.map_err(|e| XplError::trappable(format!("DEL: {}: {e}", p.display())))?;
+                remove_xymeta_sidecar(&p); // don't orphan the MDA sidecar
                 self.refresh_listings_after_delete(&p);
                 return Ok(Value::str(format!("deleted {}", p.display())));
             }
@@ -8605,6 +8634,7 @@ impl Host for AppHost {
                     }
                 }
                 std::fs::rename(&f, &t).map_err(|e| XplError::trappable(format!("RENAME: {e}")))?;
+                rename_xymeta_sidecar(&f, &t); // the MDA sidecar follows the file
                 // If the renamed file is open in a tab, update its path so the tab label (derived
                 // from the file name) follows the rename instead of showing the old name.
                 self.retarget_open_tab(&f, t.clone());
