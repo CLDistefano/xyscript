@@ -3569,8 +3569,33 @@ mod tests {
             vec![(0, 5, ATTR_BOLD | ATTR_UNDERLINE)],
             "attributes restored from the sidecar on reopen"
         );
+        assert!(!e2.modified(), "a freshly-opened styled doc matches disk — not modified");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn mda_styling_marks_the_document_dirty_until_saved() {
+        // Styling doesn't ride the undo stack, but it IS persisted, so it must flip the modified flag
+        // — otherwise autosave and the save-on-close prompt would silently skip a styling-only change.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("SAVE");
+        assert!(!e.modified(), "clean baseline right after a save");
+        // Apply an attribute with NO text edit → the doc is dirty again.
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA BO");
+        assert!(e.modified(), "MDA styling alone marks the doc modified");
+        e.run_command("SAVE");
+        assert!(!e.modified(), "saving clears it (styling persisted to the sidecar)");
+        // A background colour on the selection marks it dirty too.
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA/B 0 0 255");
+        assert!(e.modified(), "a background block colour also marks the doc modified");
     }
 
     #[test]

@@ -218,6 +218,11 @@ pub struct Document {
     /// non-overlapping model as the colour layers; rendered as glyph weight/slant + a drawn underline.
     /// Persisted to the `.xymeta` sidecar's `[attrs]` section. `attr_spans_decoded` for the renderer.
     attr_spans: Vec<(usize, usize, u8)>,
+    /// Set when `MDA`/`FGCOLOR` styling changes but the buffer text hasn't — styling doesn't ride the
+    /// undo stack, so it wouldn't otherwise flip [`is_modified`](Self::is_modified). Making it count
+    /// keeps styling-only changes in autosave and the save-on-close prompt. Cleared by `mark_saved` /
+    /// `load`; NOT set by sidecar restore (a freshly-opened styled doc matches disk).
+    styling_dirty: bool,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -303,6 +308,7 @@ impl Clone for Document {
             color_spans: self.color_spans.clone(),
             bg_spans: self.bg_spans.clone(),
             attr_spans: self.attr_spans.clone(),
+            styling_dirty: self.styling_dirty,
             lints: self.lints.clone(),
             gen: self.gen,
             dir: self.dir.clone(),
@@ -334,6 +340,7 @@ impl Default for Document {
             color_spans: Vec::new(),
             bg_spans: Vec::new(),
             attr_spans: Vec::new(),
+            styling_dirty: false,
             lints: Vec::new(),
             gen: 0,
             dir: None,
@@ -433,7 +440,7 @@ impl Document {
 
     /// Whether the document has unsaved changes (`$MO`).
     pub fn is_modified(&self) -> bool {
-        self.saved_len != Some(self.undo.len())
+        self.saved_len != Some(self.undo.len()) || self.styling_dirty
     }
 
     /// The backing file path, if any.
@@ -713,12 +720,14 @@ impl Document {
     pub fn set_color_span(&mut self, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
         Self::set_span_in(&mut self.color_spans, start, end, color);
         self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true; // persisted to the sidecar, so it counts as an unsaved change
     }
 
     /// Like [`set_color_span`](Self::set_color_span) but for the BACKGROUND layer (`MDA/B`).
     pub fn set_bg_color_span(&mut self, start: usize, end: usize, color: Option<(u8, u8, u8)>) {
         Self::set_span_in(&mut self.bg_spans, start, end, color);
         self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
     }
 
     /// Apply (or, with `attrs == None`, CLEAR) `MDA` text attributes over ROPE range `[start, end)`.
@@ -728,6 +737,7 @@ impl Document {
         // An all-zero bitset means "no attributes" — treat it as a clear so we never store an empty span.
         Self::set_span_in(&mut self.attr_spans, start, end, attrs.filter(|&a| a != 0));
         self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
     }
 
     /// Apply (or, with `value == None`, CLEAR) a payload over ROPE range `[start, end)` in one span
@@ -895,6 +905,7 @@ impl Document {
         self.color_spans.clear();
         self.bg_spans.clear();
         self.attr_spans.clear();
+        self.styling_dirty = false; // a freshly-loaded doc matches disk (restore-from-sidecar won't set it)
         self.undo.clear();
         self.redo.clear();
         self.coalescing = false;
@@ -928,6 +939,7 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.saved_len = Some(self.undo.len());
         self.coalescing = false;
+        self.styling_dirty = false; // styling was just persisted to the sidecar
     }
 
     // ---- recorded mutations ------------------------------------------------
