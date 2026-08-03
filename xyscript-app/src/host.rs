@@ -1279,6 +1279,9 @@ const JOB_DRAIN_BYTES: usize = 256 * 1024;
 pub struct TabInfo {
     /// File name (or "untitled").
     pub name: String,
+    /// The document's full path (including the file name), or `None` for an unsaved / special buffer.
+    /// Used for the tab's hover tooltip.
+    pub path: Option<String>,
     /// Has unsaved changes.
     pub modified: bool,
     /// Locked against edits (`RO`).
@@ -3213,6 +3216,7 @@ impl AppHost {
             .iter()
             .map(|d| TabInfo {
                 name: d.file_name().unwrap_or_else(|| "untitled".to_string()),
+                path: d.path().map(|p| p.display().to_string()),
                 modified: d.is_modified(),
                 read_only: d.read_only(),
             })

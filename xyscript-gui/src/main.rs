@@ -7681,9 +7681,9 @@ impl GuiApp {
                             continue;
                         }
                         // truncated name [lock if read-only] [* if modified]. A long filename would
-                        // otherwise stretch its tab to fit; cap it and show the full name on hover.
+                        // otherwise stretch its tab to fit; cap it. Hover ALWAYS shows the full path +
+                        // filename (or just the name for an unsaved / special buffer that has no path).
                         const TAB_NAME_MAX: usize = 28;
-                        let long = t.name.chars().count() > TAB_NAME_MAX;
                         let mut label = truncate_tab_name(&t.name, TAB_NAME_MAX);
                         if t.read_only {
                             label.push_str(" 🔒");
@@ -7691,8 +7691,9 @@ impl GuiApp {
                         if t.modified {
                             label.push_str(" *");
                         }
-                        let resp = ui.selectable_label(i == active, label);
-                        let resp = if long { resp.on_hover_text(t.name.clone()) } else { resp };
+                        let resp = ui
+                            .selectable_label(i == active, label)
+                            .on_hover_text(t.path.clone().unwrap_or_else(|| t.name.clone()));
                         if resp.clicked() {
                             switch_to = Some(i);
                         }
