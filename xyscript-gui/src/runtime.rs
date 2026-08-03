@@ -1797,14 +1797,33 @@ fn wgpu_config() -> WgpuConfiguration {
 /// fix, then exit — instead of a bare panic that vanishes the window with no message. `os_message::show`
 /// spawns a DETACHED box (a separate process), so exiting immediately still leaves it on screen.
 fn graphics_init_failed(detail: &str) -> ! {
+    // The useful remedy differs sharply by platform — and generic "try dx12" advice is actively wrong
+    // off Windows (dx12 is a Windows-only backend), so tailor the suggestions to the actual OS.
+    #[cfg(windows)]
+    let advice = "\u{2022} Update your graphics driver (Intel / AMD / NVIDIA), then restart.\n\
+         \u{2022} Or pick a different renderer: set the environment variable WGPU_BACKEND to dx12 \
+         (or vulkan, or gl) before starting XyScript.";
+    #[cfg(target_os = "linux")]
+    let advice = "\u{2022} Install the Vulkan driver for your GPU, then restart. On Debian/Ubuntu:\n    \
+         sudo apt install mesa-vulkan-drivers\n  \
+         (Fedora: mesa-vulkan-drivers  \u{2022}  Arch: vulkan-intel / vulkan-radeon.)\n\
+         \u{2022} If you run Wayland, try the OpenGL renderer under X11:\n    \
+         WINIT_UNIX_BACKEND=x11 WGPU_BACKEND=gl xyscript\n\
+         \u{2022} Otherwise update Mesa / your GPU driver and restart.";
+    #[cfg(target_os = "macos")]
+    let advice = "\u{2022} Update macOS, then restart.\n\
+         \u{2022} Or pick a different renderer: set the environment variable WGPU_BACKEND to metal \
+         (or gl) before starting XyScript.";
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    let advice = "\u{2022} Update your graphics driver, then restart.\n\
+         \u{2022} Or set the environment variable WGPU_BACKEND to vulkan (or gl) before starting XyScript.";
+
     xyscript_app::os_message::show(
         Some("XyScript — graphics error"),
         &format!(
             "XyScript couldn't start the graphics system on this PC.\n\n\
-             This is almost always a display-driver problem. Two things to try:\n\
-             \u{2022} Update your graphics driver (Intel / AMD / NVIDIA), then restart.\n\
-             \u{2022} Launch with a different renderer: set the environment variable WGPU_BACKEND \
-             to dx12 (or vulkan, or gl) before starting XyScript.\n\n\
+             This is almost always a display-driver problem. Things to try:\n\
+             {advice}\n\n\
              Technical detail: {detail}"
         ),
     );
