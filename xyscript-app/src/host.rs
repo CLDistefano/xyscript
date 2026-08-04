@@ -5956,6 +5956,19 @@ impl AppHost {
             let len = doc.buffer().len();
             doc.set_caret(caret.min(len), anchor.map(|a| a.min(len)));
             doc.share_grammars(self.highlight_grammars.clone());
+            // Restore MDA styling from the doc's hidden `.xymeta` sidecar — the normal open path does
+            // this, but session-restore reconstructs docs itself, so without this a restored file shows
+            // no colours/attributes until you close and reopen it. Guarded by the sidecar's content
+            // hash (a clean file matches disk; a styling-only-dirty shadow matches its last-saved bytes;
+            // a content-edited shadow mismatches → left plain, correctly). Untitled has no path → skip.
+            if !self.virtual_fs {
+                if let Some(p) = doc.path().map(|p| p.to_path_buf()) {
+                    let bytes = doc.save_bytes();
+                    if let Some((fg, bg, attrs)) = xymeta_read(&p, &bytes) {
+                        doc.set_color_spans_raw(fg, bg, attrs);
+                    }
+                }
+            }
             let new_id = doc.id();
             id_map.insert(saved_id, new_id);
             self.docs.push(doc);

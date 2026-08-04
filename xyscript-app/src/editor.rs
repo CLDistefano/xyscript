@@ -3654,6 +3654,39 @@ mod tests {
     }
 
     #[test]
+    fn session_restore_reapplies_mda_styling_from_the_sidecar() {
+        // SESSION on reconstructs docs itself; it must still restore MDA styling from the sidecar, or a
+        // restored file shows no colours/attributes until you close and reopen it.
+        let base = std::env::temp_dir().join(format!("xyscript-session-mda-{:p}", &"smda"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA UL");
+        e.run_command("SAVE"); // clean file + sidecar; session records it by PATH
+        assert!(base.join(".doc.txt.xymeta").exists(), "sidecar written");
+        e.host_mut().save_session(&sdir).unwrap();
+
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        let n = e2.host_mut().restore_session(&sdir).unwrap();
+        assert!(n >= 1, "the styled tab restored");
+        assert_eq!(
+            e2.attr_spans(),
+            vec![(0, 5, crate::document::ATTR_UNDERLINE)],
+            "MDA styling shows on session-restore (was: only after a manual close+reopen)"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn mda_styling_marks_the_document_dirty_until_saved() {
         // Styling doesn't ride the undo stack, but it IS persisted, so it must flip the modified flag
         // — otherwise autosave and the save-on-close prompt would silently skip a styling-only change.
