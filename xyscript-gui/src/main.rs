@@ -1978,6 +1978,13 @@ struct GuiApp {
     find_hl_cache: std::collections::HashMap<xyscript_app::DocId, (u64, Vec<(usize, usize)>)>,
     /// The Find text/options the `find_hl_cache` was built for; a change invalidates the whole cache.
     find_hl_params: Option<(String, bool, bool, bool, bool)>,
+    /// The Find text/options the *Find window* last recomputed highlights for. The Find window is a
+    /// separate OS window on its own repaint schedule; it must only rewrite the shared highlight set
+    /// when ITS OWN inputs change (find text / an option toggle — needed for type-to-find), NOT on a
+    /// document edit. Document edits are handled by the main window's pre-render refresh, which is then
+    /// the SOLE writer during editing — so the highlights can't micro-jitter from two windows writing
+    /// them at different frame times (a timing artifact that showed on some machines but not others).
+    find_win_params: Option<(String, bool, bool, bool, bool)>,
     /// `EMPH` emphasis matches for the ACTIVE document (rope offsets) — a persistent, host-driven
     /// highlight (unlike `find_highlights`, which the Find dialog drives). Painted behind + over the
     /// glyphs with `EMPHBGCOLOR`/`EMPHFGCOLOR`. Cached via `emph_key`.
@@ -2269,6 +2276,7 @@ impl GuiApp {
             find_hl_key: None,
             find_hl_cache: std::collections::HashMap::new(),
             find_hl_params: None,
+            find_win_params: None,
             lint_visible: None,
             lint_panes: Vec::new(),
             lint_rr: 0,
@@ -5064,6 +5072,7 @@ impl GuiApp {
         self.find_hl_key = None;
         self.find_hl_cache.clear();
         self.find_hl_params = None;
+        self.find_win_params = None;
     }
 
     /// Whether the active buffer is a directory listing (F3 there is express-find, not Find Next).
@@ -5420,11 +5429,18 @@ impl GuiApp {
             outcome.close = true;
             return outcome;
         }
-        // Live "highlight all": refresh the match set as the Find text / options / document change
-        // (cheap — cached on `find_hl_key`). Shared with the main-window pre-render call so a tab switch
-        // paints file + hits together. `find_current` is (re)computed in `raster` from the live caret.
-        if self.refresh_find_highlights() {
-            outcome.main_redraw = true; // main window repaints to show the updated highlights
+        // Live "highlight all": recompute the match set from the FIND WINDOW only when ITS OWN inputs
+        // changed (the find text or an option toggle — needed so the type-to-find below sees fresh
+        // matches). A DOCUMENT edit is deliberately NOT handled here: the main window's pre-render
+        // refresh owns that, and keeping it the sole writer during editing stops the highlights from
+        // micro-jittering when both windows recompute on independent repaint schedules. `find_current`
+        // is (re)computed in `raster` from the live caret.
+        let win_params = (find.clone(), case, whole, regex, scope);
+        if self.find_win_params.as_ref() != Some(&win_params) {
+            self.find_win_params = Some(win_params);
+            if self.refresh_find_highlights() {
+                outcome.main_redraw = true; // main window repaints to show the updated highlights
+            }
         }
 
         // Live type-to-find: whenever the Find TEXT changes, jump the caret to a match and centre it
