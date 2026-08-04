@@ -614,14 +614,20 @@ change will not slip away unsaved.
 
 == Styling in the preview and PDF
 
-For a Markdown/GFM document, MDA styling is not only on screen: it is woven into the #raw("PV") preview
-and the #raw("TOPDF") export, so it prints as it appears — including underline, color, and reverse
-video, which Markdown itself cannot express. It applies to ordinary prose; styling that happens to fall
-inside Markdown syntax (a code span, a link's target) is left to render plainly. A document authored
-directly in Typst styles itself in Typst markup, so there MDA stays a screen-only overlay.
+MDA styling is not only on screen: it is woven into the #raw("PV") preview and the #raw("TOPDF") export,
+so it prints as it appears — including underline, color, and reverse video, which Markdown itself cannot
+express. It applies to ordinary prose; styling that happens to fall inside markup (a code span, a link's
+target) is left to render plainly.
+
+This works for a document authored directly in *Typst* too: the styling is woven around the prose only,
+leaving your own Typst markup — headings, #raw("#")-calls, math, code — untouched, so a bold or colored
+phrase prints alongside everything Typst does. (HTML documents are the exception; there MDA stays a
+screen-only overlay.)
 
 One related knob: #raw("ULSPACES on|off") (default *on*) chooses whether an underline runs through the
-spaces between words or breaks at them — in both selection styling and the typing mode.
+spaces between words or breaks at them. It governs both selection styling and the typing mode, and the
+printed underline follows the same rule — so the #raw("PV") preview and #raw("TOPDF") output match the
+screen.
 
 // ===================================================================================================
 = Files, Tabs, and Directories
