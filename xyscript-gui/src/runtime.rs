@@ -277,6 +277,13 @@ struct Handler {
     window: Option<Arc<Window>>,
     egui_state: Option<egui_winit::State>,
     painter: Option<Painter>,
+    /// The physical size the wgpu surface is currently configured for. egui reads the window's live
+    /// `inner_size`/`scale_factor` every frame (via `take_egui_input`), but the surface is only
+    /// reconfigured on `Resized` — and a mixed-DPI monitor change can leave those out of step (the DPI
+    /// update lands but the matching resize is skipped/reordered), so egui lays out for the new density
+    /// and paints into a stale-sized surface → the whole window renders tiny until restart. `redraw`
+    /// reconciles the surface to the window each frame using this; `None` = not yet configured.
+    surface_px: Option<(u32, u32)>,
     /// When egui asked for the next repaint (for caret blink, IME, etc.).
     repaint_at: Option<Instant>,
     /// The separate `TXT` window, when a script is paused on a `TXT` dialog.
@@ -321,6 +328,7 @@ impl Handler {
             window: None,
             egui_state: None,
             painter: None,
+            surface_px: None,
             repaint_at: None,
             txt: None,
             txt_pos: None,
@@ -594,11 +602,32 @@ impl Handler {
         consumed
     }
 
+    /// Reconfigure the wgpu surface to `(w, h)` physical pixels if it isn't already — cheap no-op when
+    /// unchanged. The safety net for mixed-DPI monitor changes: keeps the surface in step with the
+    /// window every frame, not only on the `Resized` events (which can be skipped/reordered around a
+    /// `ScaleFactorChanged`), so egui's per-frame ppp and the surface never drift apart.
+    fn ensure_surface(&mut self, w: u32, h: u32) {
+        if self.surface_px == Some((w, h)) {
+            return;
+        }
+        if let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) {
+            if let Some(p) = self.painter.as_mut() {
+                p.on_window_resized(ViewportId::ROOT, nw, nh);
+                self.surface_px = Some((w, h));
+            }
+        }
+    }
+
     /// Render one frame: run egui over `GuiApp::ui` and paint via wgpu.
     fn redraw(&mut self) {
         let Some(window) = self.window.clone() else {
             return;
         };
+        // Keep the surface sized to the window BEFORE painting — a mixed-DPI monitor change updates
+        // egui's ppp (read fresh below) but can leave the surface stale, which renders the whole
+        // window tiny until restart.
+        let phys = window.inner_size();
+        self.ensure_surface(phys.width, phys.height);
         let raw_input = match self.egui_state.as_mut() {
             Some(s) => s.take_egui_input(&window),
             None => return,
@@ -2071,13 +2100,9 @@ impl ApplicationHandler for Handler {
                 return;
             }
             WindowEvent::Resized(size) => {
-                if let (Some(w), Some(h)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    if let Some(p) = self.painter.as_mut() {
-                        p.on_window_resized(ViewportId::ROOT, w, h);
-                    }
-                }
+                // Reconcile immediately (redraw also does, as the safety net for DPI changes whose
+                // resize is skipped/reordered — see `ensure_surface`).
+                self.ensure_surface(size.width, size.height);
                 // fall through so egui updates its screen rect too
             }
             WindowEvent::ModifiersChanged(m) => {
