@@ -1971,6 +1971,13 @@ struct GuiApp {
     find_current: Option<(usize, usize)>,
     /// Cache key for `find_highlights` = (text, case, whole-word, regex, in-selection, doc revision).
     find_hl_key: Option<(String, bool, bool, bool, bool, u64)>,
+    /// PER-DOCUMENT "highlight all" cache, keyed by `DocId` → (doc revision, match spans): revisiting a
+    /// file (e.g. clicking back to a tab) reuses its prior search instead of re-scanning — so a tab
+    /// switch is instant even on a big file. Cleared when the Find text/options change (all entries
+    /// stale then); in-selection searches bypass it (selection-dependent, not tracked by revision).
+    find_hl_cache: std::collections::HashMap<xyscript_app::DocId, (u64, Vec<(usize, usize)>)>,
+    /// The Find text/options the `find_hl_cache` was built for; a change invalidates the whole cache.
+    find_hl_params: Option<(String, bool, bool, bool, bool)>,
     /// `EMPH` emphasis matches for the ACTIVE document (rope offsets) — a persistent, host-driven
     /// highlight (unlike `find_highlights`, which the Find dialog drives). Painted behind + over the
     /// glyphs with `EMPHBGCOLOR`/`EMPHFGCOLOR`. Cached via `emph_key`.
@@ -2260,6 +2267,8 @@ impl GuiApp {
             wi_rows: Vec::new(),
             find_current: None,
             find_hl_key: None,
+            find_hl_cache: std::collections::HashMap::new(),
+            find_hl_params: None,
             lint_visible: None,
             lint_panes: Vec::new(),
             lint_rr: 0,
@@ -5053,6 +5062,8 @@ impl GuiApp {
         self.find_highlights.clear();
         self.find_current = None;
         self.find_hl_key = None;
+        self.find_hl_cache.clear();
+        self.find_hl_params = None;
     }
 
     /// Whether the active buffer is a directory listing (F3 there is express-find, not Find Next).
@@ -5214,15 +5225,42 @@ impl GuiApp {
             self.find_highlights.clear();
             self.find_current = None;
             self.find_hl_key = None;
+            self.find_hl_cache.clear();
+            self.find_hl_params = None;
             return had;
         }
-        let key = (find.clone(), case, whole, regex, scope, self.editor.doc_revision());
-        if self.find_hl_key.as_ref() != Some(&key) {
-            self.find_highlights = self.editor.find_all(&find, case, whole, regex, scope);
-            self.find_hl_key = Some(key);
-            return true;
+        // A change to the Find text/options makes EVERY document's cached matches stale.
+        let params = (find.clone(), case, whole, regex, scope);
+        if self.find_hl_params.as_ref() != Some(&params) {
+            self.find_hl_cache.clear();
+            self.find_hl_params = Some(params);
         }
-        false
+        let rev = self.editor.doc_revision();
+        let key = (find.clone(), case, whole, regex, scope, rev);
+        if self.find_hl_key.as_ref() == Some(&key) {
+            return false; // `find_highlights` already current for this exact (doc, options, revision)
+        }
+        // Reuse this document's prior search when it's still valid (same revision) — the per-doc cache
+        // makes a tab switch instant even on a big file. In-selection is selection-dependent (revision
+        // doesn't track selection), so it bypasses the cache and always recomputes.
+        let did = self.editor.active_doc_id();
+        let cached = (!scope)
+            .then(|| self.find_hl_cache.get(&did))
+            .flatten()
+            .filter(|(crev, _)| *crev == rev)
+            .map(|(_, spans)| spans.clone());
+        self.find_highlights = match cached {
+            Some(spans) => spans,
+            None => {
+                let hits = self.editor.find_all(&find, case, whole, regex, scope);
+                if !scope {
+                    self.find_hl_cache.insert(did, (rev, hits.clone()));
+                }
+                hits
+            }
+        };
+        self.find_hl_key = Some(key);
+        true
     }
 
     fn find_window_ui(&mut self, ui: &mut egui::Ui) -> FindOutcome {
