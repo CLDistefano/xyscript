@@ -344,6 +344,67 @@ fn parse_xymeta_color(line: &str) -> Option<(bool, ColorSpan)> {
     (e > s).then_some((is_bg, (s, e, (r, g, b))))
 }
 
+/// Serialize a document's LIVE `MDA` spans for the session manifest — one tab-free field: `-` when
+/// unstyled, else `;`-joined entries `f,s,e,r,g,b` (fg colour) / `b,s,e,r,g,b` (bg colour) /
+/// `a,s,e,bits` (attributes). Unlike the `.xymeta` sidecar (which only reflects the last SAVE), this
+/// captures the current in-memory styling, so `SESSION` restore preserves UNSAVED styling too.
+fn session_spans_field(doc: &Document) -> String {
+    let (fg, bg) = doc.color_spans_raw();
+    let attr = doc.attr_spans_raw();
+    if fg.is_empty() && bg.is_empty() && attr.is_empty() {
+        return "-".to_string();
+    }
+    let mut parts: Vec<String> = Vec::with_capacity(fg.len() + bg.len() + attr.len());
+    for &(s, e, (r, g, b)) in fg {
+        parts.push(format!("f,{s},{e},{r},{g},{b}"));
+    }
+    for &(s, e, (r, g, b)) in bg {
+        parts.push(format!("b,{s},{e},{r},{g},{b}"));
+    }
+    for &(s, e, bits) in attr {
+        parts.push(format!("a,{s},{e},{bits}"));
+    }
+    parts.join(";")
+}
+
+/// Parse a [`session_spans_field`] back into `(fg, bg, attr)` span lists, each clamped to `len` (a file
+/// edited smaller since the snapshot drops out-of-range spans). Malformed entries are skipped.
+fn parse_session_spans(
+    field: &str,
+    len: usize,
+) -> (Vec<ColorSpan>, Vec<ColorSpan>, Vec<(usize, usize, u8)>) {
+    let (mut fg, mut bg, mut attr) = (Vec::new(), Vec::new(), Vec::new());
+    if field == "-" || field.is_empty() {
+        return (fg, bg, attr);
+    }
+    for entry in field.split(';') {
+        let mut it = entry.split(',');
+        let tag = it.next().unwrap_or("");
+        let nums: Vec<usize> = it.filter_map(|n| n.parse().ok()).collect();
+        match tag {
+            "f" | "b" if nums.len() == 5 => {
+                let (s, e) = (nums[0], nums[1].min(len));
+                let rgb = (nums[2] as u8, nums[3] as u8, nums[4] as u8);
+                if s < e {
+                    if tag == "b" {
+                        bg.push((s, e, rgb));
+                    } else {
+                        fg.push((s, e, rgb));
+                    }
+                }
+            }
+            "a" if nums.len() == 3 => {
+                let (s, e, bits) = (nums[0], nums[1].min(len), nums[2] as u8);
+                if s < e && bits != 0 {
+                    attr.push((s, e, bits));
+                }
+            }
+            _ => {}
+        }
+    }
+    (fg, bg, attr)
+}
+
 /// Make `path` absolute and lexically clean: resolve `.`/`..` by pure path logic (never touching
 /// the filesystem) and drop any `\\?\` verbatim prefix. Unlike [`std::fs::canonicalize`], this does
 /// NOT resolve symlinks or `subst`ed drives — so a `subst X: C:\dir` path stays `X:\…` instead of
@@ -5810,7 +5871,7 @@ impl AppHost {
     /// garbage-collected. Returns how many tabs were recorded.
     pub fn save_session(&mut self, dir: &Path) -> Result<usize, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("session: {e}"))?;
-        let mut manifest = String::from("v3\n");
+        let mut manifest = String::from("v4\n");
         let mut count = 0usize;
         let mut live = std::collections::HashSet::new(); // backup filenames still in use this pass
         for (i, doc) in self.docs.iter().enumerate() {
@@ -5851,8 +5912,10 @@ impl AppHost {
             };
             // The doc's stable id (field 2) lets RESTORE map the saved pane layout onto the new docs.
             let did = doc.id().0;
+            // LIVE MDA spans (v4) — so unsaved styling survives restore; `reff` stays LAST (tab-safe).
+            let spans = session_spans_field(doc);
             manifest.push_str(&format!(
-                "{kind}\t{did}\t{active}\t{caret}\t{anchor}\t{doctype}\t{enc}\t{backup}\t{reff}\n"
+                "{kind}\t{did}\t{active}\t{caret}\t{anchor}\t{doctype}\t{enc}\t{backup}\t{spans}\t{reff}\n"
             ));
             count += 1;
         }
@@ -5894,11 +5957,14 @@ impl AppHost {
             Err(_) => return Ok(0), // no session to restore
         };
         let mut lines = manifest.lines();
-        // v2 = tabs + (split-only) layout without scroll; v3 adds per-pane scroll and always writes
-        // the layout line. Both parse the same way here — the scroll tokens are optional per leaf.
-        if !matches!(lines.next(), Some("v2") | Some("v3")) {
+        // v2 = tabs + (split-only) layout without scroll; v3 adds per-pane scroll and always writes the
+        // layout line; v4 adds a LIVE MDA-spans field per tab line. All parse the same way here — the
+        // scroll tokens are optional per leaf, and the spans field is read only for v4.
+        let ver = lines.next();
+        if !matches!(ver, Some("v2") | Some("v3") | Some("v4")) {
             return Ok(0); // unknown/foreign format — leave the editor as-is
         }
+        let has_spans = ver == Some("v4");
         let mut restored = 0usize;
         let mut active_target: Option<usize> = None;
         // Saved doc id → restored `DocId`, for remapping the split-pane layout below.
@@ -5914,7 +5980,7 @@ impl AppHost {
                 }
                 continue;
             }
-            let mut it = line.splitn(9, '\t');
+            let mut it = line.splitn(if has_spans { 10 } else { 9 }, '\t');
             let kind = it.next().unwrap_or("");
             let saved_id: u32 = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let active = it.next() == Some("1");
@@ -5926,6 +5992,8 @@ impl AppHost {
             let doctype = it.next().unwrap_or("auto");
             let enc = it.next().unwrap_or("");
             let backup = it.next().unwrap_or("-");
+            // v4 inserts the LIVE MDA-spans field here (before `reff`, which stays last / tab-safe).
+            let spans_field = if has_spans { it.next().unwrap_or("-").to_string() } else { String::new() };
             let reff = it.next().unwrap_or("").to_string();
 
             let mut doc = Document::new();
@@ -5956,12 +6024,16 @@ impl AppHost {
             let len = doc.buffer().len();
             doc.set_caret(caret.min(len), anchor.map(|a| a.min(len)));
             doc.share_grammars(self.highlight_grammars.clone());
-            // Restore MDA styling from the doc's hidden `.xymeta` sidecar — the normal open path does
-            // this, but session-restore reconstructs docs itself, so without this a restored file shows
-            // no colours/attributes until you close and reopen it. Guarded by the sidecar's content
-            // hash (a clean file matches disk; a styling-only-dirty shadow matches its last-saved bytes;
-            // a content-edited shadow mismatches → left plain, correctly). Untitled has no path → skip.
-            if !self.virtual_fs {
+            // Restore MDA styling. v4 sessions carry the doc's LIVE spans in the manifest — apply them
+            // authoritatively (this preserves UNSAVED styling, and an empty field correctly restores a
+            // doc whose styling was cleared but not saved; the sidecar is NOT consulted, since it would
+            // re-add the last-saved styling). Older sessions (v2/v3) have no spans, so fall back to the
+            // on-disk `.xymeta` sidecar — the same restore the normal open path does. Untitled → skip.
+            if has_spans {
+                let len = doc.buffer().len();
+                let (fg, bg, attrs) = parse_session_spans(&spans_field, len);
+                doc.set_color_spans_raw(fg, bg, attrs);
+            } else if !self.virtual_fs {
                 if let Some(p) = doc.path().map(|p| p.to_path_buf()) {
                     let bytes = doc.save_bytes();
                     if let Some((fg, bg, attrs)) = xymeta_read(&p, &bytes) {

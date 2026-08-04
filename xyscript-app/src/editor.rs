@@ -3687,6 +3687,72 @@ mod tests {
     }
 
     #[test]
+    fn session_restore_preserves_unsaved_mda_styling() {
+        // The session snapshot records the LIVE spans, so styling applied but NOT saved (which the
+        // on-disk sidecar can't know about) still comes back on restore.
+        let base = std::env::temp_dir().join(format!("xyscript-session-unsaved-{:p}", &"su"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("SAVE"); // save the CONTENT; no styling yet → sidecar has none
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA BO"); // style WITHOUT saving → dirty; sidecar still has no styling
+        assert!(e.modified(), "styling made the doc dirty");
+        e.host_mut().save_session(&sdir).unwrap();
+
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.host_mut().restore_session(&sdir).unwrap();
+        assert_eq!(
+            e2.attr_spans(),
+            vec![(0, 5, crate::document::ATTR_BOLD)],
+            "unsaved styling restored from the session snapshot (sidecar couldn't have it)"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn session_restore_keeps_unsaved_cleared_styling_cleared() {
+        // A file SAVED with styling, then CLEARED but not re-saved: the session's live (empty) spans
+        // must win over the stale sidecar, or restore would wrongly re-add the old styling.
+        let base = std::env::temp_dir().join(format!("xyscript-session-cleared-{:p}", &"sc"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA UL");
+        e.run_command("SAVE"); // sidecar now HAS the underline
+        assert!(base.join(".doc.txt.xymeta").exists());
+        e.run_command("DFA");
+        e.run_command("MDA NM"); // clear the attribute WITHOUT saving → dirty, in-memory empty
+        assert!(e.attr_spans().is_empty());
+        e.host_mut().save_session(&sdir).unwrap();
+
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.host_mut().restore_session(&sdir).unwrap();
+        assert!(
+            e2.attr_spans().is_empty(),
+            "cleared-but-unsaved styling stays cleared — the session's spans win over the stale sidecar"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn mda_styling_marks_the_document_dirty_until_saved() {
         // Styling doesn't ride the undo stack, but it IS persisted, so it must flip the modified flag
         // — otherwise autosave and the save-on-close prompt would silently skip a styling-only change.
