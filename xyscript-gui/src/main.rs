@@ -5199,6 +5199,32 @@ impl GuiApp {
     /// `main_redraw` when a search moved the caret or changed the live highlights (the main document
     /// window must then repaint to show it). The search composes a real `SE`/`CH` via
     /// `editor.search_spec` — the dialog never duplicates search logic.
+    /// Recompute the FIND "highlight all" match set for the ACTIVE document when the Find text/options
+    /// or the document changed (cheap — key-cached on `find_hl_key`, a no-op otherwise). Returns whether
+    /// the set changed. Called BOTH from the Find window's own render AND from the main window before the
+    /// canvas paints — the latter matters because the Find window is a SEPARATE OS window on its own
+    /// render schedule, so without the main-loop call a tab switch shows the file a frame (or more)
+    /// before its hits reappear. Doing it here paints file + hits together.
+    fn refresh_find_highlights(&mut self) -> bool {
+        let Some(d) = self.find_dialog.as_ref() else { return false };
+        let (find, case, whole, regex, scope) =
+            (d.find.clone(), d.case, d.whole_word, d.regex, d.in_selection);
+        if find.is_empty() {
+            let had = !self.find_highlights.is_empty();
+            self.find_highlights.clear();
+            self.find_current = None;
+            self.find_hl_key = None;
+            return had;
+        }
+        let key = (find.clone(), case, whole, regex, scope, self.editor.doc_revision());
+        if self.find_hl_key.as_ref() != Some(&key) {
+            self.find_highlights = self.editor.find_all(&find, case, whole, regex, scope);
+            self.find_hl_key = Some(key);
+            return true;
+        }
+        false
+    }
+
     fn find_window_ui(&mut self, ui: &mut egui::Ui) -> FindOutcome {
         let mut outcome = FindOutcome::default();
         // Esc dismisses. Read it before the text field runs (a focused TextEdit would otherwise
@@ -5357,19 +5383,10 @@ impl GuiApp {
             return outcome;
         }
         // Live "highlight all": refresh the match set as the Find text / options / document change
-        // (cheap — cached on `find_hl_key`). `raster` paints them in the main window.
-        if find.is_empty() {
-            self.find_highlights.clear();
-            self.find_current = None;
-            self.find_hl_key = None;
-        } else {
-            let key = (find.clone(), case, whole, regex, scope, self.editor.doc_revision());
-            if self.find_hl_key.as_ref() != Some(&key) {
-                self.find_highlights = self.editor.find_all(&find, case, whole, regex, scope);
-                self.find_hl_key = Some(key);
-                outcome.main_redraw = true; // main window repaints to show the updated highlights
-            }
-            // `find_current` is (re)computed in `raster` from the live caret each frame — see there.
+        // (cheap — cached on `find_hl_key`). Shared with the main-window pre-render call so a tab switch
+        // paints file + hits together. `find_current` is (re)computed in `raster` from the live caret.
+        if self.refresh_find_highlights() {
+            outcome.main_redraw = true; // main window repaints to show the updated highlights
         }
 
         // Live type-to-find: whenever the Find TEXT changes, jump the caret to a match and centre it
@@ -8408,6 +8425,13 @@ impl GuiApp {
         if self.editor.take_reveal_center() {
             self.center_caret = true;
             self.pane_view.follow = true;
+        }
+        // Refresh the FIND "highlight all" set for the active doc BEFORE painting the canvas. The Find
+        // window is a separate OS window on its own render schedule, so relying on it alone made a tab
+        // switch show the file a frame (or more) before its hits reappeared. Key-cached → a no-op unless
+        // the active document (or the Find text/options) changed, so it only recomputes on a switch/edit.
+        if self.find_dialog.is_some() {
+            self.refresh_find_highlights();
         }
         let img = if multi {
             self.render_canvas_panes(w, h)
