@@ -25,6 +25,7 @@
 use crate::typst_esc::{escape_text, typst_str};
 use comrak::nodes::{AstNode, ListType, NodeValue};
 use comrak::{parse_document, Arena, Options};
+use typst::syntax::{SyntaxKind, SyntaxNode};
 
 type ColorSpan = (usize, usize, (u8, u8, u8));
 type AttrSpan = (usize, usize, u8);
@@ -42,6 +43,7 @@ pub struct Styler {
     attr: Vec<AttrSpan>,
     def_fg: (u8, u8, u8), // the document's FGCOLOR/BGCOLOR — used to render `RV` reverse video
     def_bg: (u8, u8, u8),
+    ul_spaces: bool, // ULSPACES: whether an underline runs through inter-word blanks (else it breaks)
 }
 
 impl Styler {
@@ -52,8 +54,17 @@ impl Styler {
         attr: Vec<AttrSpan>,
         def_fg: (u8, u8, u8),
         def_bg: (u8, u8, u8),
+        ul_spaces: bool,
     ) -> Self {
-        Styler { line_starts: crate::highlight::line_start_offsets(source), fg, bg, attr, def_fg, def_bg }
+        Styler {
+            line_starts: crate::highlight::line_start_offsets(source),
+            fg,
+            bg,
+            attr,
+            def_fg,
+            def_bg,
+            ul_spaces,
+        }
     }
 
     /// Whether there is any styling at all (empty → the walk behaves exactly like plain `to_typst`).
@@ -66,11 +77,12 @@ impl Styler {
         list.iter().find(|&&(s, e, _)| s <= at && at < e).map(|&(_, _, v)| v)
     }
 
-    /// Emit `literal` (a Text node whose content starts at source byte `src_start`) with any MDA
-    /// styling that covers it spliced in as Typst wrappers. Falls back to plain escaped text when the
-    /// node carries no styling — or when its literal length doesn't match the source range (an escaped
-    /// entity etc.), where the offset mapping wouldn't be reliable.
-    fn emit_text(&self, src_start: usize, literal: &str, out: &mut String) {
+    /// Emit `literal` (prose whose content starts at source byte `src_start`) with any MDA styling that
+    /// covers it spliced in as Typst wrappers. `escape` runs each sub-run through [`escape_text`] (the
+    /// GFM path, whose text is Markdown prose); the authored-Typst path passes `false` because the text
+    /// is already Typst markup (its own [`escape_text`] would double-escape). Falls back to plain text
+    /// where nothing covers it.
+    fn emit_styled(&self, src_start: usize, literal: &str, escape: bool, out: &mut String) {
         let end = src_start + literal.len();
         // Boundaries inside [src_start, end): every span edge from all three layers, plus the ends.
         let mut cuts = vec![src_start, end];
@@ -86,20 +98,28 @@ impl Styler {
         cuts.dedup();
         for w in cuts.windows(2) {
             let (a, b) = (w[0], w[1]);
-            let piece = escape_text(&literal[a - src_start..b - src_start]);
+            let raw = &literal[a - src_start..b - src_start];
+            let piece = if escape { escape_text(raw) } else { raw.to_string() };
             let attr = Self::cover(&self.attr, a).unwrap_or(0);
-            let mut s = piece;
-            // Attributes nest innermost; colour/background outermost. Reverse video overrides the
-            // colour layers (it defines its own fg/bg from the document colours).
+            // Underline is INNERMOST so `ULSPACES off` can break it at inter-word blanks while the
+            // weight / colour wrappers still cover the whole piece (blanks included). `ULSPACES on`
+            // underlines the piece whole.
+            let mut s = if attr & xyscript_xpl::ATTR_UNDERLINE != 0 {
+                if self.ul_spaces {
+                    format!("#underline[{piece}]")
+                } else {
+                    underline_words(&piece)
+                }
+            } else {
+                piece
+            };
             if attr & xyscript_xpl::ATTR_BOLD != 0 {
                 s = format!("#strong[{s}]");
             }
             if attr & xyscript_xpl::ATTR_ITALIC != 0 {
                 s = format!("#emph[{s}]");
             }
-            if attr & xyscript_xpl::ATTR_UNDERLINE != 0 {
-                s = format!("#underline[{s}]");
-            }
+            // Reverse video overrides the colour layers (it defines its own fg/bg from the doc colours).
             if attr & xyscript_xpl::ATTR_REVERSE != 0 {
                 s = format!("#highlight(fill: {})[#text(fill: {})[{s}]]", rgb(self.def_fg), rgb(self.def_bg));
             } else {
@@ -113,6 +133,87 @@ impl Styler {
             out.push_str(&s);
         }
     }
+
+    /// Splice this document's MDA styling into an **authored-Typst** source. Parse it into Typst's
+    /// lossless syntax tree, reconstruct it verbatim, and wrap each maximal run of markup prose
+    /// (`Text`/`Space` leaves) that MDA covers in the matching Typst markup — the authored-Typst
+    /// analogue of [`to_typst_styled`]. Only prose leaves are wrapped, so headings, emphasis/strong
+    /// markers, code, math and every other construct pass through untouched; a source that fails to
+    /// parse cleanly still round-trips (its error nodes are leaves emitted verbatim), so the compiler
+    /// reports the same diagnostics it would without styling. No newlines are added, so compile-error
+    /// LINE numbers still map to the user's buffer (columns on a styled line may shift). An empty styler
+    /// returns the source unchanged.
+    pub fn splice_typst_source(&self, source: &str) -> String {
+        if self.is_empty() {
+            return source.to_string();
+        }
+        let root = typst::syntax::parse(source);
+        let mut out = String::new();
+        let mut pos = 0usize;
+        let mut run: Option<(usize, usize)> = None; // byte range of the prose run being accumulated
+        self.walk_typst(&root, source, &mut pos, &mut run, &mut out);
+        if let Some((s, e)) = run {
+            self.emit_styled(s, &source[s..e], false, &mut out);
+        }
+        out
+    }
+
+    /// Depth-first walk of the Typst CST. Consecutive `Text`/`Space` leaves accumulate into one prose
+    /// `run` (so a styled multi-word phrase is wrapped once, preserving inter-word spacing and line
+    /// breaking); any other leaf flushes the pending run (styled) and is emitted verbatim.
+    fn walk_typst(
+        &self,
+        node: &SyntaxNode,
+        source: &str,
+        pos: &mut usize,
+        run: &mut Option<(usize, usize)>,
+        out: &mut String,
+    ) {
+        if node.children().len() == 0 {
+            let text = node.text();
+            let start = *pos;
+            *pos += text.len();
+            if matches!(node.kind(), SyntaxKind::Text | SyntaxKind::Space) {
+                let run_start = run.map(|(s, _)| s).unwrap_or(start);
+                *run = Some((run_start, start + text.len()));
+            } else {
+                if let Some((s, e)) = run.take() {
+                    self.emit_styled(s, &source[s..e], false, out);
+                }
+                out.push_str(text.as_str());
+            }
+        } else {
+            for child in node.children() {
+                self.walk_typst(child, source, pos, run, out);
+            }
+        }
+    }
+}
+
+/// Wrap each maximal run of non-blank characters in `#underline[…]`, leaving ASCII spaces/tabs bare —
+/// the `ULSPACES off` rendering (the underline breaks at inter-word blanks). Matches the editor, which
+/// splits its underline rects on `' '`/`'\t'`.
+fn underline_words(s: &str) -> String {
+    let mut out = String::new();
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String| {
+        if !word.is_empty() {
+            out.push_str("#underline[");
+            out.push_str(word);
+            out.push(']');
+            word.clear();
+        }
+    };
+    for ch in s.chars() {
+        if ch == ' ' || ch == '\t' {
+            flush(&mut word, &mut out);
+            out.push(ch);
+        } else {
+            word.push(ch);
+        }
+    }
+    flush(&mut word, &mut out);
+    out
 }
 
 /// A Typst `rgb(r, g, b)` colour literal.
@@ -180,7 +281,7 @@ impl<'s> Emitter<'s> {
             {
                 // Style only when the node's source range matches its literal length (plain prose);
                 // otherwise the byte mapping is unreliable, so emit escaped text unchanged.
-                Some((s, (start, end))) if end - start == t.len() => s.emit_text(start, t, out),
+                Some((s, (start, end))) if end - start == t.len() => s.emit_styled(start, t, true, out),
                 _ => out.push_str(&escape_text(t)),
             },
             NodeValue::SoftBreak => out.push(' '),
@@ -343,6 +444,7 @@ mod tests {
             vec![(0, 5, ATTR_BOLD)], // attr: "hello" bold
             (0, 0, 0),
             (255, 255, 255),
+            true,
         );
         assert_eq!(
             to_typst_styled(src, &styler),
@@ -357,6 +459,7 @@ mod tests {
             vec![(0, 3, ATTR_UNDERLINE | ATTR_REVERSE)],
             (10, 20, 30),
             (200, 210, 220),
+            true,
         );
         assert_eq!(
             to_typst_styled("boo", &styler2),
@@ -364,8 +467,75 @@ mod tests {
         );
 
         // An empty styler is identical to plain to_typst (no regression when nothing is styled).
-        let empty = Styler::new(src, vec![], vec![], vec![], (0, 0, 0), (255, 255, 255));
+        let empty = Styler::new(src, vec![], vec![], vec![], (0, 0, 0), (255, 255, 255), true);
         assert_eq!(to_typst_styled(src, &empty), to_typst(src));
+    }
+
+    #[test]
+    fn ulspaces_off_breaks_the_underline_at_blanks() {
+        use xyscript_xpl::ATTR_UNDERLINE;
+        let src = "a b\tc"; // space then tab between the letters
+        let attr = || vec![(0, src.len(), ATTR_UNDERLINE)];
+        let mk = |ul_spaces| {
+            Styler::new(src, vec![], vec![], attr(), (0, 0, 0), (255, 255, 255), ul_spaces)
+        };
+        // ULSPACES on → the whole run is underlined, blanks included.
+        assert_eq!(to_typst_styled(src, &mk(true)), "#underline[a b\tc]");
+        // ULSPACES off → each non-blank run is underlined; the space and tab stay bare.
+        assert_eq!(to_typst_styled(src, &mk(false)), "#underline[a] #underline[b]\t#underline[c]");
+    }
+
+    #[test]
+    fn authored_typst_splice_styles_prose_only() {
+        use xyscript_xpl::{ATTR_BOLD, ATTR_UNDERLINE};
+        // "= Fancy" heading + a paragraph. Byte offsets: '=' 0, ' ' 1, "Fancy" [2,7), "\n\n" [7,9),
+        // "hello world" [9,20).
+        let src = "= Fancy\n\nhello world";
+        let styler = Styler::new(
+            src,
+            vec![],
+            vec![],
+            vec![(2, 7, ATTR_BOLD), (9, 20, ATTR_UNDERLINE)], // bold "Fancy", underline "hello world"
+            (0, 0, 0),
+            (255, 255, 255),
+            true,
+        );
+        let out = styler.splice_typst_source(src);
+        // The heading marker passes through; only its prose is wrapped.
+        assert!(out.starts_with("= #strong[Fancy]"), "heading prose bold, marker intact: {out}");
+        // The multi-word underline is a SINGLE wrapper (spacing preserved), NOT per-word.
+        assert!(out.contains("#underline[hello world]"), "one wrapper over the phrase: {out}");
+        assert!(!out.contains("#underline[hello] #underline[world]"), "not per-word: {out}");
+        // An empty styler returns the source byte-for-byte.
+        let empty = Styler::new(src, vec![], vec![], vec![], (0, 0, 0), (255, 255, 255), true);
+        assert_eq!(empty.splice_typst_source(src), src);
+    }
+
+    #[test]
+    fn authored_typst_splice_leaves_code_and_markers_untouched() {
+        use xyscript_xpl::ATTR_UNDERLINE;
+        // A whole-document underline must NOT wrap the `#strong[…]` call or the math — only the plain
+        // prose leaves. (Wrapping a function call or math would produce broken Typst.)
+        let src = "see #strong[bold] then $x^2$ done";
+        let styler = Styler::new(
+            src,
+            vec![],
+            vec![],
+            vec![(0, src.len(), ATTR_UNDERLINE)],
+            (0, 0, 0),
+            (255, 255, 255),
+            true,
+        );
+        let out = styler.splice_typst_source(src);
+        // The `#strong[…]` call and the math survive verbatim as STRUCTURE; the call's inner prose
+        // ("bold") is itself styled (correct — it's content the user underlined), but math content is
+        // not markup text, so it's left alone.
+        assert!(out.contains("#strong[#underline[bold]]"), "call intact, inner prose styled: {out}");
+        assert!(out.contains("$x^2$"), "math must stay intact: {out}");
+        assert!(out.starts_with("#underline[see"), "leading prose underlined: {out}");
+        // The call itself and the math were NOT wrapped in an underline (that would break Typst).
+        assert!(!out.contains("#underline[#strong"), "the call is not wrapped: {out}");
+        assert!(!out.contains("#underline[$"), "math is not wrapped: {out}");
     }
 
     #[test]

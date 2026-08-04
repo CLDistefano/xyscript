@@ -6335,6 +6335,7 @@ impl AppHost {
             doc.attr_spans_decoded(),
             self.fg_color,
             self.bg_color,
+            self.ul_spaces,
         )
     }
 
@@ -9736,7 +9737,10 @@ impl Host for AppHost {
                 let doc_dir = self.typst_doc_dir();
                 // Render per the document's effective kind (DOCTYPE override, else by extension).
                 let pdf = match self.docs[self.active].render_kind() {
-                    crate::document::RenderKind::Typst => crate::pdf::typst_to_pdf(&source, &doc_dir),
+                    crate::document::RenderKind::Typst => {
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::typst_to_pdf(&source, &doc_dir, Some(&styler))
+                    }
                     crate::document::RenderKind::Gfm => {
                         let styler = self.mda_styler(&source);
                         crate::pdf::gfm_to_pdf(&source, &doc_dir, &self.preview_fonts(), Some(&styler))

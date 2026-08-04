@@ -9916,7 +9916,7 @@ mod tests {
 
     #[test]
     fn reference_typ_compiles() {
-        let pdf = crate::typst_to_pdf(REFERENCE_TYP, std::path::Path::new("."))
+        let pdf = crate::typst_to_pdf(REFERENCE_TYP, std::path::Path::new("."), None)
             .expect("reference.typ must compile as Typst");
         assert!(pdf.starts_with(b"%PDF-"));
     }
@@ -9924,7 +9924,7 @@ mod tests {
     #[test]
     fn manual_typ_compiles() {
         const MANUAL_TYP: &str = include_str!("../../docs/manual.typ");
-        let pdf = crate::typst_to_pdf(MANUAL_TYP, std::path::Path::new("."))
+        let pdf = crate::typst_to_pdf(MANUAL_TYP, std::path::Path::new("."), None)
             .expect("manual.typ must compile as Typst");
         assert!(pdf.starts_with(b"%PDF-"));
     }

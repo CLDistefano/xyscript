@@ -8347,7 +8347,12 @@ impl GuiApp {
                     let scale = (pane_w / 595.0).clamp(0.4, 3.0); // page width ≈ 595 pt
                     let doc_dir = self.editor.host().typst_doc_dir(); // roots #image/#read resolution
                     let res = match kind {
-                        RenderKind::Typst => xyscript_app::typst_to_image(&cur, &doc_dir, scale),
+                        RenderKind::Typst => {
+                            // Splice MDA styling into the authored-Typst preview too (wraps only prose,
+                            // so the document's own Typst markup is untouched).
+                            let styler = self.editor.host().mda_styler(&cur);
+                            xyscript_app::typst_to_image(&cur, &doc_dir, scale, Some(&styler))
+                        }
                         RenderKind::Gfm => {
                             // Splice the document's MDA styling into the preview so it matches the
                             // editor canvas (bold/italic/underline/colour/reverse).

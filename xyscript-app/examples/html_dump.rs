@@ -8,7 +8,7 @@ fn main() {
     let body = xyscript_app::html::to_typst(&src);
     println!("input {} bytes -> body {} bytes", src.len(), body.len());
     println!("--- first 700 chars of emitted typst ---\n{}", &body[..body.len().min(700)]);
-    match xyscript_app::pdf::typst_to_pdf(&body, Path::new(".")) {
+    match xyscript_app::pdf::typst_to_pdf(&body, Path::new("."), None) {
         Ok(pdf) => println!("\n--- COMPILED OK: {} bytes of PDF ---", pdf.len()),
         Err(e) => println!("\n--- COMPILE FAILED ---\n{e}"),
     }

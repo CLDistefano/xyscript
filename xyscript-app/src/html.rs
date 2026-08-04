@@ -560,7 +560,7 @@ mod tests {
         // Sanity: the dangerous subtrees really are gone before we hand this to typst.
         assert!(!body.contains("danger()"), "script text leaked into the body: {body}");
         assert!(!body.contains("color:red"), "style text leaked into the body: {body}");
-        let pdf = crate::pdf::typst_to_pdf(&body, std::path::Path::new("."))
+        let pdf = crate::pdf::typst_to_pdf(&body, std::path::Path::new("."), None)
             .unwrap_or_else(|e| panic!("emitted markup failed to compile:\n{e}\n--- body ---\n{body}"));
         assert!(pdf.starts_with(b"%PDF-"));
     }

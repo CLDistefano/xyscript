@@ -348,16 +348,29 @@ fn compile_html(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<Pa
     compile_markup(format!("{preamble}{}\n", crate::html::to_typst(source)), blobs, doc_dir)
 }
 
-/// Compile a document whose source IS typst markup (authored typst, not GFM): verbatim, no preamble.
-/// The document controls its own fonts via `#set text(font: …)`, so the global `PreviewFonts` setting
-/// doesn't apply — but we DO resolve the families it names from the system (on top of the bundled
-/// set), so `#set text(font: "Georgia")` works if Georgia is installed, like the Typst CLI.
-fn compile_typst(source: &str, doc_dir: &Path) -> Result<PagedDocument, String> {
+/// Compile a document whose source IS typst markup (authored typst, not GFM): (near-)verbatim, no
+/// preamble. The document controls its own fonts via `#set text(font: …)`, so the global `PreviewFonts`
+/// setting doesn't apply — but we DO resolve the families it names from the system (on top of the
+/// bundled set), so `#set text(font: "Georgia")` works if Georgia is installed, like the Typst CLI.
+/// With a `styler`, the document's MDA colours/attributes are spliced into the markup (only around
+/// prose — see [`crate::gfm::Styler::splice_typst_source`]) so the on-screen styling prints; without
+/// one, the source compiles unchanged. Fonts are scanned from the ORIGINAL source (the splice adds no
+/// `font:` references), and the splice adds no newlines, so compile-error line numbers still map to the
+/// user's buffer.
+fn compile_typst(
+    source: &str,
+    doc_dir: &Path,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<PagedDocument, String> {
     let mut blobs: Vec<Vec<u8>> = Vec::new();
     for fam in fonts_referenced(source) {
         blobs.extend(family_font_bytes(&fam));
     }
-    compile_markup(source.to_string(), blobs, doc_dir)
+    let markup = match styler {
+        Some(s) => s.splice_typst_source(source),
+        None => source.to_string(),
+    };
+    compile_markup(markup, blobs, doc_dir)
 }
 
 /// A compiled document → PDF bytes.
@@ -437,13 +450,24 @@ pub fn html_to_image(
 
 /// Render an authored-typst document (the buffer is typst markup) to PDF bytes. `doc_dir` roots
 /// `#image`/`#include`/`#read` file resolution (relative to it, or its drive for absolute paths).
-pub fn typst_to_pdf(source: &str, doc_dir: &Path) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_typst(source, doc_dir)?)
+/// `styler` splices the document's MDA styling into the output (`None` = compile the source verbatim).
+pub fn typst_to_pdf(
+    source: &str,
+    doc_dir: &Path,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_pdf_bytes(&compile_typst(source, doc_dir, styler)?)
 }
 
-/// Render an authored-typst document (all pages, stacked) to a raster RGBA image.
-pub fn typst_to_image(source: &str, doc_dir: &Path, scale: f32) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_typst(source, doc_dir)?, scale)
+/// Render an authored-typst document (all pages, stacked) to a raster RGBA image. `styler` splices the
+/// document's MDA styling into the output (`None` = plain).
+pub fn typst_to_image(
+    source: &str,
+    doc_dir: &Path,
+    scale: f32,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<(Vec<u8>, u32, u32), String> {
+    to_raster(&compile_typst(source, doc_dir, styler)?, scale)
 }
 
 #[cfg(test)]
@@ -497,10 +521,36 @@ mod tests {
             vec![(10, 15, ATTR_BOLD | ATTR_UNDERLINE), (40, 43, ATTR_REVERSE)], // "brown" bold+ul, "dog" reverse
             (0, 0, 0),
             (255, 255, 255),
+            true,
         );
         let pdf = gfm_to_pdf(md, dot(), &dflt(), Some(&styler)).expect("styled GFM should compile");
         assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
         assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
+    }
+
+    #[test]
+    fn mda_styled_authored_typst_compiles_to_a_valid_pdf() {
+        // MDA styling spliced into an AUTHORED-Typst document (around the prose, leaving the document's
+        // own `#strong[…]` / math intact) must still produce Typst the engine accepts — both ULSPACES
+        // modes. Offsets into "= Title\n\nHello there world done.\n": "Hello" [9,14), "there" [15,20),
+        // "world" [21,26).
+        use xyscript_xpl::{ATTR_BOLD, ATTR_REVERSE, ATTR_UNDERLINE};
+        let typ = "= Title\n\nHello there world done. #strong[keep] $x^2$\n";
+        for ul_spaces in [true, false] {
+            let styler = crate::gfm::Styler::new(
+                typ,
+                vec![(9, 14, (0, 128, 0))],   // "Hello" green
+                vec![],
+                vec![(15, 20, ATTR_UNDERLINE), (21, 26, ATTR_BOLD | ATTR_REVERSE)], // "there" ul, "world" bold+rev
+                (0, 0, 0),
+                (255, 255, 255),
+                ul_spaces,
+            );
+            let pdf =
+                typst_to_pdf(typ, dot(), Some(&styler)).expect("styled authored typst should compile");
+            assert!(pdf.starts_with(b"%PDF-"), "missing PDF header (ul_spaces={ul_spaces})");
+            assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
+        }
     }
 
     #[test]
@@ -600,9 +650,9 @@ mod tests {
     fn raster_stacks_all_pages_not_just_the_first() {
         // One page vs an explicit two-page document (forced via #pagebreak): the preview must show
         // BOTH pages, so the two-page raster is taller than the one-page one (was first-page-only).
-        let (_, w1, h1) = typst_to_image("Page one.", dot(), 1.0).expect("one page");
+        let (_, w1, h1) = typst_to_image("Page one.", dot(), 1.0, None).expect("one page");
         let (rgba, w2, h2) =
-            typst_to_image("Page one.#pagebreak()Page two.", dot(), 1.0).expect("two pages");
+            typst_to_image("Page one.#pagebreak()Page two.", dot(), 1.0, None).expect("two pages");
         assert_eq!(w1, w2, "same page width");
         assert!(h2 > h1 + h1 / 2, "two pages ({h2}) should be ~twice one page ({h1})");
         assert_eq!(rgba.len(), (w2 * h2 * 4) as usize);
@@ -621,7 +671,7 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
 #note[a callout]
 #table(columns: 2, [a], [b], [c], [d])
 ";
-        let pdf = typst_to_pdf(typ, dot()).expect("authored typst should compile");
+        let pdf = typst_to_pdf(typ, dot(), None).expect("authored typst should compile");
         assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
         assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
     }
@@ -629,7 +679,7 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
     #[test]
     fn typst_compile_error_is_reported() {
         // An unknown function is a typst compile error → Err (not a panic).
-        let err = typst_to_pdf("#this_function_does_not_exist()", dot()).unwrap_err();
+        let err = typst_to_pdf("#this_function_does_not_exist()", dot(), None).unwrap_err();
         assert!(!err.is_empty());
     }
 
@@ -638,7 +688,7 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
         // The error is on line 3 (`#zzznope()`). Because Typst-as-input is compiled verbatim (no
         // preamble), the reported line maps to the user's buffer.
         let typ = "= Title\n\n#zzznope()\n";
-        let err = typst_to_pdf(typ, dot()).unwrap_err();
+        let err = typst_to_pdf(typ, dot(), None).unwrap_err();
         assert!(err.contains("3:"), "want line 3 in: {err}");
         assert!(err.contains("zzznope"), "want the offending name in: {err}");
     }
@@ -663,7 +713,7 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
         // Whether or not the named family is installed, naming it must not break compilation
         // (Typst falls back when it's absent).
         let typ = "#set text(font: \"Definitely Not Installed 9000\")\n= Hi\n\nbody text\n";
-        assert!(typst_to_pdf(typ, dot()).expect("compiles").starts_with(b"%PDF-"));
+        assert!(typst_to_pdf(typ, dot(), None).expect("compiles").starts_with(b"%PDF-"));
     }
 
     #[test]
@@ -671,13 +721,13 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
         // `= Heading` is a typst heading verbatim; GFM translation would instead have mangled
         // markdown. A bare markdown `# Heading` would be a typst comment-ish/error, proving no
         // GFM step runs: this typst-native doc compiles, and the empty doc does too.
-        assert!(typst_to_pdf("= Just a typst heading\n", dot()).is_ok());
-        assert!(typst_to_pdf("", dot()).expect("empty typst").starts_with(b"%PDF-"));
+        assert!(typst_to_pdf("= Just a typst heading\n", dot(), None).is_ok());
+        assert!(typst_to_pdf("", dot(), None).expect("empty typst").starts_with(b"%PDF-"));
     }
 
     #[test]
     fn renders_authored_typst_to_a_raster_image() {
-        let (rgba, w, h) = typst_to_image("= Title\n\nbody *text*\n", dot(), 1.0).expect("image");
+        let (rgba, w, h) = typst_to_image("= Title\n\nbody *text*\n", dot(), 1.0, None).expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize);
         assert!(rgba.iter().any(|&b| b != 0));
@@ -691,10 +741,10 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("logo.png"), b"not a real png").unwrap();
         // The file IS found+read (so the failure is an image-DECODE error, not "file not found").
-        let err = typst_to_pdf(r#"#image("logo.png")"#, &dir).unwrap_err();
+        let err = typst_to_pdf(r#"#image("logo.png")"#, &dir, None).unwrap_err();
         assert!(!err.contains("file not found"), "resolver should find the file: {err}");
         // A genuinely-missing file still reports not-found.
-        let miss = typst_to_pdf(r#"#image("nope.png")"#, &dir).unwrap_err();
+        let miss = typst_to_pdf(r#"#image("nope.png")"#, &dir, None).unwrap_err();
         assert!(miss.contains("not found"), "{miss}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -710,7 +760,7 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
         std::fs::write(&img, b"bytes").unwrap();
         // Forward slashes — backslashes are string escapes in Typst.
         let src = format!("#image(\"{}\")", img.to_string_lossy().replace('\\', "/"));
-        let err = typst_to_pdf(&src, std::env::temp_dir().as_path()).unwrap_err();
+        let err = typst_to_pdf(&src, std::env::temp_dir().as_path(), None).unwrap_err();
         assert!(!err.contains("file not found"), "absolute path should resolve: {err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
