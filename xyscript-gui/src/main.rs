@@ -3800,8 +3800,19 @@ impl GuiApp {
         // don't stomp all other status text on every frame.
         let bal = self.editor.bracket_match();
         if self.bal_last != Some(bal) {
-            if let xyscript_app::BalMatch::Unmatched(_, ch) = bal {
-                self.status = format!("No matching bracket for '{}'", ch as char);
+            match bal {
+                // Only a STRAY CLOSING bracket earns a note — that's a genuine orphan. An unmatched
+                // OPENING bracket is just the normal "haven't typed the closer yet" state (the missing
+                // pair-highlight already signals it), so stay quiet: otherwise the note popped up the
+                // instant you typed '(' and sat there the whole time you paused before the contents.
+                xyscript_app::BalMatch::Unmatched(_, ch) if !matches!(ch, b'(' | b'[' | b'{') => {
+                    self.status = format!("No matching bracket for '{}'", ch as char);
+                }
+                // Left the flagged state (closed the pair, moved off it, or it's an unmatched opener we
+                // now stay quiet about): drop our OWN note so it can't linger — guarded so a newer
+                // status from another action isn't stomped.
+                _ if self.status.starts_with("No matching bracket") => self.status.clear(),
+                _ => {}
             }
             self.bal_last = Some(bal);
         }
@@ -5818,6 +5829,7 @@ impl GuiApp {
                 m_act(self.tr("menu.file.new", "New"), New),
                 m_act(self.tr("menu.file.open", "Open…"), PickOpen),
                 m_act(self.tr("menu.file.open_readonly", "Open read-only…"), pick(false, txtmd, "READ {}")),
+                m_item(self.tr("menu.file.reopen", "Reopen closed…"), "REOPEN"),
                 m_item(self.tr("menu.file.revert", "Revert to saved"), "REC"),
                 MenuNode::Sep,
                 m_act(self.tr("menu.file.save", "Save"), Save),
