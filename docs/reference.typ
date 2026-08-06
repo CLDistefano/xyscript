@@ -1000,7 +1000,7 @@ Each returns `1` (true) or `0`. Every one is `0` for an empty string. The charac
 
 / #func("ABS", "n"): the absolute value of `n`. #func("INT", "n"): `n` with any fractional part dropped (toward zero).
 / #func("SQRT", "n") / #func("SQ", "n") / #func("CUBE", "n"): the square root, square, and cube of `n`.
-/ #func("POW", "base, exp"): `base` raised to the power `exp` (the same as `base ^ exp`). #func("FAC", "n"): the factorial of `n`.
+/ #func("POW", "base, exp"): `base` raised to the power `exp` (the same as `base ^ exp`) — exact at any size for whole-number operands (`POW(2, 256)` is the full 78-digit value). #func("FAC", "n"): the factorial of `n`, computed in exact arbitrary precision (`FAC(30)` is `265252859812191058636308480000000`, every digit).
 / #func("EXP", "n"): _e_ raised to the power `n`. #func("LN", "n"): natural logarithm. #func("LOG", "n"): base-10 logarithm.
 / #func("BASE", "num, from, to"): the number string `num`, read in base `from`, rewritten in base `to` — `BASE("ff", 16, 10)` is `255` (bases 2–36).
 / #func("HEX", "n, p"): `n` as a lowercase hexadecimal string, left-padded with zeroes to at least `p` places — `HEX(255, 4)` is `00ff`. Never truncates: a value wider than `p` keeps all its digits (`HEX(4096, 2)` is `1000`). The count `p` is optional (`HEX(255)` is `ff`); a fractional `n` truncates to an integer first; a negative `n` prints as `-<hex>`.
@@ -1048,14 +1048,16 @@ Date arithmetic works in the *proleptic Gregorian* calendar (today's leap rules 
 When XyScript works out an expression — in `SET`, `IF`, `WHILE`, a `CASE`, or inside
 `$( )` — it understands the usual operators:
 
-/ `+` `-` `*` `/` `%`: add, subtract, multiply, divide, remainder. Integer math stays integer (`9 / 2` is `4`); a decimal anywhere makes it a float (`9.0 / 2` is `4.5`).
-/ `^`: raise to a power — `2 ^ 10` is `1024` (the same as `POW`).
+/ `+` `-` `*` `/` `%`: add, subtract, multiply, divide, remainder. Integer math stays integer (`9 / 2` is `4`, floor division); a decimal anywhere makes it a float (`9.0 / 2` is `4.5`). Integers are #emph[arbitrary-precision] — they never overflow or round, growing as large as the answer needs (see below).
+/ `^`: raise to a power — `2 ^ 10` is `1024` (the same as `POW`). With a whole-number base and exponent the result is an #emph[exact] integer of any size: `2 ^ 256` is the full 78-digit value, not a rounded approximation.
 / `.`: join two strings — `"file" . ".txt"` is `"file.txt"`.
 / `==` `!=` `<` `>` `<=` `>=`: compare two values; the result is `1` (true) or `0` (false).
 / `AND` `OR` `NOT`: combine conditions; `TRUE` and `FALSE` are just `1` and `0`, and the keywords are case-insensitive.
 / `[ ... ]`: an array — `[1, 2, 3]`; read an item (or a string's character, or a map's member) with `value[i]`.
 / `{ ... }`: a map — `{name: "Ada", year: 1815}`; read a member with `value["name"]`.
 / `$name` and `${name}`: read a variable; `$( ... )` works out a whole expression and drops the answer in, anywhere on a command line.
+
+*Big integers.* Whole-number arithmetic is exact at any size: `+`, `-`, `*`, `^`, floor `/` and `%` never overflow or round, so `$(2 ^ 256)` prints all 78 digits and a factorial loop stays precise however large it grows. The one rule to remember is that a #emph[decimal] anywhere in the expression makes the whole result a floating-point number — with the usual ~15–16 significant digits — so keep a calculation in whole numbers when you need every digit (`2 ^ 256` is exact; `2.0 ^ 256` is not). (Base-conversion helpers — #func("HEX") and #func("BASE") — still work in ordinary machine integers.)
 
 = Special variables
 

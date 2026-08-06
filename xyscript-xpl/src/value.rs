@@ -91,12 +91,16 @@ impl Number {
     }
 
     /// Collapse a `BigInt` back to `Int` when it fits i64 — keeps the fast path canonical (equality and
-    /// the `Int`/`Big` split rely on it).
-    fn norm(b: BigInt) -> Number {
+    /// the `Int`/`Big` split rely on it). Public so callers that build a `BigInt` directly (e.g. `FAC`)
+    /// get the same normalization.
+    pub fn from_big(b: BigInt) -> Number {
         match b.to_i64() {
             Some(i) => Number::Int(i),
             None => Number::Big(b),
         }
+    }
+    fn norm(b: BigInt) -> Number {
+        Number::from_big(b)
     }
 
     /// The integer as a `BigInt`, for the arbitrary-precision path (only called when neither operand is

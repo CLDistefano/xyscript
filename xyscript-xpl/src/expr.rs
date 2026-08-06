@@ -1600,16 +1600,13 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
                 return Err(ExprError::new("FAC: negative argument"));
             }
             let n = x.trunc() as u64;
-            let mut int_acc: Option<i64> = Some(1);
-            let mut float_acc = 1.0f64;
+            // Arbitrary-precision product, so `FAC(21)` and beyond are EXACT (was: overflowed i64 →
+            // f64). Demotes to a plain `Int` when the answer still fits.
+            let mut acc = num_bigint::BigInt::from(1u32);
             for k in 2..=n {
-                float_acc *= k as f64;
-                int_acc = int_acc.and_then(|a| a.checked_mul(k as i64));
+                acc *= num_bigint::BigInt::from(k);
             }
-            Ok(match int_acc {
-                Some(i) => Value::Int(i),
-                None => Value::Float(float_acc),
-            })
+            Ok(Value::from_number(crate::value::Number::from_big(acc)))
         }
         // `ATAN2(y, x)` — the angle (radians) of the point `(x, y)`, quadrant-correct.
         "ATAN2" => {
@@ -1620,8 +1617,9 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
         }
         // `POW(base, exponent)` — `base` raised to `exponent` (the named twin of the `^` operator);
         // both may be int or float. An integer base with a non-negative integer exponent stays an
-        // exact integer when it fits (e.g. `POW(2, 10)` → `1024`); otherwise it's a float
-        // (`POW(2, 0.5)` → `1.414…`, `POW(2, -1)` → `0.5`). Out-of-domain (`POW(-1, 0.5)`) → NaN.
+        // EXACT integer of any size (arbitrary precision — `POW(2, 256)` is the full 78-digit value);
+        // a float operand, or a negative/fractional exponent, makes it a float (`POW(2, 0.5)` →
+        // `1.414…`, `POW(2, -1)` → `0.5`). Out-of-domain (`POW(-1, 0.5)`) → NaN.
         "POW" => {
             expect(2)?;
             pow_op(&vals[0], &vals[1], "POW")
@@ -2010,6 +2008,9 @@ mod tests {
         assert_eq!(ev("9223372036854775807 + 1").to_str(), "9223372036854775808");
         assert_eq!(ev("2^128 * 2^128 == 2^256").to_str(), "1"); // exact big multiply
         assert_eq!(ev("0 - 2^100").to_str(), "-1267650600228229401496703205376");
+        // FAC is exact past i64 too (30! has 33 digits).
+        assert_eq!(ev("FAC(30)").to_str(), "265252859812191058636308480000000");
+        assert!(matches!(ev("FAC(20)"), Value::Int(2432902008176640000))); // still fits i64 → plain Int
         // A big literal parses, prints in full, and round-trips through the SaveVars literal form.
         let big = "123456789012345678901234567890";
         assert_eq!(ev(big).to_str(), big);
