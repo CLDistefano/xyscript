@@ -1838,6 +1838,9 @@ fn graphics_init_failed(detail: &str) -> ! {
          (Fedora: mesa-vulkan-drivers  \u{2022}  Arch: vulkan-intel / vulkan-radeon.)\n\
          \u{2022} If you run Wayland, try the OpenGL renderer under X11:\n    \
          WINIT_UNIX_BACKEND=x11 WGPU_BACKEND=gl xyscript\n\
+         \u{2022} Old GPU with no Vulkan (pre-2014 Intel, etc.)? Use SOFTWARE rendering:\n    \
+         LIBGL_ALWAYS_SOFTWARE=1 WGPU_BACKEND=gl xyscript\n  \
+         (or install Mesa lavapipe for software Vulkan  \u{2022}  Arch: vulkan-swrast.)\n\
          \u{2022} Otherwise update Mesa / your GPU driver and restart.";
     #[cfg(target_os = "macos")]
     let advice = "\u{2022} Update macOS, then restart.\n\
