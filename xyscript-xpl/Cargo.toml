@@ -15,10 +15,14 @@ path = "src/lib.rs"
 # `curl`. Off by default; NOT part of the distributable tester build. See docs/email.md.
 email = []
 
-# The interpreter is deliberately dependency-free in Stage 1: the value model,
-# lexer, parser, IR, and executor are all hand-written. The owned regex engine
-# and any heavier crates are deferred (see stage1-interpreter-plan.md §12).
+# The interpreter is deliberately near-dependency-free: the value model, lexer, parser, IR, and executor
+# are hand-written. The one exception is arbitrary-precision integers (so `2^256` etc. stay exact rather
+# than overflowing i64 / decaying to f64) — `num-bigint` and friends are pure Rust (no C/GMP), so they
+# don't complicate the static cross-platform builds.
 [dependencies]
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
 
 # The keyboard layer is a DEV-dependency only — used by the end-to-end seam test
 # (tests/end_to_end.rs) to drive the real resolver into the interpreter. The

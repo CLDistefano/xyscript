@@ -379,9 +379,15 @@ fn lex_number(s: &str, b: &[u8], i: usize, n: usize) -> Result<(Number, usize), 
             .map(Number::Float)
             .map_err(|_| LexError(format!("bad number {tok:?}")))?
     } else {
-        tok.parse::<i64>()
-            .map(Number::Int)
-            .map_err(|_| LexError(format!("bad number {tok:?}")))?
+        // Integer literal: i64 fast path, else arbitrary precision (so `115792…936` or `2^256`'s
+        // printed form re-parses EXACTLY rather than erroring or decaying to a float).
+        match tok.parse::<i64>() {
+            Ok(i) => Number::Int(i),
+            Err(_) => tok
+                .parse::<num_bigint::BigInt>()
+                .map(Number::Big)
+                .map_err(|_| LexError(format!("bad number {tok:?}")))?,
+        }
     };
     Ok((num, j))
 }

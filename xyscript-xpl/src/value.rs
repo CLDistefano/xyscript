@@ -42,12 +42,23 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-/// A number that remembers whether it is an integer or a float — the
-/// distinction QN's arithmetic depends on. All numeric arithmetic flows through
-/// here so the int/float promotion rules live in exactly one place.
-#[derive(Debug, Clone, Copy, PartialEq)]
+use num_bigint::BigInt;
+use num_integer::Integer;
+use num_traits::{Signed, ToPrimitive, Zero};
+
+/// A number that remembers whether it is an integer or a float — the distinction QN's arithmetic
+/// depends on — and, for integers, stays EXACT beyond i64. All numeric arithmetic flows through here so
+/// the int/float/bignum promotion rules live in exactly one place.
+///
+/// `Int` is the fast path; an integer op that overflows i64 auto-promotes to `Big` (arbitrary
+/// precision), so `2^256` is the exact 78-digit integer rather than an f64 approximation. **Canonical
+/// form:** a value that fits i64 is ALWAYS `Int`, never `Big` (see [`Number::norm`]) — so `Int` and
+/// `Big` never denote the same number, keeping equality and comparison consistent. A float anywhere in
+/// an expression still collapses the result to `Float` (exactness is an integer-chain property).
+#[derive(Debug, Clone, PartialEq)]
 pub enum Number {
     Int(i64),
+    Big(BigInt),
     Float(f64),
 }
 
@@ -56,94 +67,176 @@ pub enum Number {
 // (division by zero) — none match the trait signatures.
 #[allow(clippy::should_implement_trait)]
 impl Number {
-    /// As an `f64` (for comparison and float arithmetic).
-    pub fn as_f64(self) -> f64 {
+    /// As an `f64` (for comparison and float arithmetic). A `Big` too large for f64 saturates to a
+    /// signed infinity — matching what `2.0.powf(256.0)` would have produced before, only now the
+    /// EXACT value is still available as the integer itself.
+    pub fn as_f64(&self) -> f64 {
         match self {
-            Number::Int(i) => i as f64,
-            Number::Float(f) => f,
+            Number::Int(i) => *i as f64,
+            Number::Big(b) => b
+                .to_f64()
+                .unwrap_or(if b.is_negative() { f64::NEG_INFINITY } else { f64::INFINITY }),
+            Number::Float(f) => *f,
         }
     }
 
-    /// Render like QN's `_expr_to_str`: integers and integer-valued floats lose
+    /// Render like QN's `_expr_to_str`: integers (any size) print in full; integer-valued floats lose
     /// any trailing `.0`.
-    pub fn to_str(self) -> String {
+    pub fn to_str(&self) -> String {
         match self {
             Number::Int(i) => i.to_string(),
-            Number::Float(f) => format_float(f),
+            Number::Big(b) => b.to_string(),
+            Number::Float(f) => format_float(*f),
         }
     }
 
-    fn both_int(a: Number, b: Number) -> Option<(i64, i64)> {
+    /// Collapse a `BigInt` back to `Int` when it fits i64 — keeps the fast path canonical (equality and
+    /// the `Int`/`Big` split rely on it).
+    fn norm(b: BigInt) -> Number {
+        match b.to_i64() {
+            Some(i) => Number::Int(i),
+            None => Number::Big(b),
+        }
+    }
+
+    /// The integer as a `BigInt`, for the arbitrary-precision path (only called when neither operand is
+    /// a float, so a `Float` here is a bug — hence `unwrap` at the call sites via `expect`-free `?`).
+    fn as_big(&self) -> Option<BigInt> {
+        match self {
+            Number::Int(i) => Some(BigInt::from(*i)),
+            Number::Big(b) => Some(b.clone()),
+            Number::Float(_) => None,
+        }
+    }
+
+    fn is_float(&self) -> bool {
+        matches!(self, Number::Float(_))
+    }
+
+    /// `a + b` (int + int = int, promoting to Big on i64 overflow; any float promotes to float).
+    pub fn add(a: &Number, b: &Number) -> Number {
         match (a, b) {
-            (Number::Int(x), Number::Int(y)) => Some((x, y)),
-            _ => None,
-        }
-    }
-
-    /// `a + b` (int + int = int; any float promotes to float).
-    pub fn add(a: Number, b: Number) -> Number {
-        match Number::both_int(a, b) {
-            Some((x, y)) => Number::Int(x.wrapping_add(y)),
-            None => Number::Float(a.as_f64() + b.as_f64()),
+            (Number::Int(x), Number::Int(y)) => match x.checked_add(*y) {
+                Some(s) => Number::Int(s),
+                None => Number::Big(BigInt::from(*x) + BigInt::from(*y)),
+            },
+            _ if a.is_float() || b.is_float() => Number::Float(a.as_f64() + b.as_f64()),
+            _ => Number::norm(a.as_big().unwrap() + b.as_big().unwrap()),
         }
     }
     /// `a - b`.
-    pub fn sub(a: Number, b: Number) -> Number {
-        match Number::both_int(a, b) {
-            Some((x, y)) => Number::Int(x.wrapping_sub(y)),
-            None => Number::Float(a.as_f64() - b.as_f64()),
+    pub fn sub(a: &Number, b: &Number) -> Number {
+        match (a, b) {
+            (Number::Int(x), Number::Int(y)) => match x.checked_sub(*y) {
+                Some(s) => Number::Int(s),
+                None => Number::Big(BigInt::from(*x) - BigInt::from(*y)),
+            },
+            _ if a.is_float() || b.is_float() => Number::Float(a.as_f64() - b.as_f64()),
+            _ => Number::norm(a.as_big().unwrap() - b.as_big().unwrap()),
         }
     }
     /// `a * b`.
-    pub fn mul(a: Number, b: Number) -> Number {
-        match Number::both_int(a, b) {
-            Some((x, y)) => Number::Int(x.wrapping_mul(y)),
-            None => Number::Float(a.as_f64() * b.as_f64()),
+    pub fn mul(a: &Number, b: &Number) -> Number {
+        match (a, b) {
+            (Number::Int(x), Number::Int(y)) => match x.checked_mul(*y) {
+                Some(p) => Number::Int(p),
+                None => Number::Big(BigInt::from(*x) * BigInt::from(*y)),
+            },
+            _ if a.is_float() || b.is_float() => Number::Float(a.as_f64() * b.as_f64()),
+            _ => Number::norm(a.as_big().unwrap() * b.as_big().unwrap()),
         }
     }
-    /// `a / b` — **floor division when both are integers** (QN `a // b`), true
-    /// division otherwise. `Err` on division by zero (the caller raises a fatal).
-    pub fn div(a: Number, b: Number) -> Result<Number, DivByZero> {
-        match Number::both_int(a, b) {
-            Some((x, y)) => {
-                if y == 0 {
+    /// `a / b` — **floor division when both are integers** (QN `a // b`), true division otherwise.
+    /// `Err` on division by zero (the caller raises a fatal).
+    pub fn div(a: &Number, b: &Number) -> Result<Number, DivByZero> {
+        match (a, b) {
+            (Number::Int(x), Number::Int(y)) => {
+                if *y == 0 {
                     return Err(DivByZero);
                 }
-                Ok(Number::Int(floor_div(x, y)))
+                // i64::MIN / -1 overflows — promote just that lone case.
+                match x.checked_div(*y) {
+                    Some(_) => Ok(Number::Int(floor_div(*x, *y))),
+                    None => Ok(Number::norm(BigInt::from(*x).div_floor(&BigInt::from(*y)))),
+                }
             }
-            None => {
+            _ if a.is_float() || b.is_float() => {
                 let d = b.as_f64();
                 if d == 0.0 {
                     return Err(DivByZero);
                 }
                 Ok(Number::Float(a.as_f64() / d))
             }
-        }
-    }
-    /// `a % b` — Python-style modulo (result takes the sign of the divisor).
-    /// `Err` on modulo by zero.
-    pub fn rem(a: Number, b: Number) -> Result<Number, DivByZero> {
-        match Number::both_int(a, b) {
-            Some((x, y)) => {
-                if y == 0 {
+            _ => {
+                let (x, y) = (a.as_big().unwrap(), b.as_big().unwrap());
+                if y.is_zero() {
                     return Err(DivByZero);
                 }
-                Ok(Number::Int(floor_mod(x, y)))
+                Ok(Number::norm(x.div_floor(&y)))
             }
-            None => {
+        }
+    }
+    /// `a % b` — Python-style modulo (result takes the sign of the divisor). `Err` on modulo by zero.
+    pub fn rem(a: &Number, b: &Number) -> Result<Number, DivByZero> {
+        match (a, b) {
+            (Number::Int(x), Number::Int(y)) => {
+                if *y == 0 {
+                    return Err(DivByZero);
+                }
+                Ok(Number::Int(floor_mod(*x, *y))) // MIN % -1 == 0, so no overflow
+            }
+            _ if a.is_float() || b.is_float() => {
                 let d = b.as_f64();
                 if d == 0.0 {
                     return Err(DivByZero);
                 }
                 Ok(Number::Float(float_mod(a.as_f64(), d)))
             }
+            _ => {
+                let (x, y) = (a.as_big().unwrap(), b.as_big().unwrap());
+                if y.is_zero() {
+                    return Err(DivByZero);
+                }
+                Ok(Number::norm(x.mod_floor(&y)))
+            }
         }
     }
-    /// Unary negation.
-    pub fn neg(self) -> Number {
+    /// Unary negation (promotes `-i64::MIN` to Big so it stays exact).
+    pub fn neg(&self) -> Number {
         match self {
-            Number::Int(i) => Number::Int(i.wrapping_neg()),
+            Number::Int(i) => match i.checked_neg() {
+                Some(v) => Number::Int(v),
+                None => Number::Big(-BigInt::from(*i)),
+            },
+            Number::Big(b) => Number::norm(-b.clone()),
             Number::Float(f) => Number::Float(-f),
+        }
+    }
+    /// `a^b` for integer operands: exact (`Big` on overflow) when the exponent is a non-negative
+    /// integer; otherwise `None` so the caller falls back to `powf`.
+    pub fn pow_exact(a: &Number, b: &Number) -> Option<Number> {
+        let exp = match b {
+            Number::Int(e) if *e >= 0 => u32::try_from(*e).ok()?,
+            _ => return None, // negative/huge/float exponent → float path
+        };
+        match a {
+            Number::Int(base) => match base.checked_pow(exp) {
+                Some(p) => Some(Number::Int(p)),
+                None => Some(Number::norm(num_traits::Pow::pow(BigInt::from(*base), exp))),
+            },
+            Number::Big(base) => Some(Number::norm(num_traits::Pow::pow(base.clone(), exp))),
+            Number::Float(_) => None,
+        }
+    }
+    /// Numeric ordering for [`xpl_cmp`]. Int/Big compare EXACTLY; a float on either side compares as
+    /// f64 (as before).
+    pub fn cmp_num(a: &Number, b: &Number) -> Ordering {
+        match (a, b) {
+            (Number::Int(x), Number::Int(y)) => x.cmp(y),
+            _ if a.is_float() || b.is_float() => {
+                a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(Ordering::Equal)
+            }
+            _ => a.as_big().unwrap().cmp(&b.as_big().unwrap()),
         }
     }
 }
@@ -188,6 +281,9 @@ fn float_mod(a: f64, b: f64) -> f64 {
 pub enum Value {
     Str(String),
     Int(i64),
+    /// Arbitrary-precision integer (an integer op that overflowed i64). Canonical: only ever holds a
+    /// value that does NOT fit i64, so `Int`/`Big` never represent the same number.
+    Big(BigInt),
     Float(f64),
     /// Internal boolean (e.g. the result of a comparison/logical op). Surfaces
     /// QN truthiness and stringifies as `1`/`0`.
@@ -215,6 +311,7 @@ impl Value {
     pub fn from_number(n: Number) -> Value {
         match n {
             Number::Int(i) => Value::Int(i),
+            Number::Big(b) => Value::Big(b),
             Number::Float(f) => Value::Float(f),
         }
     }
@@ -223,7 +320,7 @@ impl Value {
     /// numeric vs. string comparison — about the *type*, not whether a string
     /// looks numeric (that is [`Value::to_number`]).
     pub fn is_numeric_type(&self) -> bool {
-        matches!(self, Value::Int(_) | Value::Float(_) | Value::Bool(_))
+        matches!(self, Value::Int(_) | Value::Big(_) | Value::Float(_) | Value::Bool(_))
     }
 
     /// Coerce to a [`Number`] (QN `_expr_to_num`): integers parse first, then
@@ -234,12 +331,17 @@ impl Value {
     pub fn to_number(&self) -> Result<Number, ()> {
         match self {
             Value::Int(i) => Ok(Number::Int(*i)),
+            Value::Big(b) => Ok(Number::Big(b.clone())),
             Value::Float(f) => Ok(Number::Float(*f)),
             Value::Bool(b) => Ok(Number::Int(if *b { 1 } else { 0 })),
             Value::Str(s) => {
                 let t = s.trim();
+                // Integers first (i64, then arbitrary-precision for a huge literal), then float — so a
+                // long digit string coerces EXACTLY rather than through a lossy f64.
                 if let Ok(i) = t.parse::<i64>() {
                     Ok(Number::Int(i))
+                } else if let Ok(b) = t.parse::<BigInt>() {
+                    Ok(Number::Big(b))
                 } else if let Ok(f) = t.parse::<f64>() {
                     Ok(Number::Float(f))
                 } else {
@@ -264,6 +366,7 @@ impl Value {
         match self {
             Value::Str(s) => s.clone(),
             Value::Int(i) => i.to_string(),
+            Value::Big(b) => b.to_string(),
             Value::Float(f) => format_float_dp(*f, decimals),
             Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
             Value::Array(items) => {
@@ -287,6 +390,8 @@ impl Value {
         match self {
             Value::Str(s) => format!("\"{}\"", escape_literal(s)),
             Value::Int(i) => i.to_string(),
+            // A bare big-integer literal re-parses to `Big` (the lexer promotes on i64 overflow).
+            Value::Big(b) => b.to_string(),
             Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
             Value::Float(f) => {
                 if !f.is_finite() {
@@ -316,6 +421,7 @@ impl Value {
     pub fn is_truthy(&self) -> bool {
         match self {
             Value::Int(i) => *i != 0,
+            Value::Big(b) => !b.is_zero(), // canonical Big is never 0, but be defensive
             Value::Float(f) => *f != 0.0,
             Value::Bool(b) => *b,
             Value::Str(s) => {
@@ -397,8 +503,7 @@ pub fn xpl_cmp(a: &Value, b: &Value) -> Ordering {
 
     if numeric {
         match (a.to_number(), b.to_number()) {
-            (Ok(Number::Int(x)), Ok(Number::Int(y))) => x.cmp(&y),
-            (Ok(x), Ok(y)) => x.as_f64().partial_cmp(&y.as_f64()).unwrap_or(Ordering::Equal),
+            (Ok(x), Ok(y)) => Number::cmp_num(&x, &y),
             _ => Ordering::Equal, // unreachable: `numeric` implies both coerce
         }
     } else {
@@ -446,28 +551,28 @@ mod tests {
     #[test]
     fn integer_floor_division() {
         // The oracle: 9 / 2 == 4, but 9.0 / 2 == 4.5.
-        assert_eq!(Number::div(Number::Int(9), Number::Int(2)), Ok(Number::Int(4)));
+        assert_eq!(Number::div(&Number::Int(9), &Number::Int(2)), Ok(Number::Int(4)));
         assert_eq!(
-            Number::div(Number::Float(9.0), Number::Int(2)),
+            Number::div(&Number::Float(9.0), &Number::Int(2)),
             Ok(Number::Float(4.5))
         );
         // Floor toward negative infinity (Python //): -7 / 2 == -4.
-        assert_eq!(Number::div(Number::Int(-7), Number::Int(2)), Ok(Number::Int(-4)));
-        assert_eq!(Number::div(Number::Int(5), Number::Int(0)), Err(DivByZero));
+        assert_eq!(Number::div(&Number::Int(-7), &Number::Int(2)), Ok(Number::Int(-4)));
+        assert_eq!(Number::div(&Number::Int(5), &Number::Int(0)), Err(DivByZero));
     }
 
     #[test]
     fn modulo_takes_sign_of_divisor() {
-        assert_eq!(Number::rem(Number::Int(7), Number::Int(3)), Ok(Number::Int(1)));
-        assert_eq!(Number::rem(Number::Int(-7), Number::Int(3)), Ok(Number::Int(2)));
-        assert_eq!(Number::rem(Number::Int(5), Number::Int(0)), Err(DivByZero));
+        assert_eq!(Number::rem(&Number::Int(7), &Number::Int(3)), Ok(Number::Int(1)));
+        assert_eq!(Number::rem(&Number::Int(-7), &Number::Int(3)), Ok(Number::Int(2)));
+        assert_eq!(Number::rem(&Number::Int(5), &Number::Int(0)), Err(DivByZero));
     }
 
     #[test]
     fn add_promotes_to_float_when_either_is_float() {
-        assert_eq!(Number::add(Number::Int(2), Number::Int(3)), Number::Int(5));
+        assert_eq!(Number::add(&Number::Int(2), &Number::Int(3)), Number::Int(5));
         assert_eq!(
-            Number::add(Number::Int(2), Number::Float(3.5)),
+            Number::add(&Number::Int(2), &Number::Float(3.5)),
             Number::Float(5.5)
         );
     }

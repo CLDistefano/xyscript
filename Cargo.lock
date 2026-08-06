@@ -7718,6 +7718,9 @@ dependencies = [
 name = "xyscript-xpl"
 version = "0.1.1"
 dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "xyscript-kbd",
 ]
 

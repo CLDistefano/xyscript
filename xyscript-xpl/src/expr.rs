@@ -373,8 +373,9 @@ impl<'a> Parser<'a> {
         };
         match &t.tok {
             Tok::Num(n) => {
+                let n = n.clone();
                 self.eat();
-                Ok(Expr::Num(*n))
+                Ok(Expr::Num(n))
             }
             Tok::Str(s) => {
                 self.eat();
@@ -558,7 +559,7 @@ impl<'a> Parser<'a> {
 /// Evaluate an expression AST against `ctx`.
 pub fn eval(e: &Expr, ctx: &dyn EvalContext) -> Result<Value, ExprError> {
     match e {
-        Expr::Num(n) => Ok(Value::from_number(*n)),
+        Expr::Num(n) => Ok(Value::from_number(n.clone())),
         Expr::Str(s) => Ok(Value::str(s.clone())),
         Expr::Bare(s) => Ok(Value::str(s.clone())),
         Expr::ArrayLit(items) => {
@@ -609,6 +610,7 @@ pub fn index_value(base: &Value, index: &Value) -> Result<Value, ExprError> {
         Value::Array(items) => {
             let n = match index.to_number() {
                 Ok(crate::value::Number::Int(i)) => i,
+                Ok(crate::value::Number::Big(_)) => i64::MAX, // absurd index → out of bounds
                 Ok(crate::value::Number::Float(f)) => f as i64,
                 Err(_) => {
                     return Err(ExprError::new(format!(
@@ -629,6 +631,7 @@ pub fn index_value(base: &Value, index: &Value) -> Result<Value, ExprError> {
             })?;
             let idx = match n {
                 crate::value::Number::Int(i) => i,
+                crate::value::Number::Big(_) => i64::MAX, // absurd index → out of bounds
                 crate::value::Number::Float(f) => f as i64,
             };
             if idx < 0 {
@@ -687,12 +690,11 @@ fn eval_binary(
 fn pow_op(l: &Value, r: &Value, sym: &str) -> Result<Value, ExprError> {
     let a = l.to_number().map_err(|_| non_numeric(l, sym))?;
     let b = r.to_number().map_err(|_| non_numeric(r, sym))?;
-    if let (Number::Int(base), Number::Int(exp)) = (a, b) {
-        if let Ok(e) = u32::try_from(exp) {
-            if let Some(p) = base.checked_pow(e) {
-                return Ok(Value::Int(p));
-            }
-        }
+    // Integer base ^ non-negative integer exponent stays EXACT (arbitrary precision on overflow) — so
+    // `2^256` is the full 78-digit integer. Everything else (negative/fractional exponent, a float
+    // operand, an exponent too big for u32) falls back to `powf`.
+    if let Some(n) = Number::pow_exact(&a, &b) {
+        return Ok(Value::from_number(n));
     }
     Ok(Value::Float(a.as_f64().powf(b.as_f64())))
 }
@@ -706,22 +708,22 @@ fn num_op(
     l: &Value,
     r: &Value,
     sym: &str,
-    f: fn(Number, Number) -> Number,
+    f: fn(&Number, &Number) -> Number,
 ) -> Result<Value, ExprError> {
     let a = l.to_number().map_err(|_| non_numeric(l, sym))?;
     let b = r.to_number().map_err(|_| non_numeric(r, sym))?;
-    Ok(Value::from_number(f(a, b)))
+    Ok(Value::from_number(f(&a, &b)))
 }
 
 fn num_op_checked(
     l: &Value,
     r: &Value,
     sym: &str,
-    f: fn(Number, Number) -> Result<Number, crate::value::DivByZero>,
+    f: fn(&Number, &Number) -> Result<Number, crate::value::DivByZero>,
 ) -> Result<Value, ExprError> {
     let a = l.to_number().map_err(|_| non_numeric(l, sym))?;
     let b = r.to_number().map_err(|_| non_numeric(r, sym))?;
-    match f(a, b) {
+    match f(&a, &b) {
         Ok(n) => Ok(Value::from_number(n)),
         Err(_) => Err(ExprError::new(if sym == "/" {
             "division by zero"
@@ -1575,7 +1577,12 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
         "ABS" => {
             expect(1)?;
             match vals[0].to_number() {
-                Ok(Number::Int(i)) => Ok(Value::Int(i.wrapping_abs())),
+                // `ABS(i64::MIN)` promotes to Big rather than wrapping back to a negative.
+                Ok(Number::Int(i)) => Ok(match i.checked_abs() {
+                    Some(a) => Value::Int(a),
+                    None => Value::Big(-num_bigint::BigInt::from(i)),
+                }),
+                Ok(Number::Big(b)) => Ok(Value::Big(num_traits::Signed::abs(&b))),
                 Ok(Number::Float(f)) => Ok(Value::Float(f.abs())),
                 Err(_) => Err(ExprError::new(format!("ABS: can't convert {:?} to number", s(0)))),
             }
@@ -1692,6 +1699,9 @@ fn as_array(v: &Value) -> Vec<Value> {
 fn int_arg(v: &Value, fname: &str) -> Result<i64, ExprError> {
     match v.to_number() {
         Ok(Number::Int(i)) => Ok(i),
+        // A Big can't fit i64 — saturate (these are counts/indices; a huge value is out of any real
+        // range), so callers clamp rather than panic.
+        Ok(Number::Big(b)) => Ok(if num_traits::Signed::is_negative(&b) { i64::MIN } else { i64::MAX }),
         Ok(Number::Float(f)) => Ok(f as i64),
         Err(_) => Err(ExprError::new(format!(
             "{fname}: can't convert {:?} to number",
@@ -1987,6 +1997,47 @@ mod tests {
     }
     fn ev_ctx(s: &str, ctx: &Ctx) -> Value {
         eval(&parse(s).unwrap(), ctx).unwrap()
+    }
+
+    #[test]
+    fn bignum_integers_stay_exact_beyond_i64() {
+        // The headline: 2^256 is the EXACT 78-digit integer, not an f64 approximation.
+        assert_eq!(
+            ev("2^256").to_str(),
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+        );
+        // i64 overflow on +, *, and unary - now PROMOTE (were: silently wrapped).
+        assert_eq!(ev("9223372036854775807 + 1").to_str(), "9223372036854775808");
+        assert_eq!(ev("2^128 * 2^128 == 2^256").to_str(), "1"); // exact big multiply
+        assert_eq!(ev("0 - 2^100").to_str(), "-1267650600228229401496703205376");
+        // A big literal parses, prints in full, and round-trips through the SaveVars literal form.
+        let big = "123456789012345678901234567890";
+        assert_eq!(ev(big).to_str(), big);
+        assert_eq!(ev(&ev(big).to_literal()).to_str(), big);
+    }
+
+    #[test]
+    fn bignum_demotes_and_floats_still_contaminate() {
+        // A big result that lands back inside i64 becomes a plain Int (canonical form).
+        assert!(matches!(ev("2^100 - 2^100"), Value::Int(0)));
+        assert!(matches!(ev("2^64 / 2^64"), Value::Int(1)));
+        // A float ANYWHERE collapses exactness (the float-contamination rule is unchanged).
+        assert!(matches!(ev("2^256 * 1.0"), Value::Float(_)));
+        assert!(matches!(ev("2 ^ 0.5"), Value::Float(_))); // fractional exponent → float
+        assert!(matches!(ev("2 ^ (0 - 1)"), Value::Float(_))); // negative exponent → float (0.5)
+        assert_eq!(ev("2 ^ (0 - 1)").to_str(), "0.5");
+    }
+
+    #[test]
+    fn bignum_div_mod_and_compare_are_exact() {
+        assert_eq!(ev("10^24 / 3").to_str(), "3".repeat(24)); // floor division, exact
+        assert_eq!(ev("10^24 % 7").to_str(), "1"); // exact modulo (3^24 ≡ 1 mod 7)
+        // Floor division keeps its sign semantics for big negatives (rounds toward -∞).
+        assert_eq!(ev("(0 - 10^24) / 3").to_str(), format!("-{}4", "3".repeat(23)));
+        // Cross-type comparison (Int vs Big) is EXACT, not via a lossy f64.
+        assert_eq!(ev("2^256 > 999999999999999999").to_str(), "1");
+        assert_eq!(ev("2^256 == 2^256").to_str(), "1");
+        assert_eq!(ev("2^256 == 2^256 - 1").to_str(), "0");
     }
 
     #[test]

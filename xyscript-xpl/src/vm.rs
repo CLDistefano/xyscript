@@ -5323,6 +5323,7 @@ fn set_index(
 ) -> VmResult<Value> {
     let as_int = match index.to_number() {
         Ok(crate::value::Number::Int(i)) => Some(i),
+        Ok(crate::value::Number::Big(_)) => Some(i64::MAX), // absurd index → out of bounds
         Ok(crate::value::Number::Float(f)) => Some(f as i64),
         Err(_) => None,
     };
