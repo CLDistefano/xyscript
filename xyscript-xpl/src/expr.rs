@@ -1964,19 +1964,41 @@ enum Align {
     Center,
 }
 
+/// How to show the sign of a number (v2): `-` only when negative (default), `+` always, or a leading
+/// space for a non-negative number (so positives and negatives line up in a column).
+#[derive(Clone, Copy, PartialEq)]
+enum Sign {
+    Minus,
+    Plus,
+    Space,
+}
+
 /// A parsed FORMAT field spec. `ty == '\0'` means "auto" — format by the value's own type.
 struct FmtSpec {
     fill: char,
     align: Option<Align>,
-    zero: bool,
+    sign: Sign,
+    alt: bool,   // `#` — radix prefix (0x/0o/0b) for x/X/o/b
+    zero: bool,  // `0` — zero-pad (sign/prefix kept in front)
     width: usize,
+    group: bool, // `,` — thousands separators
     prec: Option<usize>,
     ty: char,
 }
 
 impl Default for FmtSpec {
     fn default() -> Self {
-        FmtSpec { fill: ' ', align: None, zero: false, width: 0, prec: None, ty: '\0' }
+        FmtSpec {
+            fill: ' ',
+            align: None,
+            sign: Sign::Minus,
+            alt: false,
+            zero: false,
+            width: 0,
+            group: false,
+            prec: None,
+            ty: '\0',
+        }
     }
 }
 
@@ -2043,10 +2065,13 @@ fn format_template(tmpl: &str, args: &[Value]) -> Result<String, ExprError> {
     Ok(out)
 }
 
-/// Parse a FORMAT field spec: `[[fill]align]['0'][width]['.'precision][type]`. `align` is `<` (left),
-/// `>` (right), or `^` (centre), with an optional fill char in front; `0` zero-pads; `width` is the
-/// minimum field width; `.precision` is decimals (for `f`/floats) or max characters (for `s`/strings);
-/// `type` is `s` string, `d` integer, `f` fixed-point, or `x`/`X` hex. Empty = defaults (auto).
+/// Parse a FORMAT field spec: `[[fill]align][sign]['#']['0'][width][','][.precision][type]`. `align` is
+/// `<` (left), `>` (right), or `^` (centre) with an optional fill char in front; `sign` is `+` (always),
+/// `-` (default), or space (leading space for positives); `#` adds a `0x`/`0o`/`0b` radix prefix; `0`
+/// zero-pads (keeping the sign/prefix in front); `width` is the minimum field width; `,` inserts
+/// thousands separators; `.precision` is decimals (`f`/`e`/`%`/floats) or max characters (strings);
+/// `type` is `s` string, `d` integer, `f` fixed, `e`/`E` scientific, `%` percent, or `x`/`X`/`o`/`b`
+/// hex/octal/binary. Empty = defaults (auto).
 fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
     let cs: Vec<char> = spec.chars().collect();
     let mut sp = FmtSpec::default();
@@ -2066,6 +2091,28 @@ fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
         sp.align = Some(align_of(cs[0]));
         i = 1;
     }
+    // sign
+    if i < cs.len() {
+        match cs[i] {
+            '+' => {
+                sp.sign = Sign::Plus;
+                i += 1;
+            }
+            ' ' => {
+                sp.sign = Sign::Space;
+                i += 1;
+            }
+            '-' => {
+                sp.sign = Sign::Minus; // explicit default
+                i += 1;
+            }
+            _ => {}
+        }
+    }
+    if i < cs.len() && cs[i] == '#' {
+        sp.alt = true;
+        i += 1;
+    }
     if i < cs.len() && cs[i] == '0' {
         sp.zero = true;
         i += 1;
@@ -2076,6 +2123,10 @@ fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
     }
     if i > w0 {
         sp.width = cs[w0..i].iter().collect::<String>().parse().unwrap_or(0);
+    }
+    if i < cs.len() && cs[i] == ',' {
+        sp.group = true;
+        i += 1;
     }
     if i < cs.len() && cs[i] == '.' {
         i += 1;
@@ -2090,7 +2141,7 @@ fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
     }
     if i < cs.len() {
         let t = cs[i];
-        if !matches!(t, 's' | 'd' | 'f' | 'x' | 'X') {
+        if !matches!(t, 's' | 'd' | 'f' | 'x' | 'X' | 'o' | 'b' | 'e' | 'E' | '%') {
             return Err(ExprError::new(format!("FORMAT: unknown type {t:?} in spec {spec:?}")));
         }
         sp.ty = t;
@@ -2102,59 +2153,129 @@ fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
     Ok(sp)
 }
 
-/// Render one value per `spec`: build the base string by type, then pad to `width` per align/fill.
+/// Insert thousands separators into the leading run of digits of `s` (the integer part), leaving any
+/// fractional/`%`/exponent tail alone. `"1234567" → "1,234,567"`, `"1234.5" → "1,234.5"`.
+fn group_thousands(s: &str) -> String {
+    let int_len = s.bytes().take_while(u8::is_ascii_digit).count();
+    let (digits, rest) = s.split_at(int_len);
+    if digits.len() <= 3 {
+        return s.to_string();
+    }
+    let n = digits.len();
+    let mut out = String::with_capacity(n + n / 3);
+    for (idx, ch) in digits.chars().enumerate() {
+        if idx > 0 && (n - idx) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The sign flag (`neg`) and unsigned MAGNITUDE string for a number, per the effective type. Kept
+/// separate from the sign so zero-padding and the `#` prefix can slot in front of the digits.
+fn numeric_mag(n: &Number, ty: char, spec: &FmtSpec) -> (bool, String) {
+    let et = if ty == '\0' {
+        match n {
+            Number::Float(_) => 'f',
+            _ => 'd',
+        }
+    } else {
+        ty
+    };
+    let prec = spec.prec.map(|p| p.min(100) as u8);
+    match et {
+        'd' | 'x' | 'X' | 'o' | 'b' => {
+            let big = match n {
+                Number::Int(i) => num_bigint::BigInt::from(*i),
+                Number::Big(b) => b.clone(),
+                Number::Float(f) => num_bigint::BigInt::from(f.trunc() as i64),
+            };
+            let neg = num_traits::Signed::is_negative(&big);
+            let mag = num_traits::Signed::abs(&big);
+            let s = match et {
+                'x' => mag.to_str_radix(16),
+                'X' => mag.to_str_radix(16).to_uppercase(),
+                'o' => mag.to_str_radix(8),
+                'b' => mag.to_str_radix(2),
+                _ => mag.to_str_radix(10),
+            };
+            (neg, s)
+        }
+        'e' | 'E' => {
+            let f = n.as_f64();
+            let s = format!("{:.*e}", spec.prec.unwrap_or(6).min(100), f.abs());
+            (f.is_sign_negative() && f != 0.0, if et == 'E' { s.to_uppercase() } else { s })
+        }
+        '%' => {
+            let f = n.as_f64();
+            let body = crate::value::format_float_dp(f.abs() * 100.0, prec);
+            (f.is_sign_negative() && f != 0.0, format!("{body}%"))
+        }
+        _ /* 'f' */ => {
+            let f = n.as_f64();
+            (f.is_sign_negative() && f != 0.0, crate::value::format_float_dp(f.abs(), prec))
+        }
+    }
+}
+
+/// Render one value per `spec`: build the (sign, prefix, magnitude), then pad to `width`.
 fn apply_fmt(spec: &FmtSpec, val: &Value) -> Result<String, ExprError> {
-    let bad = |what: &str| ExprError::new(format!("FORMAT: can't format {:?} as {what}", val.to_str()));
-    let trunc = |s: String, p: Option<usize>| -> String {
-        match p {
+    let numeric = matches!(spec.ty, 'd' | 'f' | 'x' | 'X' | 'o' | 'b' | 'e' | 'E' | '%')
+        || (spec.ty == '\0' && val.is_numeric_type());
+
+    // The "prefix" (sign + radix marker) stays flush-left of any zero-padding; `body` is what pads.
+    let (prefix, body) = if numeric {
+        let n = val
+            .to_number()
+            .map_err(|_| ExprError::new(format!("FORMAT: can't format {:?} as a number", val.to_str())))?;
+        let (neg, mut mag) = numeric_mag(&n, spec.ty, spec);
+        if spec.group && matches!(effective_ty(spec.ty, &n), 'd' | 'f' | '%') {
+            mag = group_thousands(&mag);
+        }
+        let sign = if neg {
+            "-"
+        } else {
+            match spec.sign {
+                Sign::Plus => "+",
+                Sign::Space => " ",
+                Sign::Minus => "",
+            }
+        };
+        let radix = if spec.alt {
+            match spec.ty {
+                'x' => "0x",
+                'X' => "0X",
+                'o' => "0o",
+                'b' => "0b",
+                _ => "",
+            }
+        } else {
+            ""
+        };
+        (format!("{sign}{radix}"), mag)
+    } else {
+        // string / auto-string
+        let s = val.to_str();
+        let s = match spec.prec {
             Some(p) => s.chars().take(p).collect(),
             None => s,
-        }
+        };
+        (String::new(), s)
     };
-    let as_float = |v: &Value| v.to_number().map(|n| n.as_f64());
-    let base = match spec.ty {
-        's' => trunc(val.to_str(), spec.prec),
-        'd' => match val.to_number() {
-            Ok(Number::Int(i)) => i.to_string(),
-            Ok(Number::Big(b)) => b.to_string(),
-            Ok(Number::Float(f)) => (f.trunc() as i64).to_string(),
-            Err(_) => return Err(bad("an integer")),
-        },
-        'f' => crate::value::format_float_dp(
-            as_float(val).map_err(|_| bad("a number"))?,
-            spec.prec.map(|p| p.min(100) as u8),
-        ),
-        'x' | 'X' => {
-            let big = match val.to_number() {
-                Ok(Number::Int(i)) => num_bigint::BigInt::from(i),
-                Ok(Number::Big(b)) => b,
-                Ok(Number::Float(f)) => num_bigint::BigInt::from(f.trunc() as i64),
-                Err(_) => return Err(bad("hex")),
-            };
-            let h = big.to_str_radix(16);
-            if spec.ty == 'X' { h.to_uppercase() } else { h }
-        }
-        _ /* '\0' auto: by the value's own type */ => match val {
-            Value::Str(s) => trunc(s.clone(), spec.prec),
-            Value::Float(f) => crate::value::format_float_dp(*f, spec.prec.map(|p| p.min(100) as u8)),
-            _ => val.to_str(),
-        },
-    };
-    // Padding.
+
+    let base = format!("{prefix}{body}");
     let clen = base.chars().count();
     if clen >= spec.width {
         return Ok(base);
     }
     let pad = spec.width - clen;
-    let numeric_ctx =
-        matches!(spec.ty, 'd' | 'f' | 'x' | 'X') || (spec.ty == '\0' && val.is_numeric_type());
-    let align = spec.align.unwrap_or(if numeric_ctx { Align::Right } else { Align::Left });
+    let align = spec.align.unwrap_or(if numeric { Align::Right } else { Align::Left });
     let fill = if spec.zero && spec.align.is_none() { '0' } else { spec.fill };
-    // Zero-fill goes AFTER a leading '-' (so -3.14 in width 8 is "-0003.14", not "000-3.14").
+    // Zero-fill goes between the sign/prefix and the digits (so `-3.14` in width 8 is `-0003.14`).
     if fill == '0' && align == Align::Right {
-        if let Some(rest) = base.strip_prefix('-') {
-            return Ok(format!("-{}{}", "0".repeat(pad), rest));
-        }
+        return Ok(format!("{prefix}{}{body}", "0".repeat(pad)));
     }
     let run = |n: usize| std::iter::repeat(fill).take(n).collect::<String>();
     Ok(match align {
@@ -2165,6 +2286,18 @@ fn apply_fmt(spec: &FmtSpec, val: &Value) -> Result<String, ExprError> {
             format!("{}{base}{}", run(l), run(pad - l))
         }
     })
+}
+
+/// The effective type once `'\0'` (auto) is resolved against the value.
+fn effective_ty(ty: char, n: &Number) -> char {
+    if ty == '\0' {
+        match n {
+            Number::Float(_) => 'f',
+            _ => 'd',
+        }
+    } else {
+        ty
+    }
 }
 
 #[cfg(test)]
@@ -2245,6 +2378,27 @@ mod tests {
             "115792089237316195423570985008687907853269984665640564039457584007913129639936"
         );
         assert_eq!(ev(r#"FORMAT("{:x}", 2^64)"#).to_str(), "10000000000000000");
+    }
+
+    #[test]
+    fn format_v2_grouping_sign_alt_and_radix_types() {
+        // Thousands grouping (integers and the integer part of floats).
+        assert_eq!(ev(r#"FORMAT("{:,}", 1234567)"#).to_str(), "1,234,567");
+        assert_eq!(ev(r#"FORMAT("{:,.2}", 1234567.5)"#).to_str(), "1,234,567.50");
+        assert_eq!(ev(r#"FORMAT("{:,}", 2^100)"#).to_str(), "1,267,650,600,228,229,401,496,703,205,376");
+        // Sign flags: '+' always, ' ' space for positives (negatives keep '-').
+        assert_eq!(ev(r#"FORMAT("{:+d}", 5)"#).to_str(), "+5");
+        assert_eq!(ev(r#"FORMAT("{:+d}", 0 - 5)"#).to_str(), "-5");
+        assert_eq!(ev(r#"FORMAT("[{: d}]", 5)"#).to_str(), "[ 5]");
+        // Zero-pad keeps sign in front: "+000042".
+        assert_eq!(ev(r#"FORMAT("{:+08}", 42)"#).to_str(), "+0000042");
+        // Radix types + '#' prefix (prefix stays flush-left of zero padding).
+        assert_eq!(ev(r#"FORMAT("{:o} {:b}", 8, 5)"#).to_str(), "10 101");
+        assert_eq!(ev(r#"FORMAT("{:#x}", 255)"#).to_str(), "0xff");
+        assert_eq!(ev(r#"FORMAT("{:#08x}", 255)"#).to_str(), "0x0000ff");
+        // Scientific and percent.
+        assert_eq!(ev(r#"FORMAT("{:.2e}", 31400)"#).to_str(), "3.14e4");
+        assert_eq!(ev(r#"FORMAT("{:.1%}", 0.5)"#).to_str(), "50.0%");
     }
 
     #[test]
