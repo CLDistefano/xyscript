@@ -7861,7 +7861,15 @@ impl GuiApp {
         } else if let Some(confirm) = self.editor.dir_delete_prompt() {
             confirm
         } else if let Some(footer) = self.editor.dir_footer() {
-            footer
+            // A DIR/LS listing shows its footer here — but a transient status or ERROR message must
+            // still surface over it (otherwise command feedback and errors were invisible whenever the
+            // active tab was a listing). Append it, so the footer's base-dir + express-key context is
+            // kept alongside the message.
+            if self.status.is_empty() {
+                footer
+            } else {
+                format!("{footer}  —  {}", self.status)
+            }
         } else {
             plain_status = true;
             let doc = self.editor.document();
