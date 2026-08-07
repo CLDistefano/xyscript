@@ -747,7 +747,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     // string
     "LEN", "UPPER", "LOWER", "STRIP", "LSTRIP", "RSTRIP", "TRIMLEFT", "TRIMRIGHT", "SUBSTR", "LEFT",
     "RIGHT", "INDEX", "CONTAINS", "REPLACE", "SPLIT", "SPLITS", "JOIN", "CHARS", "WORDS", "LINES",
-    "CHR", "ASC",
+    "CHR", "ASC", "FORMAT",
     // string classification predicates (all → 1/0; false for an empty string)
     "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
     "ISUPPER", "ISLOWER", "ISTITLE", "ISSPACE", "ISPRINT", "ISPUNCT",
@@ -1083,6 +1083,15 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
                 Value::Map(m) => m.len() as i64,
                 _ => s(0).chars().count() as i64,
             }))
+        }
+        // `FORMAT(template, …args)` — interpolate the args into the template's `{}` placeholders (v1).
+        "FORMAT" => {
+            if argc < 1 {
+                return Err(ExprError::new(format!(
+                    "FORMAT: expected at least 1 arg (the template), got {argc}"
+                )));
+            }
+            Ok(Value::str(format_template(&s(0), &vals[1..])?))
         }
         // `ITER(x)` — the sequence a `FOR … IN` walks: an array's elements, a map's keys (sorted),
         // a string's characters, or a single-element list for a scalar. Also useful standalone
@@ -1946,6 +1955,218 @@ fn chr(arg: &str) -> String {
     }
 }
 
+// ---- FORMAT (v1): Python/Rust-style `{}` string interpolation ----------------------------------
+
+#[derive(Clone, Copy, PartialEq)]
+enum Align {
+    Left,
+    Right,
+    Center,
+}
+
+/// A parsed FORMAT field spec. `ty == '\0'` means "auto" — format by the value's own type.
+struct FmtSpec {
+    fill: char,
+    align: Option<Align>,
+    zero: bool,
+    width: usize,
+    prec: Option<usize>,
+    ty: char,
+}
+
+impl Default for FmtSpec {
+    fn default() -> Self {
+        FmtSpec { fill: ' ', align: None, zero: false, width: 0, prec: None, ty: '\0' }
+    }
+}
+
+/// `FORMAT(template, …args)` — interpolate `args` into `template`. `{}` takes the next positional
+/// argument, `{n}` an explicit 0-based one; `{:spec}` / `{n:spec}` apply a field spec (see
+/// [`parse_fmt_spec`]); `{{` / `}}` are literal braces. Returns the built string.
+fn format_template(tmpl: &str, args: &[Value]) -> Result<String, ExprError> {
+    let mut out = String::new();
+    let mut chars = tmpl.chars().peekable();
+    let mut auto = 0usize; // next auto-positional argument
+    while let Some(c) = chars.next() {
+        match c {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
+                out.push('{');
+            }
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                out.push('}');
+            }
+            '}' => {
+                return Err(ExprError::new("FORMAT: unmatched '}' in template (use '}}' for a literal)"))
+            }
+            '{' => {
+                let mut body = String::new();
+                let mut closed = false;
+                for d in chars.by_ref() {
+                    if d == '}' {
+                        closed = true;
+                        break;
+                    }
+                    body.push(d);
+                }
+                if !closed {
+                    return Err(ExprError::new(
+                        "FORMAT: unmatched '{' in template (use '{{' for a literal)",
+                    ));
+                }
+                let (idx_part, spec_part) = match body.split_once(':') {
+                    Some((i, sp)) => (i, Some(sp)),
+                    None => (body.as_str(), None),
+                };
+                let idx = if idx_part.trim().is_empty() {
+                    let i = auto;
+                    auto += 1;
+                    i
+                } else {
+                    idx_part
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|_| ExprError::new(format!("FORMAT: bad argument index {idx_part:?}")))?
+                };
+                let val = args.get(idx).ok_or_else(|| {
+                    ExprError::new(format!(
+                        "FORMAT: {{{idx}}} but only {} argument(s) were given",
+                        args.len()
+                    ))
+                })?;
+                out.push_str(&apply_fmt(&parse_fmt_spec(spec_part.unwrap_or(""))?, val)?);
+            }
+            other => out.push(other),
+        }
+    }
+    Ok(out)
+}
+
+/// Parse a FORMAT field spec: `[[fill]align]['0'][width]['.'precision][type]`. `align` is `<` (left),
+/// `>` (right), or `^` (centre), with an optional fill char in front; `0` zero-pads; `width` is the
+/// minimum field width; `.precision` is decimals (for `f`/floats) or max characters (for `s`/strings);
+/// `type` is `s` string, `d` integer, `f` fixed-point, or `x`/`X` hex. Empty = defaults (auto).
+fn parse_fmt_spec(spec: &str) -> Result<FmtSpec, ExprError> {
+    let cs: Vec<char> = spec.chars().collect();
+    let mut sp = FmtSpec::default();
+    let mut i = 0;
+    let align_of = |c: char| match c {
+        '<' => Align::Left,
+        '>' => Align::Right,
+        _ => Align::Center,
+    };
+    let is_align = |c: char| matches!(c, '<' | '>' | '^');
+    // [fill]align — a fill char counts only when an align char immediately follows it.
+    if cs.len() >= 2 && is_align(cs[1]) {
+        sp.fill = cs[0];
+        sp.align = Some(align_of(cs[1]));
+        i = 2;
+    } else if !cs.is_empty() && is_align(cs[0]) {
+        sp.align = Some(align_of(cs[0]));
+        i = 1;
+    }
+    if i < cs.len() && cs[i] == '0' {
+        sp.zero = true;
+        i += 1;
+    }
+    let w0 = i;
+    while i < cs.len() && cs[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i > w0 {
+        sp.width = cs[w0..i].iter().collect::<String>().parse().unwrap_or(0);
+    }
+    if i < cs.len() && cs[i] == '.' {
+        i += 1;
+        let p0 = i;
+        while i < cs.len() && cs[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == p0 {
+            return Err(ExprError::new(format!("FORMAT: precision '.' needs digits in {spec:?}")));
+        }
+        sp.prec = Some(cs[p0..i].iter().collect::<String>().parse().unwrap_or(0));
+    }
+    if i < cs.len() {
+        let t = cs[i];
+        if !matches!(t, 's' | 'd' | 'f' | 'x' | 'X') {
+            return Err(ExprError::new(format!("FORMAT: unknown type {t:?} in spec {spec:?}")));
+        }
+        sp.ty = t;
+        i += 1;
+    }
+    if i != cs.len() {
+        return Err(ExprError::new(format!("FORMAT: bad format spec {spec:?}")));
+    }
+    Ok(sp)
+}
+
+/// Render one value per `spec`: build the base string by type, then pad to `width` per align/fill.
+fn apply_fmt(spec: &FmtSpec, val: &Value) -> Result<String, ExprError> {
+    let bad = |what: &str| ExprError::new(format!("FORMAT: can't format {:?} as {what}", val.to_str()));
+    let trunc = |s: String, p: Option<usize>| -> String {
+        match p {
+            Some(p) => s.chars().take(p).collect(),
+            None => s,
+        }
+    };
+    let as_float = |v: &Value| v.to_number().map(|n| n.as_f64());
+    let base = match spec.ty {
+        's' => trunc(val.to_str(), spec.prec),
+        'd' => match val.to_number() {
+            Ok(Number::Int(i)) => i.to_string(),
+            Ok(Number::Big(b)) => b.to_string(),
+            Ok(Number::Float(f)) => (f.trunc() as i64).to_string(),
+            Err(_) => return Err(bad("an integer")),
+        },
+        'f' => crate::value::format_float_dp(
+            as_float(val).map_err(|_| bad("a number"))?,
+            spec.prec.map(|p| p.min(100) as u8),
+        ),
+        'x' | 'X' => {
+            let big = match val.to_number() {
+                Ok(Number::Int(i)) => num_bigint::BigInt::from(i),
+                Ok(Number::Big(b)) => b,
+                Ok(Number::Float(f)) => num_bigint::BigInt::from(f.trunc() as i64),
+                Err(_) => return Err(bad("hex")),
+            };
+            let h = big.to_str_radix(16);
+            if spec.ty == 'X' { h.to_uppercase() } else { h }
+        }
+        _ /* '\0' auto: by the value's own type */ => match val {
+            Value::Str(s) => trunc(s.clone(), spec.prec),
+            Value::Float(f) => crate::value::format_float_dp(*f, spec.prec.map(|p| p.min(100) as u8)),
+            _ => val.to_str(),
+        },
+    };
+    // Padding.
+    let clen = base.chars().count();
+    if clen >= spec.width {
+        return Ok(base);
+    }
+    let pad = spec.width - clen;
+    let numeric_ctx =
+        matches!(spec.ty, 'd' | 'f' | 'x' | 'X') || (spec.ty == '\0' && val.is_numeric_type());
+    let align = spec.align.unwrap_or(if numeric_ctx { Align::Right } else { Align::Left });
+    let fill = if spec.zero && spec.align.is_none() { '0' } else { spec.fill };
+    // Zero-fill goes AFTER a leading '-' (so -3.14 in width 8 is "-0003.14", not "000-3.14").
+    if fill == '0' && align == Align::Right {
+        if let Some(rest) = base.strip_prefix('-') {
+            return Ok(format!("-{}{}", "0".repeat(pad), rest));
+        }
+    }
+    let run = |n: usize| std::iter::repeat(fill).take(n).collect::<String>();
+    Ok(match align {
+        Align::Left => format!("{base}{}", run(pad)),
+        Align::Right => format!("{}{base}", run(pad)),
+        Align::Center => {
+            let l = pad / 2;
+            format!("{}{base}{}", run(l), run(pad - l))
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1995,6 +2216,45 @@ mod tests {
     }
     fn ev_ctx(s: &str, ctx: &Ctx) -> Value {
         eval(&parse(s).unwrap(), ctx).unwrap()
+    }
+
+    #[test]
+    fn format_v1_placeholders_and_specs() {
+        // Positional, indexed (reusable), and literal braces.
+        assert_eq!(ev(r#"FORMAT("{} + {} = {}", 2, 3, 5)"#).to_str(), "2 + 3 = 5");
+        assert_eq!(ev(r##"FORMAT("#{0}: {1} ({0})", 7, "Ada")"##).to_str(), "#7: Ada (7)");
+        assert_eq!(ev(r#"FORMAT("{{{}}}", 9)"#).to_str(), "{9}");
+        // Width + alignment + fill.
+        assert_eq!(ev(r#"FORMAT("[{:>6}]", "hi")"#).to_str(), "[    hi]");
+        assert_eq!(ev(r#"FORMAT("[{:<6}]", "hi")"#).to_str(), "[hi    ]");
+        assert_eq!(ev(r#"FORMAT("[{:^6}]", "hi")"#).to_str(), "[  hi  ]");
+        assert_eq!(ev(r#"FORMAT("[{:*>6}]", "hi")"#).to_str(), "[****hi]");
+        // Numbers default to right-align; float precision; zero-pad keeps the sign in front.
+        assert_eq!(ev(r#"FORMAT("[{:6}]", 42)"#).to_str(), "[    42]");
+        assert_eq!(ev(r#"FORMAT("{:.2}", 3.14159)"#).to_str(), "3.14");
+        assert_eq!(ev(r#"FORMAT("{:08.2}", 3.14159)"#).to_str(), "00003.14");
+        assert_eq!(ev(r#"FORMAT("{:08.2}", 0 - 3.14159)"#).to_str(), "-0003.14");
+        // Explicit types: string truncation, integer, hex.
+        assert_eq!(ev(r#"FORMAT("{:.3s}", "abcdef")"#).to_str(), "abc");
+        assert_eq!(ev(r#"FORMAT("{:d}", 7.9)"#).to_str(), "7"); // d truncates a float
+        assert_eq!(ev(r#"FORMAT("{:x}", 255)"#).to_str(), "ff");
+        assert_eq!(ev(r#"FORMAT("{:04X}", 255)"#).to_str(), "00FF");
+        // Big integers format in full, including as hex.
+        assert_eq!(
+            ev(r#"FORMAT("{}", 2^256)"#).to_str(),
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+        );
+        assert_eq!(ev(r#"FORMAT("{:x}", 2^64)"#).to_str(), "10000000000000000");
+    }
+
+    #[test]
+    fn format_v1_errors_are_trappable() {
+        // Unmatched braces, an out-of-range argument, and a bogus type all error (not panic).
+        assert!(parse(r#"FORMAT("{", 1)"#).is_ok()); // parses; fails at eval
+        assert!(eval(&parse(r#"FORMAT("{")"#).unwrap(), &Ctx::new()).is_err());
+        assert!(eval(&parse(r#"FORMAT("{1}", 5)"#).unwrap(), &Ctx::new()).is_err());
+        assert!(eval(&parse(r#"FORMAT("{:q}", 5)"#).unwrap(), &Ctx::new()).is_err());
+        assert!(eval(&parse(r#"FORMAT("}")"#).unwrap(), &Ctx::new()).is_err());
     }
 
     #[test]
