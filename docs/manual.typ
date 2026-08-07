@@ -1212,11 +1212,45 @@ arguments in parentheses, anywhere a value is expected:
 PR $(LEN(\"hello\"))                # 5
 PR Today is $(DATE(m-d-yyyy))")
 
-The library spans text (#raw("UPPER"), #raw("SUBSTR"), #raw("REPLACE"), #raw("INDEX"), …), splitting
-and joining (#raw("SPLIT"), #raw("JOIN"), #raw("WORDS"), #raw("LINES")), arrays (#raw("PUSH"),
-#raw("SORT"), #raw("SLICE")), numbers and trigonometry (#raw("ABS"), #raw("SQRT"), #raw("POW"),
-#raw("BASE"), …), and the masked clock #raw("DATE()") / #raw("TIME()"). The *Reference* lists every one
-with its signature.
+The library spans text (#raw("UPPER"), #raw("SUBSTR"), #raw("REPLACE"), #raw("INDEX"), …), building
+strings from a template (#raw("FORMAT"), its own section below), splitting and joining (#raw("SPLIT"),
+#raw("JOIN"), #raw("WORDS"), #raw("LINES")), arrays (#raw("PUSH"), #raw("SORT"), #raw("SLICE")), numbers
+and trigonometry (#raw("ABS"), #raw("SQRT"), #raw("POW"), #raw("BASE"), …), and the masked clock
+#raw("DATE()") / #raw("TIME()"). The *Reference* lists every one with its signature.
+
+== Formatting strings with #raw("FORMAT")
+
+When gluing pieces together with #raw(".") isn't enough — you want columns to line up, a fixed number
+of decimals, or thousands separators — #raw("FORMAT") builds a string from a *template* and a list of
+values. Each #raw("{}") in the template is replaced by the next argument in turn:
+
+#ex("PR $(FORMAT(\"{} + {} = {}\", 2, 3, 5))     # 2 + 3 = 5")
+
+Number a placeholder — #raw("{0}"), #raw("{1}") — to choose an argument explicitly or reuse one, and
+double a brace (#raw("{{"), #raw("}}")) to print it literally.
+
+After a colon comes an optional *field spec* controlling width, alignment, and number formatting. A
+sampler:
+
+#ex("PR $(FORMAT(\"[{:>8}]\", \"hi\"))           # [      hi]     right-aligned in a width of 8
+PR $(FORMAT(\"[{:^8}]\", \"hi\"))           # [   hi   ]     centred
+PR $(FORMAT(\"[{:*<8}]\", \"hi\"))          # [hi******]     left-aligned, filled with *
+PR $(FORMAT(\"{:.2}\", 3.14159))            # 3.14          two decimal places
+PR $(FORMAT(\"{:08.2}\", 3.14159))          # 00003.14      zero-padded to width 8
+PR $(FORMAT(\"{:,.2}\", 1234567.5))         # 1,234,567.50  thousands separators
+PR $(FORMAT(\"{:+.1%}\", 0.087))            # +8.7%         percent, always signed
+PR $(FORMAT(\"{:#x}\", 255))                # 0xff          hex with a 0x prefix")
+
+The whole grammar is #raw("[[fill]align][sign][#][0][width][,][.precision][type]"), where the trailing
+`type` is one of #raw("s") (string), #raw("d") (integer), #raw("f") (fixed-point), #raw("e")/#raw("E")
+(scientific), #raw("%") (percent), or #raw("x")/#raw("X")/#raw("o")/#raw("b") (hex, octal, binary).
+Numbers right-align by default and text left-aligns. Because XyScript's integers are
+arbitrary-precision, even a huge value formats cleanly:
+
+#ex("PR $(FORMAT(\"{:,}\", 2^128))
+# 340,282,366,920,938,463,463,374,607,431,768,211,456")
+
+The *Reference* entry spells out every part of the spec.
 
 == Branching
 
