@@ -7981,8 +7981,8 @@ impl GuiApp {
                 .max_size(row_h * 10.0)
                 .show_inside(ui, |ui| {
                     let prompt = format!("{}>", abbreviate_cwd(&self.editor.cwd()));
-                    // Input row pinned to the bottom of the pane; scrollback fills the space above.
-                    egui::Panel::bottom("shell_input").show_inside(ui, |ui| {
+                    // Input row pinned to the TOP of the pane; scrollback fills the space below it.
+                    egui::Panel::top("shell_input").show_inside(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&prompt).monospace().size(font));
                             let resp = ui.add(
