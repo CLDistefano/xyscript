@@ -8278,6 +8278,13 @@ impl GuiApp {
         // `awaiting_line` branch above — this is display only. Mirrors the cmline pop-up.
         if self.editor.awaiting_line() {
             let prompt = self.editor.input_prompt().unwrap_or_else(|| "Input".to_string());
+            // Colour the prompt with UIFGCOLOR. `.strong()` on its own uses egui's DEFAULT strong-text
+            // colour (it ignores `override_text_color`), which can go low-contrast / invisible against a
+            // themed (UIBGCOLOR) window background — the reported bug.
+            let ui_fg = {
+                let (r, g, b) = self.editor.ui_fg_color();
+                egui::Color32::from_rgb(r, g, b)
+            };
             let popup_font = self.editor.chrome_font() * 1.3;
             let rect = ui.ctx().content_rect();
             let default_w = (rect.width() * 0.6).clamp(320.0, 900.0);
@@ -8291,7 +8298,7 @@ impl GuiApp {
                 .show(ui.ctx(), |ui| {
                     let w = ui.available_width().max(default_w);
                     ui.set_width(w);
-                    ui.label(egui::RichText::new(prompt).strong());
+                    ui.label(egui::RichText::new(prompt).strong().color(ui_fg));
                     ui.separator();
                     let shown = format!("{}\u{2502}", self.input_line); // trailing │ caret
                     ui.add(
