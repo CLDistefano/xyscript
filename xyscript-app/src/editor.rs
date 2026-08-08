@@ -66,7 +66,20 @@ pub struct Editor {
     /// script. Honored at the next preemption slice (`pump_yield`) — checked between slices, so it
     /// fires within a frame even mid-loop. Cleared when a fresh top-level run starts.
     abort_requested: bool,
+    /// Recursion depth of `XC`/`SUBMIT` re-running the command line. Each re-exec is NATIVE recursion
+    /// (`post_run` → dispatch → `post_run`), so a bare `XC` typed on the cmline — whose command IS
+    /// `XC` — would re-run itself until the stack overflows and the app crashes. Capped at
+    /// [`CMLINE_REEXEC_MAX`]; incremented around each re-exec dispatch, so it returns to 0 as the
+    /// recursion unwinds.
+    reexec_depth: usize,
 }
+
+/// Max `XC`/`SUBMIT` re-exec recursion depth before we abort (guarding a self-running command line
+/// from overflowing the stack). Far above any legitimate nesting, small enough to stay well within
+/// the stack.
+const CMLINE_REEXEC_MAX: usize = 64;
+/// The error shown when the [`CMLINE_REEXEC_MAX`] cap trips.
+const CMLINE_REEXEC_MSG: &str = "XC/SUBMIT aborted: the command line runs itself (infinite loop)";
 
 impl Editor {
     /// Create an editor with an explicit operative keymap. The keymap's literal
@@ -84,6 +97,7 @@ impl Editor {
             reloaded_keymap: None,
             settle_depth: 0,
             abort_requested: false,
+            reexec_depth: 0,
         }
     }
 
@@ -1624,58 +1638,79 @@ impl Editor {
             self.reloaded_keymap = Some(km);
         }
         if let Some(cmd) = self.host.take_cmline_submit() {
-            // Run the command SNAPSHOTTED at `SUBMIT` time — a later `BC` in the same chain can't
-            // blank it out from under us. Keep the command in the cmline unless `BC`/`CMBLANK`.
-            self.host.doc_focus_ran = false;
-            self.host.explicit_focus = false;
-            self.host.target = Target::Document;
-            self.dispatch(&cmd);
-            if self.interp.is_suspended() {
-                return; // parked; remaining effects wait for resume
-            }
-            // Per-verb resting focus (see `submit_cmdline`): respect a self-refocus to the cmline;
-            // else land in the text only for a successful document-focusing command. An explicit
-            // focus verb (`GT`/`TH`) is authoritative and skips the heuristic.
-            if !self.host.explicit_focus && self.host.target != Target::CmLine {
-                self.host.target = if self.interp.error_flag() || !self.host.doc_focus_ran {
-                    Target::CmLine
-                } else {
-                    Target::Document
-                };
-            }
-            self.host.input_focus = self.host.target; // resync $TX focus (see submit_cmdline)
-            if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
-                self.host.clear_command_line(); // CMBLANK on, or a force-blank verb (AB/CD/D:/ST)
+            // A `SUBMIT` whose command re-`SUBMIT`s the same line recurses forever (native stack) —
+            // cap it. Over the cap: abort with an error and blank the offending line so the next Enter
+            // can't just re-trigger it. `reexec_depth` returns to 0 as the recursion unwinds.
+            if self.reexec_depth >= CMLINE_REEXEC_MAX {
+                self.host.clear_command_line();
+                self.last_error = Some(CMLINE_REEXEC_MSG.to_string());
+            } else {
+                self.reexec_depth += 1;
+                // Run the command SNAPSHOTTED at `SUBMIT` time — a later `BC` in the same chain can't
+                // blank it out from under us. Keep the command in the cmline unless `BC`/`CMBLANK`.
+                self.host.doc_focus_ran = false;
+                self.host.explicit_focus = false;
+                self.host.target = Target::Document;
+                self.dispatch(&cmd);
+                if self.interp.is_suspended() {
+                    self.reexec_depth -= 1;
+                    return; // parked; remaining effects wait for resume
+                }
+                // Per-verb resting focus (see `submit_cmdline`): respect a self-refocus to the cmline;
+                // else land in the text only for a successful document-focusing command. An explicit
+                // focus verb (`GT`/`TH`) is authoritative and skips the heuristic.
+                if !self.host.explicit_focus && self.host.target != Target::CmLine {
+                    self.host.target = if self.interp.error_flag() || !self.host.doc_focus_ran {
+                        Target::CmLine
+                    } else {
+                        Target::Document
+                    };
+                }
+                self.host.input_focus = self.host.target; // resync $TX focus (see submit_cmdline)
+                if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
+                    self.host.clear_command_line(); // CMBLANK on, or a force-blank verb (AB/CD/D:/ST)
+                }
+                self.reexec_depth -= 1;
             }
         }
         // `XC` runs the cmline's shown contents (keeping them, unlike SUBMIT which blanks nothing but
         // is the "real" submit). It runs the command against the DOCUMENT (without the switch, a
         // focused cmline would run it against itself — e.g. `dfa` would select the cmline).
         if let Some(cmd) = self.host.take_cmline_exec() {
-            // Run the SNAPSHOT taken at `XC` time, so `XC;BC` runs the command and THEN blanks.
-            // Resting focus (per-verb rule, XC variant): a SUCCESSFUL document-focusing command lands
-            // the caret in the text; otherwise (failure, or an exempt/neutral command) the caret
-            // stays WHERE IT WAS when XC ran — `prev`, which may be the cmline OR the text.
-            let prev = self.host.target;
-            self.host.doc_focus_ran = false;
-            self.host.explicit_focus = false;
-            self.host.target = Target::Document;
-            self.dispatch(&cmd);
-            if self.interp.is_suspended() {
-                return;
-            }
-            // An explicit focus verb (`GT`/`TH`) is authoritative; otherwise a SUCCESSFUL
-            // document-focusing command lands in the text, else focus returns to where it was.
-            if !self.host.explicit_focus {
-                self.host.target = if !self.interp.error_flag() && self.host.doc_focus_ran {
-                    Target::Document
-                } else {
-                    prev
-                };
-            }
-            self.host.input_focus = self.host.target;
-            if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
-                self.host.clear_command_line(); // CMBLANK on, or a force-blank verb (AB/CD/D:/ST)
+            // A bare `XC` on the cmline re-execs itself forever (native `post_run`→dispatch recursion)
+            // — the exact mishap that crashed the app. Cap the depth; over it, abort + blank the line.
+            if self.reexec_depth >= CMLINE_REEXEC_MAX {
+                self.host.clear_command_line();
+                self.last_error = Some(CMLINE_REEXEC_MSG.to_string());
+            } else {
+                self.reexec_depth += 1;
+                // Run the SNAPSHOT taken at `XC` time, so `XC;BC` runs the command and THEN blanks.
+                // Resting focus (per-verb rule, XC variant): a SUCCESSFUL document-focusing command
+                // lands the caret in the text; otherwise (failure, or an exempt/neutral command) the
+                // caret stays WHERE IT WAS when XC ran — `prev`, which may be the cmline OR the text.
+                let prev = self.host.target;
+                self.host.doc_focus_ran = false;
+                self.host.explicit_focus = false;
+                self.host.target = Target::Document;
+                self.dispatch(&cmd);
+                if self.interp.is_suspended() {
+                    self.reexec_depth -= 1;
+                    return;
+                }
+                // An explicit focus verb (`GT`/`TH`) is authoritative; otherwise a SUCCESSFUL
+                // document-focusing command lands in the text, else focus returns to where it was.
+                if !self.host.explicit_focus {
+                    self.host.target = if !self.interp.error_flag() && self.host.doc_focus_ran {
+                        Target::Document
+                    } else {
+                        prev
+                    };
+                }
+                self.host.input_focus = self.host.target;
+                if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
+                    self.host.clear_command_line(); // CMBLANK on, or a force-blank verb (AB/CD/D:/ST)
+                }
+                self.reexec_depth -= 1;
             }
         }
         // Deferred runs (RUNHERE blocks, `&X` script binders) now that the interpreter is
@@ -6101,6 +6136,28 @@ mod tests {
         // Bare `BC` still blanks the cmline.
         e.run_command("BC");
         assert_eq!(e.command_line().text(), "");
+    }
+
+    #[test]
+    fn xc_that_reruns_itself_is_capped_not_a_crash() {
+        // The reported mishap: a bare `XC` on the command line. `XC` snapshots the cmline text ("XC")
+        // and re-execs it, which snapshots "XC" and re-execs it … Before the fix this recursed on the
+        // native stack until it overflowed and crashed. Now it's capped and aborts trappably.
+        let mut e = ed();
+        e.run_command("BC XC"); // literal "XC" on the cmline
+        assert_eq!(e.command_line().text(), "XC");
+        e.run_command("XC"); // must NOT overflow the stack / crash
+        assert!(
+            e.last_error().is_some_and(|m| m.contains("runs itself")),
+            "expected the re-exec cap to abort with an error, got {:?}",
+            e.last_error()
+        );
+        // The offending line is blanked so a follow-up Enter can't immediately re-trigger it.
+        assert_eq!(e.command_line().text(), "");
+        // The editor is still usable afterwards.
+        e.run_command("NEW");
+        e.insert_str("ok");
+        assert_eq!(e.document().text(), "ok");
     }
 
     #[test]
