@@ -7736,7 +7736,8 @@ impl GuiApp {
         if !writer_view && (visible_tabs > 1 || (self.editor.show_one_tab() && visible_tabs == 1)) {
             let active = self.editor.active_index();
             let mut switch_to: Option<usize> = None;
-            let mut close: Option<usize> = None;
+            let mut close: Option<usize> = None; // right-click "Close tab" / the × button (AB/V)
+            let mut close_force: Option<usize> = None; // right-click "Close without saving" (AB)
             let mut new_tab = false;
             let tab_active_bg = self.editor.tab_active_bg();
             let tab_hover_bg = self.editor.tab_hover_bg();
@@ -7794,6 +7795,18 @@ impl GuiApp {
                         if resp.clicked() {
                             switch_to = Some(i);
                         }
+                        // Right-click menu: close with the save-prompt, or (for a savable tab) discard.
+                        resp.context_menu(|ui| {
+                            if ui.button("Close tab").clicked() {
+                                close = Some(i);
+                                ui.close();
+                            }
+                            // A DIR listing has nothing to save, so "close without saving" is moot.
+                            if !t.dir_listing && ui.button("Close without saving").clicked() {
+                                close_force = Some(i);
+                                ui.close();
+                            }
+                        });
                         let x = egui::RichText::new("×").color(x_glyph);
                         if ui.add(egui::Button::new(x).frame(false).small()).clicked() {
                             close = Some(i);
@@ -7817,6 +7830,14 @@ impl GuiApp {
                 // buffer closes at once; a modified one arms the prompt the next frame handles.
                 self.editor.set_active_buffer(i);
                 self.editor.run_command("AB/V");
+                self.surface_command_feedback();
+                self.pane_view.follow = true;
+            }
+            if let Some(i) = close_force {
+                // "Close without saving": focus the tab, then close it with no save prompt (`AB`),
+                // discarding any unsaved changes.
+                self.editor.set_active_buffer(i);
+                self.editor.run_command("AB");
                 self.surface_command_feedback();
                 self.pane_view.follow = true;
             }

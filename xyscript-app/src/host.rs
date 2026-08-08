@@ -1347,6 +1347,8 @@ pub struct TabInfo {
     pub modified: bool,
     /// Locked against edits (`RO`).
     pub read_only: bool,
+    /// A `DIR`/`LS` directory listing (transient — nothing to save, so "close without saving" is moot).
+    pub dir_listing: bool,
 }
 
 /// The user's answer to a close-confirmation prompt (`AB/V` save-prompt, `ABD` delete-confirm).
@@ -3280,6 +3282,7 @@ impl AppHost {
                 path: d.path().map(|p| p.display().to_string()),
                 modified: d.is_modified(),
                 read_only: d.read_only(),
+                dir_listing: d.is_dir_listing(),
             })
             .collect()
     }
