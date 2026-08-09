@@ -7695,34 +7695,6 @@ impl GuiApp {
             }
         }
         }
-        // Mouse-wheel free-scroll (doesn't trigger follow). Skip it while the pointer is over a
-        // FLOATING egui area (a Window/popup/menu, e.g. the Keyboard chart) — otherwise the wheel
-        // would scroll that window AND leak into the canvas underneath. We test the layer ORDER
-        // directly rather than `is_pointer_over_egui()`: that also returns true over the *background*
-        // central panel once the canvas image (an allocated `ui.image().interact()`) has consumed
-        // the root UI's available rect — which is everywhere over the text, so it swallowed every
-        // wheel event. Panels + canvas live in `Order::Background`; only real floating areas are above.
-        let over_floating = ctx
-            .input(|i| i.pointer.interact_pos())
-            .and_then(|pos| ctx.layer_id_at(pos))
-            .is_some_and(|layer| layer.order != egui::Order::Background);
-        let (wheel, hwheel, shift) =
-            ctx.input(|i| (i.smooth_scroll_delta.y, i.smooth_scroll_delta.x, i.modifiers.shift));
-        if !over_floating {
-            // `WRAP off`: a horizontal wheel/trackpad swipe, or Shift+wheel, PANS horizontally (and then
-            // owns the scroll — no vertical move). The raster clamps the upper bound to the content width.
-            if !self.editor.wrap() && (hwheel.abs() > 0.0 || (shift && wheel.abs() > 0.0)) {
-                let d = if hwheel.abs() > 0.0 { hwheel } else { wheel };
-                self.pane_view.scroll_h = (self.pane_view.scroll_h - d * self.render_scale).max(0.0);
-                self.pane_view.follow = false;
-            } else if wheel.abs() > 0.0 {
-                // Scroll by pixels in VISUAL space; the next shape folds the offset into
-                // (line, residual) and clamps at the buffer ends. Wheel up (positive y)
-                // scrolls the content up, i.e. moves the view toward the top.
-                self.pane_view.scroll_vertical -= wheel * self.render_scale; // wheel is points; scroll is pixels
-            }
-        }
-
         // --- Tab strip: one tab per open buffer, shown when more than one is VISIBLE — or, with
         //     `SHOWONETAB on`, even for a single doc (default off keeps a lone doc uncluttered).
         //     Click a tab to switch; the × closes it via `AB/V` (save-prompt if modified). Mutations
@@ -7733,6 +7705,9 @@ impl GuiApp {
         let shell_visible = self.editor.shell_output_visible();
         let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Shell Output*";
         let visible_tabs = tabs.iter().filter(|t| !is_hidden(t)).count();
+        // The tab strip's on-screen rect (set below when it's shown), so the mouse-wheel handler can
+        // tell when the pointer is over the *scrollable* strip and NOT also scroll the canvas.
+        let mut tab_strip_rect: Option<egui::Rect> = None;
         if !writer_view && (visible_tabs > 1 || (self.editor.show_one_tab() && visible_tabs == 1)) {
             let active = self.editor.active_index();
             let mut switch_to: Option<usize> = None;
@@ -7753,7 +7728,7 @@ impl GuiApp {
                 .tab_x_color()
                 .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
                 .unwrap_or(ui_fg);
-            egui::Panel::top("tabs").show_inside(ui, |ui| {
+            let tabs_panel = egui::Panel::top("tabs").show_inside(ui, |ui| {
                 // Tab-title backgrounds (`TABBGCOLOR`), scoped to this strip's style: active tab uses
                 // the selection fill, hover uses the hovered widget fill, inactive the idle fill.
                 // Each stays egui's theme colour unless the user set it.
@@ -7771,6 +7746,20 @@ impl GuiApp {
                     vis.widgets.inactive.weak_bg_fill = c;
                     vis.widgets.inactive.bg_fill = c;
                 }
+                // Cap the strip at TWO rows and scroll vertically when there are more tabs than
+                // fit: without this the wrapped strip grows unbounded and eats the canvas. Height =
+                // two button rows + the inter-row gap; `auto_shrink([false, true])` keeps the full
+                // width (so the wrap width is right) while collapsing to one row when tabs are few.
+                let row_h = ui
+                    .spacing()
+                    .interact_size
+                    .y
+                    .max(ui.text_style_height(&egui::TextStyle::Body));
+                let two_rows = row_h * 2.0 + ui.spacing().item_spacing.y;
+                egui::ScrollArea::vertical()
+                    .max_height(two_rows)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (i, t) in tabs.iter().enumerate() {
                         // Skip the *Shell Output* tab while SW is off — but keep `i` as the real
@@ -7820,7 +7809,9 @@ impl GuiApp {
                         new_tab = true;
                     }
                 });
+                    });
             });
+            tab_strip_rect = Some(tabs_panel.response.rect);
             if let Some(i) = switch_to {
                 self.editor.set_active_buffer(i);
                 self.pane_view.follow = true;
@@ -7845,6 +7836,38 @@ impl GuiApp {
                 let r = self.editor.new_doc();
                 self.reset_view();
                 self.note(r);
+            }
+        }
+
+        // Mouse-wheel free-scroll (doesn't trigger follow). Runs AFTER the tab strip so we know its
+        // rect. Skip it while the pointer is over a FLOATING egui area (a Window/popup/menu, e.g. the
+        // Keyboard chart) — otherwise the wheel would scroll that window AND leak into the canvas
+        // underneath. We test the layer ORDER directly rather than `is_pointer_over_egui()`: that also
+        // returns true over the *background* central panel once the canvas image (an allocated
+        // `ui.image().interact()`) has consumed the root UI's available rect — which is everywhere over
+        // the text, so it swallowed every wheel event. Panels + canvas live in `Order::Background`;
+        // only real floating areas are above. ALSO skip it over the tab strip itself: that's a
+        // background panel too (same order as the canvas), but its own `ScrollArea` handles the wheel,
+        // so letting it fall through here would scroll the tabs AND the canvas at once.
+        let pointer = ctx.input(|i| i.pointer.interact_pos());
+        let over_floating = pointer
+            .and_then(|pos| ctx.layer_id_at(pos))
+            .is_some_and(|layer| layer.order != egui::Order::Background);
+        let over_tabs = matches!((pointer, tab_strip_rect), (Some(p), Some(r)) if r.contains(p));
+        let (wheel, hwheel, shift) =
+            ctx.input(|i| (i.smooth_scroll_delta.y, i.smooth_scroll_delta.x, i.modifiers.shift));
+        if !over_floating && !over_tabs {
+            // `WRAP off`: a horizontal wheel/trackpad swipe, or Shift+wheel, PANS horizontally (and then
+            // owns the scroll — no vertical move). The raster clamps the upper bound to the content width.
+            if !self.editor.wrap() && (hwheel.abs() > 0.0 || (shift && wheel.abs() > 0.0)) {
+                let d = if hwheel.abs() > 0.0 { hwheel } else { wheel };
+                self.pane_view.scroll_h = (self.pane_view.scroll_h - d * self.render_scale).max(0.0);
+                self.pane_view.follow = false;
+            } else if wheel.abs() > 0.0 {
+                // Scroll by pixels in VISUAL space; the next shape folds the offset into
+                // (line, residual) and clamps at the buffer ends. Wheel up (positive y)
+                // scrolls the content up, i.e. moves the view toward the top.
+                self.pane_view.scroll_vertical -= wheel * self.render_scale; // wheel is points; scroll is pixels
             }
         }
 
