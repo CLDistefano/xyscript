@@ -66,6 +66,14 @@ pub struct Editor {
     /// script. Honored at the next preemption slice (`pump_yield`) — checked between slices, so it
     /// fires within a frame even mid-loop. Cleared when a fresh top-level run starts.
     abort_requested: bool,
+    /// A cmline-submitted command that SUSPENDED (MSG/INPUT/WAIT/TXT/BK) before it could reconcile
+    /// focus — the command whose resting-focus rule `settle` must apply once the script finally
+    /// finishes. `submit_cmdline`/`post_run` reconcile inline when the command completes synchronously,
+    /// but skip it on suspend (`is_suspended`), which used to leave the transient `target = Document`
+    /// flip in place: after the modal was dismissed the caret sat in the text and nav keys moved it,
+    /// even though `$TX`/`input_focus` said the command line. `Some(cmd)` = pending; the cmd string is
+    /// kept for the force-blank check.
+    cmline_submit_pending: Option<String>,
     /// Recursion depth of `XC`/`SUBMIT` re-running the command line. Each re-exec is NATIVE recursion
     /// (`post_run` → dispatch → `post_run`), so a bare `XC` typed on the cmline — whose command IS
     /// `XC` — would re-run itself until the stack overflows and the app crashes. Capped at
@@ -98,6 +106,25 @@ impl Editor {
             settle_depth: 0,
             abort_requested: false,
             reexec_depth: 0,
+            cmline_submit_pending: None,
+        }
+    }
+
+    /// The resting-focus rule for a cmline-submitted command (mirrors `submit_cmdline`'s inline logic),
+    /// factored out so `settle` can apply it after a command that SUSPENDED finally finishes. Without
+    /// it the transient `target = Document` flip lingers — caret in the text, nav moving it — after a
+    /// `MSG`/`INPUT`/etc. dismissed, even though `$TX` says the command line.
+    fn reconcile_cmline_focus(&mut self, cmd: &str) {
+        if !self.host.explicit_focus && self.host.target != Target::CmLine {
+            self.host.target = if self.interp.error_flag() || !self.host.doc_focus_ran {
+                Target::CmLine
+            } else {
+                Target::Document
+            };
+        }
+        self.host.input_focus = self.host.target;
+        if self.host.cmline_blank() || cmd_forces_cmline_blank(cmd) {
+            self.host.clear_command_line();
         }
     }
 
@@ -287,21 +314,14 @@ impl Editor {
         // respect it. Otherwise land the caret in the text only for a SUCCESSFUL document-focusing
         // command (an edit/search/file-or-screen motion/file op); an exempt or neutral command, or a
         // failure ($ERROR), returns to the cmline. An EXPLICIT focus verb (`GT`/`TH`) is authoritative
-        // and skips the heuristic entirely. Skip while a script is parked (INPUT/WAIT/CV).
+        // and skips the heuristic entirely.
         if !self.interp.is_suspended() {
-            if !self.host.explicit_focus && self.host.target != Target::CmLine {
-                self.host.target = if self.interp.error_flag() || !self.host.doc_focus_ran {
-                    Target::CmLine
-                } else {
-                    Target::Document
-                };
-            }
-            self.host.input_focus = self.host.target;
-            // `CMBLANK on` clears the command line after every command; a few XyWrite "action" verbs
-            // (AB/CD/D:/ST) clear it regardless (focus already settled).
-            if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
-                self.host.clear_command_line();
-            }
+            self.reconcile_cmline_focus(&cmd);
+        } else {
+            // Parked (MSG/INPUT/WAIT/TXT/BK): defer the reconcile until the script finishes, or the
+            // transient `target = Document` flip is left in place (caret in text, nav moving it) even
+            // though $TX/input_focus say the cmline — `settle` applies it on completion.
+            self.cmline_submit_pending = Some(cmd);
         }
     }
     pub fn last_error(&self) -> Option<&str> {
@@ -1474,6 +1494,14 @@ impl Editor {
             self.post_run();
         }
         self.settle_depth -= 1;
+        // A cmline-submitted command that had SUSPENDED (MSG/INPUT/WAIT/TXT/BK) has now finished:
+        // apply the resting-focus rule it couldn't run inline while parked. Only at the OUTERMOST
+        // settle and only when truly done. (No-op unless a suspend set `cmline_submit_pending`.)
+        if self.settle_depth == 0 && !self.interp.is_suspended() {
+            if let Some(cmd) = self.cmline_submit_pending.take() {
+                self.reconcile_cmline_focus(&cmd);
+            }
+        }
         // Auto-exit a `BEDIT` blind edit the script left open — but only at the OUTERMOST settle
         // (deferred runs recurse through here) and only when truly done, not parked on input/WAIT.
         // Discards (an explicit `SA` is what persists); `AB` is the manual early exit.
@@ -1653,6 +1681,7 @@ impl Editor {
                 self.host.target = Target::Document;
                 self.dispatch(&cmd);
                 if self.interp.is_suspended() {
+                    self.cmline_submit_pending = Some(cmd.clone()); // reconcile on completion (settle)
                     self.reexec_depth -= 1;
                     return; // parked; remaining effects wait for resume
                 }
@@ -1694,6 +1723,7 @@ impl Editor {
                 self.host.target = Target::Document;
                 self.dispatch(&cmd);
                 if self.interp.is_suspended() {
+                    self.cmline_submit_pending = Some(cmd.clone()); // reconcile on completion (settle)
                     self.reexec_depth -= 1;
                     return;
                 }
@@ -6158,6 +6188,29 @@ mod tests {
         e.run_command("NEW");
         e.insert_str("ok");
         assert_eq!(e.document().text(), "ok");
+    }
+
+    #[test]
+    fn msg_from_cmline_returns_focus_to_the_cmline_after_dismiss() {
+        // Reported bug: `MSG $TX` submitted from the command line. `$TX` correctly reads 0 (the
+        // command line is the input focus), but after the modal was dismissed the caret showed in
+        // the TEXT and nav keys moved it there — because `submit_cmdline` flips `target = Document`
+        // transiently and, on a SUSPEND (bare MSG parks the script), skipped its focus reconcile,
+        // leaving `target` in the text. The deferred reconcile in `settle` must fix that.
+        let mut e = ed();
+        e.run_command("BC MSG hi"); // literal "MSG hi" typed on the command line, focused there
+        assert!(e.cmline_open(), "setup: focus is on the command line");
+        e.submit_cmdline(); // Enter → runs "MSG hi"; the bare MSG parks on a modal box
+        assert!(
+            e.message_request().is_some(),
+            "MSG should park the script on a modal message box"
+        );
+        e.dismiss_message(); // OK/Esc → resume → settle → deferred reconcile
+        assert!(
+            e.cmline_open(),
+            "focus must return to the command line after the MSG is dismissed, \
+             not be left in the text"
+        );
     }
 
     #[test]
