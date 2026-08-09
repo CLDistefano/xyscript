@@ -3591,6 +3591,24 @@ impl GuiApp {
             }
             self.pane_view.follow = false;
         }
+        // Snap the vertical scroll to a WHOLE PIXEL so the glyph rows and the solid highlight/selection
+        // bands land on one integer grid. cosmic rounds each glyph to whole pixels when it draws, but the
+        // bands are truncated from the float layout via `cursor_position`; if `scroll_vertical` carries a
+        // sub-pixel residual the two cross pixel boundaries at DIFFERENT thresholds, so the bands flip a
+        // pixel against otherwise-stationary text. The follow refine re-settles that residual to a
+        // slightly different value on every keystroke, which is the "Find hits jump around while editing
+        // above them" report (worst on fractional-DPI displays, where the residual is largest — and why
+        // it shows on some machines but not others). Reshape so `cursor_position` and the draw below both
+        // read the snapped layout. Guarded on a real residual, so it's a no-op once settled (e.g. idle).
+        let snapped = self.pane_view.scroll_vertical.round();
+        if (snapped - self.pane_view.scroll_vertical).abs() > 0.01 {
+            let rel = self.pane_view.scroll_line.saturating_sub(win.start_line);
+            buffer.set_scroll(Scroll::new(rel, snapped, 0.0));
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            let s = buffer.scroll();
+            self.pane_view.scroll_line = win.start_line + s.line;
+            self.pane_view.scroll_vertical = s.vertical;
+        }
         // `WRAPINDENT`/`WRAPHANG`: rebuild the hanging-indent offset tables for the settled scroll —
         // after the follow refine, so `wi_rows` matches the final layout the caret/rects/draw below read.
         // The follow refine ran `shape_until_cursor` on the already-narrowed lines `windowed_buffer` left
