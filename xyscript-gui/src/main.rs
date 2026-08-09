@@ -16,7 +16,7 @@
 
 use std::rc::Rc;
 
-use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, LineEnding, Metrics, Scroll, Selection, Shaping, SwashCache, Wrap};
+use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, LineEnding, Metrics, Motion, Scroll, Selection, Shaping, SwashCache, Wrap};
 
 mod runtime;
 
@@ -4489,6 +4489,35 @@ impl GuiApp {
         }
     }
 
+    /// `BIDICARET` visual Left/Right refine: the engine already did the LOGICAL move as a baseline;
+    /// replace the caret with the bidi-visual neighbor via cosmic's `cursor_motion`, which follows the
+    /// line's base direction (so in an RTL line Left/Right swap). `from` is the PRE-move caret. Falls
+    /// back to the engine's logical move if the caret's row is scrolled off-window. Mirrors
+    /// [`visual_line_edge`](Self::visual_line_edge). NOTE (Tier 2): cosmic's `Motion::Left/Right` is
+    /// base-direction-aware but not per-glyph — motion within a mixed run is still logical.
+    fn visual_char_move(&mut self, right: bool, extend: bool, from: usize) {
+        let (w, h) = self.pane_view.canvas_px;
+        if w == 0 || h == 0 {
+            return;
+        }
+        let (mut buffer, win) = self.windowed_buffer(w, h);
+        // Map the pre-move caret to a cosmic cursor (owned result → the &self borrow ends before the
+        // &mut self.font_system borrow below), then step it one visual position.
+        let start = self.win_cursor_at(&win, from);
+        let off = start.and_then(|cur| {
+            let motion = if right { Motion::Right } else { Motion::Left };
+            buffer
+                .cursor_motion(&mut self.font_system, cur, None, motion)
+                .map(|(nc, _)| self.win_rope_at(&win, nc))
+        });
+        self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
+        if let Some(off) = off {
+            self.editor.host_mut().move_active_to(off, extend);
+            self.goal_x = None;
+            self.pane_view.follow = true;
+        }
+    }
+
     /// Pixel (in canvas space) → document **rope** byte offset, via cosmic-text
     /// hit-testing. The hit lands in decoded-string space; map it back to a rope
     /// offset (they differ under single-byte views) before it becomes a caret.
@@ -8550,6 +8579,10 @@ impl GuiApp {
         // row). Uses last frame's `last_canvas`, like `visual_vmove`.
         if let Some((end, extend, from)) = self.editor.take_visual_edge() {
             self.visual_line_edge(end, extend, from);
+        }
+        // `BIDICARET` visual Left/Right refine (mirror of the visual-line-edge refine above).
+        if let Some((right, extend, from)) = self.editor.take_visual_move() {
+            self.visual_char_move(right, extend, from);
         }
         // A search just found a match → center it this frame (the follow logic reads `center_caret`).
         if self.editor.take_reveal_center() {

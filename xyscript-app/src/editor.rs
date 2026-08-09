@@ -475,6 +475,15 @@ impl Editor {
     pub fn take_visual_edge(&mut self) -> Option<(bool, bool, usize)> {
         self.host.take_visual_edge()
     }
+    /// Drain a pending `BIDICARET` visual Left/Right refine `(right, extend, from)` — the GUI fulfils
+    /// it via cosmic; headless callers ignore it (the engine's logical move stands). See `bidi_caret`.
+    pub fn take_visual_move(&mut self) -> Option<(bool, bool, usize)> {
+        self.host.take_visual_move()
+    }
+    /// Whether `BIDICARET` visual caret motion is on.
+    pub fn bidi_caret(&self) -> bool {
+        self.host.bidi_caret()
+    }
     /// `AUTOCFG`: rewrite the tracked config file if settings changed (no-op when tracking is off).
     /// Front-ends call this each frame (GUI) / after each command (TUI).
     pub fn poll_config_track(&mut self) {
@@ -6188,6 +6197,34 @@ mod tests {
         e.run_command("NEW");
         e.insert_str("ok");
         assert_eq!(e.document().text(), "ok");
+    }
+
+    #[test]
+    fn bidicaret_defers_left_right_to_a_visual_move_only_when_on() {
+        let mut e = ed();
+        e.insert_str("abc");
+        assert!(!e.bidi_caret(), "BIDICARET defaults off");
+        // Off: Left moves logically and queues NO visual refine.
+        e.run_command("LEFT");
+        assert!(e.take_visual_move().is_none(), "no visual refine while BIDICARET is off");
+        // Turn it on (bare toggles too, but be explicit).
+        e.run_command("BIDICARET on");
+        assert!(e.bidi_caret());
+        // On: Left still moves logically (baseline) AND queues a visual refine (right=false).
+        e.run_command("LEFT");
+        assert!(
+            matches!(e.take_visual_move(), Some((false, false, _))),
+            "Left should queue a (right=false, extend=false) visual refine"
+        );
+        // Right queues (right=true); draining clears it.
+        e.run_command("RIGHT");
+        assert!(matches!(e.take_visual_move(), Some((true, false, _))));
+        assert!(e.take_visual_move().is_none(), "the request is drained once taken");
+        // Toggle back off.
+        e.run_command("BIDICARET off");
+        assert!(!e.bidi_caret());
+        e.run_command("LEFT");
+        assert!(e.take_visual_move().is_none(), "off again → no refine");
     }
 
     #[test]

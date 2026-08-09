@@ -3308,6 +3308,22 @@ impl Vm<'_, '_> {
             }
             // `SHOWONETAB on|off` (bare = toggle) — whether the tab strip shows when only one file is
             // open. Off (default) keeps a single doc uncluttered. `$SHOWONETAB`.
+            // `BIDICARET on|off` (bare = toggle) — VISUAL (bidi-aware) Left/Right caret motion. Off
+            // (default) moves in logical order; on follows the line's base direction (RTL swaps arrows).
+            "BIDICARET" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "BIDICARET: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetBidiCaret(want))?;
+                Ok(Flow::Next)
+            }
             "SHOWONETAB" => {
                 let want = match args.trim().to_ascii_lowercase().as_str() {
                     "" => None,

@@ -2226,6 +2226,10 @@ pub struct AppHost {
     /// caret offset BEFORE the engine's logical-edge fallback (so the GUI finds the right visual
     /// row). Drained each frame by the GUI; ignored (logical fallback stands) headless/TUI.
     pending_visual_edge: Option<(bool, bool, usize)>,
+    /// `BIDICARET`: a deferred VISUAL Left/Right move `(right, extend, from)` — the pre-move caret,
+    /// which the GUI refines to the bidi-visual neighbor via cosmic's layout. Set only when
+    /// `bidi_caret` is on; the engine still does the logical move as a headless/off-window fallback.
+    pending_visual_move: Option<(bool, bool, usize)>,
     /// A clone of the operative keymap, kept in sync by the editor on every install — so `SAVEKBD`
     /// can serialize it here (the authoritative copy lives in the editor's resolver). Desugared,
     /// like the resolver's; the dumper re-sugars typing cells.
@@ -2367,6 +2371,9 @@ pub struct AppHost {
     /// Whether the command line is blanked after a command runs from it (`CMBLANK`; `$CMBLANK`).
     /// Off (default) keeps the command for re-running / editing (XyWrite B23).
     cmline_blank: bool,
+    /// `BIDICARET`: whether Left/Right caret motion is VISUAL (bidi-aware). Off (default) = logical
+    /// order; on defers Left/Right to the GUI's cosmic layout so they follow the line's base direction.
+    bidi_caret: bool,
     /// Whether the tab strip is shown when only ONE file is open (`SHOWONETAB`; `$SHOWONETAB`).
     /// Off (default) keeps a single-document view uncluttered.
     show_one_tab: bool,
@@ -2646,6 +2653,7 @@ impl AppHost {
             cursor_vis: None,
             pending_scroll_rows: 0,
             pending_visual_edge: None,
+            pending_visual_move: None,
             current_keymap: None,
             keymap_gen: 0,
             config_track_path: None,
@@ -2767,6 +2775,7 @@ impl AppHost {
             path_place: PathPlace::Status,
             path_len: 45,
             cmline_blank: false,
+            bidi_caret: false,
             show_one_tab: false,
             wrap: true,
             wrap_hang: 0,
@@ -7076,6 +7085,18 @@ impl AppHost {
         self.pending_visual_edge.take()
     }
 
+    /// Drain a pending `BIDICARET` visual Left/Right request `(right, extend, from)`. GUI-only; `from`
+    /// is the caret offset before the engine's logical fallback move.
+    pub fn take_visual_move(&mut self) -> Option<(bool, bool, usize)> {
+        self.pending_visual_move.take()
+    }
+
+    /// Whether `BIDICARET` visual caret motion is on (the GUI checks this to know a Left/Right may
+    /// have queued a visual refine).
+    pub fn bidi_caret(&self) -> bool {
+        self.bidi_caret
+    }
+
     /// Track the operative keymap (the editor calls this on every install) so `SAVEKBD` can
     /// serialize the current layout from here.
     pub fn set_keymap(&mut self, km: Keymap) {
@@ -7954,10 +7975,29 @@ impl Host for AppHost {
                 // Any move resets the pending visual-edge request; only the two visual arms set it
                 // (so a later move in the same frame, e.g. a chained `LB; RIGHT`, cancels it).
                 let mut visual_edge: Option<(bool, bool, usize)> = None;
+                // `BIDICARET`: when on, Left/Right defer to the GUI for a bidi-visual move. Read the
+                // flag before borrowing the active document (the match below borrows `self`).
+                let bidi_caret = self.bidi_caret;
+                let mut visual_move: Option<(bool, bool, usize)> = None;
                 let b = self.active();
                 match motion {
-                    Motion::Left => b.move_left(extend),
-                    Motion::Right => b.move_right(extend),
+                    // Left/Right: still do the LOGICAL move as a baseline (correct headless / when the
+                    // caret's row is off-window), but under `BIDICARET` also record the pre-move caret
+                    // so the GUI can refine it to the visual (base-direction-aware) neighbor.
+                    Motion::Left => {
+                        let from = b.buffer().cursor();
+                        b.move_left(extend);
+                        if bidi_caret {
+                            visual_move = Some((false, extend, from));
+                        }
+                    }
+                    Motion::Right => {
+                        let from = b.buffer().cursor();
+                        b.move_right(extend);
+                        if bidi_caret {
+                            visual_move = Some((true, extend, from));
+                        }
+                    }
                     Motion::Up => b.move_up(extend),
                     Motion::Down => b.move_down(extend),
                     Motion::LineStart => b.move_line_start(extend),
@@ -8006,6 +8046,7 @@ impl Host for AppHost {
                     }
                 }
                 self.pending_visual_edge = visual_edge;
+                self.pending_visual_move = visual_move;
             }
             EditorOp::Define(kind) => {
                 let d = self.active();
@@ -10361,6 +10402,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!(
                     "SHOWONETAB {}",
                     if self.show_one_tab { "on" } else { "off" }
+                )));
+            }
+            EditorOp::SetBidiCaret(opt) => {
+                self.bidi_caret = opt.unwrap_or(!self.bidi_caret);
+                return Ok(Value::str(format!(
+                    "BIDICARET {}",
+                    if self.bidi_caret { "on" } else { "off" }
                 )));
             }
             EditorOp::SetWrap(opt) => {
