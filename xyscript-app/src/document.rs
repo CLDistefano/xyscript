@@ -2160,19 +2160,27 @@ impl Document {
 
 /// Provisional default encoding view for freshly-loaded bytes (decision ET2:
 /// full detection/override is a later step). In priority order:
-/// 1. **CP437** if the bytes contain XyWrite function-code delimiters
+/// 1. **UTF-8** if the bytes are valid UTF-8 — modern files (and pure ASCII).
+/// 2. **CP437** if the bytes contain XyWrite function-code delimiters
 ///    (`0xAE`/`0xAF`) — those render as the guillemets `«…»`.
-/// 2. **UTF-8** if the bytes are valid UTF-8 — modern files (and pure ASCII).
 /// 3. **Latin-1** otherwise — a lossless fallback for unknown single-byte text.
+///
+/// The UTF-8 check comes FIRST on purpose: `0xAE`/`0xAF` are not only the XyWrite
+/// delimiters, they are also perfectly ordinary UTF-8 *continuation* bytes, so a
+/// real UTF-8 file routinely contains them — e.g. Arabic "د" (U+062F) encodes as
+/// `0xD8 0xAF`. Sniffing for those bytes first (the old order) forced such a file
+/// to CP437 and mojibake'd it on open. A genuine XyWrite `.26` file uses `0xAE`/
+/// `0xAF` as STANDALONE delimiters, i.e. a continuation byte with no lead byte,
+/// which is invalid UTF-8 — so it fails step 1 and still lands on CP437 at step 2.
 ///
 /// The chosen view never affects byte-exactness (load stores bytes verbatim); it
 /// only affects display and how new typing encodes. The user can override live
 /// with the `ENCODING` verb.
 fn default_encoding_for(bytes: &[u8]) -> Charset {
-    if bytes.iter().any(|&b| b == 0xAE || b == 0xAF) {
-        crate::encoding::cp437()
-    } else if std::str::from_utf8(bytes).is_ok() {
+    if std::str::from_utf8(bytes).is_ok() {
         crate::encoding::utf8()
+    } else if bytes.iter().any(|&b| b == 0xAE || b == 0xAF) {
+        crate::encoding::cp437()
     } else {
         crate::encoding::latin1()
     }
@@ -2926,6 +2934,20 @@ mod tests {
         assert_eq!(d.encoding_name(), "cp437");
         assert_eq!(d.buffer().line_text(0), "«FC»hi");
         assert_eq!(d.save_bytes(), raw); // byte-exact
+    }
+
+    #[test]
+    fn utf8_arabic_containing_0xaf_is_not_mistaken_for_cp437() {
+        // Regression: Arabic "دار" (house) contains 0xAF — "د" (U+062F) = 0xD8 0xAF. The old
+        // heuristic sniffed for 0xAE/0xAF BEFORE checking UTF-8 validity, so it forced CP437 and
+        // rendered the file as box-drawing mojibake. Valid UTF-8 must win.
+        let raw = "دار".as_bytes().to_vec();
+        assert!(raw.contains(&0xAF), "sample must carry the 0xAF byte the old sniff tripped on");
+        let mut d = Document::new();
+        d.load(raw.clone(), std::path::PathBuf::from("house.txt"));
+        assert_eq!(d.encoding_name(), "utf-8");
+        assert_eq!(d.buffer().line_text(0), "دار"); // decoded as UTF-8, not CP437
+        assert_eq!(d.save_bytes(), raw); // still byte-exact
     }
 
     #[test]
