@@ -3308,20 +3308,19 @@ impl Vm<'_, '_> {
             }
             // `SHOWONETAB on|off` (bare = toggle) — whether the tab strip shows when only one file is
             // open. Off (default) keeps a single doc uncluttered. `$SHOWONETAB`.
-            // `BIDICARET on|off` (bare = toggle) — VISUAL (bidi-aware) Left/Right caret motion. Off
-            // (default) moves in logical order; on follows the line's base direction (RTL swaps arrows).
-            "BIDICARET" => {
-                let want = match args.trim().to_ascii_lowercase().as_str() {
-                    "" => None,
-                    "on" => Some(true),
-                    "off" => Some(false),
+            // `CARETMOTION logical|visual` — the order Left/Right move the caret in. `logical` (default)
+            // = storage order; `visual` = screen order (in RTL text the arrows follow the reading flow).
+            "CARETMOTION" => {
+                let visual = match args.trim().to_ascii_lowercase().as_str() {
+                    "logical" => false,
+                    "visual" => true,
                     other => {
                         return Err(XplError::trappable(format!(
-                            "BIDICARET: expected on or off, got {other:?}"
+                            "CARETMOTION: expected logical or visual, got {other:?}"
                         )))
                     }
                 };
-                self.host_op(EditorOp::SetBidiCaret(want))?;
+                self.host_op(EditorOp::SetCaretMotion(visual))?;
                 Ok(Flow::Next)
             }
             "SHOWONETAB" => {

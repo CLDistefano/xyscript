@@ -2226,9 +2226,9 @@ pub struct AppHost {
     /// caret offset BEFORE the engine's logical-edge fallback (so the GUI finds the right visual
     /// row). Drained each frame by the GUI; ignored (logical fallback stands) headless/TUI.
     pending_visual_edge: Option<(bool, bool, usize)>,
-    /// `BIDICARET`: a deferred VISUAL Left/Right move `(right, extend, from)` — the pre-move caret,
-    /// which the GUI refines to the bidi-visual neighbor via cosmic's layout. Set only when
-    /// `bidi_caret` is on; the engine still does the logical move as a headless/off-window fallback.
+    /// `CARETMOTION visual`: a deferred VISUAL Left/Right move `(right, extend, from)` — the pre-move
+    /// caret, which the GUI refines to the visual (screen-order) neighbor via cosmic's layout. Set only
+    /// when `caret_visual` is on; the engine still does the logical move as a headless/off-window fallback.
     pending_visual_move: Option<(bool, bool, usize)>,
     /// A clone of the operative keymap, kept in sync by the editor on every install — so `SAVEKBD`
     /// can serialize it here (the authoritative copy lives in the editor's resolver). Desugared,
@@ -2371,9 +2371,10 @@ pub struct AppHost {
     /// Whether the command line is blanked after a command runs from it (`CMBLANK`; `$CMBLANK`).
     /// Off (default) keeps the command for re-running / editing (XyWrite B23).
     cmline_blank: bool,
-    /// `BIDICARET`: whether Left/Right caret motion is VISUAL (bidi-aware). Off (default) = logical
-    /// order; on defers Left/Right to the GUI's cosmic layout so they follow the line's base direction.
-    bidi_caret: bool,
+    /// `CARETMOTION`: whether Left/Right caret motion is VISUAL (screen order). `false` (default) =
+    /// logical (storage) order; `true` defers Left/Right to the GUI's cosmic layout so they follow the
+    /// on-screen reading flow. `$CARETMOTION` reads back `logical`/`visual`.
+    caret_visual: bool,
     /// Whether the tab strip is shown when only ONE file is open (`SHOWONETAB`; `$SHOWONETAB`).
     /// Off (default) keeps a single-document view uncluttered.
     show_one_tab: bool,
@@ -2775,7 +2776,7 @@ impl AppHost {
             path_place: PathPlace::Status,
             path_len: 45,
             cmline_blank: false,
-            bidi_caret: false,
+            caret_visual: false,
             show_one_tab: false,
             wrap: true,
             wrap_hang: 0,
@@ -7085,16 +7086,16 @@ impl AppHost {
         self.pending_visual_edge.take()
     }
 
-    /// Drain a pending `BIDICARET` visual Left/Right request `(right, extend, from)`. GUI-only; `from`
+    /// Drain a pending `CARETMOTION visual` Left/Right request `(right, extend, from)`. GUI-only; `from`
     /// is the caret offset before the engine's logical fallback move.
     pub fn take_visual_move(&mut self) -> Option<(bool, bool, usize)> {
         self.pending_visual_move.take()
     }
 
-    /// Whether `BIDICARET` visual caret motion is on (the GUI checks this to know a Left/Right may
-    /// have queued a visual refine).
-    pub fn bidi_caret(&self) -> bool {
-        self.bidi_caret
+    /// Whether `CARETMOTION` is `visual` (the GUI checks this to know a Left/Right may have queued a
+    /// visual refine).
+    pub fn caret_visual(&self) -> bool {
+        self.caret_visual
     }
 
     /// Track the operative keymap (the editor calls this on every install) so `SAVEKBD` can
@@ -7975,26 +7976,26 @@ impl Host for AppHost {
                 // Any move resets the pending visual-edge request; only the two visual arms set it
                 // (so a later move in the same frame, e.g. a chained `LB; RIGHT`, cancels it).
                 let mut visual_edge: Option<(bool, bool, usize)> = None;
-                // `BIDICARET`: when on, Left/Right defer to the GUI for a bidi-visual move. Read the
-                // flag before borrowing the active document (the match below borrows `self`).
-                let bidi_caret = self.bidi_caret;
+                // `CARETMOTION visual`: when on, Left/Right defer to the GUI for a visual (screen-order)
+                // move. Read the flag before borrowing the active document (the match below borrows `self`).
+                let caret_visual = self.caret_visual;
                 let mut visual_move: Option<(bool, bool, usize)> = None;
                 let b = self.active();
                 match motion {
                     // Left/Right: still do the LOGICAL move as a baseline (correct headless / when the
-                    // caret's row is off-window), but under `BIDICARET` also record the pre-move caret
-                    // so the GUI can refine it to the visual (base-direction-aware) neighbor.
+                    // caret's row is off-window), but under `CARETMOTION visual` also record the pre-move
+                    // caret so the GUI can refine it to the visual (screen-order) neighbor.
                     Motion::Left => {
                         let from = b.buffer().cursor();
                         b.move_left(extend);
-                        if bidi_caret {
+                        if caret_visual {
                             visual_move = Some((false, extend, from));
                         }
                     }
                     Motion::Right => {
                         let from = b.buffer().cursor();
                         b.move_right(extend);
-                        if bidi_caret {
+                        if caret_visual {
                             visual_move = Some((true, extend, from));
                         }
                     }
@@ -10404,11 +10405,11 @@ impl Host for AppHost {
                     if self.show_one_tab { "on" } else { "off" }
                 )));
             }
-            EditorOp::SetBidiCaret(opt) => {
-                self.bidi_caret = opt.unwrap_or(!self.bidi_caret);
+            EditorOp::SetCaretMotion(visual) => {
+                self.caret_visual = visual;
                 return Ok(Value::str(format!(
-                    "BIDICARET {}",
-                    if self.bidi_caret { "on" } else { "off" }
+                    "CARETMOTION {}",
+                    if self.caret_visual { "visual" } else { "logical" }
                 )));
             }
             EditorOp::SetWrap(opt) => {
@@ -11144,6 +11145,9 @@ impl Host for AppHost {
             "CMPLACE" => Some(Value::str(self.cmline_placement.name())),
             "CMBLANK" => Some(Value::Int(if self.cmline_blank { 1 } else { 0 })),
             "SHOWONETAB" => Some(Value::Int(if self.show_one_tab { 1 } else { 0 })),
+            "CARETMOTION" => {
+                Some(Value::str(if self.caret_visual { "visual" } else { "logical" }.to_string()))
+            }
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),

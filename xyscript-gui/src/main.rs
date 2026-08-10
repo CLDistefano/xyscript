@@ -16,7 +16,7 @@
 
 use std::rc::Rc;
 
-use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, LineEnding, Metrics, Motion, Scroll, Selection, Shaping, SwashCache, Wrap};
+use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color as CColor, Cursor, Edit, Editor, Ellipsize, Family, FontSystem, Hinting, LineEnding, Metrics, Scroll, Selection, Shaping, SwashCache, Wrap};
 
 mod runtime;
 
@@ -1170,6 +1170,51 @@ mod menu_tests {
     }
 
     #[test]
+    fn visual_stop_pick_moves_by_screen_position_across_bidi() {
+        // Pure LTR "abc": three 10px glyphs at x=0,10,20; logical index == visual position.
+        // (is_ltr, x, w, start, end)
+        let ltr = [(true, 0.0, 10.0, 0, 1), (true, 10.0, 10.0, 1, 2), (true, 20.0, 10.0, 2, 3)];
+        let idx = |o: Option<(usize, f32)>| o.map(|(i, _)| i);
+        // Caret between a and b sits at x=10. Right → index 2 (x=20); Left → index 0 (x=0).
+        assert_eq!(visual_stop_pick(10.0, true, &ltr), Some((2, 20.0)));
+        assert_eq!(idx(visual_stop_pick(10.0, false, &ltr)), Some(0));
+        // At the far right (x=30) there's nothing further right; left → index 2 (x=20).
+        assert_eq!(visual_stop_pick(30.0, true, &ltr), None);
+        assert_eq!(idx(visual_stop_pick(30.0, false, &ltr)), Some(2));
+
+        // Pure RTL logical "AB" (A=idx0, B=idx1) renders B A: glyphs in VISUAL order are B (left,
+        // x=0) then A (right, x=10). RTL glyph's start is on its RIGHT, end on its left.
+        let rtl = [(false, 0.0, 10.0, 1, 2), (false, 10.0, 10.0, 0, 1)];
+        // Caret at logical index 0 (= start of A) is visually rightmost (x=20). Pressing LEFT must move
+        // the caret to the LEFT on screen → the next stop down in x is index 1 (x=10). This is exactly
+        // the reported bug: with the old code CL did nothing here.
+        assert_eq!(idx(visual_stop_pick(20.0, false, &rtl)), Some(1));
+        // And RIGHT from there is nothing (already at the visual right edge).
+        assert_eq!(visual_stop_pick(20.0, true, &rtl), None);
+        // From the visual-left edge (x=0, logical index 2 = end of B): RIGHT → index 1 (x=10).
+        assert_eq!(idx(visual_stop_pick(0.0, true, &rtl)), Some(1));
+        assert_eq!(visual_stop_pick(0.0, false, &rtl), None);
+
+        // Number-in-Arabic seam (the reported Tier-3 bug). Visual L→R: C(RTL) 1(LTR) 2(LTR) B(RTL),
+        // logical: B=1, {1,2}=digits idx2,3, C=4. Glyphs (is_ltr,x,w,start,end):
+        let seam = [
+            (false, 0.0, 10.0, 4, 5),  // C : lead(start=4)=10(right), trail(end=5)=0(left)
+            (true, 10.0, 10.0, 2, 3),  // '1': lead(2)=10, trail(3)=20
+            (true, 20.0, 10.0, 3, 4),  // '2': lead(3)=20, trail(4)=30
+            (false, 30.0, 10.0, 1, 2), // B : lead(1)=40, trail(2)=30
+        ];
+        // THE CRUX (the reported bounce): logical index 4 lives at BOTH x=10 (C, right edge) and x=30
+        // ('2' end). Approaching the seam from the number side (carry cx=30) and stepping RIGHT must
+        // continue OUTWARD to x=40 (index 1), not bounce back into the digits. The carried visual x is
+        // what makes this possible — from the ambiguous index alone it would collapse to x=10 and reverse.
+        assert_eq!(visual_stop_pick(30.0, true, &seam), Some((1, 40.0)));
+        // Stepping left from between the digits (cx=20) lands at the digit/C seam, visual x=10. Which
+        // logical index (the digit's start=2 or C's start=4, both AT x=10) is unspecified — either keeps
+        // the caret at the same visual spot, and the carried x=10 makes the next step unambiguous.
+        assert_eq!(visual_stop_pick(20.0, false, &seam).map(|(_, x)| x), Some(10.0));
+    }
+
+    #[test]
     fn truncate_tab_name_keeps_head_and_extension() {
         // Within budget → unchanged.
         assert_eq!(truncate_tab_name("report.txt", 28), "report.txt");
@@ -2109,6 +2154,12 @@ struct GuiApp {
     // Visual (wrapped-line) Up/Down: the target x column held across consecutive
     // vertical moves, and the last canvas size (so the move can re-shape the layout).
     goal_x: Option<f32>,
+    // `CARETMOTION` (visual) Tier-3: the caret's visual x (in windowed-buffer px) and the rope offset it belongs
+    // to, carried across consecutive per-glyph moves. At a direction boundary (e.g. a number inside
+    // Arabic) one logical offset has two visual positions and `cursor_position` collapses it to one
+    // side; tracking the x we actually moved to keeps stepping — and drawing — on the correct side.
+    // Ignored once the caret leaves this offset (any non-visual move). See `visual_char_move`.
+    bidi_vx: Option<(usize, f32)>,
     /// Device-pixels-per-point (HiDPI scale × UISCALE zoom): the canvas is rastered at this scale
     /// and displayed at logical size, so text stays crisp instead of egui upscaling a point-res image.
     render_scale: f32,
@@ -2316,6 +2367,7 @@ impl GuiApp {
             cmline_drag_anchor: None,
             preedit: String::new(),
             goal_x: None,
+            bidi_vx: None,
             render_scale: 1.0,
             font_size: 22.0,
             line_height: 32.0,
@@ -3662,8 +3714,16 @@ impl GuiApp {
         // Paint the caret ourselves at the real cursor (cosmic's built-in caret draw was
         // unreliable beyond the first line). `None` ⇒ caret scrolled off-window, none drawn.
         // `WRAPINDENT`: shift by the caret row's hanging-indent offset so it sits with its text.
-        let mut caret_px =
-            cursor.and_then(|c| buffer.cursor_position(&c)).map(|(x, y)| (x + self.wi_offset_at_y(y), y));
+        let mut caret_px = cursor.and_then(|c| buffer.cursor_position(&c)).map(|(x, y)| {
+            // `CARETMOTION` (visual): draw the caret at the visual x its last per-glyph step landed on, so at a
+            // direction boundary it sits on the side we moved to — `cursor_position` alone collapses a
+            // boundary index to one fixed side. Only while the caret is still at that offset.
+            let x = match self.bidi_vx {
+                Some((o, vx)) if self.editor.caret_visual() && o == doc_cursor => vx,
+                _ => x,
+            };
+            (x + self.wi_offset_at_y(y), y)
+        });
 
         // Publish the caret's VISUAL position (wrap-aware screen coords, in cells) for `$CX`/`$CY`.
         // Pixels → cells: cosmic geometry is at device resolution, so divide by the device line
@@ -4507,32 +4567,105 @@ impl GuiApp {
         }
     }
 
-    /// `BIDICARET` visual Left/Right refine: the engine already did the LOGICAL move as a baseline;
-    /// replace the caret with the bidi-visual neighbor via cosmic's `cursor_motion`, which follows the
-    /// line's base direction (so in an RTL line Left/Right swap). `from` is the PRE-move caret. Falls
-    /// back to the engine's logical move if the caret's row is scrolled off-window. Mirrors
-    /// [`visual_line_edge`](Self::visual_line_edge). NOTE (Tier 2): cosmic's `Motion::Left/Right` is
-    /// base-direction-aware but not per-glyph — motion within a mixed run is still logical.
+    /// `CARETMOTION visual` Left/Right refine (Tier 3, PER-GLYPH): the engine did the LOGICAL move as a
+    /// baseline; replace the caret with the neighbor one step in VISUAL (screen) order. Method: take
+    /// the caret's current visual x, then among the caret STOPS in its visual row — each glyph's
+    /// leading edge (its logical start) and trailing edge (its logical end), placed on the correct
+    /// side for the glyph's own direction (an RTL glyph's start sits on its RIGHT) — pick the nearest
+    /// stop strictly to the right (for `right`) or left. Because the pick is by screen-x, motion
+    /// REVERSES inside an embedded RTL run, not just when the whole line is RTL (that was Tier 2).
+    /// Robust where `layout_cursor` was not: `cursor_glyph`/`cursor_position` match the caret by index
+    /// alone (no affinity guess). `from` is the PRE-move caret. Returns None (leaving the logical move)
+    /// at a visual row edge (crossing rows/lines) or when the row is scrolled off-window. Mirrors
+    /// [`visual_line_edge`](Self::visual_line_edge).
     fn visual_char_move(&mut self, right: bool, extend: bool, from: usize) {
         let (w, h) = self.pane_view.canvas_px;
         if w == 0 || h == 0 {
             return;
         }
         let (mut buffer, win) = self.windowed_buffer(w, h);
-        // Map the pre-move caret to a cosmic cursor (owned result → the &self borrow ends before the
-        // &mut self.font_system borrow below), then step it one visual position.
-        let start = self.win_cursor_at(&win, from);
-        let off = start.and_then(|cur| {
-            let motion = if right { Motion::Right } else { Motion::Left };
-            buffer
-                .cursor_motion(&mut self.font_system, cur, None, motion)
-                .map(|(nc, _)| self.win_rope_at(&win, nc))
-        });
+        // The action to take once the buffer borrow is released:
+        //   Some((off, Some(x))) = a per-glyph VISUAL move to `off` (remember visual x for the next step)
+        //   Some((off, None))    = a plain jump to `off` (a line cross, or restore-to-`from`; no visual x)
+        //   None                 = leave the engine's logical baseline in place (it legitimately crossed).
+        let mut action: Option<(usize, Option<f32>)> = None;
+        if let Some(cur) = self.win_cursor_at(&win, from) {
+            // The caret's visual x: carried from the previous step while the caret is still at this
+            // offset (so a boundary index keeps the side we approached from), else fresh from the layout.
+            let cx = match self.bidi_vx {
+                Some((o, x)) if o == from => Some(x),
+                _ => buffer.cursor_position(&cur).map(|(x, _)| x),
+            };
+            if let Some(cx) = cx {
+                // Collect the caret's visual row (a wrapped line has several runs) as glyph tuples,
+                // then delegate the geometric pick to `visual_stop_pick` (unit-tested).
+                let mut glyphs: Vec<(bool, f32, f32, usize, usize)> = Vec::new();
+                for run in buffer.layout_runs() {
+                    if run.line_i != cur.line || run.cursor_glyph(&cur).is_none() {
+                        continue;
+                    }
+                    glyphs.extend(
+                        run.glyphs.iter().map(|g| (g.level.is_ltr(), g.x, g.w, g.start, g.end)),
+                    );
+                    break; // handled the caret's row
+                }
+                if let Some((idx, x)) = visual_stop_pick(cx, right, &glyphs) {
+                    action = Some((self.win_rope_at(&win, Cursor::new(cur.line, idx)), Some(x)));
+                } else {
+                    // No visual neighbor this direction in the row — we're at a visual row edge. The engine
+                    // ALREADY applied a logical baseline move; the logical neighbor only matches the visual
+                    // direction where logical and visual order coincide. Decide by WHERE the baseline
+                    // landed:
+                    //  • another visual row/line  ⇒ a legitimate cross (LTR line-crossing, wrapped rows) —
+                    //    leave the baseline (action stays None);
+                    //  • still on THIS visual row ⇒ a wrong-direction bounce (the "oscillates at the end"
+                    //    report, e.g. the visual right end of an Arabic run). The logical neighbor is
+                    //    visually BEHIND us, so instead CROSS to the adjacent line in DOCUMENT order:
+                    //    right-edge-of-LTR / left-edge-of-RTL ⇒ forward (next line's start), else backward
+                    //    (previous line's end). No adjacent line ⇒ stop (restore to `from`).
+                    let row_lo = glyphs.iter().map(|g| g.3).min();
+                    let row_hi = glyphs.iter().map(|g| g.4).max();
+                    let baseline = self.editor.doc(self.editor.active_index()).cursor();
+                    let baseline_same_row = match (self.win_cursor_at(&win, baseline), row_lo, row_hi) {
+                        (Some(bc), Some(lo), Some(hi)) => {
+                            bc.line == cur.line && bc.index >= lo && bc.index <= hi
+                        }
+                        // Baseline off-window / empty row: only "same row" if it didn't actually move.
+                        _ => baseline == from,
+                    };
+                    if baseline_same_row {
+                        let row_rtl = buffer.is_rtl(cur.line) == Some(true);
+                        let forward = right != row_rtl; // right-edge-of-LTR or left-edge-of-RTL
+                        let b = self.editor.doc(self.editor.active_index());
+                        let li = b.line_at_byte(from);
+                        let target = if forward {
+                            (li + 1 < b.line_count()).then(|| b.line_byte_range(li + 1).0)
+                        } else {
+                            (li > 0).then(|| b.line_byte_range(li - 1).1)
+                        };
+                        // Cross to the adjacent line, or (no adjacent line) stop by restoring `from`.
+                        action = Some((target.unwrap_or(from), None));
+                    }
+                }
+            }
+        }
         self.win_buffer = Some(buffer); // keep the shaped-line cache (see `win_buffer`)
-        if let Some(off) = off {
-            self.editor.host_mut().move_active_to(off, extend);
-            self.goal_x = None;
-            self.pane_view.follow = true;
+        match action {
+            Some((off, Some(x))) => {
+                self.editor.host_mut().move_active_to(off, extend);
+                self.bidi_vx = Some((off, x)); // remember the side, for the next step and the caret draw
+                self.goal_x = None;
+                self.pane_view.follow = true;
+            }
+            Some((off, None)) => {
+                // A line cross (or restore-to-`from` when there's no adjacent line): plain move, and drop
+                // the tracked visual x so the next step re-derives it fresh at the new position.
+                self.editor.host_mut().move_active_to(off, extend);
+                self.bidi_vx = None;
+                self.goal_x = None;
+                self.pane_view.follow = true;
+            }
+            None => {} // baseline crossed rows/lines — leave it (LTR line-crossing still works)
         }
     }
 
@@ -4612,6 +4745,31 @@ fn glyph_edge_cursor(buffer: &Buffer, x: f32, y: f32, trailing: bool) -> Option<
 /// The LEADING-edge cursor for the character under `(x, y)` — see [`glyph_edge_cursor`].
 fn leading_glyph_cursor(buffer: &Buffer, x: f32, y: f32) -> Option<Cursor> {
     glyph_edge_cursor(buffer, x, y, false)
+}
+
+/// `CARETMOTION` (visual) core: from the caret's visual x `cx` and its row's glyphs (visual order), pick the
+/// logical index of the caret STOP nearest in the requested direction. Each glyph contributes two
+/// stops — its leading edge (logical `start`) and trailing edge (logical `end`) — placed on the side
+/// matching the glyph's own direction: an LTR glyph's start is on its left, an RTL glyph's start is on
+/// its RIGHT. So the pick is purely by screen-x and REVERSES inside an RTL run. `None` = no stop that
+/// side (a visual row edge). `glyphs` = `(is_ltr, x, w, start, end)` per glyph. Pure fn → unit-tested.
+fn visual_stop_pick(cx: f32, right: bool, glyphs: &[(bool, f32, f32, usize, usize)]) -> Option<(usize, f32)> {
+    const EPS: f32 = 0.5; // device px: skip the current stop and stops co-located with it
+    let mut best: Option<(f32, usize)> = None;
+    for &(ltr, x, w, start, end) in glyphs {
+        let lead_x = if ltr { x } else { x + w };
+        let trail_x = if ltr { x + w } else { x };
+        for (gx, idx) in [(lead_x, start), (trail_x, end)] {
+            let ok = if right { gx > cx + EPS } else { gx < cx - EPS };
+            let closer = best.map_or(true, |(bx, _)| if right { gx < bx } else { gx > bx });
+            if ok && closer {
+                best = Some((gx, idx));
+            }
+        }
+    }
+    // Return the chosen (logical index, visual x) — the caller carries x forward so a boundary index
+    // keeps the side it was approached from (the number-in-Arabic bounce fix).
+    best.map(|(x, idx)| (idx, x))
 }
 
 impl GuiApp {
@@ -8598,7 +8756,7 @@ impl GuiApp {
         if let Some((end, extend, from)) = self.editor.take_visual_edge() {
             self.visual_line_edge(end, extend, from);
         }
-        // `BIDICARET` visual Left/Right refine (mirror of the visual-line-edge refine above).
+        // `CARETMOTION visual` Left/Right refine (mirror of the visual-line-edge refine above).
         if let Some((right, extend, from)) = self.editor.take_visual_move() {
             self.visual_char_move(right, extend, from);
         }

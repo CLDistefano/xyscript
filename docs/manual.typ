@@ -382,17 +382,21 @@ letters join into their cursive forms, and a line whose first strong character i
 out right-to-left and aligned to the right edge. Mixed lines work too, with the Latin and numeric parts
 reading left-to-right inside the right-to-left flow.
 
-The one thing that is not automatic is which way the #kbd("←") and #kbd("→") keys move. By default the
-cursor moves in *logical* order — the order the characters are stored — so on a right-to-left line
-#kbd("→") carries the cursor toward the start of the text, which reads backwards. Turn on
-#raw("BIDICARET on") and Left / Right instead follow the line's *visual* direction: on a right-to-left
-line the two keys swap, so #kbd("→") moves the cursor the way your eye travels. Left-to-right lines are
-unchanged, so it is safe to leave on if you edit mixed documents. #raw("BIDICARET off") restores logical
-motion; the setting lasts for the session.
+The one thing that is not automatic is which way the #kbd("←") and #kbd("→") keys move. By default —
+#raw("CARETMOTION logical") — the cursor moves in *logical* order, the order the characters are stored, so
+on a right-to-left line #kbd("→") carries the cursor toward the start of the text (the next character in
+the text), which reads backwards on screen. Set #raw("CARETMOTION visual") and Left / Right instead move in
+*visual* (screen) order: #kbd("→") always steps to the character sitting to the right of the cursor and
+#kbd("←") to the one on the left. Inside a right-to-left run the arrows reverse, so the cursor threads
+through Arabic or Hebrew — numbers and all — the way your eye reads it, and stays on the side it stepped to
+where the two directions meet. Left-to-right text is unaffected either way (logical and visual order
+coincide there), so #raw("CARETMOTION visual") is safe to leave set for mixed documents. #raw("CARETMOTION
+logical") restores the default; the setting lasts for the session, and #raw("$CARETMOTION") reads it back.
 
-#tip("How far this goes")[The visual arrows follow the *line's* base direction. Within a single line that
-mixes both directions — say an Arabic phrase quoted inside an English sentence — the cursor still steps in
-logical order through that embedded run. Whole-line right-to-left editing is the case this covers.]
+#tip("How far this goes")[This is a prototype. Motion is per-glyph within a line; at a line's visual edge
+the arrows move on to the adjacent line — the next line's start, or the previous line's end. #raw("EL") /
+#raw("ER") (line start / end) are not yet direction-aware. Straight-line editing of mixed text — the common
+case — is what it covers.]
 
 == Selecting text
 

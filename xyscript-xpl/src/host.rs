@@ -450,10 +450,11 @@ pub enum EditorOp {
     /// Toggle whether the tab strip is shown when only ONE file is open (`SHOWONETAB on|off`;
     /// `None` toggles). Off (default) hides the strip for a single doc. `$SHOWONETAB`.
     SetShowOneTab(Option<bool>),
-    /// Toggle VISUAL (bidi-aware) caret motion for Left/Right (`BIDICARET on|off`; `None` toggles).
-    /// Off (default) = logical order. On makes Left/Right follow the line's base direction, so in an
-    /// RTL line the arrows swap (the GUI refines via cosmic's layout; headless keeps the logical move).
-    SetBidiCaret(Option<bool>),
+    /// Set Left/Right caret-motion order (`CARETMOTION logical|visual`). `true` = VISUAL (screen order:
+    /// the arrows follow the on-screen layout, so in RTL text they track the reading flow); `false` =
+    /// LOGICAL (storage order, the default). Visual is refined by the GUI via cosmic's layout; headless
+    /// keeps the logical move.
+    SetCaretMotion(bool),
     /// Toggle line wrapping (`WRAP on|off`; `None` toggles). On (default) wraps long lines to the
     /// window; off lets them run past the right edge, with a horizontal scrollbar. `$WRAP`.
     SetWrap(Option<bool>),
