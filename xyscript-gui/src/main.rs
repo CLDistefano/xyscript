@@ -4583,7 +4583,7 @@ impl GuiApp {
         if w == 0 || h == 0 {
             return;
         }
-        let (mut buffer, win) = self.windowed_buffer(w, h);
+        let (buffer, win) = self.windowed_buffer(w, h);
         // The action to take once the buffer borrow is released:
         //   Some((off, Some(x))) = a per-glyph VISUAL move to `off` (remember visual x for the next step)
         //   Some((off, None))    = a plain jump to `off` (a line cross, or restore-to-`from`; no visual x)
