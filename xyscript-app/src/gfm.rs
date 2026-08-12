@@ -321,8 +321,19 @@ impl<'s> Emitter<'s> {
                     out.push_str(&format!("start: {}, ", nl.start));
                 }
                 for item in node.children() {
+                    let content = self.block_children(item);
+                    let content = content.trim_end();
                     out.push('[');
-                    out.push_str(self.block_children(item).trim_end());
+                    // In a TIGHT list (no blank lines in the source), an item's paragraph and a nested
+                    // list/block must not be separated by a blank line — a paragraph break makes Typst
+                    // insert paragraph spacing above the nested content (extra gap over the first nested
+                    // item). Collapse blank-line runs to a single newline so nesting stays tight. A LOOSE
+                    // list keeps its blank lines (its items are meant to be spaced).
+                    if nl.tight {
+                        out.push_str(&collapse_blank_lines(content));
+                    } else {
+                        out.push_str(content);
+                    }
                     out.push_str("], ");
                 }
                 out.push_str(")\n\n");
@@ -420,6 +431,26 @@ impl<'s> Emitter<'s> {
         self.emit_children(node, &mut s);
         s
     }
+}
+
+/// Collapse runs of two or more newlines down to a single newline (single newlines pass through). Used
+/// to keep a TIGHT list item tight: a paragraph followed by a nested list would otherwise be separated
+/// by a blank line, which Typst reads as a paragraph break and spaces the nested content away.
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_nl = false;
+    for ch in s.chars() {
+        if ch == '\n' {
+            if !prev_nl {
+                out.push('\n');
+            }
+            prev_nl = true;
+        } else {
+            out.push(ch);
+            prev_nl = false;
+        }
+    }
+    out
 }
 
 // Text/string escaping lives in `typst_esc` — shared with the HTML converter, which faces the same
@@ -588,6 +619,19 @@ mod tests {
         assert_eq!(to_typst("- a\n- b"), "#list([a], [b], )");
         assert_eq!(to_typst("1. a\n2. b"), "#enum([a], [b], )");
         assert_eq!(to_typst("3. a\n4. b"), "#enum(start: 3, [a], [b], )");
+    }
+
+    #[test]
+    fn tight_nested_list_stays_tight() {
+        // A nested list in a TIGHT list (no blank lines in the source) must be joined to its parent
+        // item's text by a single newline, not a blank line — the blank line made Typst insert
+        // paragraph spacing above the first nested item.
+        assert_eq!(to_typst("- a\n  - b\n  - c\n- d"), "#list([a\n#list([b], [c], )], [d], )");
+        // A LOOSE list (blank lines between items) is NOT collapsed — its spacing is intentional.
+        assert!(
+            to_typst("- a\n\n  - b\n\n- d").contains("a\n\n"),
+            "loose list keeps its blank-line paragraph spacing"
+        );
     }
 
     #[test]
