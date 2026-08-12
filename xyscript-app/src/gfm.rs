@@ -378,11 +378,21 @@ impl<'s> Emitter<'s> {
                 out.push_str("\n\n");
             }
         }
-        // INLINE raw HTML can't get the same treatment: comrak delivers it as separate fragment nodes
-        // (`<b>`, the text, and `</b>` are three siblings), so there is no self-contained element to
-        // convert — feeding `<b>` alone to an HTML parser yields an empty `#strong[]` that swallows
-        // the text that follows. Left as escaped text until there's a fragment accumulator.
-        NodeValue::HtmlInline(h) => out.push_str(&escape_text(h)),
+        // INLINE raw HTML can't get the same treatment as a block: comrak delivers it as separate
+        // fragment nodes (`<b>`, the text, and `</b>` are three siblings), so there is no self-contained
+        // element to convert — feeding `<b>` alone to an HTML parser yields an empty `#strong[]` that
+        // swallows the text that follows. EXCEPT `<br>`, which is a VOID element (no closing tag), so it
+        // IS self-contained: translate it to a hard line break (GitHub does), matching the block path.
+        // Everything else stays escaped text until there's a fragment accumulator.
+        NodeValue::HtmlInline(h) => {
+            let compact: String =
+                h.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+            if compact == "<br>" || compact == "<br/>" {
+                out.push_str("#linebreak()");
+            } else {
+                out.push_str(&escape_text(h));
+            }
+        }
 
             // TableRow/TableCell/Item are handled by their parents; anything else
             // (footnotes, etc.) degrades to rendering its children.
@@ -423,6 +433,21 @@ mod tests {
     fn heading_levels() {
         assert_eq!(to_typst("# One"), "= One");
         assert_eq!(to_typst("### Three"), "=== Three");
+    }
+
+    #[test]
+    fn inline_br_becomes_a_linebreak() {
+        // `<br>` is a void element, so it's self-contained even inline → a hard line break, in any
+        // spelling. (Block `<br>` on its own line already worked via the HTML-block path.)
+        assert_eq!(to_typst("a<br>b"), "a#linebreak()b");
+        assert_eq!(to_typst("a<br/>b"), "a#linebreak()b");
+        assert_eq!(to_typst("a<br />b"), "a#linebreak()b");
+        assert_eq!(to_typst("a<BR>b"), "a#linebreak()b");
+        // Other inline HTML (paired tags, not convertible in isolation) is still left as escaped text.
+        assert!(
+            !to_typst("a<span>x</span>b").contains("#linebreak()"),
+            "non-<br> inline HTML must not be turned into a break"
+        );
     }
 
     #[test]
