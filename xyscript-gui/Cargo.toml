@@ -61,15 +61,3 @@ embed-manifest = "1"
 embed-resource = "3"
 
 [workspace]
-
-# DIAGNOSTIC profile (2026-08-11): an OPTIMIZED build that KEEPS DWARF debug symbols, so a Linux
-# tester's SIGSEGV yields a real gdb / `coredumpctl gdb` backtrace (the stripped release showed
-# "No debugging symbols found"). It `inherits = "release"`, so optimizations stay ON (opt-level 3)
-# and the crash reproduces with the SAME stack layout — a plain unoptimized `debug` build might
-# shift it and not fault. Kept SEPARATE from `release` so the normal release / Windows dist stays
-# lean; build the tester's binary with `cargo build --profile release-debug --features lint,email`
-# (output in `target/release-debug/`). Remove once the segfault is diagnosed.
-[profile.release-debug]
-inherits = "release"
-debug = true
-strip = false
