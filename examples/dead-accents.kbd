@@ -1,0 +1,21 @@
+;;;;; Dead accent KBD table for selected characters
+;;;;; Add these bindings to your KBD file as needed
+
+;Comment        ; dead accent: acute
+unmod '         :40=PUT ';RK char;SWITCH $char;CASE "a";BD;PUT á;CASE "A";BD;PUT Á;case "e";BD;PUT é;CASE "E";BD;PUT É;CASE "i";BD;PUT í;CASE "I";BD;PUT Í;case "o";BD;PUT ó;CASE "O";BD;PUT Ó;CASE "u";BD;PUT ú;CASE "U";BD;PUT Ú;CASE "y";BD;PUT ý;CASE "Y";BD;PUT Ý;DEFAULT;PUT $char;ESW;CLEAR char
+
+;Comment        ; dead accent: grave
+unmod `         :41=PUT `;RK char;SWITCH $char;CASE "a";BD;PUT à;CASE "A";BD;PUT À;case "e";BD;PUT è;CASE "E";BD;PUT È;CASE "i";BD;PUT ì;CASE "I";BD;PUT Ì;case "o";BD;PUT ò;CASE "O";BD;PUT Ò;CASE "u";BD;PUT ù;CASE "U";BD;PUT Ù;CASE "y";BD;PUT ỳ;CASE "Y";BD;PUT Ỳ;DEFAULT;PUT $char;ESW;CLEAR char
+
+;Comment        ; dead accent: cedilla
+unmod ,         :51=PUT ,;RK char;SWITCH $char;CASE "c";BD;PUT ç;CASE "C";BD;PUT Ç;case "e";BD;PUT ȩ;CASE "E";BD;PUT Ȩ;CASE "G";BD;PUT Ģ;CASE "s";BD;PUT ş;CASE "S";BD;PUT Ş;DEFAULT;PUT $char;ESW;CLEAR char
+
+;Comment        ; dead accent: tilde
+shift `         :41=PUT `;RK char;SWITCH $char;CASE "a";BD;PUT ã;CASE "A";BD;PUT Ã;CASE "n";BD;PUT ñ;CASE "N";BD;PUT Ñ;case "o";BD;PUT õ;CASE "O";BD;PUT Õ;DEFAULT;PUT $char;ESW;CLEAR char
+
+;Comment        ; dead accent: umlaut
+shift '         :40=PUT \";RK char;SWITCH $char;CASE "a";BD;PUT ä;CASE "A";BD;PUT Ä;case "e";BD;PUT ë;CASE "E";BD;PUT Ë;CASE "i";BD;PUT ï;CASE "I";BD;PUT Ï;case "o";BD;PUT ö;CASE "O";BD;PUT Ö;CASE "u";BD;PUT ü;CASE "U";BD;PUT Ü;CASE "y";BD;PUT ÿ;CASE "Y";BD;PUT Ÿ;DEFAULT;PUT $char;ESW;CLEAR char
+
+;Comment        ; dead accent: circumflex
+shift 6         :7=PUT ^;RK char;SWITCH $char;CASE "a";BD;PUT â;CASE "A";BD;PUT Â;case "e";BD;PUT ê;CASE "E";BD;PUT Ê;CASE "i";BD;PUT î;CASE "I";BD;PUT Î;case "o";BD;PUT ô;CASE "O";BD;PUT Ô;CASE "u";BD;PUT û;CASE "U";BD;PUT Û;CASE "y";BD;PUT ŷ;CASE "Y";BD;PUT Ŷ;DEFAULT;PUT $char;ESW;CLEAR char
+
