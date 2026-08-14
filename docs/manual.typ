@@ -52,8 +52,6 @@
 
 ]
   #v(40pt)
-  #text(10pt, fill: luma(120))[Draft for beta testers — a work in progress]
-  #v(2pt)
   #text(9pt, fill: luma(140))[Check the version in #raw("Help ▸ About") (\$VE); when this manual and the program disagree, trust the program.]
 ]
 #pagebreak()
@@ -943,6 +941,30 @@ way the whole list is learned at once.]
 Spelling follows a dialect: #raw("DIALECT american") (the default), #raw("british"), #raw("canadian"),
 #raw("australian"), or #raw("indian"). #raw("$DIALECT") reads it back, and the choice persists.
 
+== Spelling in another language
+
+The built-in checker handles English — spelling and grammar both. To check spelling in another language,
+XyScript can hand the job to Hunspell, the open-source speller behind LibreOffice, Firefox, and much
+else. Switch with #raw("SPELLENGINE hunspell") (#raw("SPELLENGINE harper") returns to the built-in
+checker), or from #raw("Tools ▸ Language check ▸ Spelling engine").
+
+Tell it which dictionary to use with #raw("SPELLDICT") and the usual Hunspell dictionary codes —
+#raw("SPELLDICT de_DE") for German, #raw("SPELLDICT fr_FR") for French — and list several separated by
+commas to check more than one at once, as in #raw("SPELLDICT en_US,de_DE"). This needs Hunspell installed
+on your system together with the dictionary files for the languages you name; if the program is not on
+your #raw("PATH"), point at it with #raw("SPELLBIN <path>"). #raw("$SPELLENGINE"), #raw("$SPELLDICT"), and
+#raw("$SPELLBIN") read the three settings back, and all persist with your configuration.
+
+Once Hunspell is chosen, everything in this chapter that concerns *spelling* — the live underlines, the
+whole-document #raw("CHECK") report, and the right-click and #raw("LINTFIX") corrections — comes from it
+for the language you picked, and your personal dictionary (#raw("LEARN")) still applies. As with the
+built-in checker, only prose is checked: code and links are left alone.
+
+Two things to keep in mind. Hunspell is a speller, not a grammar checker, so grammar underlines
+(#raw("GRAMMAR")) are inactive while it is selected — switch back to #raw("SPELLENGINE harper") when you
+want English grammar checking. And if the program or its dictionaries cannot be found, spelling simply
+produces nothing: no error, no underlines. (This multilingual spelling is newer, and still experimental.)
+
 == A one-shot report
 
 When you would rather see everything at once than hunt underline by underline, #raw("CHECK") runs the
@@ -1757,6 +1779,95 @@ By convention four kinds of plain-text file carry your setup, each runnable or l
 #tip("Set it up once")[A script named #raw("startup.xpl") beside the program runs at launch — the
 natural place to load everything: #raw("LOADCFG") your settings, #raw("LOADKBD") your keyboard, and
 #raw("LOADLIB") your library. Drop it in place and XyScript opens fully outfitted every time.]
+
+// ===================================================================================================
+= The Multilingual User Interface
+
+XyScript's menus, dialogs, and its most visible messages can display in any of eighteen languages
+besides English. It is one program for all of them: the translations are plain-text files loaded at run
+time, so changing language is instant and nothing is compiled per locale. What never changes is the
+command language itself — the verbs you type stay English in every interface language, for a reason the
+middle of this chapter explains.
+
+#tip("Interface language vs. the language you write in")[This chapter is about the language XyScript's
+*interface* speaks. Checking the spelling of text you *write* in another language is a separate feature:
+the built-in checker covers English, and it can hand spelling off to Hunspell for other languages — see
+*Checking Spelling and Grammar*.]
+
+== Choosing a language
+
+The simplest way is the #raw("Settings ▸ Language") menu. It lists English and every translation
+XyScript can find, each named in its *own* language — #raw("Français"), #raw("Deutsch"), #raw("Русский"),
+#raw("Ελληνικά") — so you can pick yours without having to read English first. Choose one and the
+interface changes at once; choose #raw("English") to return to the built-in text. Your choice is saved
+with your configuration (see *Customization and Configuration*), so it survives across sessions.
+
+The #raw("LANG") command does the same from the command line. A two-letter code loads that language —
+#raw("LANG fr") for French, #raw("LANG el") for Greek — or give an explicit file, as in
+#raw("LANG translations/fr.lang"). #raw("LANG") with no argument, or #raw("LANG off"), returns to
+English. #raw("$LANG") reads back the active catalog's path, and is empty when English is in force.
+
+The eighteen languages included out of the box, with the code you pass to #raw("LANG"):
+
+Bulgarian #raw("bg"), Czech #raw("cs"), Danish #raw("da"), Dutch #raw("nl"), Finnish #raw("fi"),
+French #raw("fr"), German #raw("de"), Greek #raw("el"), Hungarian #raw("hu"), Italian #raw("it"),
+Norwegian #raw("no"), Polish #raw("pl"), Portuguese #raw("pt"), Romanian #raw("ro"), Russian #raw("ru"),
+Spanish #raw("es"), Swedish #raw("sv"), and Ukrainian #raw("uk").
+
+== What is translated, and what is not
+
+Translated: the menu bar and its dropdowns, the dialog boxes — Find, Grep, Run, About — and the
+high-visibility status and error messages ("file not found", "saved…", the search-result and
+directory-search summaries, and the like).
+
+Left in English on purpose: the command *verbs*. #raw("SAVE"), #raw("DIR"), #raw("PR"), #raw("LOADKBD")
+and all the rest are the command *language* — the words you type, the words your scripts and keyboard
+files are written in, and the words this manual documents. If they shifted with the interface language a
+script would break the instant you switched, so they stay English everywhere; only the labels you *read*
+are translated. (A few data-driven labels, such as encoding names and syntax token kinds, likewise stay
+as they are.)
+
+== Where the catalogs live
+
+Each language is a single #raw(".lang") file — #raw("fr.lang"), #raw("de.lang"), and so on — a flat list
+of #raw("key = translated text") lines. The shipped set sits in a #raw("lang") folder beside the program;
+XyScript also looks in your current working directory and next to the executable, so a catalog can go
+wherever is convenient. The #raw("Settings ▸ Language") menu is assembled from whatever turns up in those
+places, each entry labelled by the native-language name in the file's header line.
+
+== Tweaking a translation
+
+If a label reads awkwardly, you needn't edit — and re-edit after every upgrade — the shipped catalog.
+Make an *override* file named #raw("<code>.local.lang") — #raw("fr.local.lang") for French — holding only
+the lines you want to change, and put it beside the shipped catalog (in the #raw("lang") folder) or in
+your working directory.
+
+To change one string, find its line in the shipped #raw("<code>.lang"). A French entry looks like
+
+#raw("menubar.file = Fichier   # File")
+
+— a key, your text, and after the #raw("#") the English it was translated from. Copy the line into your
+override and edit the middle:
+
+#raw("menubar.file = Dossier   # File")
+
+Keep the #raw("# File") part: it is the English *source*, and XyScript reads it to keep the override
+honest. Your version then wins over the shipped one, and because only the base catalog is replaced on an
+upgrade — your overlay is never shipped — your changes ride through updates untouched.
+
+#tip("Self-healing overrides")[If a later version reworks the English a key is built from, your override
+— written against the *old* English — is quietly skipped for that one line, so you see the current
+built-in text instead of a stale translation. Update the line, and its #raw("# …") source to match, to
+put your version back in force.]
+
+== Contributing a language
+
+A language XyScript doesn't ship is simply a catalog it hasn't met yet. To begin one, copy #raw("en.lang")
+— the English source of truth, in the #raw("docs/i18n") folder — translate the value to the right of each
+#raw("="), leave the keys and the #raw("# …") English sources alone, save it as #raw("<code>.lang"), and
+drop it where XyScript looks. It joins the #raw("Settings ▸ Language") menu automatically, named by the
+#raw("— NATIVE (English)") line at the top of the file. The #raw("docs/i18n") folder holds the tooling and
+conventions that keep a full translation in step with the program.
 
 // ===================================================================================================
 = Syntax Highlighting
