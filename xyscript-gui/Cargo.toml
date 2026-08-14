@@ -20,12 +20,13 @@ short_description = "XyWrite-inspired programmable text editor"
 long_description = "A modern, keyboard-first text editor in the XyWrite tradition, driven by the XPL scripting language."
 
 [features]
-# Forward the language checker to the core. Off by default (keeps `cargo run` lean); build the
-# distributable with `cargo build --release --features lint`.
+# Forward the language checker to the core. Off by default (keeps `cargo run` lean).
 lint = ["xyscript-app/lint"]
-# Forward the email verbs to the core. Off by default; build a personal email edition with
-# `cargo build --release --features lint,email`. NOT part of the tester dist.
+# Forward the email verbs to the core. Off by default.
 email = ["xyscript-app/email"]
+# The shipped tester dist is built with BOTH:
+#   cargo build --release --features lint,email
+# Drop either flag only for a deliberately slimmer local build.
 
 [dependencies]
 xyscript-app = { path = "../xyscript-app" }
