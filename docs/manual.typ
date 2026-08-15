@@ -1577,6 +1577,38 @@ XyScript puts the keyboard first, and the keyboard is yours to shape. Bindings l
 file* — a #raw(".kbd") file — that maps each key, in each modifier layer, to a command. If you are
 coming from XyWrite the format will look familiar.
 
+== Familiar shortcuts to start with
+
+Until you load a keyboard of your own, XyScript runs its built-in layout — the file
+#raw("xyscript-internal.kbd") — and that layout binds the shortcuts most editors share, so a good deal
+of what your fingers already know works from the first launch. The highlights, every one of them
+remappable:
+
+*Files.*
+/ #kbd("Ctrl+N") / #kbd("Ctrl+O") / #kbd("Ctrl+S"): new, open, save.
+/ #kbd("Ctrl+W"): close the current file (offers to save first).
+/ #kbd("Ctrl+P"): print.
+
+*Editing.*
+/ #kbd("Ctrl+Z") / #kbd("Ctrl+Y"): undo / redo.
+/ #kbd("Ctrl+X") / #kbd("Ctrl+C") / #kbd("Ctrl+V"): cut / copy / paste.
+/ #kbd("Ctrl+A"): select the whole document.
+/ #kbd("Ctrl+F"): open Find.
+
+*Styling* (see _Styling Text with MDA_).
+/ #kbd("Ctrl+B") / #kbd("Ctrl+I") / #kbd("Ctrl+U"): bold / italic / underline.
+/ #kbd("Ctrl+]") / #kbd("Ctrl+["): grow / shrink the editor font (#kbd("Ctrl+Shift+=") also grows it).
+
+*Moving and selecting.*
+/ #kbd("Ctrl+Left") / #kbd("Ctrl+Right"): jump one word left / right.
+/ #kbd("Ctrl+End"): go to the end of the document.
+/ #kbd("Shift") with an arrow: extend the selection as you move — add #kbd("Ctrl") to extend by whole words.
+
+#tip("See the whole map")[These are only the familiar few. *Tools ▸ Keyboard chart* (the #raw("KBCHART")
+verb) lists every key on every modifier layer — the quickest way to discover what the shipped keyboard
+already does. And because it is nothing but a #raw(".kbd") file, any of it can change: move a shortcut
+onto a different key, or point the key at a command of your own.]
+
 == Claiming a key — and releasing it
 
 The map runs in *both* directions, and this is the first thing to understand. Any key can run any
