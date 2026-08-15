@@ -138,6 +138,11 @@ const INTERNAL_KBD: &str =
 const REFERENCE_TYP: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/reference.typ"));
 
+/// The user manual, baked in the same way so Help ▸ Manual works on any install (written to a temp
+/// `.typ` and opened on demand). Self-contained Typst — no external assets to resolve.
+const MANUAL_TYP: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/manual.typ"));
+
 /// Crop an RGBA image to the top-left `max`×`max` at most, so a texture upload can't exceed the GPU's
 /// max texture side (egui panics otherwise). A no-op when it already fits. Used for the preview pane,
 /// where a tall page at a high zoom can overflow.
@@ -501,6 +506,8 @@ enum Act {
     ShowAbout,
     /// Help ▸ Reference — open the embedded reference doc in a tab.
     ShowReference,
+    /// Help ▸ Manual — open the embedded user manual in a tab.
+    ShowManual,
 }
 
 /// A native file dialog deferred to run AFTER the egui frame. The runtime drains it in
@@ -551,6 +558,7 @@ enum MenuAct {
     ShowProperties,
     ShowAbout,
     ShowReference,
+    ShowManual,
 }
 
 /// One node in the menu tree.
@@ -6368,6 +6376,7 @@ impl GuiApp {
                 m_tog(self.tr("menu.settings.autosave_settings", "Auto-save settings"), autocfg_on, if autocfg_on { "AUTOCFG off" } else { "AUTOCFG" }),
             ]),
             m_sub(self.tr("menubar.help", "Help"), vec![
+                m_act(self.tr("menu.help.manual", "Manual"), ShowManual),
                 m_act(self.tr("menu.help.reference", "Reference"), ShowReference),
                 MenuNode::Sep,
                 m_act(self.tr("menu.help.about", "About XyScript"), ShowAbout),
@@ -6419,6 +6428,7 @@ impl GuiApp {
             MenuAct::ShowProperties => Some(Act::ShowProperties),
             MenuAct::ShowAbout => Some(Act::ShowAbout),
             MenuAct::ShowReference => Some(Act::ShowReference),
+            MenuAct::ShowManual => Some(Act::ShowManual),
         }
     }
 
@@ -7386,6 +7396,19 @@ impl GuiApp {
                             self.note(r);
                         }
                         Err(e) => self.note(Err(format!("could not open the reference: {e}"))),
+                    }
+                }
+                Act::ShowManual => {
+                    // Same path as the reference: write the embedded manual to a temp `.typ` and open
+                    // it (typst DOCTYPE, so it previews/exports); reopening reuses the tab.
+                    let path = std::env::temp_dir().join("xyscript-manual.typ");
+                    match std::fs::write(&path, MANUAL_TYP) {
+                        Ok(()) => {
+                            let r = self.editor.open(&path.to_string_lossy());
+                            self.reset_view();
+                            self.note(r);
+                        }
+                        Err(e) => self.note(Err(format!("could not open the manual: {e}"))),
                     }
                 }
             }
