@@ -2276,6 +2276,39 @@ makes #raw("$") mean the end of each line:
   CH/T/R \"(?m)[ \\t]+$\"\"
 ES")
 
+== The examples directory
+
+The snippets above are the small end of the idea. The project's #raw("examples/") folder ships
+complete, ready-to-run samples — a whole keyboard layout, input helpers, a styling demo — and they
+repay a closer look for a reason past what each one happens to do: every one is assembled from the
+*same building blocks XyScript hands you*. Command verbs, keyboard files, string and regular-expression
+functions, the #raw("MDA") styling layer — XyScript's own features are built from exactly these, and so
+are the examples. Nothing here reaches for a private door you cannot open yourself. Read them as
+templates, borrow freely, and grow your own add-ons the same way; a surprising amount of "the editor"
+is just XPL you are free to rewrite.
+
+What ships today:
+
+/ #raw("russian-mnemonic.kbd"): a *mnemonic* Russian keyboard. Each Latin key types the
+  phonetically-nearest Cyrillic letter (#kbd("K") → к, #kbd("T") → т), with smart digraphs for the
+  sounds English spells with two letters (#kbd("S") then #kbd("H") → ш). An entire alternate alphabet,
+  start to finish, in one #raw(".kbd") file — load it with #raw("LOADKBD examples/russian-mnemonic.kbd").
+/ #raw("dead-accents.kbd") + #raw("dead-accents.xpl"): *dead-accent* composition. Press an accent —
+  #raw("'") acute, #raw("`") grave, #raw("~") tilde, #raw("\"") umlaut, #raw("^") circumflex, #raw(",")
+  cedilla/ogonek — then a letter, and the two combine into é, ñ, ü, ç. The keyboard file wires the
+  accent keys to the script, which holds the composing logic: a #raw(".kbd") and an #raw(".xpl")
+  cooperating.
+/ #raw("addcolors.xpl") + #raw("color-names.lst"): a *styling demo*. The list is 653 named colours,
+  each written as an #raw("R G B") triple; open it, run the script, and it walks the file with a regular
+  expression, painting every value with its own colour as a background swatch via #raw("MDA/B"). Ten
+  lines that turn regex, string functions, and the styling layer into something you can see.
+
+#tip("The point is not the samples — it is that you could have written them")[Everything in
+#raw("examples/") is made of verbs and files this manual documents: #raw("LOADKBD"), #raw("SUB"),
+#raw("SE/R"), #raw("MDA"), the string functions of the *XPL* chapter. The same pieces compose into
+keyboard add-ons, input methods, one-off tools, and background scripts. If XyScript does not yet do some
+thing you want, the odds are good you can teach it.]
+
 = Appendix D — Markdown and Typst Support
 
 XyScript renders a document as either GitHub-Flavored Markdown or Typst markup, for the live preview and
