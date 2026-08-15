@@ -6705,17 +6705,17 @@ mod tests {
     #[test]
     fn keyboard_tables_group_bindings_by_modifier_layer() {
         let mut e = ed();
-        e.run_command("CLEARKBD"); // built-in baseline: a Normal layer + a Ctrl+L(38)=LOADKBD cell
+        e.run_command("CLEARKBD"); // built-in baseline: a Normal layer + a Ctrl+S(31)=SAVE cell
         let tables = e.keyboard_tables();
         // The unshifted layer is named "Normal" and has bindings.
         let normal = tables.iter().find(|(n, _)| n == "Normal").expect("a Normal table");
         assert!(!normal.1.is_empty(), "the Normal layer should have bindings");
         // A modifier layer is named by its modifiers and resolves via the $SCC path
-        // (`key_binding(code + mask)`): Ctrl+L is scan 38 on the CTRL (bit 256) table → LOADKBD.
+        // (`key_binding(code + mask)`): Ctrl+S is scan 31 on the CTRL (bit 256) table → SAVE.
         let ctrl = tables.iter().find(|(n, _)| n == "CTRL").expect("a CTRL table");
         assert!(
-            ctrl.1.iter().any(|(code, b)| *code == 38 && b == "LOADKBD"),
-            "expected Ctrl+L=LOADKBD in the CTRL table; got {:?}",
+            ctrl.1.iter().any(|(code, b)| *code == 31 && b == "SAVE"),
+            "expected Ctrl+S=SAVE in the CTRL table; got {:?}",
             ctrl.1
         );
         // The generation counter bumps on each install (the GUI caches the chart on it).
@@ -6732,7 +6732,7 @@ mod tests {
         let text = e.host().keyboard_chart_text(); // what the `KBCHART` verb shows in a TXT modal
         assert!(text.contains("Normal"), "expected a Normal section:\n{text}");
         assert!(text.contains("CTRL"), "expected a CTRL section:\n{text}");
-        assert!(text.contains("LOADKBD"), "expected the Ctrl+L=LOADKBD binding:\n{text}");
+        assert!(text.contains("SAVE"), "expected the Ctrl+S=SAVE binding:\n{text}");
     }
 
     #[test]
