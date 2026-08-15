@@ -1739,7 +1739,8 @@ Colors* opens a live picker for each.
 #raw("SAVECFG")-format script of color settings, resolved against #raw("$CWD") and run. Save your own
 with #raw("SAVECFG mytheme.xpl"), keep a shelf of them, and switch with a single command
 (#raw("THEME themes/charcoal.xpl")). Because a theme file is just XPL that sets colors, you can also
-hand-edit one or load it with #raw("LOADCFG").
+hand-edit one or load it with #raw("LOADCFG"). On the menu it is *Settings ▸ Appearance ▸ Theme* —
+*Light*, *Dark*, and *Load theme file…* (which opens a picker and runs #raw("THEME") on your choice).
 
 == Fonts and sizing
 

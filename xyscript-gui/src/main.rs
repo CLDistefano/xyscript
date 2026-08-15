@@ -6234,6 +6234,14 @@ impl GuiApp {
             ]),
             m_sub(self.tr("menubar.settings", "Settings"), vec![
                 m_sub(self.tr("menu.settings.appearance", "Appearance"), vec![
+                    // `THEME` — a coordinated colour scheme: the two built-ins, or any theme file
+                    // (a SAVECFG-format colour preset) chosen from disk and run to activate it.
+                    m_sub(self.tr("menu.settings.appearance.theme", "Theme"), vec![
+                        m_item(self.tr("menu.settings.appearance.theme.light", "Light"), "THEME light"),
+                        m_item(self.tr("menu.settings.appearance.theme.dark", "Dark"), "THEME dark"),
+                        MenuNode::Sep,
+                        m_act(self.tr("menu.settings.appearance.theme.file", "Load theme file…"), pick(false, cfg_f, "THEME {}")),
+                    ]),
                     m_sub(self.tr("menu.settings.appearance.colors", "Colors"), vec![
                         m_item(self.tr("menu.settings.appearance.colors.editor_text", "Editor text…"), "FGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.editor_bg", "Editor background…"), "BGCOLORS"),
