@@ -10195,11 +10195,36 @@ mod tests {
         e.run_command("THEME dark");
         e.run_command("HLCOLOR keyword 1 2 3");
         assert_eq!(e.highlight_color(&TokenKind::Keyword), Some((1, 2, 3)));
-        // Unknown theme is trappable, leaving colours untouched.
+        // A word that is neither a built-in nor an existing file is trappable (it is taken as a
+        // theme-file path, which fails to load), leaving colours untouched.
         e.run_command("THEME bogus");
         e.run_command("PR $ERROR");
         assert_eq!(e.output().last().map(String::as_str), Some("1"));
         assert_eq!(e.bg_color(), (30, 30, 34)); // still dark
+    }
+
+    #[test]
+    fn theme_path_runs_a_theme_file() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // A theme file is just a SAVECFG-format script of colour settings.
+        e.host_mut()
+            .write_file("mytheme.xpl", "FGCOLOR 1 2 3\nBGCOLOR 4 5 6\nSELBGCOLOR 7 8 9\n")
+            .unwrap();
+        // A non-keyword argument is a path: the file is run to activate the theme.
+        e.run_command("THEME mytheme.xpl");
+        assert_eq!(e.fg_color(), (1, 2, 3));
+        assert_eq!(e.bg_color(), (4, 5, 6));
+        assert_eq!(e.sel_bg_color(), (7, 8, 9));
+        assert!(e.output().join("\n").contains("loaded config from"), "confirms like LOADCFG");
+        // The built-in keywords still win over the path interpretation (any case).
+        e.run_command("THEME Dark");
+        assert_eq!(e.fg_color(), (220, 220, 220));
+        // A path that does not exist is trappable, leaving colours untouched.
+        e.run_command("THEME no-such-theme.xpl");
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.fg_color(), (220, 220, 220)); // still dark
     }
 
     #[test]

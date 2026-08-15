@@ -2537,13 +2537,25 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenTabColorPicker(state.to_string()))?;
                 Ok(Flow::Next)
             }
-            // `THEME <name>` — apply a built-in colour scheme (light|dark) across the whole editor.
+            // `THEME <name>` — apply a built-in colour scheme (`light`|`dark`) across the whole
+            // editor, OR the path to a theme file (a SAVECFG-format colour preset), which is run
+            // to activate the theme (the LOADCFG path: resolved against `$CWD`, then executed).
             "THEME" => {
                 let name = args.trim();
                 if name.is_empty() {
-                    return Err(XplError::trappable("THEME: a name is required (light|dark)"));
+                    return Err(XplError::trappable(
+                        "THEME: a name is required (light|dark|<theme-file>)",
+                    ));
                 }
-                self.host_op(EditorOp::ApplyTheme(name.to_string()))?;
+                match name.to_ascii_lowercase().as_str() {
+                    "light" | "dark" => {
+                        self.host_op(EditorOp::ApplyTheme(name.to_string()))?;
+                    }
+                    // Anything else is a path to a theme file: load (run) it to activate the theme.
+                    _ => {
+                        self.host_op(EditorOp::LoadCfg(Some(name.to_string())))?;
+                    }
+                }
                 Ok(Flow::Next)
             }
             // Multi-buffer switching.

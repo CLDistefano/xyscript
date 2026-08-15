@@ -486,7 +486,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("TABBGCOLOR", "TABBGCOLORS") / #cmd("TABXCOLOR", "TABXCOLORS") / #cmd("PANECOLOR", "PANECOLORS"): the tab background / close-× / focused-pane border color.
 / #cmd("TXTFGCOLOR", "TXTFGCOLORS") / #cmd("TXTBGCOLOR", "TXTBGCOLORS") / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `TXT` and `DIR/W` window text / background colors.
 / #cmd("PAPLACE") / #cmd("PATHLEN") / #cmd("PAFGCOLOR", "PAFGCOLORS") / #cmd("PABGCOLOR", "PABGCOLORS"): where the `$CWD` path shows / its max width / its text and background color.
-/ #cmd("THEME"): apply a built-in light or dark color scheme.
+/ #cmd("THEME"): apply a built-in light or dark color scheme, or activate a theme file by path.
 
 == Fonts and spacing
 
@@ -900,7 +900,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("BALPAIRSCOLOR", "BALPAIRSCOLORS"): the matched-bracket highlight color — `BALPAIRSCOLOR <r g b>` (`/HSL`; `BALPAIRSCOLORS` opens a picker); `BALPAIRSCOLOR default` clears it so the highlight follows the selection color. Read back via #sv("BALPAIRSCOLOR") (empty = follows the selection color); persists in the config.
 / #cmd("TYPEPAIRS"): `TYPEPAIRS on|off` — auto-close typed pairs. When on, typing a left `(`, `[`, `{`, `"`, or `'` also inserts its partner and leaves the caret between them. Typing the closer right before an auto-inserted one steps over it instead of doubling it; typing an opener with a selection wraps the selection (keeping it selected); Backspace between an empty pair deletes both. A quote typed right after a letter or digit is left alone (so apostrophes in prose aren't paired). Interactive typing only — the scripted `INSERT` verb is never auto-paired. Read back via #sv("TYPEPAIRS"); persists in the config.
 / #cmd("TH"): toggle focus between the document and the command line.
-/ #cmd("THEME"): apply a built-in color scheme across the whole editor — `THEME light` or `THEME dark`.
+/ #cmd("THEME"): apply a color scheme across the whole editor — `THEME light` or `THEME dark` for the built-ins, or `THEME <path>` to activate a theme file (a SAVECFG-format color preset, e.g. one under `themes/`), which is resolved against #sv("CWD") and run.
 / #cmd("THS") / #cmd("TVS"): split the current pane in two, showing a second buffer alongside. #cmd("THS") stacks the panes *horizontally* — the split runs left-to-right, so the current buffer is on top and the second below; #cmd("TVS") splits *vertically* — the current buffer on the left, the second on the right. The second buffer is the one named in an argument (`THS notes.txt`, an already-open tab), else the *alternate* buffer (the #cmd("BUFALT") target), else a fresh empty buffer. A buffer can only be shown in one pane at a time. Move focus between panes with #cmd("TW"); un-split with #cmd("TUS"). (For a split that starts a brand-new empty buffer, use `NEW/H` / `NEW/V`.) #sv("PANES") reads the pane count; #sv("PANE") the focused pane's position.
 / #cmd("TW"): move focus to the next pane (wraps around). Keyboard input, the caret, and the content specials all follow the focused pane.
 / #cmd("TUS"): un-split — collapse the focused pane, giving its space back to the neighbor; the collapsed pane's buffer stays open as a tab. (To close the file *and* undo its pane in one step, use #cmd("AB").)
