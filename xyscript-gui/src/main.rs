@@ -520,7 +520,7 @@ enum PendingDialog {
     Open,
     SaveAs,
     Export,
-    Run { save: bool, filter: Option<(String, Vec<String>)>, template: String },
+    Run { save: bool, filter: Option<(String, Vec<String>)>, template: String, dir: Option<std::path::PathBuf> },
 }
 
 // ===================================================================================================
@@ -549,7 +549,13 @@ enum MenuAct {
     PickExport,
     /// Pick a file (open or save; optional extension filter), then run `template` with `{}` → the
     /// chosen path. Covers READ / SAD / MERGE / RUN / LOADLIB / LOADKBD / SAVECFG / ENCODING-C / …
-    PickRun { save: bool, filter: Option<(&'static str, &'static [&'static str])>, template: String },
+    /// `dir` seeds the dialog's starting folder (used only when it exists); `None` = the default.
+    PickRun {
+        save: bool,
+        filter: Option<(&'static str, &'static [&'static str])>,
+        template: String,
+        dir: Option<std::path::PathBuf>,
+    },
     Highlight(bool),
     TogglePreview,
     OpenFind { replace: bool },
@@ -999,7 +1005,7 @@ fn encoding_convert_items() -> Vec<MenuNode> {
         .map(|&(name, _label)| {
             m_act(
                 _label,
-                MenuAct::PickRun { save: true, filter: None, template: format!("ENCODING/C {name} {{}}") },
+                MenuAct::PickRun { save: true, filter: None, template: format!("ENCODING/C {name} {{}}"), dir: None },
             )
         })
         .collect()
@@ -6035,8 +6041,14 @@ impl GuiApp {
         let cfg_f: Option<(&str, &[&str])> = Some(("XPL config", &["xpl"]));
         let kbd_f: Option<(&str, &[&str])> = Some(("Keyboard", &["kbd"]));
         let pick = |save: bool, filter: Option<(&'static str, &'static [&'static str])>, tmpl: &str| {
-            PickRun { save, filter, template: tmpl.to_string() }
+            PickRun { save, filter, template: tmpl.to_string(), dir: None }
         };
+        // The "Load theme file…" picker opens in $XSDIR\themes (the exe's own themes/ folder) when
+        // that folder exists; otherwise the dialog falls back to its default location.
+        let themes_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("themes")))
+            .filter(|d| d.is_dir());
         vec![
             m_sub(self.tr("menubar.file", "File"), vec![
                 m_act(self.tr("menu.file.new", "New"), New),
@@ -6240,7 +6252,10 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.theme.light", "Light"), "THEME light"),
                         m_item(self.tr("menu.settings.appearance.theme.dark", "Dark"), "THEME dark"),
                         MenuNode::Sep,
-                        m_act(self.tr("menu.settings.appearance.theme.file", "Load theme file…"), pick(false, cfg_f, "THEME {}")),
+                        m_act(
+                            self.tr("menu.settings.appearance.theme.file", "Load theme file…"),
+                            PickRun { save: false, filter: cfg_f, template: "THEME {}".to_string(), dir: themes_dir.clone() },
+                        ),
                     ]),
                     m_sub(self.tr("menu.settings.appearance.colors", "Colors"), vec![
                         m_item(self.tr("menu.settings.appearance.colors.editor_text", "Editor text…"), "FGCOLORS"),
@@ -6421,11 +6436,11 @@ impl GuiApp {
                 self.pending_dialog = Some(PendingDialog::Export);
                 None
             }
-            MenuAct::PickRun { save, filter, template } => {
+            MenuAct::PickRun { save, filter, template, dir } => {
                 let filter = filter.map(|(label, exts)| {
                     (label.to_string(), exts.iter().map(|s| s.to_string()).collect::<Vec<_>>())
                 });
-                self.pending_dialog = Some(PendingDialog::Run { save, filter, template });
+                self.pending_dialog = Some(PendingDialog::Run { save, filter, template, dir });
                 None
             }
             MenuAct::Highlight(b) => Some(Act::Highlight(b)),

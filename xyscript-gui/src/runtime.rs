@@ -203,8 +203,11 @@ fn run_file_dialog(
             d.add_filter("Text", &["txt", "text"]).add_filter("All files", &["*"]).save_file()
         }
         PendingDialog::Export => base.add_filter("PDF", &["pdf"]).save_file(),
-        PendingDialog::Run { save, filter, .. } => {
+        PendingDialog::Run { save, filter, dir, .. } => {
             let mut d = base;
+            if let Some(dir) = dir {
+                d = d.set_directory(dir);
+            }
             if let Some((label, exts)) = filter {
                 d = d.add_filter(label.as_str(), exts.as_slice());
             }
