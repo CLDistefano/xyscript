@@ -468,7 +468,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("SMB", "CMB", "TMB"): the menu bar — on / off / toggle. #cmd("MENU"): keyboard control of the menu bar.
 / #cmd("SVR", "CVR", "TVR") / #cmd("SWS", "CWS", "TWS") / #cmd("SLN", "CLN", "TLN"): paragraph marks / whitespace / the line-number gutter — on / off / toggle.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
-/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("TITLEBAR") / #cmd("WV") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / the OS title bar / Writer's View (hide all chrome; `Esc` exits) / remember the window geometry / auto-save-and-restore the open tabs across runs.
+/ #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("GOTOOPEN") / #cmd("TITLEBAR") / #cmd("WV") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / switch to a file's existing tab instead of prompting when it is already open / the OS title bar / Writer's View (hide all chrome; `Esc` exits) / remember the window geometry / auto-save-and-restore the open tabs across runs.
 / #cmd("CARETMOTION"): the order Left/Right move the caret — `logical` (default) or `visual`. Visual steps in screen order, reversing inside a right-to-left run so the cursor moves the way your eye travels.
 / #cmd("WRAP"): word-wrap long lines to the window (`on`, default) or let them run past the edge with a horizontal scrollbar (`off`).
 / #cmd("WRAPHANG"): hanging indent (spaces) for wrapped continuation rows — `WRAPHANG <n>` (0 = flush; ignored when #cmd("WRAPINDENT") is on).
@@ -671,6 +671,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("WRAPHANG"): hanging indent for wrapped continuation rows — `WRAPHANG <n>` sets `n` spaces (bare reports the current value; `0`, the default, is a flush wrap). The FIRST row of each line sits at the margin and its wrapped rows hang `n` spaces under it. Applies only when #cmd("WRAP") is on; it is ignored when #cmd("WRAPINDENT") is on (that mode hangs each line under its OWN indentation instead). Read back via `$WRAPHANG`; persists in the config.
 / #cmd("ULSPACES"): whether an `MDA` #underline[underline] paints through the spaces between words — `ULSPACES on|off` (bare toggles). `on` (the default) draws one continuous line, matching how a selection underlines; `off` breaks the line at spaces and tabs, so only word glyphs are underlined. Applies to both selection styling and the `MDA UL`/`BU` typing mode — and governs the underline in the `PV` preview and `TOPDF` output the same way, so print matches the screen. Read back via `$ULSPACES`; persists in the config.
 / #cmd("UNTITLEDTAB"): whether the blank *Untitled* scratch tab is closed when you open a document — `UNTITLEDTAB on|off` (bare toggles). On (the default) closes it and prunes any leftover empty untitled tab, so a scratch never lingers beside real files; the Untitled tab reappears when the last document is closed. `off` keeps the Untitled tab as its own tab. Read back via `$UNTITLEDTAB`; persists in the config.
+/ #cmd("GOTOOPEN"): whether opening a file that is already open switches to its tab instead of asking — `GOTOOPEN on|off` (bare toggles). Off (the default) shows the "already open" prompt (*(Y)es (N)o (G)o (R)ead*); `on` skips the prompt and goes straight to the existing tab (the prompt's *(G)o*). Affects `OPEN` only — `READ` always opens a fresh read-only view. Read back via `$GOTOOPEN`; persists in the config.
 / #cmd("CMLINE"): move focus to the command line (synonym #cmd("GH")).
 / #cmd("CMPLACE"): where the command line is drawn — `CMPLACE top|bottom|hidden` (bare reports it). `hidden` keeps it out of the way until you focus it. Read back via `$CMPLACE`; persists in the config.
 / #cmd("CONTINUE"): skip to the next iteration of the loop.
@@ -1238,6 +1239,7 @@ Every special variable in one list, for quick lookup.
 / #sv("WRAPHANG"): the hanging indent (in spaces) for wrapped continuation rows, `0` for flush (set with `WRAPHANG`).
 / #sv("ULSPACES"): `1` if `MDA` underlines paint through inter-word spaces, `0` if they break at spaces (set with `ULSPACES`).
 / #sv("UNTITLEDTAB"): `1` if the blank Untitled tab is auto-closed when a document is opened (set with `UNTITLEDTAB`).
+/ #sv("GOTOOPEN"): `1` if opening an already-open file switches to its tab instead of prompting (set with `GOTOOPEN`).
 / #sv("CMPLACE"): command-line placement (top / bottom / hidden).
 / #sv("CP"): caret's character offset.
 / #sv("CRCOLOR"): caret color.

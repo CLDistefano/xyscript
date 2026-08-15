@@ -3395,6 +3395,23 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetUntitledTab(want))?;
                 Ok(Flow::Next)
             }
+            // `GOTOOPEN on|off` (bare = toggle) — when on, opening a file that is already open skips
+            // the "already open" prompt and switches straight to its tab. Off (default) prompts.
+            // `$GOTOOPEN`.
+            "GOTOOPEN" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "GOTOOPEN: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetGotoOpen(want))?;
+                Ok(Flow::Next)
+            }
             // `ULSPACES on|off` (bare = toggle) — whether an `MDA` UNDERLINE runs through the spaces
             // between words (on, default) or breaks at them so only word glyphs are underlined (off).
             // `$ULSPACES`.

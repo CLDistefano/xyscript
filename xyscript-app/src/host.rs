@@ -2388,6 +2388,9 @@ pub struct AppHost {
     /// leftover empty untitled tab pruned — so a scratch never lingers beside real files (it reappears
     /// when the last document closes). On (default). (`UNTITLEDTAB`; `$UNTITLEDTAB`.)
     untitled_auto_close: bool,
+    /// Whether opening an already-open file skips the "already open" prompt and switches to the
+    /// existing tab. Off (default) prompts. (`GOTOOPEN`; `$GOTOOPEN`.)
+    goto_open: bool,
     /// Whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES`; `$ULSPACES`).
     /// On (default) = one continuous underline; off = broken at spaces/tabs (word glyphs only).
     ul_spaces: bool,
@@ -2781,6 +2784,7 @@ impl AppHost {
             wrap: true,
             wrap_hang: 0,
             untitled_auto_close: true,
+            goto_open: false, // default: keep the "already open" prompt
             ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -3112,6 +3116,11 @@ impl AppHost {
     /// Whether the blank untitled tab is auto-closed on open (`UNTITLEDTAB`/`$UNTITLEDTAB`).
     pub fn untitled_tab(&self) -> bool {
         self.untitled_auto_close
+    }
+    /// Whether opening an already-open file skips the prompt and switches to its tab
+    /// (`GOTOOPEN`/`$GOTOOPEN`).
+    pub fn goto_open(&self) -> bool {
+        self.goto_open
     }
     /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`/`$ULSPACES`).
     pub fn ul_spaces(&self) -> bool {
@@ -7493,6 +7502,7 @@ impl AppHost {
         put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
+        put(&mut s, "Opening an already-open file switches to its tab instead of prompting — on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
         put(&mut s, "Underline the spaces between words in MDA underline styling — on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -8171,6 +8181,12 @@ impl Host for AppHost {
                 // `/NV` (force) was given, which opens a fresh tab outright.
                 if !force {
                     if let Some(existing) = self.find_open_tab(&path) {
+                        // `GOTOOPEN on` skips the prompt and switches straight to the open tab.
+                        if self.goto_open {
+                            let i = existing.min(self.docs.len().saturating_sub(1));
+                            self.set_active(i);
+                            return Ok(Value::str("switched to the open copy"));
+                        }
                         self.pending_open = Some(PendingOpen { path, existing, read_only: false });
                         return Ok(Value::str("")); // prompt surfaced via `open_prompt`
                     }
@@ -10429,6 +10445,13 @@ impl Host for AppHost {
                     if self.untitled_auto_close { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetGotoOpen(opt) => {
+                self.goto_open = opt.unwrap_or(!self.goto_open);
+                return Ok(Value::str(format!(
+                    "GOTOOPEN {}",
+                    if self.goto_open { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetUlSpaces(opt) => {
                 self.ul_spaces = opt.unwrap_or(!self.ul_spaces);
                 return Ok(Value::str(format!(
@@ -11151,6 +11174,7 @@ impl Host for AppHost {
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
+            "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),
             "ULSPACES" => Some(Value::Int(if self.ul_spaces { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),

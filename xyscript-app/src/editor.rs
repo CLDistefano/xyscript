@@ -2989,6 +2989,41 @@ mod tests {
     }
 
     #[test]
+    fn gotoopen_toggles_reads_back_and_bypasses_the_prompt() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("a.txt".into(), "AAA".into());
+        e.host_mut().files.insert("b.txt".into(), "BBB".into());
+
+        // Default off; toggles + reads back via $GOTOOPEN.
+        assert!(!e.host().goto_open());
+        e.run_command("PR $GOTOOPEN");
+        assert_eq!(e.output().last().map(String::as_str), Some("0"));
+        e.run_command("GOTOOPEN on");
+        assert!(e.host().goto_open());
+        e.run_command("PR $GOTOOPEN");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        e.run_command("GOTOOPEN"); // bare = toggle
+        assert!(!e.host().goto_open());
+
+        // With GOTOOPEN on, re-opening an already-open file switches to its tab — no prompt, no dup.
+        e.run_command("GOTOOPEN on");
+        e.run_command("OPEN a.txt");
+        e.run_command("OPEN b.txt"); // b.txt active; a.txt is in another tab
+        let n = e.buffer_count();
+        e.run_command("OPEN a.txt");
+        assert!(e.open_prompt().is_none(), "GOTOOPEN on must not prompt");
+        assert_eq!(e.buffer_count(), n, "no duplicate tab");
+        assert!(e.active_path().unwrap().to_string_lossy().contains("a.txt"), "switched to a.txt");
+
+        // With GOTOOPEN off, the prompt returns (the default behaviour is preserved).
+        e.run_command("GOTOOPEN off");
+        e.run_command("OPEN b.txt"); // make b.txt active again
+        e.run_command("OPEN a.txt");
+        assert!(e.open_prompt().unwrap().contains("already open"), "GOTOOPEN off still prompts");
+    }
+
+    #[test]
     fn gofile_switches_to_open_tabs_by_path_substring() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

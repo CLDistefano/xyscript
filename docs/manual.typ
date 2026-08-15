@@ -672,9 +672,11 @@ to #raw("$CWD"); absolute and `~`-style paths work too.
 / #raw("READ"): open a file *read-only*, so you can look without risk of changing it.
 
 Opening a file leaves the cursor in the text, ready to edit. If the file is already open, #raw("OPEN")
-asks what you want — open a second copy, switch to the copy already open, or open a read-only view.
-#raw("READ") skips that question and always opens a fresh read-only copy, so you can keep several views
-of the same file open at once.
+asks what you want — open a second copy, switch to the copy already open, or open a read-only view. If
+you always mean "just take me to it," #raw("GOTOOPEN on") skips the question and switches straight to
+the open copy (#raw("$GOTOOPEN") reads the state, #raw("SaveCfg") remembers it; the default keeps the
+prompt). #raw("READ") skips that question a different way and always opens a fresh read-only copy, so
+you can keep several views of the same file open at once.
 
 == Saving
 

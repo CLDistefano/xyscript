@@ -466,6 +466,10 @@ pub enum EditorOp {
     /// untitled tabs, so a blank scratch never lingers beside real files; it reappears when the last
     /// document is closed. Off keeps the untitled tab as its own tab. `$UNTITLEDTAB`.
     SetUntitledTab(Option<bool>),
+    /// Toggle whether opening an already-open file skips the "already open" prompt and just switches
+    /// to the existing tab (`GOTOOPEN on|off`; `None` toggles). Off (default) keeps the prompt.
+    /// `$GOTOOPEN`.
+    SetGotoOpen(Option<bool>),
     /// Toggle whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES on|off`;
     /// `None` toggles). On (default) draws one continuous underline; off breaks it at spaces/tabs so
     /// only word glyphs are underlined. `$ULSPACES`.
