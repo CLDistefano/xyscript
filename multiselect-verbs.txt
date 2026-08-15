@@ -1,0 +1,187 @@
+# Multi-selection / multi-caret — Verb & Interaction Spec
+
+Status: DESIGN (not yet implemented). Companion to `multiselect-specials.txt` (the READ side).
+This covers the WRITE side: the verbs that create / manage carets, the mouse gestures that
+call them, clipboard behaviour, undo, and limits.
+
+Author: CLD + Claude, 2026-08-15.
+
+
+## 1. The core principle — no new editing verbs
+
+Once more than one caret is active, EVERY existing editing and motion verb operates at ALL
+carets at once. There is no `MULTI-RC` or `MULTI-INSERT`; the ordinary verbs become
+caret-aware:
+
+    - Typing / INSERT / PUT insert at every caret.
+    - RC / RD / BD / DW / DL delete at every caret.
+    - CL / CR / word / line / vertical motion move every caret (each keeps its own goal
+      column); colliding carets MERGE.
+    - Case changes, MDA styling, AR auto-replace, etc. apply at every caret.
+
+The engine applies the N edits offset-safely (highest offset first, shifting anchors) as ONE
+undo transaction. So this spec only defines verbs that CREATE or MANAGE the caret set; the
+rest of the language is unchanged.
+
+Everything here is "it's all XPL": the mouse gestures in §5 are thin wrappers that call these
+verbs, so anything the mouse does, a key binding or script can do too.
+
+
+## 2. Creating carets
+
+    CARETADD [<pos>]
+        Add a caret at byte offset <pos>. With no argument, add one at the current mouse
+        point (the gesture form). If a caret already exists there, REMOVE it instead
+        (toggle) — so Ctrl+click both adds and takes away. The new caret becomes primary.
+
+    CARETUP
+    CARETDOWN
+        Add a caret one line above / below EACH current caret, at that caret's goal column
+        (the sticky column from vertical motion). This "stacks a column" of carets. A no-op
+        for a caret already at the top / bottom of the document. The newly added end becomes
+        primary so the viewport follows.
+
+    CARETNEXT [<text>]
+        The "add next occurrence" verb (cf. Ctrl+D elsewhere).
+          - If nothing is selected: select the word under the primary caret (one selection,
+            no new caret yet) — the seed.
+          - Otherwise: find the next occurrence of the primary selection (or <text> if given)
+            AFTER the last caret, add a selection there, and make it primary (viewport
+            follows). Wraps at end-of-document (see Open Questions for making wrap optional).
+        Uses the existing search engine; honours the same case rule as SE.
+
+    CARETSKIP
+        Advance the "next match" point PAST the current match without adding a caret — lets
+        you skip an unwanted occurrence during a CARETNEXT run. (Optional / Tier 3.)
+
+    CARETALL [/R] [/W] [/I] [/S] [<pattern>]
+        A selection-caret at EVERY match — the select-all-occurrences verb.
+          - Bare CARETALL: every occurrence of the current selection, or of the word under
+            the caret if nothing is selected.
+          - CARETALL <pattern>: every match of <pattern>.
+          - Switches mirror SE: /R regex, /W whole word, /I case-absolute, /S confine to the
+            current selection (turn one selection into a caret per match within it).
+        Reuses the FIND / EMPH highlight-all match finder. Capped (see §8) with a report.
+
+    CARETSPLIT
+        Replace the current multi-line selection with ONE caret per line, each at that line's
+        end (cf. "Split selection into lines"). A single-line selection is left unchanged.
+
+
+## 3. Managing the caret set
+
+    CARETONE
+        Collapse to a single caret — keep the PRIMARY, drop the rest. The Escape gesture.
+
+    CARETPOP
+        Remove the most-recently-added caret (undo the last CARETADD / CARETNEXT / CARETUP /
+        CARETDOWN). Primary falls back to the previous one.
+
+    CARETPRIMARY <n>
+        Make caret index <n> (document order, 0-based — the `$MSE` indexing) the primary, so
+        the classic specials and the viewport track it. (Optional / minor.)
+
+Reads live in the specials spec: `$CARETS` (count), `$CARETP` (primary index), and the
+`$M…` arrays.
+
+
+## 4. What collapses the set back to one
+
+To keep the model predictable, these RE-establish a single caret (implicit CARETONE):
+    - a plain single click (no Ctrl) — places one caret at the click;
+    - DFA (select whole document — inherently one selection);
+    - opening / switching to another buffer, or a fresh file load.
+
+These KEEP the set:
+    - every motion and editing verb (they act on all carets, per §1);
+    - the CARET* verbs above;
+    - Shift+motion (extends each caret's selection).
+
+Undecided edges (see Open Questions): does a fresh SE / FIND collapse to the single hit, and
+does DZ clear-selection turn carets bare (keeping them) vs. collapse to one?
+
+
+## 5. Mouse & keyboard gestures (thin wrappers over the verbs)
+
+    Ctrl+click                 CARETADD at the point (toggles).
+    Alt+drag                   Box / column selection: a caret per line across the dragged
+                               rectangle (each line's caret spans the column range).
+    Escape                     CARETONE.
+    single click (no modifier) collapse + place (per §4).
+
+Suggested DEFAULT key bindings (the user's .kbd choice, not mandated — offered so the shipped
+internal layout can expose the feature):
+
+    Ctrl+Alt+Up / Down         CARETUP / CARETDOWN
+    Ctrl+D                     CARETNEXT
+    Ctrl+Shift+L               CARETALL
+    Ctrl+Shift+P (or similar)  CARETSPLIT
+    Ctrl+U                     CARETPOP
+    Escape                     CARETONE
+
+Box-select is a GESTURE; a verb form (e.g. driving it from an existing rectangular selection)
+is possible but deferred.
+
+
+## 6. Clipboard with N selections
+
+Default model (matches common multi-caret editors):
+
+    COPY / CUT with N selections
+        Store an ORDERED LIST of the N pieces internally. Also place a joined form
+        (pieces separated by the document newline) on the OS clipboard, so other apps and a
+        later single-caret paste get sensible text.
+
+    PASTE
+        - Internal clipboard holds M pieces:
+            * N carets == M pieces  -> DISTRIBUTE: piece i goes to caret i (document order).
+            * counts differ         -> paste the JOINED text at every caret (fallback).
+        - Clipboard is a single piece (or came from outside) -> paste it at every caret.
+
+This is a decision to confirm (distribute vs. always-paste-same). Leaning: distribute on an
+exact count match, else fall back to same-at-each.
+
+
+## 7. Undo & caret-set lifetime
+
+- The caret SET is transient selection state, NOT document history. UNDO / REDO (GT;UNDO)
+  operate on DOCUMENT edits, and a multi-caret keystroke undoes as ONE transaction (§1).
+- Adding carets is therefore not on the undo stack; use CARETPOP to remove the last one, or
+  CARETONE / Escape to reset. (This mirrors how ordinary caret motion is not undoable.)
+- SESSION / crash state: the caret set need not persist across restart — reopening restores
+  the primary caret only (consistent with today's single-caret restore).
+
+
+## 8. Limits & feedback (no silent caps)
+
+- CARETALL is bounded by a cap (e.g. `MAXCARETS`, a few thousand). If a pattern matches more,
+  create up to the cap and REPORT it on the status line ("340 carets (capped at 2000)"), never
+  silently truncate.
+- A CARETNEXT / CARETADD that would exceed the cap is refused with a status message.
+- CARETALL that matches nothing leaves the caret set unchanged and reports "no matches".
+
+
+## 9. Reuse of existing infrastructure
+
+    - Match finding for CARETNEXT / CARETALL      -> the SE / FIND / EMPH search + highlight-all
+                                                     engine (regex via /R, whole-word /W, etc.).
+    - Selection state per caret                   -> the DEFINE block model (anchor + active,
+                                                     `mark_defined`).
+    - Vertical stacking (CARETUP/DOWN goal col)   -> `Buffer.goal_col` sticky-column logic.
+    - Rendering N carets + N selection rects      -> the raster caret overlay + selection-rect
+                                                     drawing already used for one.
+    - Offset-safe batch edits + one-transaction undo -> the inverse-op undo, extended with edit
+                                                     grouping (also generally useful).
+
+
+## 10. Open questions
+
+1. Verb NAMES — CARET* family as above, or a terser XyWrite-flavoured set? (Frequently pressed
+   ones — CARETNEXT, CARETONE — might earn short aliases.)
+2. WRAP on CARETNEXT — always wrap at EOF, or a /nowrap switch?
+3. COLLAPSE rules (§4) — does a fresh SE/FIND collapse to the single hit? Does DZ make carets
+   bare (keep) or collapse to one?
+4. CLIPBOARD — confirm distribute-on-exact-match vs. always-same (§6).
+5. CARET-ADD UNDO — is CARETPOP enough, or should caret-set changes have their own small
+   undo ring (cf. Ctrl+U repeated)?
+6. MAXCARETS value and whether it is user-settable.

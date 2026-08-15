@@ -1,0 +1,140 @@
+# Multi-selection / multi-caret — Read-Specials Spec
+
+Status: DESIGN (not yet implemented). This covers only the READ side — the `$`-specials
+a script or key binding uses to inspect the carets. Creating, moving, and removing carets
+is the WRITE side and is done with verbs (see "Out of scope", below).
+
+Author: CLD + Claude, 2026-08-15. Supersedes the original draft table.
+
+
+## 1. Model
+
+A buffer holds N carets in DOCUMENT ORDER (ascending position). Each caret is:
+    - a position (byte offset),
+    - an optional selection anchor (a bare caret has none), and
+    - a sticky goal column (for vertical motion).
+
+Exactly one caret is the PRIMARY. It drives the viewport, the goal column, and every
+classic single special. N = 1 is the ordinary case: with a single caret, everything below
+behaves EXACTLY as it does today.
+
+
+## 2. Design principles
+
+1. TWO TIERS.
+   a. Classic specials are unchanged. With multi-selection active they read the PRIMARY
+      caret/selection. No existing script, library, or keyboard file changes behaviour.
+   b. A parallel M-ARRAY family exposes every caret to scripts that want it.
+
+2. THE MIRROR RULE. For every caret-relative single special `$X`, there is an array
+   `$MX` holding one element per caret, in document order. If you know `$X`, you know `$MX`.
+   (This is a rule, not a hand-picked list — new caret specials get a mirror automatically.)
+
+3. PURE 0-BASED ARRAYS. Each `$MX` is a plain 0-based array — the same shape as the
+   built-in `CHARS` / `WORDS` / `LINES` collections. The COUNT is NOT stored in the array;
+   get it from `LEN($MX)` or the scalar `$CARETS`. This keeps `FOR v IN $MX` and
+   `FOR i, v IN $MX` working (a count hidden in slot 0 would break iteration).
+
+4. READ ONLY. These specials only report state. Adding/moving/removing carets is verbs.
+
+
+## 3. New scalars
+
+    $CARETS     number of active carets (>= 1). `LEN` of every M-array equals this.
+    $CARETP     0-based index of the PRIMARY caret within the M-arrays — i.e. the caret
+                the classic specials read. Invariant: `$SE == $MSE[$CARETP]`, and likewise
+                for every mirror.
+
+(No `$MULTI` boolean: `$CARETS > 1` is the "multi is active" test.)
+
+
+## 4. Classic specials and their mirrors
+
+All twelve classic specials already exist today; only the `$M…` arrays and the two scalars
+above are new. Element k below means "the caret at document-order index k".
+
+    Classic  Mirror     Meaning (classic reads the PRIMARY)        Per-caret element k
+    -------  --------    ----------------------------------------   ---------------------------
+    $SE      $MSE[]      selected text                              caret k's selected text ("" if bare)
+    $SEL     — (none)    most recent selection (temporal/global)    NOT mirrored — see §6
+    $SL      $MSL[]      chars selected                             chars in caret k's selection (0 if bare)
+    $DF      $MDF[]      selection present? (1/0)                    1 if caret k has a selection, else 0
+    $DS      $MDS[]      selection start offset                      caret k's selection start (== caret pos if bare)
+    $DN      $MDN[]      selection end offset                        caret k's selection end   (== caret pos if bare)
+    $CS      $MCS[]      caret's side of its selection *             caret k's side
+    $CP      $MCP[]      caret byte offset                          caret k's byte offset (valid for bare carets)
+    $CH      $MCH[]      char under caret                           char under caret k
+    $WD      $MWD[]      word under caret                           word under caret k
+    $LI      $MLI[]      text of caret's line                       text of caret k's line
+    $LN      $MLN[]      line number of caret                       line number of caret k
+
+    * `$CS` today returns the caret's position relative to its selection span. Its exact
+      encoding (bool "caret is within a selection" vs. which-end indicator) is inherited
+      unchanged by `$MCS[]`; see Open Questions.
+
+The additions beyond the original draft: `$MCP` (bare-caret position — essential, since a
+caret with no selection still has a location), `$MCH`, and `$MLN`, all by the mirror rule.
+
+
+## 5. Invariants
+
+- Single caret: `$CARETS == 1`, `$CARETP == 0`, and `$MX[0] == $X` for every mirror.
+  Existing scripts are therefore unaffected — they read the primary, which is the only caret.
+- Primary correspondence: for every mirror, `$X == $MX[$CARETP]`.
+- Document order: `$MDS[k] <= $MDS[k+1]` (carets never overlap; colliding carets merge).
+- `LEN($MSE) == LEN($MWD) == … == $CARETS`.
+
+
+## 6. Explicitly NOT mirrored
+
+- `$SEL` (most recent selection) — a temporal/global value (the PREVIOUS selection), not a
+  per-caret property. It stays a scalar; there is no `$MSEL`.
+- Document- and editor-state specials (`$MO`, `$FE`, `$LN`-of-document, encoding, etc.) are
+  not caret-relative and get no mirror.
+
+
+## 7. Idioms this enables
+
+    ; how many?
+    $CARETS                       ; or LEN($MSE)
+
+    ; do something with every selection
+    FOR sel IN $MSE
+      ...
+    EW
+
+    ; index + value
+    FOR i, sel IN $MSE
+      PR selection $i is [$sel] at $(($MDS[i]))..$(($MDN[i]))
+    EW
+
+    ; act only on the bare carets (no selection)
+    FOR i = 0 TO $CARETS - 1
+      IF NOT $MDF[i]
+        ...
+      EI
+    EW
+
+    ; the primary, the long way (equals $SE)
+    $(  $MSE[$CARETP]  )
+
+
+## 8. Out of scope (specified elsewhere)
+
+- CREATING / MOVING / REMOVING carets — verbs: e.g. CARETADD, CARETUP / CARETDOWN,
+  CARETNEXT (add at next match), CARETALL (a caret at every match — reuses the FIND/EMPH
+  highlight-all engine), CARETSPLIT (selection -> one caret per line), CARETONE (collapse to
+  primary) — plus interactive gestures (Ctrl+click, Alt+drag box-select, Escape).
+- CLIPBOARD semantics with N selections (distribute N pieces vs. paste-same-everywhere).
+- Rendering (N carets + N selection rects — extends the existing raster overlay).
+
+
+## 9. Open questions
+
+1. Name of the primary-index scalar: `$CARETP` vs `$CARETPRIMARY` vs `$CP0`. (Leaning
+   `$CARETP`.)
+2. `$CS` / `$MCS` encoding — confirm the current meaning of `$CS` (bool vs. which-end) and
+   document it so the mirror is unambiguous.
+3. Are `$MSL` and `$MDS`/`$MDN` both worth keeping, given `$MSL[k]` is derivable as
+   `$MDN[k] - $MDS[k]`? (Completeness vs. minimalism — leaning keep, to mirror the classics
+   one-for-one.)
