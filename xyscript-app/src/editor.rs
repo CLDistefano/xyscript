@@ -4694,6 +4694,45 @@ mod tests {
     }
 
     #[test]
+    fn caretall_selects_every_match_then_edits_all_at_once() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        // Bare CARETALL <pattern>: a selection-caret at every match; typing replaces them all.
+        let mut e = ed();
+        e.run_command(r#"insert "foo bar foo baz foo""#);
+        e.run_command("TOP");
+        e.run_command("CARETALL foo");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command(r#"insert "X""#); // replace each selected "foo"
+        assert_eq!(text(&e), "X bar X baz X");
+
+        // No matches: the caret set is left unchanged (still a single caret).
+        let mut e = ed();
+        e.run_command(r#"insert "alpha beta""#);
+        e.run_command("CARETALL zzz");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+
+        // /R regex: every run of digits becomes a caret.
+        let mut e = ed();
+        e.run_command(r#"insert "a1 b22 c333""#);
+        e.run_command("CARETALL/R \\d+");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+
+        // Bare CARETALL with a selection uses the selection text as the needle.
+        let mut e = ed();
+        e.run_command(r#"insert "cat dog cat dog cat""#);
+        e.run_command("TOP");
+        e.run_command("RIGHT SEL;RIGHT SEL;RIGHT SEL"); // select "cat"
+        e.run_command("CARETALL");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+    }
+
+    #[test]
     fn caret_column_verb_and_gesture_spray_a_column_from_a_selection() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();

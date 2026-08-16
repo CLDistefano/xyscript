@@ -64,9 +64,19 @@ pub enum EditorOp {
     /// keyboard building state; `CaretAdd(Some(n))` = add/toggle a caret at byte offset n.
     /// `CaretVertical(down)` = `CARETUP`/`CARETDOWN`. `CaretOne` = `CARETONE` (collapse to primary).
     /// `CaretColumn` = `CARETCOL`: a selection becomes one caret per line at the goal column.
+    /// `CaretAll` = `CARETALL`: a selection-caret at every match of the pattern (or of the current
+    /// selection / word if `pattern` is `None`). `case_sensitive` = `/A`, `whole` = `/W`,
+    /// `regex` = `/R`, `in_selection` = `/S` (confine the search to the current selection).
     CaretAdd(Option<usize>),
     CaretVertical(bool),
     CaretColumn,
+    CaretAll {
+        pattern: Option<String>,
+        regex: bool,
+        whole: bool,
+        case_sensitive: bool,
+        in_selection: bool,
+    },
     CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.

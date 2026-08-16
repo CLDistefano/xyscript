@@ -356,6 +356,48 @@ impl Buffer {
         self.caret_count()
     }
 
+    /// Replace the whole caret set with one SELECTION-caret per `(start, end)` span — the primitive
+    /// behind `CARETALL` / `CARETNEXT`. Each caret's cursor sits at the span END with its anchor at
+    /// the START (a forward selection, like a search hit); the span nearest the current cursor becomes
+    /// the PRIMARY so the viewport tracks it, and the rest are secondaries. Zero-length spans are
+    /// skipped. Spans should be non-overlapping. Empty input leaves the set unchanged. Ends the
+    /// building state. Returns the resulting caret count.
+    pub fn set_selection_carets(&mut self, spans: &[(usize, usize)]) -> usize {
+        let mut spans: Vec<(usize, usize)> = spans.iter().copied().filter(|&(a, b)| b > a).collect();
+        if spans.is_empty() {
+            return self.caret_count();
+        }
+        spans.sort_by_key(|&(a, _)| a);
+        // Primary = the span nearest the current cursor (distance 0 if the cursor is inside one).
+        let cur = self.cursor;
+        let dist = |&(a, b): &(usize, usize)| -> usize {
+            if cur < a {
+                a - cur
+            } else if cur > b {
+                cur - b
+            } else {
+                0
+            }
+        };
+        let primary_i = spans
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, sp)| dist(sp))
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        self.building = false;
+        self.secondary.clear();
+        let (ps, pe) = spans[primary_i];
+        self.set_caret(pe, Some(ps)); // primary: cursor at the end, anchor at the start
+        for (i, &(a, b)) in spans.iter().enumerate() {
+            if i != primary_i {
+                self.secondary.push(Caret { pos: b, anchor: Some(a), goal_col: None });
+            }
+        }
+        self.secondary.sort_by_key(|c| c.pos);
+        self.caret_count()
+    }
+
     /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own
     /// selection anchor and goal column — then merge coincident carets. Used when a multi-caret set
     /// is active so one motion verb moves the whole set. During the BUILDING state (or with no
@@ -2549,6 +2591,28 @@ mod tests {
         b.add_column_carets();
         assert_eq!(b.caret_count(), 2); // primary + one planted secondary at the cursor
         assert_eq!(b.caret_positions(), vec![3]); // coincident with the primary
+    }
+
+    #[test]
+    fn set_selection_carets_makes_one_selection_caret_per_span() {
+        let mut b = Buffer::from_str("foo bar foo baz foo");
+        //                            0   4   8   12  16
+        b.set_caret(0, None);
+        let spans = [(0usize, 3usize), (8, 11), (16, 19)]; // the three "foo"s
+        assert_eq!(b.set_selection_carets(&spans), 3);
+        // Cursor sits at each span END; each caret carries its selection (anchor at the span start).
+        assert_eq!(b.caret_positions(), vec![3, 11, 19]);
+        let carets = b.all_carets();
+        for (c, &(a, z)) in carets.iter().zip(spans.iter()) {
+            assert_eq!(c.pos, z);
+            assert_eq!(c.anchor, Some(a));
+        }
+        // Primary = the span nearest the cursor (cursor at 0 → the first span).
+        assert_eq!(b.cursor(), 3);
+        assert_eq!(b.anchor(), Some(0));
+        // Zero-length spans are dropped.
+        assert_eq!(b.set_selection_carets(&[(4, 4), (8, 11)]), 1);
+        assert_eq!(b.caret_positions(), vec![11]);
     }
 
     #[test]

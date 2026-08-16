@@ -2604,6 +2604,20 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretColumn)?;
                 Ok(Flow::Next)
             }
+            // `CARETALL [/R] [/W] [/A] [/S] [<pattern>]` — a selection-caret at EVERY match. Bare uses
+            // the current selection (or the word under the caret) as the needle; `/S` confines the
+            // search to the current selection. Switches mirror the FIND family: /R regex, /W whole
+            // word, /A case-absolute (default insensitive). Capped with a status report.
+            "CARETALL" => {
+                let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
+                let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let case_sensitive = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
+                let in_selection = vswitches.iter().any(|s| s.eq_ignore_ascii_case("S"));
+                let t = args.trim();
+                let pattern = if t.is_empty() { None } else { Some(t.to_string()) };
+                self.host_op(EditorOp::CaretAll { pattern, regex, whole, case_sensitive, in_selection })?;
+                Ok(Flow::Next)
+            }
             "CARETONE" => {
                 self.host_op(EditorOp::CaretOne)?;
                 Ok(Flow::Next)
@@ -4980,6 +4994,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "SAD" => &["NV"], // `/NV` — `SAD/NV <path>` overwrites without confirming
         "DEL" => &["NV"], // `/NV` — delete without the confirmation prompt
         "EMPH" => &["R"], // `/R` — treat the phrase as a regular expression (vs whole-word literal)
+        "CARETALL" => &["R", "W", "A", "S"], // FIND-family flags: regex / whole-word / case-absolute / in-selection
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V"],

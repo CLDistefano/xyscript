@@ -435,6 +435,12 @@ impl Document {
         self.buffer.add_column_carets();
     }
 
+    /// `CARETALL`/`CARETNEXT`: replace the caret set with one selection-caret per match span.
+    pub fn set_selection_carets(&mut self, spans: &[(usize, usize)]) -> usize {
+        self.coalescing = false;
+        self.buffer.set_selection_carets(spans)
+    }
+
     /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
     pub fn collapse_carets(&mut self) {
         self.coalescing = false;

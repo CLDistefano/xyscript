@@ -1323,6 +1323,9 @@ enum GrepMsg {
 
 /// Total-hit cap for a streaming `GREP` (bounds memory + the results buffer on a pathological tree).
 const GREP_CAP: usize = 50_000;
+/// The ceiling on how many carets `CARETALL` will create from a match set. If a pattern matches
+/// more, we create this many and REPORT the cap on the status line (never silently truncate).
+const MAX_CARETS: usize = 2000;
 /// The worker flushes a batch of hits to the channel every this many matches (responsive without
 /// per-hit channel chatter).
 const GREP_BATCH: usize = 200;
@@ -8068,6 +8071,48 @@ impl Host for AppHost {
             },
             EditorOp::CaretVertical(down) => self.active().add_carets_vertical(down),
             EditorOp::CaretColumn => self.active().add_column_carets(),
+            EditorOp::CaretAll { pattern, regex, whole, case_sensitive, in_selection } => {
+                // The needle: an explicit pattern, else the current selection text, else the word under
+                // the caret (also the /S case, where the selection is the haystack, not the needle).
+                let needle = match pattern.filter(|p| !p.is_empty()) {
+                    Some(p) => p,
+                    None => {
+                        let b = self.active().buffer();
+                        if !in_selection && b.has_selection() {
+                            b.selection_text()
+                        } else {
+                            b.word_at()
+                        }
+                    }
+                };
+                if needle.is_empty() {
+                    return Ok(Value::str("CARETALL: nothing to match".to_string()));
+                }
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                    .map_err(|e| XplError::trappable(format!("CARETALL: {e}")))?;
+                // Search the whole document, or confine to the current selection with /S.
+                let (lo, hi) = if in_selection {
+                    self.active().buffer().selection_span().unwrap_or((0, self.active().buffer().len()))
+                } else {
+                    (0, self.active().buffer().len())
+                };
+                // Fetch one past the cap so we can tell "exactly MAX" from "capped".
+                let mut spans = self.active().buffer().find_all(&pat, lo, hi, MAX_CARETS + 1);
+                if spans.is_empty() {
+                    return Ok(Value::str(format!("CARETALL: no matches for {needle:?}")));
+                }
+                let capped = spans.len() > MAX_CARETS;
+                if capped {
+                    spans.truncate(MAX_CARETS);
+                }
+                let n = self.active().set_selection_carets(&spans);
+                let noun = if n == 1 { "caret" } else { "carets" };
+                return Ok(Value::str(if capped {
+                    format!("{n} {noun} (capped at {MAX_CARETS})")
+                } else {
+                    format!("{n} {noun}")
+                }));
+            }
             EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();
