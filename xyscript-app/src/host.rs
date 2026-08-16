@@ -7274,6 +7274,17 @@ impl AppHost {
         self.docs[self.active].click_caret(off);
     }
 
+    /// Add / toggle a secondary caret at byte offset `off` in the active document (`CARETADD` — the
+    /// Ctrl+click gesture). See the multi-caret specs.
+    pub fn add_active_caret(&mut self, off: usize) {
+        self.docs[self.active].add_caret(off);
+    }
+
+    /// Collapse the active document to its single primary caret (`CARETONE` — a plain click / Escape).
+    pub fn collapse_active_carets(&mut self) {
+        self.docs[self.active].collapse_carets();
+    }
+
     /// Move the active document's caret to byte offset `off` with motion-selection
     /// semantics (`extend` grows/keeps the selection). Used by the GUI's visual
     /// wrapped-line Up/Down.

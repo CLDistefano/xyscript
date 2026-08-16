@@ -3780,6 +3780,37 @@ impl GuiApp {
             hshift
         };
 
+        // Multi-caret: screen positions for the SECONDARY carets — the same mapping as the primary
+        // `caret_px` above (window cursor → cosmic position + wrap-indent − hshift), skipping any
+        // scrolled off-window. Painted alongside the primary in the caret block below.
+        let sec_px: Vec<(f32, f32)> = {
+            let active = self.editor.active_index();
+            let offsets: Vec<usize> = if self.editor.cmline_open() {
+                Vec::new()
+            } else {
+                let buf = self.editor.doc(active);
+                if buf.is_multi() {
+                    buf.secondary_carets().iter().map(|c| c.pos).collect()
+                } else {
+                    Vec::new()
+                }
+            };
+            offsets
+                .into_iter()
+                .filter_map(|off| {
+                    let doc = self.editor.doc(active);
+                    let g = doc.decoded_offset_from(off, win.start_byte, win.start_decoded);
+                    if g < win.start_decoded || g > win.start_decoded + win.decoded_len {
+                        return None; // this caret is scrolled off-window
+                    }
+                    let cur = self.win_cursor_clamped(&win, off);
+                    buffer
+                        .cursor_position(&cur)
+                        .map(|(x, y)| (x + self.wi_offset_at_y(y) - hshift as f32, y))
+                })
+                .collect()
+        };
+
         // FIND "highlight all" rects — computed while `buffer` is still freely borrowable, before
         // `ed` takes it mutably below. Empty unless the Find dialog is driving `find_highlights`.
         let mut find_rects = if self.find_highlights.is_empty() {
@@ -4028,37 +4059,47 @@ impl GuiApp {
         // (so the glyph shows through), underline = horizontal bar at the cell's bottom.
         // Hidden while the command line holds focus — only ONE caret shows at a time (the cmline
         // caret is likewise painted only when focused), so the active input is unambiguous.
-        if let Some((cx, cy)) = caret_px.filter(|_| !self.editor.cmline_open()) {
-            let (cx, cy) = (cx as i32, cy as i32);
+        if !self.editor.cmline_open() {
             let (cr, cg, cb) = self.editor.caret_color();
             // Pixel-space metrics (the canvas is at device resolution); thicknesses scale so the
             // bar/underline keep the same visual weight at any zoom/HiDPI.
             let cell = (self.font_size * scale * 0.6).max(1.0) as i32; // monospace cell width
             let lh = lh_px as i32;
             let bar = (2.0 * scale).round().max(1.0) as i32; // caret bar width / underline height
-            let (x0, x1, y0, y1, alpha) = match self.editor.caret_shape() {
-                CaretShape::Bar => (cx, cx + bar, cy, cy + lh, 255u16),
-                CaretShape::Block => (cx, cx + cell, cy, cy + lh, 115u16), // see-through over the glyph
-                CaretShape::Underline => (cx, cx + cell, cy + lh - bar, cy + lh, 255u16),
-            };
-            for py in y0..y1 {
-                for px in x0..x1 {
-                    if px < 0 || py < 0 || px as usize >= w || py as usize >= h {
-                        continue;
-                    }
-                    let i = (py as usize * w + px as usize) * 4;
-                    if alpha >= 255 {
-                        canvas[i] = cr;
-                        canvas[i + 1] = cg;
-                        canvas[i + 2] = cb;
-                    } else {
-                        let a = alpha as f32 / 255.0;
-                        for (c, s) in [(0usize, cr as f32), (1, cg as f32), (2, cb as f32)] {
-                            let d = canvas[i + c] as f32;
-                            canvas[i + c] = (s * a + d * (1.0 - a)).round() as u8;
+            let shape = self.editor.caret_shape();
+            // Paint one caret rect at (cx, cy). Shared by the primary caret and every secondary
+            // (multi-caret): each caret draws identically, so the whole set is visible at once.
+            let mut paint_caret = |cx: i32, cy: i32| {
+                let (x0, x1, y0, y1, alpha) = match shape {
+                    CaretShape::Bar => (cx, cx + bar, cy, cy + lh, 255u16),
+                    CaretShape::Block => (cx, cx + cell, cy, cy + lh, 115u16), // see-through over glyph
+                    CaretShape::Underline => (cx, cx + cell, cy + lh - bar, cy + lh, 255u16),
+                };
+                for py in y0..y1 {
+                    for px in x0..x1 {
+                        if px < 0 || py < 0 || px as usize >= w || py as usize >= h {
+                            continue;
+                        }
+                        let i = (py as usize * w + px as usize) * 4;
+                        if alpha >= 255 {
+                            canvas[i] = cr;
+                            canvas[i + 1] = cg;
+                            canvas[i + 2] = cb;
+                        } else {
+                            let a = alpha as f32 / 255.0;
+                            for (c, s) in [(0usize, cr as f32), (1, cg as f32), (2, cb as f32)] {
+                                let d = canvas[i + c] as f32;
+                                canvas[i + c] = (s * a + d * (1.0 - a)).round() as u8;
+                            }
                         }
                     }
                 }
+            };
+            if let Some((cx, cy)) = caret_px {
+                paint_caret(cx as i32, cy as i32);
+            }
+            for &(cx, cy) in &sec_px {
+                paint_caret(cx as i32, cy as i32);
             }
         }
 
@@ -9275,7 +9316,14 @@ impl GuiApp {
                         self.drag_anchor = Some(anchor);
                         self.editor.host_mut().set_active_caret(anchor, None);
                     } else if click {
-                        self.editor.host_mut().click_active_caret(off);
+                        // Ctrl+click ADDS a caret (multi-caret); a plain click collapses the set
+                        // back to one and places the caret there (the spec's "plain click resets").
+                        if ctx.input(|i| i.modifiers.ctrl) {
+                            self.editor.host_mut().add_active_caret(off);
+                        } else {
+                            self.editor.host_mut().collapse_active_carets();
+                            self.editor.host_mut().click_active_caret(off);
+                        }
                     }
                     // The caret moved *after* this frame's canvas was drawn; force a
                     // repaint so the new position is shown even when the app was
