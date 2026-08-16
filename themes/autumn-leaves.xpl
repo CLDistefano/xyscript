@@ -66,3 +66,16 @@ EMPHFGCOLOR 230 210 150
 # EMPH emphasis background colour — R G B, 0-255
 EMPHBGCOLOR 110 35 30
 
+# Syntax-highlighting palette — derived from this theme's colours (token kind -> R G B)
+HLCOLOR heading 158 75 46
+HLCOLOR emphasis 126 100 88
+HLCOLOR strong 57 49 45
+HLCOLOR code 61 125 54
+HLCOLOR link 161 43 43
+HLCOLOR quote 145 145 59
+HLCOLOR rule 149 113 95
+HLCOLOR keyword 158 158 46
+HLCOLOR string 94 145 48
+HLCOLOR comment 114 90 69
+HLCOLOR number 41 41 163
+HLCOLOR function 56 89 148
