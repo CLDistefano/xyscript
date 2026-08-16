@@ -983,6 +983,18 @@ impl Buffer {
         }
     }
 
+    /// The byte span a Backspace at `at` would remove — `[step_left(at), at)`, stepping over a
+    /// whole `\r\n` / multi-byte char. Empty (`start == at`) at the start of the buffer. Used by the
+    /// multi-caret delete fan-out to compute each caret's deletion char-correctly.
+    pub fn delete_back_span(&self, at: usize) -> (usize, usize) {
+        (self.step_left(at), at)
+    }
+
+    /// The byte span a Delete at `at` would remove — `[at, step_right(at))`. Empty at end-of-buffer.
+    pub fn delete_forward_span(&self, at: usize) -> (usize, usize) {
+        (at, self.step_right(at))
+    }
+
     /// Ride-along after an insert of `n` bytes at `at`: shift the block's endpoints so
     /// the same characters stay selected. Start-gravity `<=` (insert at the start
     /// pushes the block right); end-gravity `<` (insert exactly at the end is left

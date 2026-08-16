@@ -1099,6 +1099,10 @@ impl Document {
     /// Delete the char before the cursor (Backspace), or the selection. Under
     /// persistent selection it's always a char-delete (the block is kept + rides along).
     pub fn delete_back(&mut self) {
+        if self.buffer.is_multi() {
+            self.delete_multi_carets(false);
+            return;
+        }
         self.buffer.commit_define();
         let keep = self.buffer.is_persistent() && self.buffer.has_selection();
         let replace = !keep && self.buffer.has_selection() && self.buffer.sel_head().is_none();
@@ -1129,6 +1133,10 @@ impl Document {
     /// Delete the char at the cursor (Delete/Del), or the selection. Under persistent
     /// selection it's always a char-delete (the block is kept + rides along).
     pub fn delete_forward(&mut self) {
+        if self.buffer.is_multi() {
+            self.delete_multi_carets(true);
+            return;
+        }
         self.buffer.commit_define();
         let keep = self.buffer.is_persistent() && self.buffer.has_selection();
         let replace = !keep && self.buffer.has_selection() && self.buffer.sel_head().is_none();
@@ -2203,6 +2211,65 @@ impl Document {
         self.record_multi(ops, cb, ab, new_primary, None, sec_before, sec_after);
     }
 
+    /// Delete at EVERY caret (Backspace when `forward` is false, Delete when true) — the multi-caret
+    /// path. Each caret removes its own selection if it has one, else the char before/at it (char-
+    /// aware via the buffer's delete spans). Applied low-to-high with a cumulative shift, recorded as
+    /// ONE undo unit. No-op carets (Backspace at BOF / Delete at EOF) contribute nothing.
+    fn delete_multi_carets(&mut self, forward: bool) {
+        self.buffer.commit_define();
+        let sec_before = self.buffer.secondary_carets().to_vec();
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        // Each caret's delete span in current coords: (start, end, is_primary).
+        let span_of = |buf: &Buffer, pos: usize, anchor: Option<usize>| -> (usize, usize) {
+            if let Some(an) = anchor {
+                (an.min(pos), an.max(pos))
+            } else if forward {
+                buf.delete_forward_span(pos)
+            } else {
+                buf.delete_back_span(pos)
+            }
+        };
+        let mut items: Vec<(usize, usize, bool)> = Vec::new();
+        let (pa, pb) = match self.buffer.selection_span() {
+            Some((a, b)) => (a, b),
+            None => span_of(&self.buffer, cb, None),
+        };
+        items.push((pa, pb, true));
+        for c in &sec_before {
+            let (a, b) = span_of(&self.buffer, c.pos, c.anchor);
+            items.push((a, b, false));
+        }
+        items.sort_by(|x, y| x.0.cmp(&y.0));
+        let mut ops: Vec<Op> = Vec::new();
+        let mut shift: i64 = 0;
+        let mut new_primary = cb;
+        let mut new_secs: Vec<Caret> = Vec::new();
+        for (a, b, is_primary) in items {
+            let at = (a as i64 + shift) as usize;
+            let end = (b as i64 + shift) as usize;
+            if end > at {
+                let removed = self.buffer.slice_bytes(at, end);
+                self.buffer.replace_range_bytes(at, end - at, &[]);
+                ops.push(Op { at, removed, inserted: Vec::new() });
+                shift -= (end - at) as i64;
+            }
+            // The caret lands at the span start (BOF/EOF no-ops leave it where it was).
+            if is_primary {
+                new_primary = at;
+            } else {
+                new_secs.push(Caret { pos: at, anchor: None, goal_col: None });
+            }
+        }
+        self.buffer.set_caret(new_primary, None);
+        self.buffer.set_secondary_carets(new_secs);
+        self.buffer.normalize_carets();
+        let sec_after = self.buffer.secondary_carets().to_vec();
+        self.buffer.set_building(false);
+        if !ops.is_empty() {
+            self.record_multi(ops, cb, ab, new_primary, None, sec_before, sec_after);
+        }
+    }
+
     /// Record a multi-caret edit (N ops) as ONE undo unit. Never coalesces.
     #[allow(clippy::too_many_arguments)]
     fn record_multi(
@@ -2532,6 +2599,31 @@ mod tests {
         d.collapse_carets();
         assert_eq!(d.caret_count(), 1);
         assert!(!d.is_multi());
+    }
+
+    #[test]
+    fn multicaret_delete_forward_and_back_are_one_undo_unit() {
+        // Delete-forward at every caret removes the char AT each.
+        let mut d = Document::from_str("aXbXcX"); // primary at EOF (6)
+        d.add_caret(1);
+        d.add_caret(3);
+        d.add_caret(5);
+        assert_eq!(d.caret_count(), 4); // 1,3,5 + primary at 6 (a no-op at EOF)
+        d.delete_forward();
+        assert_eq!(d.buffer().text(), "abc");
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "aXbXcX");
+        assert_eq!(d.caret_count(), 4, "undo restores the caret set");
+
+        // Backspace at every caret removes the char BEFORE each.
+        let mut d = Document::from_str("aXbXcX"); // primary at EOF (6)
+        d.add_caret(2);
+        d.add_caret(4);
+        assert_eq!(d.caret_count(), 3); // 2,4 + primary at 6
+        d.delete_back();
+        assert_eq!(d.buffer().text(), "abc");
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "aXbXcX");
     }
 
     #[test]
