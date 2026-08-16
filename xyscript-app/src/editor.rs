@@ -4660,6 +4660,40 @@ mod tests {
     }
 
     #[test]
+    fn caret_verbs_add_collapse_and_stack() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("TOP"); // primary at 0
+        // CARETADD <n> adds carets at offsets; CARETS reports the whole set.
+        e.run_command("CARETADD 2");
+        e.run_command("CARETADD 4");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // Typing at all three carets is ONE undo unit.
+        e.run_command(r#"insert "X""#);
+        assert_eq!(text(&e), "XabXcdXef");
+        e.run_command("GT;UNDO");
+        assert_eq!(text(&e), "abcdef");
+        // CARETONE collapses back to a single caret.
+        e.run_command("CARETONE");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+
+        // CARETDOWN stacks a caret onto the next line (count doesn't depend on newline length).
+        let mut e = ed();
+        e.run_command(r#"insert "aaa""#);
+        e.run_command("ENTER");
+        e.run_command(r#"insert "bbb""#); // two lines
+        e.run_command("TOP");
+        e.run_command("CARETDOWN");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
     fn li_special_reads_the_line_under_the_caret_without_the_newline() {
         let mut e = ed();
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);

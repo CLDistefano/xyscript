@@ -410,13 +410,28 @@ impl Document {
 
     // ---- multi-caret set (the CARET* verb layer calls these) --------------
 
-    /// Add / toggle a secondary caret at byte offset `pos` (`CARETADD`). Returns the caret count.
+    /// Add / toggle a secondary caret at byte offset `pos` (`CARETADD <pos>` / Ctrl+click). Returns
+    /// the caret count. A caret-set change breaks any coalescing typing run.
     pub fn add_caret(&mut self, pos: usize) -> usize {
+        self.coalescing = false;
         self.buffer.add_caret(pos)
+    }
+
+    /// `CARETADD` (bare): plant a caret at the primary and enter the keyboard building state.
+    pub fn plant_caret(&mut self) {
+        self.coalescing = false;
+        self.buffer.plant_caret_here();
+    }
+
+    /// `CARETUP`/`CARETDOWN`: add a caret one line above/below each current caret.
+    pub fn add_carets_vertical(&mut self, down: bool) {
+        self.coalescing = false;
+        self.buffer.add_carets_vertical(down);
     }
 
     /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
     pub fn collapse_carets(&mut self) {
+        self.coalescing = false;
         self.buffer.collapse_carets();
     }
 

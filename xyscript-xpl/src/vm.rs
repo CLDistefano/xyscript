@@ -2571,6 +2571,39 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::BufAlt)?;
                 Ok(Flow::Next)
             }
+            // Multi-caret management verbs. `CARETADD` (bare) plants a caret at the current caret and
+            // enters the keyboard building state (plain motion then moves the primary only, so you can
+            // roam and plant more); `CARETADD <n>` adds/toggles a caret at byte offset n. `CARETUP`/
+            // `CARETDOWN` add a caret one line above/below each caret. `CARETONE` collapses to one.
+            "CARETADD" => {
+                let a = args.trim();
+                let pos = if a.is_empty() {
+                    None
+                } else {
+                    match a.parse::<usize>() {
+                        Ok(n) => Some(n),
+                        Err(_) => {
+                            return Err(XplError::trappable(format!(
+                                "CARETADD: expected a byte offset, got {a:?}"
+                            )))
+                        }
+                    }
+                };
+                self.host_op(EditorOp::CaretAdd(pos))?;
+                Ok(Flow::Next)
+            }
+            "CARETUP" => {
+                self.host_op(EditorOp::CaretVertical(false))?;
+                Ok(Flow::Next)
+            }
+            "CARETDOWN" => {
+                self.host_op(EditorOp::CaretVertical(true))?;
+                Ok(Flow::Next)
+            }
+            "CARETONE" => {
+                self.host_op(EditorOp::CaretOne)?;
+                Ok(Flow::Next)
+            }
             "BUFGO" => {
                 self.host_op(EditorOp::BufGo(args.trim().to_string()))?;
                 Ok(Flow::Next)

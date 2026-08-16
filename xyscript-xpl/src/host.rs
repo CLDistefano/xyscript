@@ -60,6 +60,12 @@ pub enum EditorOp {
     Delete(DeleteKind),
     /// Move the cursor; `extend` grows the selection (Shift+motion).
     Move { motion: Motion, extend: bool },
+    /// Multi-caret management (`CARET*` verbs). `CaretAdd(None)` = plant at the primary + enter the
+    /// keyboard building state; `CaretAdd(Some(n))` = add/toggle a caret at byte offset n.
+    /// `CaretVertical(down)` = `CARETUP`/`CARETDOWN`. `CaretOne` = `CARETONE` (collapse to primary).
+    CaretAdd(Option<usize>),
+    CaretVertical(bool),
+    CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.
     MoveToSelectionEdge { end: bool },

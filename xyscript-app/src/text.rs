@@ -246,6 +246,61 @@ impl Buffer {
         self.secondary.dedup_by_key(|c| c.pos);
     }
 
+    /// All carets (primary + secondaries) as `Caret` records, sorted by position — document order.
+    /// The primary is included as `{cursor, anchor, goal_col}`.
+    pub fn all_carets(&self) -> Vec<Caret> {
+        let mut v: Vec<Caret> = std::iter::once(Caret {
+            pos: self.cursor,
+            anchor: self.anchor,
+            goal_col: self.goal_col,
+        })
+        .chain(self.secondary.iter().copied())
+        .collect();
+        v.sort_by_key(|c| c.pos);
+        v
+    }
+
+    /// `CARETADD` (bare, keyboard): plant a caret at the current primary position and enter the
+    /// BUILDING state, so plain motion now moves the PRIMARY only — roam and plant more, until the
+    /// first edit ends building. Re-planting the same spot toggles it off.
+    pub fn plant_caret_here(&mut self) {
+        let c = self.cursor;
+        self.add_caret(c);
+        self.building = true;
+    }
+
+    /// `CARETUP`/`CARETDOWN`: add a caret one line above/below EACH current caret (at its column),
+    /// growing a column of carets; a caret at the top/bottom of the document adds nothing. Existing
+    /// carets are kept; coincident ones merge.
+    pub fn add_carets_vertical(&mut self, down: bool) {
+        let originals = self.all_carets();
+        let (sc, sa, sg) = (self.cursor, self.anchor, self.goal_col);
+        let mut added: Vec<usize> = Vec::new();
+        for c in &originals {
+            self.cursor = c.pos;
+            self.anchor = None;
+            self.goal_col = c.goal_col;
+            if down {
+                self.move_down(false);
+            } else {
+                self.move_up(false);
+            }
+            if self.cursor != c.pos {
+                added.push(self.cursor);
+            }
+        }
+        self.cursor = sc;
+        self.anchor = sa;
+        self.goal_col = sg;
+        for p in added {
+            if p != self.cursor && !self.secondary.iter().any(|c| c.pos == p) {
+                self.secondary.push(Caret { pos: p, anchor: None, goal_col: None });
+            }
+        }
+        self.secondary.sort_by_key(|c| c.pos);
+        self.normalize_carets();
+    }
+
     /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own
     /// selection anchor and goal column — then merge coincident carets. Used when a multi-caret set
     /// is active so one motion verb moves the whole set. During the BUILDING state (or with no

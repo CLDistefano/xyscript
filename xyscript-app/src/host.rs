@@ -8052,6 +8052,14 @@ impl Host for AppHost {
                 self.pending_visual_edge = visual_edge;
                 self.pending_visual_move = visual_move;
             }
+            EditorOp::CaretAdd(pos) => match pos {
+                None => self.active().plant_caret(),           // bare: plant + building state
+                Some(n) => {
+                    self.active().add_caret(n);
+                } // add/toggle at offset
+            },
+            EditorOp::CaretVertical(down) => self.active().add_carets_vertical(down),
+            EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();
                 match kind {
