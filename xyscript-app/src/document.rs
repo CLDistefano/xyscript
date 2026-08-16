@@ -39,7 +39,7 @@ use std::rc::Rc;
 
 use crate::encoding::{Charset, Encoding};
 use crate::highlight::{GrammarRegistry, Highlighter, Token};
-use crate::text::{Buffer, Pattern};
+use crate::text::{Buffer, Caret, Pattern};
 
 /// Swap the case of each character (`CC`).
 fn swap_case(s: &str) -> String {
@@ -159,15 +159,20 @@ enum Kind {
     Other,
 }
 
-/// One undo step.
+/// One undo step. Usually ONE op (single caret), but a multi-caret keystroke records N ops that
+/// undo together as this one unit — applied in order, reversed on undo. `secondary_before/after`
+/// snapshot the multi-caret set so undo/redo restore the carets (EMPTY for single-caret edits,
+/// which leave the current caret set untouched).
 #[derive(Debug, Clone)]
 struct Unit {
-    op: Op,
+    ops: Vec<Op>,
     kind: Kind,
     cursor_before: usize,
     anchor_before: Option<usize>,
     cursor_after: usize,
     anchor_after: Option<usize>,
+    secondary_before: Vec<Caret>,
+    secondary_after: Vec<Caret>,
 }
 
 /// `MDA` text-attribute bits, stored per span in [`Document::attr_spans`] and persisted in the
@@ -2078,11 +2083,19 @@ impl Document {
     pub fn undo(&mut self) -> bool {
         self.coalescing = false;
         if let Some(unit) = self.undo.pop() {
-            let remove = unit.op.inserted.len();
-            self.buffer.replace_range_bytes(unit.op.at, remove, &unit.op.removed);
-            // Colour spans follow the undo edit (it removes `inserted`, restores `removed`).
-            self.adjust_color_spans(unit.op.at, remove, unit.op.removed.len());
+            // Reverse each op in REVERSE application order — the ops were recorded low-to-high with
+            // apply-time offsets, so undoing high-to-low keeps every stored offset valid.
+            for op in unit.ops.iter().rev() {
+                let remove = op.inserted.len();
+                self.buffer.replace_range_bytes(op.at, remove, &op.removed);
+                // Colour spans follow the undo edit (it removes `inserted`, restores `removed`).
+                self.adjust_color_spans(op.at, remove, op.removed.len());
+            }
             self.buffer.set_caret(unit.cursor_before, unit.anchor_before);
+            // Multi-caret edits restore the whole set; single-op units leave the caret set alone.
+            if unit.ops.len() > 1 {
+                self.buffer.set_secondary_carets(unit.secondary_before.clone());
+            }
             self.redo.push(unit);
             self.refresh_highlights();
             true
@@ -2095,11 +2108,17 @@ impl Document {
     pub fn redo(&mut self) -> bool {
         self.coalescing = false;
         if let Some(unit) = self.redo.pop() {
-            let remove = unit.op.removed.len();
-            self.buffer.replace_range_bytes(unit.op.at, remove, &unit.op.inserted);
-            // Colour spans follow the redo edit (removes `removed`, re-inserts `inserted`).
-            self.adjust_color_spans(unit.op.at, remove, unit.op.inserted.len());
+            // Re-apply the ops in their original (forward) order.
+            for op in unit.ops.iter() {
+                let remove = op.removed.len();
+                self.buffer.replace_range_bytes(op.at, remove, &op.inserted);
+                // Colour spans follow the redo edit (removes `removed`, re-inserts `inserted`).
+                self.adjust_color_spans(op.at, remove, op.inserted.len());
+            }
             self.buffer.set_caret(unit.cursor_after, unit.anchor_after);
+            if unit.ops.len() > 1 {
+                self.buffer.set_secondary_carets(unit.secondary_after.clone());
+            }
             self.undo.push(unit);
             self.refresh_highlights();
             true
@@ -2146,12 +2165,14 @@ impl Document {
         }
 
         self.undo.push(Unit {
-            op,
+            ops: vec![op],
             kind,
             cursor_before,
             anchor_before,
             cursor_after,
             anchor_after,
+            secondary_before: Vec::new(),
+            secondary_after: Vec::new(),
         });
         self.coalescing = kind != Kind::Other;
         self.refresh_highlights();
@@ -2188,28 +2209,35 @@ fn default_encoding_for(bytes: &[u8]) -> Charset {
 
 /// Whether `op` continues `last`'s coalescing run (same kind already checked).
 fn coalesces(last: &Unit, op: &Op) -> bool {
+    // Only single-op (single-caret) runs coalesce; a multi-caret unit is its own step.
+    if last.ops.len() != 1 {
+        return false;
+    }
+    let lop = &last.ops[0];
     match last.kind {
         // Typing forward: the new insert begins right after the run's bytes.
-        Kind::Insert => op.at == last.op.at + last.op.inserted.len(),
+        Kind::Insert => op.at == lop.at + lop.inserted.len(),
         // Backspace: the new deletion sits immediately before the run's region.
-        Kind::DeleteBack => op.at + op.removed.len() == last.op.at,
+        Kind::DeleteBack => op.at + op.removed.len() == lop.at,
         // Forward-delete: always removes at the same position.
-        Kind::DeleteForward => op.at == last.op.at,
+        Kind::DeleteForward => op.at == lop.at,
         Kind::Other => false,
     }
 }
 
-/// Merge `op` into `last`'s run (same kind, already confirmed contiguous).
+/// Merge `op` into `last`'s run (same kind, already confirmed contiguous). Only reached for a
+/// single-op unit (coalescing is gated on `last.ops.len() == 1`), so `last.ops[0]` is the run.
 fn merge(last: &mut Unit, op: Op, cursor_after: usize, anchor_after: Option<usize>) {
+    let lop = &mut last.ops[0];
     match last.kind {
-        Kind::Insert => last.op.inserted.extend_from_slice(&op.inserted),
-        Kind::DeleteForward => last.op.removed.extend_from_slice(&op.removed),
+        Kind::Insert => lop.inserted.extend_from_slice(&op.inserted),
+        Kind::DeleteForward => lop.removed.extend_from_slice(&op.removed),
         Kind::DeleteBack => {
             // Prepend (we're consuming bytes leftward) and move the anchor left.
             let mut merged = op.removed;
-            merged.extend_from_slice(&last.op.removed);
-            last.op.removed = merged;
-            last.op.at = op.at;
+            merged.extend_from_slice(&lop.removed);
+            lop.removed = merged;
+            lop.at = op.at;
         }
         Kind::Other => unreachable!("Other never coalesces"),
     }

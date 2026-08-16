@@ -179,6 +179,13 @@ impl Buffer {
         &self.secondary
     }
 
+    /// Replace the secondary-caret set wholesale (kept sorted). Used by undo/redo to restore the
+    /// multi-caret set snapshot recorded with a multi-caret edit.
+    pub fn set_secondary_carets(&mut self, mut carets: Vec<Caret>) {
+        carets.sort_by_key(|c| c.pos);
+        self.secondary = carets;
+    }
+
     /// Whether the multi-caret BUILDING state is active (`CARETADD` planting from the keyboard).
     pub fn building(&self) -> bool {
         self.building
