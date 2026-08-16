@@ -39,7 +39,7 @@ use std::rc::Rc;
 
 use crate::encoding::{Charset, Encoding};
 use crate::highlight::{GrammarRegistry, Highlighter, Token};
-use crate::text::{Buffer, Caret, Pattern};
+use crate::text::{Buffer, Caret, CaretState, Pattern};
 
 /// Swap the case of each character (`CC`).
 fn swap_case(s: &str) -> String {
@@ -185,6 +185,10 @@ struct Unit {
 /// `xyscript-xpl` (the verb layer that parses the keywords) and re-exported here for the app/GUI.
 pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
 
+/// How many caret-set snapshots the `CARETPOP` ring keeps (a build sequence rarely runs deep; this
+/// is a runaway backstop, oldest dropped past it).
+const CARET_RING_CAP: usize = 128;
+
 /// A text document: a buffer, undo/redo history, and file identity.
 #[derive(Debug)]
 pub struct Document {
@@ -193,6 +197,10 @@ pub struct Document {
     redo: Vec<Unit>,
     /// True when the top undo unit is still open for coalescing.
     coalescing: bool,
+    /// The `CARETPOP` undo ring: caret-set snapshots taken before each caret-set-changing verb, so
+    /// popping restores the previous set. Transient (selection state only, no content) and cleared by
+    /// any document edit. Capped at [`CARET_RING_CAP`].
+    caret_ring: Vec<CaretState>,
     /// Undo-stack length at the last save (the "saved" point). `None` means the
     /// saved state is unreachable by undo (a new edit clobbered the redo path
     /// that led back to it) — i.e. always dirty. The document is *not modified*
@@ -313,6 +321,7 @@ impl Clone for Document {
             undo: self.undo.clone(),
             redo: self.redo.clone(),
             coalescing: self.coalescing,
+            caret_ring: self.caret_ring.clone(),
             saved_len: self.saved_len,
             path: self.path.clone(),
             line_ending: self.line_ending,
@@ -348,6 +357,7 @@ impl Default for Document {
             undo: Vec::new(),
             redo: Vec::new(),
             coalescing: false,
+            caret_ring: Vec::new(),
             saved_len: Some(0), // a fresh document is unmodified
             path: None,
             line_ending: LineEnding::os_default(), // new docs follow the OS until a file is opened
@@ -410,52 +420,86 @@ impl Document {
 
     // ---- multi-caret set (the CARET* verb layer calls these) --------------
 
+    /// Snapshot the caret set onto the `CARETPOP` ring before a set-changing verb mutates it. Bounded
+    /// by [`CARET_RING_CAP`] (drop the oldest). A caret-set change also breaks any coalescing run.
+    fn push_caret_ring(&mut self) {
+        self.coalescing = false;
+        self.caret_ring.push(self.buffer.caret_state());
+        if self.caret_ring.len() > CARET_RING_CAP {
+            self.caret_ring.remove(0);
+        }
+    }
+
     /// Add / toggle a secondary caret at byte offset `pos` (`CARETADD <pos>` / Ctrl+click). Returns
     /// the caret count. A caret-set change breaks any coalescing typing run.
     pub fn add_caret(&mut self, pos: usize) -> usize {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.add_caret(pos)
     }
 
     /// `CARETADD` (bare): plant a caret at the primary and enter the keyboard building state.
     pub fn plant_caret(&mut self) {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.plant_caret_here();
     }
 
     /// `CARETUP`/`CARETDOWN`: add a caret one line above/below each current caret.
     pub fn add_carets_vertical(&mut self, down: bool) {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.add_carets_vertical(down);
     }
 
     /// `CARETCOL`: turn a linear selection into a column of carets (one per line at the goal column).
     pub fn add_column_carets(&mut self) {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.add_column_carets();
     }
 
     /// `CARETALL`/`CARETNEXT`: replace the caret set with one selection-caret per match span.
     pub fn set_selection_carets(&mut self, spans: &[(usize, usize)]) -> usize {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.set_selection_carets(spans)
     }
 
     /// `CARETNEXT` seed: select the word under the caret. Returns false if there's no word.
     pub fn select_word_at(&mut self) -> bool {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.select_word_at()
     }
 
     /// `CARETNEXT`: add `(start, end)` as a new selection-caret and make it primary.
     pub fn add_selection_caret_as_primary(&mut self, start: usize, end: usize) -> usize {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.add_selection_caret_as_primary(start, end)
+    }
+
+    /// `CARETPRIMARY <n>`: make the caret at document-order index `n` the primary. Returns false if
+    /// `n` is out of range (the set is left unchanged, and nothing is pushed to the ring).
+    pub fn set_primary_caret(&mut self, n: usize) -> bool {
+        self.push_caret_ring();
+        if self.buffer.set_primary_index(n) {
+            true
+        } else {
+            self.caret_ring.pop(); // no change → don't leave a phantom ring entry
+            false
+        }
+    }
+
+    /// `CARETPOP`: undo the most recent caret-set change, restoring the previous set. Returns false if
+    /// the ring is empty (nothing to pop). Cleared by any document edit.
+    pub fn caret_pop(&mut self) -> bool {
+        self.coalescing = false;
+        if let Some(s) = self.caret_ring.pop() {
+            self.buffer.set_caret_state(s);
+            true
+        } else {
+            false
+        }
     }
 
     /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
     pub fn collapse_carets(&mut self) {
-        self.coalescing = false;
+        self.push_caret_ring();
         self.buffer.collapse_carets();
     }
 
@@ -2341,6 +2385,7 @@ impl Document {
         secondary_before: Vec<Caret>,
         secondary_after: Vec<Caret>,
     ) {
+        self.caret_ring.clear(); // any edit invalidates the transient CARETPOP snapshots
         // Colour spans + lint underlines follow each op, in application order.
         for op in &ops {
             self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());
@@ -2403,6 +2448,7 @@ impl Document {
         cursor_after: usize,
         anchor_after: Option<usize>,
     ) {
+        self.caret_ring.clear(); // any edit invalidates the transient CARETPOP snapshots
         // Transient FGCOLOR-on-selection spans follow the edit (typing before a coloured word
         // shifts its colour along, an edit inside grows/shrinks it, a deletion over it clips it).
         self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());

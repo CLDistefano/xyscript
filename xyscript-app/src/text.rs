@@ -55,6 +55,20 @@ pub struct Caret {
     pub goal_col: Option<usize>,
 }
 
+/// A snapshot of the whole caret set (primary + secondaries + selection modes), taken before a
+/// caret-set-changing verb so `CARETPOP` can restore the previous set. Transient selection state
+/// only — no document content — so it's cheap to clone and stack. Invalidated by any edit.
+#[derive(Debug, Clone)]
+pub struct CaretState {
+    cursor: usize,
+    anchor: Option<usize>,
+    sel_head: Option<usize>,
+    defined: bool,
+    goal_col: Option<usize>,
+    secondary: Vec<Caret>,
+    building: bool,
+}
+
 /// A single text buffer: a byte rope, a current encoding view, a cursor, and an
 /// optional selection.
 #[derive(Debug, Clone)]
@@ -438,6 +452,69 @@ impl Buffer {
                 None => (c.pos, c.pos),
             })
             .collect()
+    }
+
+    /// Snapshot the whole caret set (primary + secondaries + selection modes) for the `CARETPOP`
+    /// undo ring. Content-free and cheap.
+    pub fn caret_state(&self) -> CaretState {
+        CaretState {
+            cursor: self.cursor,
+            anchor: self.anchor,
+            sel_head: self.sel_head,
+            defined: self.defined,
+            goal_col: self.goal_col,
+            secondary: self.secondary.clone(),
+            building: self.building,
+        }
+    }
+
+    /// Restore a caret set captured by [`caret_state`](Self::caret_state) (`CARETPOP`). Offsets are
+    /// clamped to the current length so a stale snapshot can never wedge past a shrunk buffer.
+    pub fn set_caret_state(&mut self, s: CaretState) {
+        let len = self.rope.len();
+        // Resolve every clamped offset into owned locals FIRST (each `snap_boundary` is a short
+        // immutable borrow), then assign — so no borrow of `self` outlives an assignment to it.
+        let cursor = self.snap_boundary(s.cursor.min(len));
+        let anchor = s.anchor.map(|a| self.snap_boundary(a.min(len)));
+        let sel_head = s.sel_head.map(|h| self.snap_boundary(h.min(len)));
+        let mut secondary: Vec<Caret> = s
+            .secondary
+            .into_iter()
+            .map(|c| Caret {
+                pos: self.snap_boundary(c.pos.min(len)),
+                anchor: c.anchor.map(|a| self.snap_boundary(a.min(len))),
+                goal_col: c.goal_col,
+            })
+            .collect();
+        secondary.sort_by_key(|c| c.pos);
+        self.cursor = cursor;
+        self.anchor = anchor;
+        self.sel_head = sel_head;
+        self.defined = s.defined;
+        self.goal_col = s.goal_col;
+        self.secondary = secondary;
+        self.building = s.building;
+        self.normalize_carets();
+    }
+
+    /// `CARETPRIMARY <n>`: make the caret at document-order index `n` (0-based, as `$MCP` indexes) the
+    /// PRIMARY, so the viewport and the classic specials track it. The old primary becomes a secondary
+    /// (keeping its selection). Returns false if `n` is out of range (the set is left unchanged).
+    pub fn set_primary_index(&mut self, n: usize) -> bool {
+        let carets = self.all_carets(); // document order
+        let Some(&target) = carets.get(n) else {
+            return false;
+        };
+        self.building = false;
+        self.secondary = carets.into_iter().filter(|c| c.pos != target.pos).collect();
+        self.cursor = target.pos;
+        self.anchor = target.anchor;
+        self.sel_head = None;
+        self.defined = false;
+        self.goal_col = target.goal_col;
+        self.secondary.sort_by_key(|c| c.pos);
+        self.normalize_carets();
+        true
     }
 
     /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own

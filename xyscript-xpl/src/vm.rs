@@ -2630,6 +2630,20 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretNext { text, regex, whole, case_sensitive })?;
                 Ok(Flow::Next)
             }
+            // `CARETPOP` — undo the most recent caret-set change (remove the last-added caret).
+            "CARETPOP" => {
+                self.host_op(EditorOp::CaretPop)?;
+                Ok(Flow::Next)
+            }
+            // `CARETPRIMARY <n>` — make the caret at document-order index n (0-based) the primary.
+            "CARETPRIMARY" => {
+                let a = args.trim();
+                let n: usize = a
+                    .parse()
+                    .map_err(|_| XplError::trappable(format!("CARETPRIMARY: expected an index, got {a:?}")))?;
+                self.host_op(EditorOp::CaretPrimary(n))?;
+                Ok(Flow::Next)
+            }
             "CARETONE" => {
                 self.host_op(EditorOp::CaretOne)?;
                 Ok(Flow::Next)

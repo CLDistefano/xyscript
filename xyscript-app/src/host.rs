@@ -8148,6 +8148,23 @@ impl Host for AppHost {
                 let noun = if n == 1 { "caret" } else { "carets" };
                 return Ok(Value::str(format!("{n} {noun}")));
             }
+            EditorOp::CaretPop => {
+                let popped = self.active().caret_pop();
+                return Ok(Value::str(if popped {
+                    let n = self.active().caret_count();
+                    let noun = if n == 1 { "caret" } else { "carets" };
+                    format!("{n} {noun}")
+                } else {
+                    "CARETPOP: no caret change to undo".to_string()
+                }));
+            }
+            EditorOp::CaretPrimary(n) => {
+                return Ok(Value::str(if self.active().set_primary_caret(n) {
+                    format!("primary caret {n}")
+                } else {
+                    format!("CARETPRIMARY: no caret at index {n}")
+                }));
+            }
             EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();

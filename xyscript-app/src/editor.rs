@@ -4770,6 +4770,49 @@ mod tests {
     }
 
     #[test]
+    fn caretpop_steps_back_through_the_ring_and_edits_clear_it() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        let mut e = ed();
+        e.run_command(r#"insert "foo bar foo baz foo""#);
+        e.run_command("TOP");
+        e.run_command("CARETNEXT"); // seed → 1
+        e.run_command("CARETNEXT"); // → 2
+        e.run_command("CARETNEXT"); // → 3
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command("CARETPOP"); // → 2
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+        e.run_command("CARETPOP"); // → 1 (the seed selection)
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+
+        // An edit clears the ring: a later CARETPOP is a no-op.
+        let mut e = ed();
+        e.run_command(r#"insert "foo foo foo""#);
+        e.run_command("TOP");
+        e.run_command("CARETALL foo"); // 3 carets
+        e.run_command(r#"insert "X""#); // replaces all three; ring cleared by the edit
+        assert_eq!(text(&e), "X X X");
+        e.run_command("CARETPOP"); // nothing to undo
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3")); // the three (now bare) carets remain
+
+        // CARETPRIMARY moves which caret is primary (0-based document order).
+        let mut e = ed();
+        e.run_command(r#"insert "foo bar foo baz foo""#);
+        e.run_command("TOP");
+        e.run_command("CARETALL foo");
+        e.run_command("PR $CARETP");
+        assert_eq!(out(&e).as_deref(), Some("0")); // primary = the match nearest the cursor (the first)
+        e.run_command("CARETPRIMARY 2");
+        e.run_command("PR $CARETP");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
     fn caret_column_verb_and_gesture_spray_a_column_from_a_selection() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();

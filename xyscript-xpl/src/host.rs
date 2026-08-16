@@ -86,6 +86,11 @@ pub enum EditorOp {
         whole: bool,
         case_sensitive: bool,
     },
+    /// `CaretPop` = `CARETPOP`: undo the most recent caret-set change (remove the last-added caret /
+    /// step back through the caret ring). `CaretPrimary(n)` = `CARETPRIMARY <n>`: make the caret at
+    /// document-order index `n` the primary.
+    CaretPop,
+    CaretPrimary(usize),
     CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.
