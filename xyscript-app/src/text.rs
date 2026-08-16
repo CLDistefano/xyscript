@@ -38,6 +38,23 @@ pub enum BalMatch {
     Unmatched(usize, u8),
 }
 
+/// A secondary caret in a multi-caret set (the OVERLAY model). The PRIMARY caret is the
+/// `Buffer`'s own `cursor`/`anchor`/`goal_col`, so all single-caret code is unchanged;
+/// `Buffer::secondary` holds the extra carets and is EMPTY in normal use. Each secondary has a
+/// position, an optional selection anchor, and its own sticky goal column. Editing and motion
+/// fan out to the primary plus every secondary only when the set is non-empty. The buffer-global
+/// modes (`defining`/`persistent`/`sel_head`/`defined`) are NOT per-secondary in Tier 1 — they
+/// apply uniformly. See the multi-caret specs (multiselect-verbs.txt / multiselect-specials.txt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Caret {
+    /// Caret byte offset (char boundary), like the primary `cursor`.
+    pub pos: usize,
+    /// Selection anchor (char boundary); `Some` = this caret spans `ordered(anchor, pos)`.
+    pub anchor: Option<usize>,
+    /// This caret's sticky goal column for vertical motion (mirrors the primary `goal_col`).
+    pub goal_col: Option<usize>,
+}
+
 /// A single text buffer: a byte rope, a current encoding view, a cursor, and an
 /// optional selection.
 #[derive(Debug, Clone)]
@@ -96,6 +113,15 @@ pub struct Buffer {
     /// doesn't collapse it. `None` until a vertical move arms it; any non-vertical move clears it
     /// (via `prepare_move` and the direct caret setters).
     goal_col: Option<usize>,
+    /// Secondary carets for multi-caret editing (the OVERLAY model): EMPTY in the normal
+    /// single-caret case, so every existing method is unchanged. When non-empty, editing and
+    /// motion fan out to the primary (`cursor`/`anchor`/`goal_col`) plus each of these. Kept
+    /// sorted by `pos` and deduplicated (coincident carets merge). See [`Caret`].
+    secondary: Vec<Caret>,
+    /// The multi-caret BUILDING state (bare keyboard `CARETADD`): while true, plain motion moves
+    /// the PRIMARY caret only — so the keyboard can roam and plant more carets. The first edit
+    /// clears it (motion then moves all carets); collapse/`CARETONE` also clears it.
+    building: bool,
 }
 
 /// The "no valid checkpoint" sentinel rev (no real rope rev reaches it).
@@ -127,7 +153,83 @@ impl Default for Buffer {
             dec_index: std::cell::RefCell::new((u64::MAX, Vec::new())),
             utf8_identity: true, // empty UTF-8 buffer: offsets coincide
             goal_col: None,
+            secondary: Vec::new(),
+            building: false,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Multi-caret overlay (Tier 1). The single-caret path is the `secondary`-empty case; these methods
+// manage the extra carets and the keyboard "building" state. See the multi-caret specs.
+// ---------------------------------------------------------------------------------------------------
+impl Buffer {
+    /// True when a multi-caret set is active (there is at least one secondary caret).
+    pub fn is_multi(&self) -> bool {
+        !self.secondary.is_empty()
+    }
+
+    /// Number of active carets — primary plus secondaries (`$CARETS`).
+    pub fn caret_count(&self) -> usize {
+        1 + self.secondary.len()
+    }
+
+    /// The secondary carets (read-only; sorted by `pos`).
+    pub fn secondary_carets(&self) -> &[Caret] {
+        &self.secondary
+    }
+
+    /// Whether the multi-caret BUILDING state is active (`CARETADD` planting from the keyboard).
+    pub fn building(&self) -> bool {
+        self.building
+    }
+
+    /// Enter/leave the building state. Leaving is also implied by `collapse_carets` and (later) by
+    /// the first edit; entering happens on a bare-keyboard `CARETADD`.
+    pub fn set_building(&mut self, on: bool) {
+        self.building = on;
+    }
+
+    /// Collapse to the single primary caret (`CARETONE`): drop every secondary and end building.
+    /// The primary (`cursor`/`anchor`/`goal_col`) is left exactly as it is.
+    pub fn collapse_carets(&mut self) {
+        self.secondary.clear();
+        self.building = false;
+    }
+
+    /// `CARETADD` primitive: toggle a secondary caret at byte offset `pos`. Adds one if none is
+    /// there, else removes the existing one. Never touches the PRIMARY (use `collapse_carets` for
+    /// that). A caret coincident with the primary is allowed (they separate when the primary moves,
+    /// and merge on the next `normalize_carets` if still coincident). Returns the new caret count.
+    pub fn add_caret(&mut self, pos: usize) -> usize {
+        if let Some(i) = self.secondary.iter().position(|c| c.pos == pos) {
+            self.secondary.remove(i);
+        } else {
+            self.secondary.push(Caret { pos, anchor: None, goal_col: None });
+            self.secondary.sort_by_key(|c| c.pos);
+        }
+        self.caret_count()
+    }
+
+    /// Every caret position (primary + secondaries), sorted ascending — the fan-out order for
+    /// edits/motion (callers apply edits HIGHEST-first so earlier offsets don't shift).
+    pub fn caret_positions(&self) -> Vec<usize> {
+        let mut v: Vec<usize> = std::iter::once(self.cursor).chain(self.secondary.iter().map(|c| c.pos)).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// Merge coincident carets: drop any secondary sharing the primary's position or another
+    /// secondary's, and keep the list sorted. Call after motion/edits move carets onto each other.
+    pub fn normalize_carets(&mut self) {
+        if self.secondary.is_empty() {
+            return;
+        }
+        let cursor = self.cursor;
+        self.secondary.retain(|c| c.pos != cursor); // fold a secondary on the primary into it
+        self.secondary.sort_by_key(|c| c.pos);
+        self.secondary.dedup_by_key(|c| c.pos);
     }
 }
 
@@ -2210,6 +2312,38 @@ pub(crate) fn find_all(
 mod tests {
     use super::*;
     use crate::encoding::{cp437, latin1, Encoding};
+
+    #[test]
+    fn multicaret_overlay_add_toggle_collapse_normalize() {
+        let mut b = Buffer::from_str("hello world foo bar");
+        // Starts single-caret: no secondaries, the overlay is inert.
+        assert!(!b.is_multi());
+        assert_eq!(b.caret_count(), 1);
+        b.set_caret(0, None); // primary at offset 0
+        // Add two secondary carets (CARETADD).
+        assert_eq!(b.add_caret(6), 2);
+        assert_eq!(b.add_caret(12), 3);
+        assert!(b.is_multi());
+        assert_eq!(b.caret_positions(), vec![0, 6, 12]); // primary + secondaries, sorted
+        // CARETADD onto an existing caret toggles it off.
+        assert_eq!(b.add_caret(6), 2);
+        assert_eq!(b.caret_positions(), vec![0, 12]);
+        // Building-state flag.
+        assert!(!b.building());
+        b.set_building(true);
+        assert!(b.building());
+        // A secondary coincident with the primary folds away on normalize.
+        b.add_caret(0);
+        assert_eq!(b.caret_count(), 3);
+        b.normalize_carets();
+        assert_eq!(b.caret_count(), 2);
+        assert_eq!(b.caret_positions(), vec![0, 12]);
+        // CARETONE collapses to the primary and ends building.
+        b.collapse_carets();
+        assert!(!b.is_multi());
+        assert_eq!(b.caret_count(), 1);
+        assert!(!b.building());
+    }
 
     #[test]
     fn regex_find_all_over_many_matches_is_linear() {
