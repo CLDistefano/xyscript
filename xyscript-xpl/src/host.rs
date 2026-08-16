@@ -77,6 +77,15 @@ pub enum EditorOp {
         case_sensitive: bool,
         in_selection: bool,
     },
+    /// `CaretNext` = `CARETNEXT`: add the next occurrence of the primary selection (or `text`) after
+    /// the last caret as a selection-caret and make it primary; wraps at end-of-document. With nothing
+    /// selected and no `text`, it seeds by selecting the word under the caret.
+    CaretNext {
+        text: Option<String>,
+        regex: bool,
+        whole: bool,
+        case_sensitive: bool,
+    },
     CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.

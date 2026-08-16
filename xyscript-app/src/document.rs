@@ -441,6 +441,18 @@ impl Document {
         self.buffer.set_selection_carets(spans)
     }
 
+    /// `CARETNEXT` seed: select the word under the caret. Returns false if there's no word.
+    pub fn select_word_at(&mut self) -> bool {
+        self.coalescing = false;
+        self.buffer.select_word_at()
+    }
+
+    /// `CARETNEXT`: add `(start, end)` as a new selection-caret and make it primary.
+    pub fn add_selection_caret_as_primary(&mut self, start: usize, end: usize) -> usize {
+        self.coalescing = false;
+        self.buffer.add_selection_caret_as_primary(start, end)
+    }
+
     /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
     pub fn collapse_carets(&mut self) {
         self.coalescing = false;

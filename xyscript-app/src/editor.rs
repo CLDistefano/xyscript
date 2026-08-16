@@ -4733,6 +4733,43 @@ mod tests {
     }
 
     #[test]
+    fn caretnext_seeds_then_walks_occurrences_and_wraps() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        let mut e = ed();
+        e.run_command(r#"insert "foo bar foo baz foo""#);
+        e.run_command("TOP");
+        // First press seeds: selects the word "foo" under the caret, no new caret yet.
+        e.run_command("CARETNEXT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        // Next presses add the following occurrences as selection-carets.
+        e.run_command("CARETNEXT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+        e.run_command("CARETNEXT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // All three selected: another press wraps and finds an already-selected match — no change.
+        e.run_command("CARETNEXT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // Typing replaces all three selected occurrences at once.
+        e.run_command(r#"insert "X""#);
+        assert_eq!(text(&e), "X bar X baz X");
+
+        // Explicit-text form needs no seed: CARETNEXT <text> starts matching immediately.
+        let mut e = ed();
+        e.run_command(r#"insert "one two one two one""#);
+        e.run_command("TOP");
+        e.run_command("CARETNEXT two");
+        e.run_command("CARETNEXT two");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
     fn caret_column_verb_and_gesture_spray_a_column_from_a_selection() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();

@@ -8113,6 +8113,41 @@ impl Host for AppHost {
                     format!("{n} {noun}")
                 }));
             }
+            EditorOp::CaretNext { text, regex, whole, case_sensitive } => {
+                let explicit = text.filter(|t| !t.is_empty());
+                // Seed: nothing selected and no explicit text → select the word under the caret and stop
+                // (the first press just picks the word, like Ctrl+D elsewhere).
+                if explicit.is_none() && !self.active().buffer().has_selection() {
+                    return Ok(Value::str(if self.active().select_word_at() {
+                        "selected word".to_string()
+                    } else {
+                        "CARETNEXT: no word under the caret".to_string()
+                    }));
+                }
+                let needle = match &explicit {
+                    Some(t) => t.clone(),
+                    None => self.active().buffer().selection_text(),
+                };
+                if needle.is_empty() {
+                    return Ok(Value::str("CARETNEXT: nothing to match".to_string()));
+                }
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                    .map_err(|e| XplError::trappable(format!("CARETNEXT: {e}")))?;
+                // Search forward from just past the LAST caret; wrap to the top if nothing follows.
+                let b = self.active().buffer();
+                let from = b.caret_positions().into_iter().max().unwrap_or(0);
+                let hit = b.search(&pat, from, true).or_else(|| b.search(&pat, 0, true));
+                let Some((s, e)) = hit else {
+                    return Ok(Value::str(format!("CARETNEXT: no match for {needle:?}")));
+                };
+                // If the next match is already one of our selections, every occurrence is selected.
+                if self.active().buffer().caret_spans().iter().any(|&sp| sp == (s, e)) {
+                    return Ok(Value::str("CARETNEXT: all occurrences selected".to_string()));
+                }
+                let n = self.active().add_selection_caret_as_primary(s, e);
+                let noun = if n == 1 { "caret" } else { "carets" };
+                return Ok(Value::str(format!("{n} {noun}")));
+            }
             EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();

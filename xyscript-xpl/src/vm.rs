@@ -2618,6 +2618,18 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretAll { pattern, regex, whole, case_sensitive, in_selection })?;
                 Ok(Flow::Next)
             }
+            // `CARETNEXT [/R] [/W] [/A] [<text>]` — add the next occurrence of the primary selection (or
+            // <text>) after the last caret as a selection-caret, and make it primary; wraps at EOF. With
+            // nothing selected and no <text>, it seeds by selecting the word under the caret.
+            "CARETNEXT" => {
+                let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
+                let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let case_sensitive = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
+                let t = args.trim();
+                let text = if t.is_empty() { None } else { Some(t.to_string()) };
+                self.host_op(EditorOp::CaretNext { text, regex, whole, case_sensitive })?;
+                Ok(Flow::Next)
+            }
             "CARETONE" => {
                 self.host_op(EditorOp::CaretOne)?;
                 Ok(Flow::Next)
@@ -4995,6 +5007,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "DEL" => &["NV"], // `/NV` — delete without the confirmation prompt
         "EMPH" => &["R"], // `/R` — treat the phrase as a regular expression (vs whole-word literal)
         "CARETALL" => &["R", "W", "A", "S"], // FIND-family flags: regex / whole-word / case-absolute / in-selection
+        "CARETNEXT" => &["R", "W", "A"], // regex / whole-word / case-absolute (searches the whole doc, wraps)
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V"],

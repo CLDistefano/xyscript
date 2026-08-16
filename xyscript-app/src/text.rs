@@ -398,6 +398,48 @@ impl Buffer {
         self.caret_count()
     }
 
+    /// `CARETNEXT` seed: select the word under the primary caret (no new caret). Returns false if
+    /// there is no word there (nothing to select).
+    pub fn select_word_at(&mut self) -> bool {
+        let (s, e) = self.word_select_span();
+        if e > s {
+            self.set_caret(e, Some(s));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// `CARETNEXT`: add the span `(start, end)` as a NEW selection-caret and make it PRIMARY, demoting
+    /// the current primary (with its own selection, if any) to a secondary. The new primary's cursor
+    /// sits at `end` with its anchor at `start` (a forward selection). Returns the caret count.
+    pub fn add_selection_caret_as_primary(&mut self, start: usize, end: usize) -> usize {
+        let (pc, pa) = (self.cursor, self.anchor);
+        // Keep the current primary only if it HAS a selection (it's a real occurrence-caret). A bare
+        // caret — the lone insertion point the doc starts with — is just replaced by the first match,
+        // so `CARETNEXT <text>` on a fresh doc lands one caret, not a caret plus the leftover point.
+        if pa.is_some() {
+            self.secondary.push(Caret { pos: pc, anchor: pa, goal_col: None });
+        }
+        self.building = false;
+        self.set_caret(end, Some(start)); // new primary at the match
+        self.secondary.sort_by_key(|c| c.pos);
+        self.normalize_carets();
+        self.caret_count()
+    }
+
+    /// Every caret's selection span (primary + secondaries) as `(start, end)` rope offsets — a bare
+    /// caret yields `(pos, pos)`. Used by `CARETNEXT` to detect when a match is already selected.
+    pub fn caret_spans(&self) -> Vec<(usize, usize)> {
+        self.all_carets()
+            .iter()
+            .map(|c| match c.anchor {
+                Some(a) => (a.min(c.pos), a.max(c.pos)),
+                None => (c.pos, c.pos),
+            })
+            .collect()
+    }
+
     /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own
     /// selection anchor and goal column — then merge coincident carets. Used when a multi-caret set
     /// is active so one motion verb moves the whole set. During the BUILDING state (or with no
