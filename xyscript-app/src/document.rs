@@ -404,6 +404,28 @@ impl Document {
         &self.buffer
     }
 
+    // ---- multi-caret set (the CARET* verb layer calls these) --------------
+
+    /// Add / toggle a secondary caret at byte offset `pos` (`CARETADD`). Returns the caret count.
+    pub fn add_caret(&mut self, pos: usize) -> usize {
+        self.buffer.add_caret(pos)
+    }
+
+    /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
+    pub fn collapse_carets(&mut self) {
+        self.buffer.collapse_carets();
+    }
+
+    /// Number of active carets — primary + secondaries (`$CARETS`).
+    pub fn caret_count(&self) -> usize {
+        self.buffer.caret_count()
+    }
+
+    /// Whether a multi-caret set is active.
+    pub fn is_multi(&self) -> bool {
+        self.buffer.is_multi()
+    }
+
     /// This buffer's stable identity for the split-pane layout tree. Unique per live `Document`,
     /// assigned at construction, never reused. See [`crate::panes`].
     pub fn id(&self) -> crate::panes::DocId {
@@ -1030,6 +1052,10 @@ impl Document {
     /// Insert text at the cursor, replacing any selection.
     pub fn insert(&mut self, s: &str) {
         if s.is_empty() {
+            return;
+        }
+        if self.buffer.is_multi() {
+            self.insert_multi_carets(s);
             return;
         }
         self.buffer.commit_define(); // resolve an open DF selection to standard form
@@ -2127,6 +2153,93 @@ impl Document {
         }
     }
 
+    // ---- multi-caret fan-out ----------------------------------------------
+
+    /// Insert `s` at EVERY caret (the multi-caret path). Edits are applied low-to-high with a
+    /// cumulative shift (so each caret's live position accounts for the inserts before it), and the
+    /// whole fan-out is recorded as ONE undo unit. Each caret replaces its own selection if it has
+    /// one (bare carets just insert). Ends the keyboard building state.
+    fn insert_multi_carets(&mut self, s: &str) {
+        self.buffer.commit_define();
+        let ins = self.buffer.encode(s);
+        let sec_before = self.buffer.secondary_carets().to_vec();
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        // Collect every caret's edit span in current coords: (start, end, is_primary).
+        let mut items: Vec<(usize, usize, bool)> = Vec::new();
+        let (ps, pe) = self.buffer.selection_span().unwrap_or((cb, cb));
+        items.push((ps, pe, true));
+        for c in &sec_before {
+            let (a, b) = match c.anchor {
+                Some(an) => (an.min(c.pos), an.max(c.pos)),
+                None => (c.pos, c.pos),
+            };
+            items.push((a, b, false));
+        }
+        items.sort_by(|x, y| x.0.cmp(&y.0));
+        // Apply ascending with a running shift; collect one Op per caret + the resulting positions.
+        let mut ops: Vec<Op> = Vec::new();
+        let mut shift: i64 = 0;
+        let mut new_primary = cb;
+        let mut new_secs: Vec<Caret> = Vec::new();
+        for (a, b, is_primary) in items {
+            let at = (a as i64 + shift) as usize;
+            let end = (b as i64 + shift) as usize;
+            let removed = self.buffer.slice_bytes(at, end);
+            self.buffer.replace_range_bytes(at, end - at, &ins);
+            let after = at + ins.len();
+            ops.push(Op { at, removed, inserted: ins.clone() });
+            shift += ins.len() as i64 - (end - at) as i64;
+            if is_primary {
+                new_primary = after;
+            } else {
+                new_secs.push(Caret { pos: after, anchor: None, goal_col: None });
+            }
+        }
+        self.buffer.set_caret(new_primary, None);
+        self.buffer.set_secondary_carets(new_secs);
+        self.buffer.normalize_carets();
+        let sec_after = self.buffer.secondary_carets().to_vec();
+        self.buffer.set_building(false); // the first edit ends the building state
+        self.record_multi(ops, cb, ab, new_primary, None, sec_before, sec_after);
+    }
+
+    /// Record a multi-caret edit (N ops) as ONE undo unit. Never coalesces.
+    #[allow(clippy::too_many_arguments)]
+    fn record_multi(
+        &mut self,
+        ops: Vec<Op>,
+        cursor_before: usize,
+        anchor_before: Option<usize>,
+        cursor_after: usize,
+        anchor_after: Option<usize>,
+        secondary_before: Vec<Caret>,
+        secondary_after: Vec<Caret>,
+    ) {
+        // Colour spans + lint underlines follow each op, in application order.
+        for op in &ops {
+            self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());
+            self.adjust_lints(op.at, op.removed.len(), op.inserted.len());
+        }
+        if let Some(sl) = self.saved_len {
+            if sl > self.undo.len() {
+                self.saved_len = None;
+            }
+        }
+        self.redo.clear();
+        self.coalescing = false; // a multi-caret unit is its own step
+        self.undo.push(Unit {
+            ops,
+            kind: Kind::Other,
+            cursor_before,
+            anchor_before,
+            cursor_after,
+            anchor_after,
+            secondary_before,
+            secondary_after,
+        });
+        self.refresh_highlights();
+    }
+
     // ---- recording / coalescing -------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
@@ -2392,6 +2505,33 @@ mod tests {
         assert_eq!(d.buffer().text(), ""); // whole run undone at once
         assert_eq!(d.buffer().cursor(), 0);
         assert!(!d.undo()); // nothing left
+    }
+
+    #[test]
+    fn multicaret_insert_at_every_caret_is_one_undo_unit() {
+        let mut d = Document::from_str("xxxx"); // primary at end (offset 4)
+        // Plant secondaries at 0,1,2,3 → carets at 0,1,2,3 and primary at 4.
+        d.add_caret(0);
+        d.add_caret(1);
+        d.add_caret(2);
+        d.add_caret(3);
+        assert_eq!(d.caret_count(), 5);
+        assert!(d.is_multi());
+        // One keystroke inserts "-" at every caret, offset-safe.
+        d.insert("-");
+        assert_eq!(d.buffer().text(), "-x-x-x-x-");
+        // The whole fan-out undoes as ONE unit, and the caret set comes back.
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "xxxx");
+        assert_eq!(d.caret_count(), 5, "undo restores the caret set");
+        // Redo re-applies all N edits together.
+        assert!(d.redo());
+        assert_eq!(d.buffer().text(), "-x-x-x-x-");
+        assert_eq!(d.caret_count(), 5);
+        // Collapsing drops the secondaries.
+        d.collapse_carets();
+        assert_eq!(d.caret_count(), 1);
+        assert!(!d.is_multi());
     }
 
     #[test]
