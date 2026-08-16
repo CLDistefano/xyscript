@@ -568,11 +568,12 @@ TABLE=CTRL+ALT+CAPS,CTRL+ALT
 ctrl+alt+caps,ctrl+alt Esc       :1=KF
 ctrl+alt+caps,ctrl+alt Q         :16=QUIT
 ctrl+alt+caps,ctrl+alt W         :17=LISTTABS
-ctrl+alt+caps,ctrl+alt O         :24=NOP
+ctrl+alt+caps,ctrl+alt O         :24=CARETONE
 ctrl+alt+caps,ctrl+alt [         :26=YD;DF;CL;DF;CR;CR;MV;DF;CR;DF;CL;CL;CL;MV
 ctrl+alt+caps,ctrl+alt ]         :27=YD;DW;NW;MV;PW;PW;PW;DW;NW;MV;PW;DW;NW;MV;PW;PW
 ctrl+alt+caps,ctrl+alt Enter     :28=ENTER
 ctrl+alt+caps,ctrl+alt           :29=NOP
+ctrl+alt+caps,ctrl+alt A         :30=CARETADD
 ctrl+alt+caps,ctrl+alt S         :31=INPUT ky "<H>orizontal split${NL}<V>ertical split";IF UPPER($ky)=="H";THS;ELSEIF UPPER($ky)=="V";TVS;ELSE;NOP;EI;CLEAR ky
 ctrl+alt+caps,ctrl+alt ;         :39=NOP
 ctrl+alt+caps,ctrl+alt '         :40=NOP
@@ -595,9 +596,9 @@ ctrl+alt+caps,ctrl+alt Pause/Bk  :90=NOP
 ctrl+alt+caps,ctrl+alt Numpad /  :94=CMH;XC
 ctrl+alt+caps,ctrl+alt End       :96=BF
 ctrl+alt+caps,ctrl+alt PgDn      :97=NOP
-ctrl+alt+caps,ctrl+alt Up        :100=UP
+ctrl+alt+caps,ctrl+alt Up        :100=CARETUP
 ctrl+alt+caps,ctrl+alt Left      :101=CL
-ctrl+alt+caps,ctrl+alt Down      :102=DOWN
+ctrl+alt+caps,ctrl+alt Down      :102=CARETDOWN
 ctrl+alt+caps,ctrl+alt Right     :103=CR
 ctrl+alt+caps,ctrl+alt Enter     :104=ENTER
 ;
