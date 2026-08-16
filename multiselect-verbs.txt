@@ -23,6 +23,10 @@ The engine applies the N edits offset-safely (highest offset first, shifting anc
 undo transaction. So this spec only defines verbs that CREATE or MANAGE the caret set; the
 rest of the language is unchanged.
 
+ONE EXCEPTION — the BUILDING STATE (see CARETADD in §2): while you are seeding a caret set from
+the keyboard with bare CARETADD, plain motion moves the PRIMARY caret only (so you can roam to
+the next plant spot); the first EDIT ends building and restores the move-all rule above.
+
 Everything here is "it's all XPL": the mouse gestures in §5 are thin wrappers that call these
 verbs, so anything the mouse does, a key binding or script can do too.
 
@@ -30,9 +34,32 @@ verbs, so anything the mouse does, a key binding or script can do too.
 ## 2. Creating carets
 
     CARETADD [<pos>]
-        Add a caret at byte offset <pos>. With no argument, add one at the current mouse
-        point (the gesture form). If a caret already exists there, REMOVE it instead
-        (toggle) — so Ctrl+click both adds and takes away. The new caret becomes primary.
+        Add a caret. If one already exists at the target position, REMOVE it instead
+        (toggle) — so the same gesture/key both adds and takes away.
+          - CARETADD <pos>: add at explicit byte offset <pos> (the scriptable form). Ctrl+click
+            calls this with the click offset — the mouse names an absolute spot.
+          - CARETADD (bare, from a key): plant a caret at the CURRENT caret position and enter
+            the BUILDING STATE (below), so the keyboard can seed an arbitrary set of carets.
+
+    ---- The building state (bare keyboard CARETADD) ----
+        The engine's rule is that plain motion moves ALL carets together (§1). That makes a
+        naive "navigate, plant, navigate, plant" keyboard flow impossible — after the first
+        plant, an arrow would drag the planted caret too. The BUILDING STATE fixes this:
+
+          - While building, plain cursor motion moves the PRIMARY caret ONLY; the planted
+            secondaries sit still. So you can roam to the next spot and plant again.
+          - Each bare CARETADD plants a fixed secondary at the primary's current position
+            (toggle: a CARETADD onto an existing caret removes it) and keeps building.
+          - Building ENDS on the first EDIT (type / delete / any text change) — from then on
+            all carets are co-equal and motion moves them together, as normal. It also ends on
+            CARETONE / Escape (collapse) or anything in §4 that collapses the set.
+          - Rationale + precedent: this reuses the Buffer's existing persistent-selection
+            "decoupled caret" idea, where one caret roams while a fixed point stays put.
+          - So the canonical keyboard idiom is: plant -> move -> plant -> move -> ... -> type.
+
+        NOTE the asymmetry: motion during BUILDING moves the primary only; motion after the
+        first edit (or when the set was built by mouse / CARETUP-DOWN / CARETNEXT, which do not
+        enter building) moves all carets. Mouse-built sets never enter the building state.
 
     CARETUP
     CARETDOWN
@@ -87,13 +114,14 @@ Reads live in the specials spec: `$CARETS` (count), `$CARETP` (primary index), a
 
 ## 4. What collapses the set back to one
 
-To keep the model predictable, these RE-establish a single caret (implicit CARETONE):
+These RE-establish a single caret (implicit CARETONE) — CONFIRMED:
     - a plain single click (no Ctrl) — places one caret at the click;
     - DFA (select whole document — inherently one selection);
     - opening / switching to another buffer, or a fresh file load.
 
 These KEEP the set:
-    - every motion and editing verb (they act on all carets, per §1);
+    - every motion and editing verb (they act on all carets, per §1; note the building-state
+      exception, where plain motion moves the primary only until the first edit);
     - the CARET* verbs above;
     - Shift+motion (extends each caret's selection).
 
@@ -176,12 +204,17 @@ exact count match, else fall back to same-at-each.
 
 ## 10. Open questions
 
-1. Verb NAMES — CARET* family as above, or a terser XyWrite-flavoured set? (Frequently pressed
-   ones — CARETNEXT, CARETONE — might earn short aliases.)
-2. WRAP on CARETNEXT — always wrap at EOF, or a /nowrap switch?
-3. COLLAPSE rules (§4) — does a fresh SE/FIND collapse to the single hit? Does DZ make carets
+RESOLVED:
+  - Verb NAMES — the CARET* family, as specced (2026-08-16).
+  - CARETADD from a key — bare CARETADD plants at the current caret and enters the BUILDING
+    STATE (§2); Ctrl+click / CARETADD <pos> name an absolute spot (2026-08-16).
+  - COLLAPSE (partial) — plain click / DFA / buffer-switch DO collapse to one (§4, confirmed).
+
+STILL OPEN:
+1. WRAP on CARETNEXT — always wrap at EOF, or a /nowrap switch?
+2. COLLAPSE edges — does a fresh SE/FIND collapse to the single hit? Does DZ make carets
    bare (keep) or collapse to one?
-4. CLIPBOARD — confirm distribute-on-exact-match vs. always-same (§6).
-5. CARET-ADD UNDO — is CARETPOP enough, or should caret-set changes have their own small
+3. CLIPBOARD — confirm distribute-on-exact-match vs. always-same (§6).
+4. CARET-ADD UNDO — is CARETPOP enough, or should caret-set changes have their own small
    undo ring (cf. Ctrl+U repeated)?
-6. MAXCARETS value and whether it is user-settable.
+5. MAXCARETS value and whether it is user-settable.
