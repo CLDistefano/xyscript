@@ -7991,71 +7991,53 @@ impl Host for AppHost {
                 let caret_visual = self.caret_visual;
                 let mut visual_move: Option<(bool, bool, usize)> = None;
                 let b = self.active();
+                // Visual-caret intents (CARETMOTION visual / VisualLine edges) concern the PRIMARY
+                // only; record them from its pre-move position. The GUI refines just the primary.
+                let from = b.buffer().cursor();
                 match motion {
-                    // Left/Right: still do the LOGICAL move as a baseline (correct headless / when the
-                    // caret's row is off-window), but under `CARETMOTION visual` also record the pre-move
-                    // caret so the GUI can refine it to the visual (screen-order) neighbor.
-                    Motion::Left => {
-                        let from = b.buffer().cursor();
-                        b.move_left(extend);
-                        if caret_visual {
-                            visual_move = Some((false, extend, from));
-                        }
-                    }
-                    Motion::Right => {
-                        let from = b.buffer().cursor();
-                        b.move_right(extend);
-                        if caret_visual {
-                            visual_move = Some((true, extend, from));
-                        }
-                    }
-                    Motion::Up => b.move_up(extend),
-                    Motion::Down => b.move_down(extend),
-                    Motion::LineStart => b.move_line_start(extend),
-                    Motion::LineEnd => b.move_line_end(extend),
-                    // Visual (wrapped) line edges: only the GUI's cosmic layout knows the wrap
-                    // points, so move to the LOGICAL edge as a baseline (correct when the line
-                    // doesn't wrap, and the only option headless/TUI) and record the original
-                    // caret for the GUI to refine to the true visual-row edge.
-                    Motion::VisualLineStart => {
-                        let from = b.buffer().cursor();
-                        b.move_line_start(extend);
-                        visual_edge = Some((false, extend, from));
-                    }
-                    Motion::VisualLineEnd => {
-                        let from = b.buffer().cursor();
-                        b.move_line_end(extend);
-                        visual_edge = Some((true, extend, from));
-                    }
-                    Motion::DocStart => b.move_doc_start(extend),
-                    Motion::DocEnd => b.move_doc_end(extend),
-                    Motion::NextWord => b.move_next_word(extend),
-                    Motion::PrevWord => b.move_prev_word(extend),
-                    Motion::NextPara => b.move_next_para(extend),
-                    Motion::PrevPara => b.move_prev_para(extend),
-                    Motion::NextSentence => b.move_next_sentence(extend),
-                    Motion::PrevSentence => b.move_prev_sentence(extend),
-                    Motion::NextLineStart => b.move_next_line_start(extend),
-                    Motion::PrevLineStart => b.move_prev_line_start(extend),
-                    Motion::ToChar(n) => b.move_to_char(n, extend),
-                    Motion::ByChar(d) => b.move_by_char(d, extend),
-                    Motion::LeftSameLine => b.move_left_same_line(extend),
-                    Motion::RightSameLine => b.move_right_same_line(extend),
-                    Motion::PageDown => b.move_lines(page, extend),
-                    Motion::PageUp => b.move_lines(-page, extend),
+                    Motion::Left if caret_visual => visual_move = Some((false, extend, from)),
+                    Motion::Right if caret_visual => visual_move = Some((true, extend, from)),
+                    Motion::VisualLineStart => visual_edge = Some((false, extend, from)),
+                    Motion::VisualLineEnd => visual_edge = Some((true, extend, from)),
+                    _ => {}
+                }
+                // Fan the LOGICAL motion out to every caret (single-caret = the ordinary move).
+                // Left/Right/VisualLine* keep their logical-baseline fallback here (the GUI refines
+                // the primary to the visual neighbour / visual-row edge via the intents above).
+                b.move_carets(|bb| match motion {
+                    Motion::Left => bb.move_left(extend),
+                    Motion::Right => bb.move_right(extend),
+                    Motion::Up => bb.move_up(extend),
+                    Motion::Down => bb.move_down(extend),
+                    Motion::LineStart => bb.move_line_start(extend),
+                    Motion::LineEnd => bb.move_line_end(extend),
+                    Motion::VisualLineStart => bb.move_line_start(extend),
+                    Motion::VisualLineEnd => bb.move_line_end(extend),
+                    Motion::DocStart => bb.move_doc_start(extend),
+                    Motion::DocEnd => bb.move_doc_end(extend),
+                    Motion::NextWord => bb.move_next_word(extend),
+                    Motion::PrevWord => bb.move_prev_word(extend),
+                    Motion::NextPara => bb.move_next_para(extend),
+                    Motion::PrevPara => bb.move_prev_para(extend),
+                    Motion::NextSentence => bb.move_next_sentence(extend),
+                    Motion::PrevSentence => bb.move_prev_sentence(extend),
+                    Motion::NextLineStart => bb.move_next_line_start(extend),
+                    Motion::PrevLineStart => bb.move_prev_line_start(extend),
+                    Motion::ToChar(n) => bb.move_to_char(n, extend),
+                    Motion::ByChar(d) => bb.move_by_char(d, extend),
+                    Motion::LeftSameLine => bb.move_left_same_line(extend),
+                    Motion::RightSameLine => bb.move_right_same_line(extend),
+                    Motion::PageDown => bb.move_lines(page, extend),
+                    Motion::PageUp => bb.move_lines(-page, extend),
                     Motion::ScreenTop => {
-                        // Land at the START of the first visible line (screen top-left),
-                        // mirroring ScreenBottom — `move_to_line` preserves the column.
-                        b.move_to_line(vtop, extend);
-                        b.move_line_start(extend);
+                        bb.move_to_line(vtop, extend);
+                        bb.move_line_start(extend);
                     }
                     Motion::ScreenBottom => {
-                        // Land at the END of the last visible line (screen bottom-right),
-                        // not column 0 of it — `move_to_line` preserves the column.
-                        b.move_to_line(vtop + vrows - 1, extend);
-                        b.move_line_end(extend);
+                        bb.move_to_line(vtop + vrows - 1, extend);
+                        bb.move_line_end(extend);
                     }
-                }
+                });
                 self.pending_visual_edge = visual_edge;
                 self.pending_visual_move = visual_move;
             }

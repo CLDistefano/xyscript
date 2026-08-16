@@ -238,6 +238,35 @@ impl Buffer {
         self.secondary.sort_by_key(|c| c.pos);
         self.secondary.dedup_by_key(|c| c.pos);
     }
+
+    /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own
+    /// selection anchor and goal column — then merge coincident carets. Used when a multi-caret set
+    /// is active so one motion verb moves the whole set. During the BUILDING state (or with no
+    /// secondaries) it moves the primary only, so the keyboard can roam to plant more carets.
+    pub fn move_all_carets(&mut self, mut motion: impl FnMut(&mut Buffer)) {
+        if self.building || self.secondary.is_empty() {
+            motion(self);
+            return;
+        }
+        // Move each secondary by loading it into the primary slot, applying the motion, saving back.
+        let (sc, sa, sg) = (self.cursor, self.anchor, self.goal_col);
+        let secs = std::mem::take(&mut self.secondary);
+        let mut moved: Vec<Caret> = Vec::with_capacity(secs.len());
+        for c in secs {
+            self.cursor = c.pos;
+            self.anchor = c.anchor;
+            self.goal_col = c.goal_col;
+            motion(self);
+            moved.push(Caret { pos: self.cursor, anchor: self.anchor, goal_col: self.goal_col });
+        }
+        // Restore the real primary and move it LAST (so the viewport + classic specials track it).
+        self.cursor = sc;
+        self.anchor = sa;
+        self.goal_col = sg;
+        self.secondary = moved;
+        motion(self);
+        self.normalize_carets();
+    }
 }
 
 impl Buffer {
@@ -2362,6 +2391,21 @@ mod tests {
         assert!(!b.is_multi());
         assert_eq!(b.caret_count(), 1);
         assert!(!b.building());
+    }
+
+    #[test]
+    fn move_all_carets_moves_all_normally_but_primary_only_while_building() {
+        let mut b = Buffer::from_str("abcdef");
+        b.set_caret(0, None); // primary at 0
+        b.add_caret(2);
+        b.add_caret(4);
+        // Normal: every caret moves right.
+        b.move_all_carets(|bb| bb.move_right(false));
+        assert_eq!(b.caret_positions(), vec![1, 3, 5]);
+        // Building: only the primary moves; secondaries sit still (so the keyboard can plant more).
+        b.set_building(true);
+        b.move_all_carets(|bb| bb.move_right(false)); // primary 1->2; secondaries 3,5 stay
+        assert_eq!(b.caret_positions(), vec![2, 3, 5]);
     }
 
     #[test]

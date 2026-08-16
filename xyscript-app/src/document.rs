@@ -426,6 +426,14 @@ impl Document {
         self.buffer.is_multi()
     }
 
+    /// Apply a per-buffer cursor motion to EVERY caret (breaks any coalescing run). The host's Move
+    /// dispatch routes all motion through this, so a single motion verb moves a multi-caret set
+    /// together; with a single caret it is just the ordinary move.
+    pub fn move_carets(&mut self, motion: impl FnMut(&mut Buffer)) {
+        self.coalescing = false;
+        self.buffer.move_all_carets(motion);
+    }
+
     /// This buffer's stable identity for the split-pane layout tree. Unique per live `Document`,
     /// assigned at construction, never reused. See [`crate::panes`].
     pub fn id(&self) -> crate::panes::DocId {
@@ -2624,6 +2632,25 @@ mod tests {
         assert_eq!(d.buffer().text(), "abc");
         assert!(d.undo());
         assert_eq!(d.buffer().text(), "aXbXcX");
+    }
+
+    #[test]
+    fn multicaret_motion_moves_all_carets_and_merges_on_collision() {
+        let mut d = Document::from_str("abcdef"); // primary at end (6)
+        d.add_caret(0);
+        d.add_caret(2);
+        d.add_caret(4);
+        assert_eq!(d.caret_count(), 4); // 0,2,4 + primary at 6
+        // One Right moves EVERY caret: 0->1, 2->3, 4->5, 6 stays (end of buffer).
+        d.move_carets(|bb| bb.move_right(false));
+        assert_eq!(d.buffer().caret_positions(), vec![1, 3, 5, 6]);
+
+        // Carets that land on the same offset merge.
+        let mut d = Document::from_str("abcdef"); // primary at 6
+        d.add_caret(5);
+        assert_eq!(d.caret_count(), 2);
+        d.move_carets(|bb| bb.move_right(false)); // 5->6, 6->6 -> collide
+        assert_eq!(d.caret_count(), 1, "collided carets merge");
     }
 
     #[test]
