@@ -8053,12 +8053,21 @@ impl Host for AppHost {
                 self.pending_visual_move = visual_move;
             }
             EditorOp::CaretAdd(pos) => match pos {
-                None => self.active().plant_caret(),           // bare: plant + building state
+                // Bare CARETADD: with a block defined, spray a column of carets (the gesture
+                // delegates to CARETCOL); otherwise plant one caret and enter the building state.
+                None => {
+                    if self.active().buffer().has_selection() {
+                        self.active().add_column_carets();
+                    } else {
+                        self.active().plant_caret();
+                    }
+                }
                 Some(n) => {
                     self.active().add_caret(n);
                 } // add/toggle at offset
             },
             EditorOp::CaretVertical(down) => self.active().add_carets_vertical(down),
+            EditorOp::CaretColumn => self.active().add_column_carets(),
             EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();

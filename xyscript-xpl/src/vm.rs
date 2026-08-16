@@ -2600,6 +2600,10 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretVertical(true))?;
                 Ok(Flow::Next)
             }
+            "CARETCOL" => {
+                self.host_op(EditorOp::CaretColumn)?;
+                Ok(Flow::Next)
+            }
             "CARETONE" => {
                 self.host_op(EditorOp::CaretOne)?;
                 Ok(Flow::Next)

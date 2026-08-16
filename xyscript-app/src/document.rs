@@ -429,6 +429,12 @@ impl Document {
         self.buffer.add_carets_vertical(down);
     }
 
+    /// `CARETCOL`: turn a linear selection into a column of carets (one per line at the goal column).
+    pub fn add_column_carets(&mut self) {
+        self.coalescing = false;
+        self.buffer.add_column_carets();
+    }
+
     /// Collapse to the single primary caret (`CARETONE`): drop every secondary, end building.
     pub fn collapse_carets(&mut self) {
         self.coalescing = false;

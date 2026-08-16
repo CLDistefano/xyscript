@@ -63,8 +63,10 @@ pub enum EditorOp {
     /// Multi-caret management (`CARET*` verbs). `CaretAdd(None)` = plant at the primary + enter the
     /// keyboard building state; `CaretAdd(Some(n))` = add/toggle a caret at byte offset n.
     /// `CaretVertical(down)` = `CARETUP`/`CARETDOWN`. `CaretOne` = `CARETONE` (collapse to primary).
+    /// `CaretColumn` = `CARETCOL`: a selection becomes one caret per line at the goal column.
     CaretAdd(Option<usize>),
     CaretVertical(bool),
+    CaretColumn,
     CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.

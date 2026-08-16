@@ -4694,6 +4694,52 @@ mod tests {
     }
 
     #[test]
+    fn caret_column_verb_and_gesture_spray_a_column_from_a_selection() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        // Three equal-length lines; select a column (col 1) spanning all three, then CARETCOL.
+        let setup = |e: &mut Editor| {
+            e.run_command(r#"insert "abc""#);
+            e.run_command("ENTER");
+            e.run_command(r#"insert "def""#);
+            e.run_command("ENTER");
+            e.run_command(r#"insert "ghi""#); // "abc\ndef\nghi"
+            // Build a column selection at col 1 spanning all three lines, using column-preserving
+            // vertical motion (newline-length-agnostic — CRLF vs LF doesn't shift it).
+            e.run_command("TOP");
+            e.run_command("RIGHT"); // line 0 col 1
+            e.run_command("DOWN SEL"); // extend to line 1 col 1
+            e.run_command("DOWN SEL"); // extend to line 2 col 1
+        };
+
+        // The CARETCOL verb: one caret per line at col 1.
+        let mut e = ed();
+        setup(&mut e);
+        e.run_command("CARETCOL");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // Typing at all three carets, one undo unit — a prefix on every line. (ENTER inserts the
+        // doc's line ending, CRLF on Windows, so compare newline-agnostic.)
+        e.run_command(r#"insert "X""#);
+        assert_eq!(text(&e).replace('\r', ""), "aXbc\ndXef\ngXhi");
+
+        // The gesture: bare CARETADD with a block defined delegates to CARETCOL.
+        let mut e = ed();
+        setup(&mut e);
+        e.run_command("CARETADD");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+
+        // With NO selection, bare CARETADD still just plants at the primary (building state).
+        let mut e = ed();
+        e.run_command(r#"insert "abc""#);
+        e.run_command("CARETADD");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
     fn li_special_reads_the_line_under_the_caret_without_the_newline() {
         let mut e = ed();
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);

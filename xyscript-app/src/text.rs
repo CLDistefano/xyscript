@@ -301,6 +301,61 @@ impl Buffer {
         self.normalize_carets();
     }
 
+    /// `CARETCOL`: turn a linear selection into a COLUMN of carets — one bare caret on every logical
+    /// line the selection touches, all at the cursor's goal column. A line too short for the column
+    /// gets its caret at the line end (`advance_chars` clamps); on the first/last (partly-selected)
+    /// lines the caret is additionally clamped inside the selection so none lands outside it. The
+    /// selection is collapsed and REPLACED by the resulting caret set (the selection defines the set,
+    /// so any pre-existing secondaries are dropped). With no selection this degrades to a bare plant
+    /// at the cursor. Returns the resulting caret count.
+    pub fn add_column_carets(&mut self) -> usize {
+        let goal = self.goal_col.unwrap_or_else(|| self.col_chars(self.cursor));
+        let Some((start, end)) = self.selection_span() else {
+            let c = self.cursor;
+            self.add_caret(c);
+            return self.caret_count();
+        };
+        let first_line = self.rope.byte_to_line(start);
+        let last_line = self.rope.byte_to_line(end);
+        let cursor_line = self.rope.byte_to_line(self.cursor);
+        // One caret offset per logical line, at the goal column, clamped to the line and the
+        // selection edges on the boundary lines.
+        let mut targets: Vec<(usize, usize)> = Vec::new(); // (line, offset)
+        for line in first_line..=last_line {
+            let ls = self.rope.line_to_byte(line);
+            let le = self.line_end(ls);
+            let right = if line == last_line { le.min(end) } else { le };
+            let mut off = self.advance_chars(ls, right, goal);
+            if line == first_line {
+                off = off.max(start.min(right)); // don't fall before the selection start
+            }
+            targets.push((line, off));
+        }
+        // Rebuild the set: the caret on the cursor's line becomes the primary; the rest are bare
+        // secondaries. Collapse the selection.
+        self.anchor = None;
+        self.sel_head = None;
+        self.defined = false;
+        self.building = false;
+        self.secondary.clear();
+        let primary_at = targets
+            .iter()
+            .find(|(line, _)| *line == cursor_line)
+            .or_else(|| targets.first())
+            .map(|(_, off)| *off)
+            .unwrap_or(self.cursor);
+        self.cursor = primary_at;
+        self.goal_col = Some(goal);
+        for (_, off) in &targets {
+            if *off != primary_at {
+                self.secondary.push(Caret { pos: *off, anchor: None, goal_col: Some(goal) });
+            }
+        }
+        self.secondary.sort_by_key(|c| c.pos);
+        self.normalize_carets();
+        self.caret_count()
+    }
+
     /// Apply a motion (a closure that moves the PRIMARY caret) to EVERY caret — each keeping its own
     /// selection anchor and goal column — then merge coincident carets. Used when a multi-caret set
     /// is active so one motion verb moves the whole set. During the BUILDING state (or with no
@@ -2453,6 +2508,47 @@ mod tests {
         assert!(!b.is_multi());
         assert_eq!(b.caret_count(), 1);
         assert!(!b.building());
+    }
+
+    #[test]
+    fn caret_column_sprays_one_caret_per_line_clamped_to_line_and_selection() {
+        //          0......6  7.9  10....16 17 18....24
+        let mut b = Buffer::from_str("abcdef\ngh\nijklmn\n\nopqrst");
+        // Select from line 0 col 3 (off 3) down to line 4 col 3 (off 21); cursor on the low end's
+        // opposite so goal column derives from the cursor at col 3.
+        b.set_caret(21, Some(3));
+        assert!(b.has_selection());
+        b.add_column_carets();
+        // One caret on every touched line, all at column 3 — except the 2-char line ("gh") clamps to
+        // its end (off 9) and the blank line clamps to its start (off 17).
+        assert_eq!(b.caret_positions(), vec![3, 9, 13, 17, 21]);
+        assert_eq!(b.cursor(), 21); // primary stays on the cursor's line
+        assert!(!b.has_selection()); // the selection is collapsed into the caret set
+        assert!(!b.building());
+    }
+
+    #[test]
+    fn caret_column_last_line_clamps_to_the_selection_end_not_the_line_end() {
+        // Selection ends PART-way through the last line: the caret there must not run past the
+        // selection, even though the line is long enough for the goal column.
+        let mut b = Buffer::from_str("abcdef\nghijkl");
+        // Line 0 col 5 (off 5) down to line 1 col 2 (off 9); goal column = 5 (the anchor's column is
+        // irrelevant — the cursor at off 9 sits at col 2, but we want the anchor column here).
+        // Put the cursor on the FIRST line so the goal column is 5.
+        b.set_caret(5, Some(9)); // cursor off 5 (col 5), anchor off 9 (line 1 col 2)
+        b.add_column_carets();
+        // Line 0: col 5 -> off 5. Line 1 ("ghijkl" @7): col 5 would be off 12, but the selection ends
+        // at off 9, so the caret clamps to 9.
+        assert_eq!(b.caret_positions(), vec![5, 9]);
+    }
+
+    #[test]
+    fn caret_column_without_selection_plants_a_single_caret() {
+        let mut b = Buffer::from_str("abcdef");
+        b.set_caret(3, None);
+        b.add_column_carets();
+        assert_eq!(b.caret_count(), 2); // primary + one planted secondary at the cursor
+        assert_eq!(b.caret_positions(), vec![3]); // coincident with the primary
     }
 
     #[test]
