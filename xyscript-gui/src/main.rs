@@ -3811,6 +3811,30 @@ impl GuiApp {
                 .collect()
         };
 
+        // Multi-caret: selection BANDS for the SECONDARY carets (their per-caret selections, e.g. from
+        // CARETALL / CARETNEXT / Shift+motion), rendered like the primary selection — an opaque
+        // SELBGCOLOR band behind the glyphs. Same borrow window + rope-offset spans as the emph/find
+        // rects. Empty unless a selection-caret set is active. (Only the PRIMARY selection gets
+        // cosmic's selected-text recolour; secondary selected text keeps the normal foreground.)
+        let mut sec_sel_rects: Vec<(i32, i32, i32, i32, bool)> = {
+            let active = self.editor.active_index();
+            let buf = self.editor.doc(active);
+            if !self.editor.cmline_open() && buf.is_multi() {
+                let spans: Vec<(usize, usize)> = buf
+                    .secondary_carets()
+                    .iter()
+                    .filter_map(|c| c.anchor.map(|a| (a.min(c.pos), a.max(c.pos))))
+                    .collect();
+                if spans.is_empty() {
+                    Vec::new()
+                } else {
+                    self.highlight_rects(&spans, None, &buffer, &win, w as i32, lh_px as i32)
+                }
+            } else {
+                Vec::new()
+            }
+        };
+
         // FIND "highlight all" rects — computed while `buffer` is still freely borrowable, before
         // `ed` takes it mutably below. Empty unless the Find dialog is driving `find_highlights`.
         let mut find_rects = if self.find_highlights.is_empty() {
@@ -3955,6 +3979,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut sec_sel_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
             for r in &mut lint_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
@@ -4005,6 +4033,14 @@ impl GuiApp {
             let (ebr, ebg, ebb) = self.editor.emph_bg_color();
             for &(x0, y0, x1, y1, _) in &emph_rects {
                 fill_blend(&mut canvas, w, h, x0, y0, x1, y1, ebr, ebg, ebb, 1.0);
+            }
+        }
+        // Multi-caret secondary selections — an opaque SELBGCOLOR band behind the glyphs, matching the
+        // primary selection's look, so a CARETALL / CARETNEXT / Shift-extended set reads as N selections.
+        if !sec_sel_rects.is_empty() {
+            let (sbr, sbg, sbb) = self.editor.sel_bg_color();
+            for &(x0, y0, x1, y1, _) in &sec_sel_rects {
+                fill_blend(&mut canvas, w, h, x0, y0, x1, y1, sbr, sbg, sbb, 1.0);
             }
         }
         // Paint FIND matches BEHIND the glyphs: non-current hits get the translucent FINDBGCOLOR band
