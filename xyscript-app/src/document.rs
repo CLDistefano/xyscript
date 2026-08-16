@@ -155,6 +155,10 @@ enum Kind {
     Insert,
     DeleteBack,
     DeleteForward,
+    /// A multi-caret typing insert (N pure inserts, one per caret). Coalesces with a continuing
+    /// multi-caret run — matched by caret index, extending each op's inserted bytes — so a typed run
+    /// undoes as ONE unit, like a single-caret run.
+    MultiInsert,
     /// A selection-replacing edit — never coalesces (its own undo unit).
     Other,
 }
@@ -2177,6 +2181,7 @@ impl Document {
     /// one (bare carets just insert). Ends the keyboard building state.
     fn insert_multi_carets(&mut self, s: &str) {
         self.buffer.commit_define();
+        self.buffer.normalize_carets(); // fold any caret coincident with the primary → insert ONCE
         let ins = self.buffer.encode(s);
         let sec_before = self.buffer.secondary_carets().to_vec();
         let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
@@ -2192,6 +2197,9 @@ impl Document {
             items.push((a, b, false));
         }
         items.sort_by(|x, y| x.0.cmp(&y.0));
+        // Pure inserts (no caret replaced a selection) form a coalescing typing run; a replace is its
+        // own step (like a single-caret selection-replacing insert).
+        let kind = if items.iter().any(|&(a, b, _)| b > a) { Kind::Other } else { Kind::MultiInsert };
         // Apply ascending with a running shift; collect one Op per caret + the resulting positions.
         let mut ops: Vec<Op> = Vec::new();
         let mut shift: i64 = 0;
@@ -2216,7 +2224,7 @@ impl Document {
         self.buffer.normalize_carets();
         let sec_after = self.buffer.secondary_carets().to_vec();
         self.buffer.set_building(false); // the first edit ends the building state
-        self.record_multi(ops, cb, ab, new_primary, None, sec_before, sec_after);
+        self.record_multi(ops, kind, cb, ab, new_primary, None, sec_before, sec_after);
     }
 
     /// Delete at EVERY caret (Backspace when `forward` is false, Delete when true) — the multi-caret
@@ -2225,6 +2233,7 @@ impl Document {
     /// ONE undo unit. No-op carets (Backspace at BOF / Delete at EOF) contribute nothing.
     fn delete_multi_carets(&mut self, forward: bool) {
         self.buffer.commit_define();
+        self.buffer.normalize_carets(); // fold any caret coincident with the primary → delete ONCE
         let sec_before = self.buffer.secondary_carets().to_vec();
         let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
         // Each caret's delete span in current coords: (start, end, is_primary).
@@ -2274,15 +2283,18 @@ impl Document {
         let sec_after = self.buffer.secondary_carets().to_vec();
         self.buffer.set_building(false);
         if !ops.is_empty() {
-            self.record_multi(ops, cb, ab, new_primary, None, sec_before, sec_after);
+            // Multi-caret deletes are each their own undo step (no run-coalescing yet).
+            self.record_multi(ops, Kind::Other, cb, ab, new_primary, None, sec_before, sec_after);
         }
     }
 
-    /// Record a multi-caret edit (N ops) as ONE undo unit. Never coalesces.
+    /// Record a multi-caret edit (N ops) as ONE undo unit. A `MultiInsert` typing run coalesces into
+    /// the previous unit (matched by caret index) so a run undoes at once; anything else is its own step.
     #[allow(clippy::too_many_arguments)]
     fn record_multi(
         &mut self,
         ops: Vec<Op>,
+        kind: Kind,
         cursor_before: usize,
         anchor_before: Option<usize>,
         cursor_after: usize,
@@ -2301,10 +2313,35 @@ impl Document {
             }
         }
         self.redo.clear();
-        self.coalescing = false; // a multi-caret unit is its own step
+        // Coalesce a continuing multi-caret typing run: same kind + same op count + the carets are
+        // exactly where the last run left them (nothing moved/clicked between). Extend each op's
+        // inserted bytes by caret index; the carets stay in the same order across a run.
+        if kind == Kind::MultiInsert && self.coalescing {
+            if let Some(last) = self.undo.last_mut() {
+                if last.kind == Kind::MultiInsert
+                    && last.ops.len() == ops.len()
+                    && last.cursor_after == cursor_before
+                    && last.secondary_after == secondary_before
+                {
+                    // Extend each caret's run, and shift its start right by the bytes the LOWER
+                    // carets added this keystroke (idx carets each added `o.inserted.len()`), so the
+                    // stored `at` stays valid in the growing text (undo reverses high-offset-first).
+                    for (idx, (lo, o)) in last.ops.iter_mut().zip(ops.iter()).enumerate() {
+                        lo.at += idx * o.inserted.len();
+                        lo.inserted.extend_from_slice(&o.inserted);
+                    }
+                    last.cursor_after = cursor_after;
+                    last.anchor_after = anchor_after;
+                    last.secondary_after = secondary_after;
+                    self.refresh_highlights();
+                    return;
+                }
+            }
+        }
+        self.coalescing = kind == Kind::MultiInsert; // only insert runs continue coalescing
         self.undo.push(Unit {
             ops,
-            kind: Kind::Other,
+            kind,
             cursor_before,
             anchor_before,
             cursor_after,
@@ -2409,7 +2446,8 @@ fn coalesces(last: &Unit, op: &Op) -> bool {
         Kind::DeleteBack => op.at + op.removed.len() == lop.at,
         // Forward-delete: always removes at the same position.
         Kind::DeleteForward => op.at == lop.at,
-        Kind::Other => false,
+        // Multi-caret runs coalesce in `record_multi` (by caret index), not here.
+        Kind::MultiInsert | Kind::Other => false,
     }
 }
 
@@ -2427,7 +2465,7 @@ fn merge(last: &mut Unit, op: Op, cursor_after: usize, anchor_after: Option<usiz
             lop.removed = merged;
             lop.at = op.at;
         }
-        Kind::Other => unreachable!("Other never coalesces"),
+        Kind::MultiInsert | Kind::Other => unreachable!("multi/other coalesce elsewhere or never"),
     }
     last.cursor_after = cursor_after;
     last.anchor_after = anchor_after;
@@ -2610,6 +2648,24 @@ mod tests {
     }
 
     #[test]
+    fn multicaret_typing_run_undoes_as_one_unit() {
+        let mut d = Document::from_str("..");  // primary at end (2)
+        d.add_caret(0); // carets at 0 and 2
+        // Type a RUN of three characters at both carets.
+        d.insert("a");
+        d.insert("b");
+        d.insert("c");
+        assert_eq!(d.buffer().text(), "abc..abc");
+        // The whole run undoes at once (not character-by-character).
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "..", "the multi-caret typing run undoes as one unit");
+        assert!(!d.undo(), "nothing left after the run");
+        // Redo brings the whole run back.
+        assert!(d.redo());
+        assert_eq!(d.buffer().text(), "abc..abc");
+    }
+
+    #[test]
     fn multicaret_delete_forward_and_back_are_one_undo_unit() {
         // Delete-forward at every caret removes the char AT each.
         let mut d = Document::from_str("aXbXcX"); // primary at EOF (6)
@@ -2632,6 +2688,24 @@ mod tests {
         assert_eq!(d.buffer().text(), "abc");
         assert!(d.undo());
         assert_eq!(d.buffer().text(), "aXbXcX");
+    }
+
+    #[test]
+    fn multicaret_caret_coincident_with_primary_inserts_once() {
+        // Ctrl+click on the line the primary already sits on can plant a secondary at the primary's
+        // exact offset; the fan-out must insert there ONCE, not twice (regression for the double-text
+        // bug). Same for delete.
+        let mut d = Document::from_str("abc"); // primary at end (3)
+        d.add_caret(3); // a secondary coincident with the primary
+        assert_eq!(d.caret_count(), 2);
+        d.insert("X");
+        assert_eq!(d.buffer().text(), "abcX", "coincident carets insert once, not twice");
+        assert_eq!(d.caret_count(), 1, "the coincident carets merged");
+
+        let mut d = Document::from_str("abc"); // primary at 3
+        d.add_caret(3);
+        d.delete_back();
+        assert_eq!(d.buffer().text(), "ab", "coincident carets delete once");
     }
 
     #[test]
