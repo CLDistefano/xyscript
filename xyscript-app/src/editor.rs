@@ -4635,6 +4635,31 @@ mod tests {
     }
 
     #[test]
+    fn multicaret_specials_report_count_primary_and_positions() {
+        let mut e = ed();
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        e.run_command(r#"insert "abcdef""#);
+        e.host_mut().set_active_caret(0, None); // primary at 0
+        e.host_mut().add_active_caret(2);
+        e.host_mut().add_active_caret(4);
+        // $CARETS counts the whole set; $CARETP is the primary's document-order index.
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command("PR $CARETP");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        // $MCP is a real array: joinable, indexable, LEN-able.
+        e.run_command(r#"PR $(JOIN($MCP, "-"))"#);
+        assert_eq!(out(&e).as_deref(), Some("0-2-4"));
+        e.run_command("PR $($MCP[2])");
+        assert_eq!(out(&e).as_deref(), Some("4"));
+        e.run_command("PR $(LEN($MCP))");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // The invariant: $CP (primary) == $MCP[$CARETP].
+        e.run_command("PR $(($CP == $MCP[$CARETP]))");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+    }
+
+    #[test]
     fn li_special_reads_the_line_under_the_caret_without_the_newline() {
         let mut e = ed();
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);

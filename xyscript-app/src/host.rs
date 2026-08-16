@@ -11261,6 +11261,14 @@ impl Host for AppHost {
             })),
             "CP" => Some(Value::Int(b.cursor() as i64)),
             "LN" => Some(Value::Int(b.line() as i64)),
+            // Multi-caret: `$CARETS` = number of carets, `$CARETP` = the primary's index in the
+            // document-order caret list, `$MCP` = the array of every caret's offset (the mirror of
+            // `$CP`). The classic caret specials above read the PRIMARY. See the multi-caret specs.
+            "CARETS" => Some(Value::Int(b.caret_count() as i64)),
+            "CARETP" => Some(Value::Int(b.primary_index() as i64)),
+            "MCP" => Some(Value::Array(
+                b.caret_positions().into_iter().map(|p| Value::Int(p as i64)).collect(),
+            )),
             // Caret's VISUAL column (0-based, wrap-aware) — the GUI pushes it each frame; headless
             // falls back to the logical column. (Logical line:column is `$LN`:`$LC`.)
             "CX" => Some(Value::Int(

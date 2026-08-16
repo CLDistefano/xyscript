@@ -1242,6 +1242,9 @@ Every special variable in one list, for quick lookup.
 / #sv("GOTOOPEN"): `1` if opening an already-open file switches to its tab instead of prompting (set with `GOTOOPEN`).
 / #sv("CMPLACE"): command-line placement (top / bottom / hidden).
 / #sv("CP"): caret's character offset.
+/ #sv("CARETS"): number of active carets (primary + secondaries) — `1` normally, more under multi-caret.
+/ #sv("CARETP"): the primary caret's index in the document-order caret list, so `$CP == $MCP[$CARETP]`.
+/ #sv("MCP"): array of every caret's character offset, in document order (the mirror of #sv("CP")). Loop it with `FOR p IN $MCP`; the count is `LEN($MCP)` (or #sv("CARETS")). The classic caret specials (#sv("CP")/#sv("WD")/#sv("LI")/…) read the primary caret.
 / #sv("CRCOLOR"): caret color.
 / #sv("CMCRCOLOR"): command-line caret color.
 / #sv("CRSHAPE"): caret shape.

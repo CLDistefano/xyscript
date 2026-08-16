@@ -218,6 +218,13 @@ impl Buffer {
         self.caret_count()
     }
 
+    /// The primary caret's index within the document-order caret list (`$CARETP`): the number of
+    /// carets sitting before it. Invariant with `caret_positions`: `caret_positions()[primary_index()]
+    /// == cursor()`.
+    pub fn primary_index(&self) -> usize {
+        self.secondary.iter().filter(|c| c.pos < self.cursor).count()
+    }
+
     /// Every caret position (primary + secondaries), sorted ascending — the fan-out order for
     /// edits/motion (callers apply edits HIGHEST-first so earlier offsets don't shift).
     pub fn caret_positions(&self) -> Vec<usize> {
