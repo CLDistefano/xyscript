@@ -370,6 +370,51 @@ impl Buffer {
         self.caret_count()
     }
 
+    /// `CARETSPLIT`: replace a multi-line selection with one BARE caret at each spanned line's end
+    /// ("split selection into lines"). The last (partly-selected) line's caret clamps to the selection
+    /// end. A single-line selection (or no selection) is left unchanged. The selection is collapsed
+    /// into the caret set. Returns the resulting caret count.
+    pub fn split_selection_to_line_carets(&mut self) -> usize {
+        let Some((start, end)) = self.selection_span() else {
+            return self.caret_count();
+        };
+        let first_line = self.rope.byte_to_line(start);
+        let last_line = self.rope.byte_to_line(end);
+        if first_line == last_line {
+            return self.caret_count(); // single-line selection: nothing to split
+        }
+        let cursor_line = self.rope.byte_to_line(self.cursor);
+        // One caret at each line's end; the last line clamps to the selection end.
+        let mut targets: Vec<(usize, usize)> = Vec::new(); // (line, offset)
+        for line in first_line..=last_line {
+            let ls = self.rope.line_to_byte(line);
+            let le = self.line_end(ls);
+            let at = if line == last_line { le.min(end) } else { le };
+            targets.push((line, at));
+        }
+        self.anchor = None;
+        self.sel_head = None;
+        self.defined = false;
+        self.building = false;
+        self.secondary.clear();
+        let primary_at = targets
+            .iter()
+            .find(|(line, _)| *line == cursor_line)
+            .or_else(|| targets.last())
+            .map(|(_, off)| *off)
+            .unwrap_or(self.cursor);
+        self.cursor = primary_at;
+        self.goal_col = None;
+        for (_, off) in &targets {
+            if *off != primary_at {
+                self.secondary.push(Caret { pos: *off, anchor: None, goal_col: None });
+            }
+        }
+        self.secondary.sort_by_key(|c| c.pos);
+        self.normalize_carets();
+        self.caret_count()
+    }
+
     /// Replace the whole caret set with one SELECTION-caret per `(start, end)` span — the primitive
     /// behind `CARETALL` / `CARETNEXT`. Each caret's cursor sits at the span END with its anchor at
     /// the START (a forward selection, like a search hit); the span nearest the current cursor becomes
@@ -2710,6 +2755,30 @@ mod tests {
         b.add_column_carets();
         assert_eq!(b.caret_count(), 2); // primary + one planted secondary at the cursor
         assert_eq!(b.caret_positions(), vec![3]); // coincident with the primary
+    }
+
+    #[test]
+    fn caretsplit_puts_a_bare_caret_at_each_line_end() {
+        let mut b = Buffer::from_str("abc\ndef\nghi");
+        //                            0.. 3     7     8..11
+        b.set_caret(11, Some(0)); // whole document
+        assert_eq!(b.split_selection_to_line_carets(), 3);
+        assert_eq!(b.caret_positions(), vec![3, 7, 11]); // each line's end
+        assert!(b.all_carets().iter().all(|c| c.anchor.is_none())); // bare carets
+        assert!(!b.has_selection());
+        // The last (partly-selected) line clamps to the selection end, not the line end.
+        let mut b = Buffer::from_str("abc\ndef\nghi");
+        b.set_caret(9, Some(1)); // line 0 col 1 → line 2 col 1
+        assert_eq!(b.split_selection_to_line_carets(), 3);
+        assert_eq!(b.caret_positions(), vec![3, 7, 9]);
+    }
+
+    #[test]
+    fn caretsplit_leaves_a_single_line_selection_alone() {
+        let mut b = Buffer::from_str("hello world");
+        b.set_caret(5, Some(0)); // "hello", one line
+        assert_eq!(b.split_selection_to_line_carets(), 1);
+        assert!(b.has_selection()); // unchanged
     }
 
     #[test]

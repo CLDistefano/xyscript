@@ -8165,6 +8165,11 @@ impl Host for AppHost {
                     format!("CARETPRIMARY: no caret at index {n}")
                 }));
             }
+            EditorOp::CaretSplit => {
+                let n = self.active().split_carets();
+                let noun = if n == 1 { "caret" } else { "carets" };
+                return Ok(Value::str(format!("{n} {noun}")));
+            }
             EditorOp::CaretOne => self.active().collapse_carets(),
             EditorOp::Define(kind) => {
                 let d = self.active();

@@ -2644,6 +2644,11 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretPrimary(n))?;
                 Ok(Flow::Next)
             }
+            // `CARETSPLIT` — split a multi-line selection into one bare caret per line (at each line's end).
+            "CARETSPLIT" => {
+                self.host_op(EditorOp::CaretSplit)?;
+                Ok(Flow::Next)
+            }
             "CARETONE" => {
                 self.host_op(EditorOp::CaretOne)?;
                 Ok(Flow::Next)

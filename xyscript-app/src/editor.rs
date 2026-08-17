@@ -4770,6 +4770,36 @@ mod tests {
     }
 
     #[test]
+    fn caretsplit_drops_a_caret_at_each_selected_line_end() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        let mut e = ed();
+        e.run_command(r#"insert "abc""#);
+        e.run_command("ENTER");
+        e.run_command(r#"insert "def""#);
+        e.run_command("ENTER");
+        e.run_command(r#"insert "ghi""#); // three lines
+        e.run_command("TOP");
+        e.run_command("BOTTOM SEL"); // select the whole document
+        e.run_command("CARETSPLIT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // A caret at each line's end → typing appends to every line at once.
+        e.run_command(r#"insert "X""#);
+        assert_eq!(text(&e).replace('\r', ""), "abcX\ndefX\nghiX");
+
+        // A single-line selection is left unchanged.
+        let mut e = ed();
+        e.run_command(r#"insert "hello world""#);
+        e.run_command("TOP");
+        e.run_command("NW SEL"); // select within one line
+        e.run_command("CARETSPLIT");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+    }
+
+    #[test]
     fn caretpop_steps_back_through_the_ring_and_edits_clear_it() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();

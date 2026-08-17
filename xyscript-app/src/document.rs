@@ -461,6 +461,12 @@ impl Document {
         self.buffer.set_selection_carets(spans)
     }
 
+    /// `CARETSPLIT`: split a multi-line selection into one bare caret per line (at each line's end).
+    pub fn split_carets(&mut self) -> usize {
+        self.push_caret_ring();
+        self.buffer.split_selection_to_line_carets()
+    }
+
     /// `CARETNEXT` seed: select the word under the caret. Returns false if there's no word.
     pub fn select_word_at(&mut self) -> bool {
         self.push_caret_ring();

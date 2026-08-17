@@ -91,6 +91,9 @@ pub enum EditorOp {
     /// document-order index `n` the primary.
     CaretPop,
     CaretPrimary(usize),
+    /// `CaretSplit` = `CARETSPLIT`: a multi-line selection becomes one bare caret per line (at each
+    /// line's end). A single-line selection is left unchanged.
+    CaretSplit,
     CaretOne,
     /// Move the cursor to the start (`DB`, `end = false`) or end (`DE`, `end = true`) of the current
     /// selection, collapsing it. Errors "no text is selected" (→ `$ERROR`) when nothing is selected.
