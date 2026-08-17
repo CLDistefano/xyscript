@@ -580,7 +580,9 @@ items in quotes.
 Everything in this chapter is inert until you actually make a second caret. With a single caret the
 editor behaves exactly as the rest of this manual describes, and the classic variables (#raw("$SE"),
 #raw("$LN"), …) read that one caret as always. The verbs all begin with #raw("CARET"). One caret is the
-*primary* — the window follows it and the classic variables read it — and the rest ride along.
+*primary* — the window follows it and the classic variables read it — and the rest ride along. The
+common ones are gathered under *Edit ▸ Multiple carets* in the menu bar, if you would rather point than
+type.
 
 == Making a set of carets
 
