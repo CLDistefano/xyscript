@@ -4770,6 +4770,35 @@ mod tests {
     }
 
     #[test]
+    fn caretskip_moves_the_primary_past_an_unwanted_match() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        let mut e = ed();
+        e.run_command(r#"insert "foo foo foo foo""#); // four occurrences
+        e.run_command("TOP");
+        e.run_command("CARETNEXT"); // seed: select foo #1
+        e.run_command("CARETSKIP"); // move that selection to foo #2 (no new caret)
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("PR $($MDS[0])"); // primary now starts at foo #2 (offset 4)
+        assert_eq!(out(&e).as_deref(), Some("4"));
+        e.run_command("CARETNEXT"); // add foo #3
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+        // The two selected occurrences are #2 and #3 — typing skips #1 and #4.
+        e.run_command(r#"insert "X""#);
+        assert_eq!(text(&e), "foo X X foo");
+
+        // CARETSKIP with nothing selected is a no-op.
+        let mut e = ed();
+        e.run_command(r#"insert "alpha""#);
+        e.run_command("CARETSKIP");
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+    }
+
+    #[test]
     fn m_array_mirrors_report_every_caret_and_hold_the_invariants() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
 

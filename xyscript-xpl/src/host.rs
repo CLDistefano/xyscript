@@ -89,6 +89,13 @@ pub enum EditorOp {
     /// `CaretPop` = `CARETPOP`: undo the most recent caret-set change (remove the last-added caret /
     /// step back through the caret ring). `CaretPrimary(n)` = `CARETPRIMARY <n>`: make the caret at
     /// document-order index `n` the primary.
+    /// `CaretSkip` = `CARETSKIP`: during a CARETNEXT run, MOVE the primary selection to the next
+    /// occurrence (skip the current match) without adding a caret.
+    CaretSkip {
+        regex: bool,
+        whole: bool,
+        case_sensitive: bool,
+    },
     CaretPop,
     CaretPrimary(usize),
     /// `CaretSplit` = `CARETSPLIT`: a multi-line selection becomes one bare caret per line (at each

@@ -479,6 +479,13 @@ impl Document {
         self.buffer.add_selection_caret_as_primary(start, end)
     }
 
+    /// `CARETSKIP`: MOVE the primary selection to `(start, end)` (skip the current match) without
+    /// adding a caret — the secondaries are untouched.
+    pub fn move_primary_selection(&mut self, start: usize, end: usize) {
+        self.push_caret_ring();
+        self.buffer.set_caret(end, Some(start));
+    }
+
     /// `CARETPRIMARY <n>`: make the caret at document-order index `n` the primary. Returns false if
     /// `n` is out of range (the set is left unchanged, and nothing is pushed to the ring).
     pub fn set_primary_caret(&mut self, n: usize) -> bool {

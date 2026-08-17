@@ -2644,6 +2644,15 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::CaretPrimary(n))?;
                 Ok(Flow::Next)
             }
+            // `CARETSKIP [/R] [/W] [/A]` — during a CARETNEXT run, move the primary selection to the
+            // next occurrence (skip the current match) without adding a caret.
+            "CARETSKIP" => {
+                let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
+                let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                let case_sensitive = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
+                self.host_op(EditorOp::CaretSkip { regex, whole, case_sensitive })?;
+                Ok(Flow::Next)
+            }
             // `CARETSPLIT` — split a multi-line selection into one bare caret per line (at each line's end).
             "CARETSPLIT" => {
                 self.host_op(EditorOp::CaretSplit)?;
@@ -5027,6 +5036,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "EMPH" => &["R"], // `/R` — treat the phrase as a regular expression (vs whole-word literal)
         "CARETALL" => &["R", "W", "A", "S"], // FIND-family flags: regex / whole-word / case-absolute / in-selection
         "CARETNEXT" => &["R", "W", "A"], // regex / whole-word / case-absolute (searches the whole doc, wraps)
+        "CARETSKIP" => &["R", "W", "A"], // same match flags as CARETNEXT
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V"],

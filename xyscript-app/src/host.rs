@@ -8165,6 +8165,29 @@ impl Host for AppHost {
                     format!("CARETPRIMARY: no caret at index {n}")
                 }));
             }
+            EditorOp::CaretSkip { regex, whole, case_sensitive } => {
+                let b = self.active().buffer();
+                if !b.has_selection() {
+                    return Ok(Value::str("CARETSKIP: no current match to skip".to_string()));
+                }
+                let needle = b.selection_text();
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                    .map_err(|e| XplError::trappable(format!("CARETSKIP: {e}")))?;
+                // Look forward from the END of the current (primary) match; wrap at EOF.
+                let from = b.selection_span().map(|(_, e)| e).unwrap_or_else(|| b.cursor());
+                let hit = b.search(&pat, from, true).or_else(|| b.search(&pat, 0, true));
+                let Some((s, e)) = hit else {
+                    return Ok(Value::str(format!("CARETSKIP: no match for {needle:?}")));
+                };
+                // Landing on an existing caret (or back on this one) means there's nowhere new to go.
+                if self.active().buffer().caret_spans().iter().any(|&sp| sp == (s, e)) {
+                    return Ok(Value::str("CARETSKIP: no other occurrence to move to".to_string()));
+                }
+                self.active().move_primary_selection(s, e);
+                let n = self.active().caret_count();
+                let noun = if n == 1 { "caret" } else { "carets" };
+                return Ok(Value::str(format!("{n} {noun}")));
+            }
             EditorOp::CaretSplit => {
                 let n = self.active().split_carets();
                 let noun = if n == 1 { "caret" } else { "carets" };
