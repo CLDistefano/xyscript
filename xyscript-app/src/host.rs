@@ -482,6 +482,7 @@ fn set_lock_key(_vk: i32, mode: Option<bool>) -> bool {
 fn op_mutates_buffer(op: &EditorOp) -> bool {
     match op {
         EditorOp::InsertText(_)
+        | EditorOp::ReplaceSelection(_)
         | EditorOp::TypeText(_)
         | EditorOp::Merge(_)
         | EditorOp::Delete(_)
@@ -8016,6 +8017,14 @@ impl Host for AppHost {
                 self.active().insert(&s);
                 if let Some(from) = from {
                     self.active().apply_typing_style(from);
+                }
+            }
+            EditorOp::ReplaceSelection(s) => {
+                // Overwrite the selected span with `s` as one undo unit, regardless of persistent-
+                // selection mode (`replace_span` operates on the explicit span, so PS can't keep it).
+                // Empty `s` deletes the selection. No selection → nothing to replace.
+                if let Some((a, b)) = self.active().buffer().selection_span() {
+                    self.active().replace_span(a, b, &s);
                 }
             }
             EditorOp::TypeText(s) => {

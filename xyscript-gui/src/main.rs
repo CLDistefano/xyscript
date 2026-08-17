@@ -5769,17 +5769,19 @@ impl GuiApp {
             } else if do_replace_all {
                 self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case)
             } else if do_replace {
-                // Single replace: overwrite the selected match (if any) literally, then find next.
-                // Literal insert bypasses TYPEPAIRS so replacing a selection with `(` overwrites it.
-                // `Keep case` recases the replacement to the selected match's case before inserting
-                // (the engine's per-match rule can't reach this one-off overwrite).
+                // Single replace: overwrite the selected match (if any), then find next.
+                // `replace_selection` OVERWRITES the span as one undo unit, ignoring persistent-
+                // selection mode — under PS a plain insert keeps the block and edits at the caret,
+                // leaving the match behind (empty replacement then deleted nothing). `Keep case`
+                // recases the replacement to the match's case first (the engine's per-match rule
+                // can't reach this one-off overwrite).
                 if self.editor.has_selection() {
                     let repl = if keep_case {
                         xyscript_app::host::recase_to_match(&self.editor.selection_text(), &replace)
                     } else {
                         replace.clone()
                     };
-                    self.editor.insert_literal(&repl);
+                    self.editor.replace_selection(&repl);
                 }
                 self.editor.search_spec(&find, None, false, case, whole, regex, scope, false)
             } else {

@@ -52,6 +52,11 @@ pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
 pub enum EditorOp {
     /// Insert literal text at the cursor (replacing any selection).
     InsertText(String),
+    /// Overwrite the current selection with `text` as ONE undo unit, IGNORING persistent-selection
+    /// mode (unlike `InsertText`, which under PS keeps the block and edits at the caret). The Find
+    /// dialog's single Replace uses this so a match is always replaced/deleted. No-op if nothing is
+    /// selected.
+    ReplaceSelection(String),
     /// Interactively-typed text (the OS text/IME path, distinct from the scripted `INSERT` verb).
     /// Applies `TYPEPAIRS` auto-pairing when it's on and the document has focus; otherwise identical
     /// to [`InsertText`](EditorOp::InsertText).

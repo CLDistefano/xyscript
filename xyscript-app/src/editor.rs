@@ -166,6 +166,14 @@ impl Editor {
         let _ = self.host.editor_op(EditorOp::InsertText(s.to_string()));
     }
 
+    /// Overwrite the current selection with `s` (empty = delete it) as one undo unit, IGNORING
+    /// persistent-selection mode — so the Find dialog's single Replace always replaces/deletes the
+    /// selected match rather than editing at the caret and leaving the match behind. No-op if nothing
+    /// is selected.
+    pub fn replace_selection(&mut self, s: &str) {
+        let _ = self.host.editor_op(EditorOp::ReplaceSelection(s.to_string()));
+    }
+
     // ---- file/editor operations (GUI menus; path-safe, bypassing XPL parsing) ----
     // Each returns the status message on success or the (trappable) error text.
 
@@ -4691,6 +4699,39 @@ mod tests {
         e.run_command("CARETDOWN");
         e.run_command("PR $CARETS");
         assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn find_replace_overwrites_the_match_even_under_persistent_selection() {
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+        // The Find dialog's single Replace uses replace_selection, which overwrites the selected match
+        // as one undo unit REGARDLESS of persistent-selection mode (a plain insert under PS keeps the
+        // block and leaves the match behind — the reported bug).
+        for ps in [false, true] {
+            // Replace-with-nothing deletes the match.
+            let mut e = ed();
+            if ps {
+                e.run_command("SPS"); // persistent selection ON
+            }
+            e.run_command(r#"insert "foo bar foo""#);
+            e.run_command("TOP");
+            e.run_command("SE foo"); // selects the first "foo"
+            assert!(e.has_selection());
+            e.replace_selection(""); // empty replacement → delete the match
+            assert_eq!(text(&e), " bar foo", "ps={ps}");
+            e.run_command("GT;UNDO");
+            assert_eq!(text(&e), "foo bar foo", "ps={ps}");
+            // Non-empty replacement overwrites the match.
+            e.run_command("TOP");
+            e.run_command("SE foo");
+            e.replace_selection("X");
+            assert_eq!(text(&e), "X bar foo", "ps={ps}");
+        }
+        // No selection → replace_selection is a no-op.
+        let mut e = ed();
+        e.run_command(r#"insert "abc""#);
+        e.replace_selection("Z");
+        assert_eq!(text(&e), "abc");
     }
 
     #[test]
