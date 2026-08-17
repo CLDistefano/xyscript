@@ -2418,6 +2418,10 @@ What ships today:
   each written as an #raw("R G B") triple; open it, run the script, and it walks the file with a regular
   expression, painting every value with its own colour as a background swatch via #raw("MDA/B"). Ten
   lines that turn regex, string functions, and the styling layer into something you can see.
+/ #raw("multicaret.xpl"): a *multi-caret tour*. Three self-contained steps you can watch run — rename
+  every match of a word at once with #raw("CARETALL"), append to every line of a list with
+  #raw("CARETSPLIT"), then read the whole caret set back from a script through the #raw("$M…") mirror
+  arrays (#raw("FOR i, piece IN $MSE")). See the *Working with Multiple Carets* chapter.
 
 #tip("The point is not the samples — it is that you could have written them")[Everything in
 #raw("examples/") is made of verbs and files this manual documents: #raw("LOADKBD"), #raw("SUB"),
