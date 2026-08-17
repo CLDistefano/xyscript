@@ -99,21 +99,21 @@ caret with no selection still has a location), `$MCH`, and `$MLN`, all by the mi
     $CARETS                       ; or LEN($MSE)
 
     ; do something with every selection
-    FOR sel IN $MSE
+    FOR piece IN $MSE
       ...
-    EW
+    EF
 
-    ; index + value
-    FOR i, sel IN $MSE
-      PR selection $i is [$sel] at $(($MDS[i]))..$(($MDN[i]))
-    EW
+    ; index + value  (inside an expression, index an $M array by a $-PREFIXED variable: $MDS[$i])
+    FOR i, piece IN $MSE
+      PR selection $i is [$piece] at $(($MDS[$i]))..$(($MDN[$i]))
+    EF
 
     ; act only on the bare carets (no selection)
     FOR i = 0 TO $CARETS - 1
-      IF NOT $MDF[i]
+      IF NOT $MDF[$i]
         ...
       EI
-    EW
+    EF
 
     ; the primary, the long way (equals $SE)
     $(  $MSE[$CARETP]  )
