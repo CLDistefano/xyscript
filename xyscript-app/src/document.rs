@@ -467,6 +467,13 @@ impl Document {
         self.buffer.split_selection_to_line_carets()
     }
 
+    /// Alt+drag box-select: rebuild the caret set from the drag rectangle. Called live on every drag
+    /// update, so it does NOT touch the CARETPOP ring (like an ordinary drag-select, it's a gesture).
+    pub fn set_box_carets(&mut self, anchor_line: usize, cursor_line: usize, col_a: usize, col_c: usize) {
+        self.coalescing = false;
+        self.buffer.set_box_carets(anchor_line, cursor_line, col_a, col_c);
+    }
+
     /// `CARETNEXT` seed: select the word under the caret. Returns false if there's no word.
     pub fn select_word_at(&mut self) -> bool {
         self.push_caret_ring();

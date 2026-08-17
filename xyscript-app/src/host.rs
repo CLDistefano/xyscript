@@ -7346,6 +7346,13 @@ impl AppHost {
         self.docs[self.active].collapse_carets();
     }
 
+    /// Alt+drag box-select: rebuild the caret set from the drag rectangle `(anchor_line, anchor_col)`
+    /// → `(cursor_line, cursor_col)`. Called live on each drag update.
+    pub fn set_box_active_carets(&mut self, anchor_line: usize, anchor_col: usize, cursor_line: usize, cursor_col: usize) {
+        self.capture_last_selection();
+        self.docs[self.active].set_box_carets(anchor_line, cursor_line, anchor_col, cursor_col);
+    }
+
     /// Move the active document's caret to byte offset `off` with motion-selection
     /// semantics (`extend` grows/keeps the selection). Used by the GUI's visual
     /// wrapped-line Up/Down.

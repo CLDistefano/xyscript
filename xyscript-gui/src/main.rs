@@ -2162,6 +2162,9 @@ struct GuiApp {
     /// by `PaneId` — feeds each pane's scrollbar thumb sizing. Only populated in a split.
     pane_wrap: std::collections::HashMap<xyscript_app::PaneId, f32>,
     drag_anchor: Option<usize>,
+    /// Alt+drag box-select anchor corner, as `(line, column)` (0-based, logical). `Some` for the
+    /// duration of a column-select drag; each drag update rebuilds a caret per spanned line.
+    box_anchor: Option<(usize, usize)>,
     /// Mouse drag-select anchor for the command line (rope offset), like `drag_anchor` for the doc.
     cmline_drag_anchor: Option<usize>,
     preedit: String,
@@ -2378,6 +2381,7 @@ impl GuiApp {
             pending_pane_click: None,
             pane_wrap: std::collections::HashMap::new(),
             drag_anchor: None,
+            box_anchor: None,
             cmline_drag_anchor: None,
             preedit: String::new(),
             goal_x: None,
@@ -4809,6 +4813,22 @@ impl GuiApp {
             .map(|cur| self.win_rope_at(&win, cur));
         self.win_buffer = Some(buffer);
         r
+    }
+
+    /// Map a device-pixel point to a `(logical line, column)` grid cell for Alt+drag box-select. The
+    /// LINE is the hit-tested line (robust to wrap / vertical scroll); the COLUMN is the raw monospace
+    /// grid position from the pixel x (NOT snapped to the line's text), so dragging a rectangle past a
+    /// short line's end still records the intended column. Uses the same cell width as the caret paint.
+    fn grid_line_col(&mut self, px_x: f32, px_y: f32) -> (usize, usize) {
+        let line = self
+            .hit(px_x, px_y)
+            .map(|off| self.editor.doc(self.editor.active_index()).line_of(off))
+            .unwrap_or(self.pane_view.scroll_line);
+        let s = self.render_scale;
+        let cell = (self.font_size * s * 0.6).max(1.0); // device px per monospace cell (as in caret paint)
+        let x_cosmic = px_x - self.wi_offset_at_y(px_y) + self.pane_view.scroll_h;
+        let col = (x_cosmic / cell).round().max(0.0) as usize;
+        (line, col)
     }
 }
 
@@ -9304,7 +9324,12 @@ impl GuiApp {
                 // pointer past the bottom lands on the last visible row (which advances as we scroll).
                 let hx = rel.x.clamp(0.0, canvas_rect.width()) * s;
                 let hy = rel.y.clamp(0.0, canvas_rect.height()) * s;
-                if let Some(off) = self.hit(hx, hy) {
+                if let Some((al, ac)) = self.box_anchor {
+                    // Alt+drag box (column) select: rebuild a caret per line across the rectangle.
+                    let (cl, cc) = self.grid_line_col(hx, hy);
+                    self.editor.host_mut().set_box_active_carets(al, ac, cl, cc);
+                    ctx.request_repaint();
+                } else if let Some(off) = self.hit(hx, hy) {
                     self.goal_x = None;
                     let anchor = self.drag_anchor.filter(|&a| a != off);
                     self.editor.host_mut().set_active_caret(off, anchor);
@@ -9327,6 +9352,15 @@ impl GuiApp {
                         // Land the caret on the clicked entry, then copy its full path.
                         self.editor.host_mut().click_active_caret(off);
                         self.editor.dir_copy_path();
+                    } else if resp.drag_started() && ctx.input(|i| i.modifiers.alt) {
+                        // Alt+drag: begin a BOX (column) select. Anchor the rectangle at the press-
+                        // origin grid cell; the continuing-drag branch rebuilds a caret per line.
+                        let press = ctx.input(|i| i.pointer.press_origin()).unwrap_or(p);
+                        let prel = press - canvas_rect.min;
+                        let (al, ac) = self.grid_line_col(prel.x * s, prel.y * s);
+                        self.box_anchor = Some((al, ac));
+                        self.drag_anchor = None;
+                        self.editor.host_mut().set_box_active_carets(al, ac, al, ac);
                     } else if resp.drag_started() {
                         // Anchor on the pressed character so a drag that starts on it INCLUDES it,
                         // whichever way it goes. Two things have to be right:
@@ -9371,6 +9405,9 @@ impl GuiApp {
         if resp.clicked() {
             // Focus already moved to the text above (preserving the cmline).
             self.drag_anchor = None;
+        }
+        if resp.drag_stopped() {
+            self.box_anchor = None; // end the Alt+drag box-select gesture
         }
 
         // Enable IME and place its candidate window near the caret's line. (x is

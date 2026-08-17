@@ -457,6 +457,54 @@ impl Buffer {
         self.caret_count()
     }
 
+    /// Alt+drag BOX (column) select: build one caret per logical line in `[anchor_line, cursor_line]`,
+    /// each selecting the column range `[col_a, col_c]` (clamped to the line's length). A line too
+    /// short to reach the left column gets a BARE caret at its end (so you can still type there); a
+    /// zero-width column (`col_a == col_c`) makes every caret bare. The caret on `cursor_line` (the
+    /// drag's moving end) becomes the PRIMARY so the viewport tracks it. Returns the caret count.
+    pub fn set_box_carets(&mut self, anchor_line: usize, cursor_line: usize, col_a: usize, col_c: usize) -> usize {
+        let total = self.rope.line_count();
+        if total == 0 {
+            return self.caret_count();
+        }
+        let (lo, hi) = (anchor_line.min(cursor_line), anchor_line.max(cursor_line).min(total - 1));
+        let (cl, cr) = (col_a.min(col_c), col_a.max(col_c));
+        self.building = false;
+        self.sel_head = None;
+        self.defined = false;
+        self.secondary.clear();
+        let mut primary_set = false;
+        let mut secs: Vec<Caret> = Vec::new();
+        for line in lo..=hi {
+            let ls = self.rope.line_to_byte(line);
+            let le = self.line_end(ls);
+            let start = self.advance_chars(ls, le, cl);
+            let end = self.advance_chars(ls, le, cr);
+            let (pos, anchor) = if end > start { (end, Some(start)) } else { (start, None) };
+            if line == cursor_line && !primary_set {
+                self.cursor = pos;
+                self.anchor = anchor;
+                self.goal_col = None;
+                primary_set = true;
+            } else {
+                secs.push(Caret { pos, anchor, goal_col: None });
+            }
+        }
+        if !primary_set {
+            // cursor_line fell outside the document; make the first caret primary instead.
+            if let Some(first) = secs.first().copied() {
+                self.cursor = first.pos;
+                self.anchor = first.anchor;
+                self.goal_col = None;
+                secs.remove(0);
+            }
+        }
+        secs.sort_by_key(|c| c.pos);
+        self.secondary = secs;
+        self.normalize_carets();
+        self.caret_count()
+    }
+
     /// `CARETNEXT` seed: select the word under the primary caret (no new caret). Returns false if
     /// there is no word there (nothing to select).
     pub fn select_word_at(&mut self) -> bool {
@@ -2801,6 +2849,22 @@ mod tests {
         b.set_caret(5, Some(0)); // "hello", one line
         assert_eq!(b.split_selection_to_line_carets(), 1);
         assert!(b.has_selection()); // unchanged
+    }
+
+    #[test]
+    fn box_carets_span_the_column_range_on_each_line() {
+        let mut b = Buffer::from_str("hello\nhi\nworld!");
+        //                            0..5    6.8   9..15
+        // Box from line 0 col 1 down to line 2 col 4.
+        b.set_box_carets(0, 2, 1, 4);
+        assert_eq!(b.caret_count(), 3);
+        // Each line selects cols 1..4, clamped to the line: "hello"→(1,4), short "hi"→(7,8), "world!"→(10,13).
+        assert_eq!(b.caret_spans(), vec![(1, 4), (7, 8), (10, 13)]);
+        assert_eq!(b.cursor(), 13); // primary on the cursor line (line 2), at the right column
+        // A zero-width column makes every caret bare (a vertical insert bar per line).
+        b.set_box_carets(0, 2, 2, 2);
+        assert_eq!(b.caret_positions(), vec![2, 8, 11]);
+        assert!(b.all_carets().iter().all(|c| c.anchor.is_none()));
     }
 
     #[test]
