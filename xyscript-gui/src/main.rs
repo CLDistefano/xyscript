@@ -1901,15 +1901,16 @@ fn draw_vscrollbar(
     // residual already scrolled within the window.
     let pos_visual = view.scroll_line as f32 * ratio + view.scroll_vertical / lh_px;
     let track_h = track.height();
-    // Thumb SIZE is derived from the LOGICAL line count (fixed per file), NOT the per-window wrap
-    // estimate `total`. Otherwise the thumb grows/shrinks as you scroll through denser- or sparser-
-    // wrapping regions (the `wrap_ratio` is re-sampled from the visible window each frame). Sizing off
-    // `total_logical` keeps it a FIXED size throughout the scroll; its POSITION below stays wrap-aware
-    // (via `total`), so it still tracks the real scroll and reaches the bottom at EOF.
+    // Thumb SIZE is the fraction of the document currently visible = viewport rows / total rows, BOTH
+    // in VISUAL (wrapped) rows — `visible / total`, the same wrap-aware `total` the POSITION uses below.
+    // (Sizing off `total_logical` instead mixes units — visual-row numerator over logical-line
+    // denominator — so with `WRAP on` the thumb came out inflated by the wrap ratio, i.e. too long.)
+    // `total` is re-estimated from the visible window each frame, so the thumb can vary slightly as you
+    // scroll through denser/sparser-wrapping regions; a proportional thumb is worth that. `WRAP off`
+    // has `wrap_ratio == 1`, so `total == total_logical` and this is unchanged (and jitter-free) there.
     // Min thumb 24px, but never taller than the track — a very short pane makes `track_h < 24`, and
     // `clamp(24, track_h)` would then have min > max and PANIC (crashing from the render path).
-    let thumb_h =
-        (track_h * (visible / total_logical).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_h), track_h);
+    let thumb_h = (track_h * (visible / total).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_h), track_h);
     let denom = (total - visible).max(1.0);
     let pos_frac = (pos_visual / denom).clamp(0.0, 1.0);
     let thumb_top = track.min.y + pos_frac * (track_h - thumb_h);
