@@ -2042,8 +2042,13 @@ pub struct AppHost {
     /// override it (e.g. a later `$ERROR` in the same chain/routine mustn't drag focus back to the
     /// cmline after an explicit `GT`). Reset before each submit/XC run, like `doc_focus_ran`.
     pub(crate) explicit_focus: bool,
-    /// Clipboard contents (`$CB`).
+    /// Clipboard contents (`$CB`) — the joined/OS-visible form.
     clipboard: String,
+    /// Multi-caret clipboard pieces: the N selections a multi-caret COPY/CUT stored, in document
+    /// order. When it holds ≥ 2 pieces AND the count matches the carets at PASTE time, paste
+    /// DISTRIBUTES piece i → caret i; otherwise paste falls back to `clipboard` at every caret. Any
+    /// single-caret copy or external (OS) clipboard change collapses this to one piece.
+    clipboard_pieces: Vec<String>,
     /// Deletion buffer (`$XB`) — a single-slot "kill register" filled by `RD` and
     /// pasted by `UD`; kept until the next `RD` (distinct from the OS clipboard).
     deletion_buffer: String,
@@ -2595,6 +2600,7 @@ impl AppHost {
             doc_focus_ran: false,
             explicit_focus: false,
             clipboard: String::new(),
+            clipboard_pieces: Vec::new(),
             deletion_buffer: String::new(),
             last_selection: String::new(),
             os: std::env::consts::OS.to_string(),
@@ -5717,20 +5723,70 @@ impl AppHost {
             b.has_selection().then(|| b.selection_text())
         };
         let need_selection = || XplError::trappable("no text is selected");
-        match kind {
-            ClipKind::Set(text) => self.clipboard = text,
-            ClipKind::Copy => self.clipboard = selection.ok_or_else(need_selection)?,
-            ClipKind::Cut => {
-                self.clipboard = selection.ok_or_else(need_selection)?;
-                self.active().delete_selection();
+        // With a multi-caret set, gather one selection piece per caret (document order); `""` for a
+        // bare caret. Empty unless multi.
+        let multi_pieces = |host: &mut Self| -> Vec<String> {
+            let b = host.active().buffer();
+            if b.caret_count() > 1 {
+                b.caret_spans().iter().map(|&(s, e)| b.slice(s, e)).collect()
+            } else {
+                Vec::new()
             }
-            ClipKind::Append => self.clipboard.push_str(&selection.ok_or_else(need_selection)?),
+        };
+        match kind {
+            ClipKind::Set(text) => {
+                self.clipboard = text;
+                self.clipboard_pieces = vec![self.clipboard.clone()];
+            }
+            ClipKind::Copy => {
+                let pieces = multi_pieces(self);
+                if pieces.is_empty() {
+                    // single caret
+                    self.clipboard = selection.ok_or_else(need_selection)?;
+                    self.clipboard_pieces = vec![self.clipboard.clone()];
+                } else {
+                    if pieces.iter().all(|p| p.is_empty()) {
+                        return Err(need_selection());
+                    }
+                    self.clipboard = pieces.join(self.active().line_ending().as_str());
+                    self.clipboard_pieces = pieces;
+                }
+            }
+            ClipKind::Cut => {
+                let pieces = multi_pieces(self);
+                if pieces.is_empty() {
+                    self.clipboard = selection.ok_or_else(need_selection)?;
+                    self.clipboard_pieces = vec![self.clipboard.clone()];
+                    self.active().delete_selection();
+                } else {
+                    if pieces.iter().all(|p| p.is_empty()) {
+                        return Err(need_selection());
+                    }
+                    self.clipboard = pieces.join(self.active().line_ending().as_str());
+                    self.clipboard_pieces = pieces;
+                    self.active().delete_all_selections();
+                }
+            }
+            ClipKind::Append => {
+                self.clipboard.push_str(&selection.ok_or_else(need_selection)?);
+                self.clipboard_pieces = vec![self.clipboard.clone()];
+            }
             ClipKind::Prepend => {
-                self.clipboard = format!("{}{}", selection.ok_or_else(need_selection)?, self.clipboard)
+                self.clipboard =
+                    format!("{}{}", selection.ok_or_else(need_selection)?, self.clipboard);
+                self.clipboard_pieces = vec![self.clipboard.clone()];
             }
             ClipKind::Paste => {
-                let text = self.clipboard.clone();
-                self.active().insert(&text);
+                let n = self.active().caret_count();
+                // Distribute one stored piece per caret only on an exact count match (and >1 piece);
+                // otherwise paste the joined clipboard at every caret (the ordinary path).
+                if self.clipboard_pieces.len() >= 2 && self.clipboard_pieces.len() == n {
+                    let pieces = self.clipboard_pieces.clone();
+                    self.active().paste_distributed(&pieces);
+                } else {
+                    let text = self.clipboard.clone();
+                    self.active().insert(&text);
+                }
             }
         }
         Ok(Value::str(""))
@@ -5757,9 +5813,11 @@ impl AppHost {
     }
 
     /// Replace the clipboard (`$CB`) — the GUI uses this to mirror in an external
-    /// (OS-clipboard) change.
+    /// (OS-clipboard) change. An external change collapses the multi-caret pieces to a single piece,
+    /// so a subsequent multi-caret paste inserts the same text at every caret (no stale distribution).
     pub fn set_clipboard(&mut self, text: String) {
         self.clipboard = text;
+        self.clipboard_pieces = vec![self.clipboard.clone()];
     }
 
     /// Begin an interactive change-verify walk: find the first match (cursor→end,

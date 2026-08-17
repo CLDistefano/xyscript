@@ -677,7 +677,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("CMLINE"): move focus to the command line (synonym #cmd("GH")).
 / #cmd("CMPLACE"): where the command line is drawn — `CMPLACE top|bottom|hidden` (bare reports it). `hidden` keeps it out of the way until you focus it. Read back via `$CMPLACE`; persists in the config.
 / #cmd("CONTINUE"): skip to the next iteration of the loop.
-/ #cmd("COPY"): copy the selection to the clipboard; `COPY <src> <dst>` copies a file.
+/ #cmd("COPY"): copy the selection to the clipboard; `COPY <src> <dst>` copies a file. With a multi-caret set it stores every caret's selection as an ordered list (and puts the newline-joined text on the OS clipboard), so a later #cmd("PASTE") into the same number of carets distributes the pieces.
 / #cmd("CP"): copy the selection to the caret. With no selection in the current tab, it instead offers the selections in other open tabs in a chooser and inserts the one you pick at the caret.
 / #cmd("CRCOLOR", "CRCOLORS"): the caret color `R G B` (`/HSL`; `…S` opens a picker).
 / #cmd("CMCRCOLOR", "CMCRCOLORS"): the command-line caret color `R G B` (`/HSL`; `…S` opens a picker) — the CMline equivalent of #cmd("CRCOLOR"). Defaults to (and is re-set by #cmd("THEME") to) the text-caret color; set it to make the two differ.
@@ -825,7 +825,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("PAFGCOLOR", "PAFGCOLORS"): the `$CWD` path text color — `PAFGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `PAFGCOLOR` / `PAFGCOLOR default` clears it (back to the dimmed UI text). Read back via `$PAFGCOLOR`; persists in the config.
 / #cmd("PABGCOLOR", "PABGCOLORS"): the `$CWD` path background color — `PABGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `PABGCOLOR` / `PABGCOLOR default` clears it (back to transparent). Read back via `$PABGCOLOR`; persists in the config.
 / #cmd("PANECOLOR", "PANECOLORS"): the border color drawn around the FOCUSED split pane — `PANECOLOR <r g b>` (`/HSL`; `…S` opens a picker). Inactive panes use the separator color (#cmd("SEPCOLOR")). Read back via #sv("PANECOLOR"); re-set by #cmd("THEME"); persists in the config. See the split-pane verbs #cmd("THS")/#cmd("TVS").
-/ #cmd("PASTE"): paste the clipboard at the caret.
+/ #cmd("PASTE"): paste the clipboard at the caret. With a multi-caret set: if the clipboard was filled by a multi-caret #cmd("COPY")/#cmd("CUT") whose piece count equals the current caret count, each piece is DISTRIBUTED to its caret in document order; otherwise the whole clipboard is pasted at every caret. An external (OS) clipboard change resets to paste-the-same.
 / #cmd("PATHLEN"): max width (characters) of the displayed `$CWD` path — `PATHLEN n` (bare reports it). A longer path keeps the drive and the trailing directories, eliding the middle with `...`. Read back via `$PATHLEN`; persists in the config.
 / #cmd("PICK", "CHOOSE"): pop a list chooser and put the picked item in a variable — `PICK <var> ["title"] <list-expr>` (the list is an expression yielding an array; `/I` returns the 1-based index instead of the item). Cancelling leaves the variable empty and sets `$ERROR`. Arrow/type-to-find to choose; Enter picks, Esc cancels.
 / #cmd("PR"): print to the status line / script output. #cmd("PUT"): the same, but insert the (substituted) text at the caret instead.

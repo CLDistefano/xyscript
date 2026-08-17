@@ -2384,6 +2384,108 @@ impl Document {
         }
     }
 
+    /// Multi-caret `PASTE` with N stored clipboard pieces and N carets: insert piece `i` at caret `i`
+    /// (document order), replacing each caret's selection. Offset-safe (low-to-high with a running
+    /// shift), one undo unit. Extra/short pieces map to `""` (the host only calls this on an exact
+    /// count match). Each caret lands after its inserted piece.
+    pub fn paste_distributed(&mut self, pieces: &[String]) {
+        self.buffer.commit_define();
+        self.buffer.normalize_carets();
+        self.coalescing = false;
+        let carets = self.buffer.all_carets(); // document order
+        let sec_before = self.buffer.secondary_carets().to_vec();
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        // (start, end, piece bytes, is_primary) per caret; sort by start so the running shift is valid.
+        let mut items: Vec<(usize, usize, Vec<u8>, bool)> = carets
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let (a, b) = match c.anchor {
+                    Some(an) => (an.min(c.pos), an.max(c.pos)),
+                    None => (c.pos, c.pos),
+                };
+                let ins = self.buffer.encode(pieces.get(i).map(String::as_str).unwrap_or(""));
+                (a, b, ins, c.pos == cb)
+            })
+            .collect();
+        items.sort_by(|x, y| x.0.cmp(&y.0));
+        let mut ops: Vec<Op> = Vec::new();
+        let mut shift: i64 = 0;
+        let mut new_primary = cb;
+        let mut new_secs: Vec<Caret> = Vec::new();
+        for (a, b, ins, is_primary) in items {
+            let at = (a as i64 + shift) as usize;
+            let end = (b as i64 + shift) as usize;
+            let removed = self.buffer.slice_bytes(at, end);
+            self.buffer.replace_range_bytes(at, end - at, &ins);
+            let after = at + ins.len();
+            ops.push(Op { at, removed, inserted: ins.clone() });
+            shift += ins.len() as i64 - (end - at) as i64;
+            if is_primary {
+                new_primary = after;
+            } else {
+                new_secs.push(Caret { pos: after, anchor: None, goal_col: None });
+            }
+        }
+        self.buffer.set_caret(new_primary, None);
+        self.buffer.set_secondary_carets(new_secs);
+        self.buffer.normalize_carets();
+        let sec_after = self.buffer.secondary_carets().to_vec();
+        self.buffer.set_building(false);
+        if !ops.is_empty() {
+            self.record_multi(ops, Kind::Other, cb, ab, new_primary, None, sec_before, sec_after);
+        }
+    }
+
+    /// Delete every caret's SELECTION as one undo unit (the multi-caret `CUT`). A bare caret deletes
+    /// nothing but rides along with the shift; each selection collapses to a bare caret at its start.
+    pub fn delete_all_selections(&mut self) {
+        self.buffer.commit_define();
+        self.buffer.normalize_carets();
+        self.coalescing = false;
+        let carets = self.buffer.all_carets();
+        let sec_before = self.buffer.secondary_carets().to_vec();
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        let mut items: Vec<(usize, usize, bool)> = carets
+            .iter()
+            .map(|c| {
+                let (a, b) = match c.anchor {
+                    Some(an) => (an.min(c.pos), an.max(c.pos)),
+                    None => (c.pos, c.pos), // bare: no-op span
+                };
+                (a, b, c.pos == cb)
+            })
+            .collect();
+        items.sort_by(|x, y| x.0.cmp(&y.0));
+        let mut ops: Vec<Op> = Vec::new();
+        let mut shift: i64 = 0;
+        let mut new_primary = cb;
+        let mut new_secs: Vec<Caret> = Vec::new();
+        for (a, b, is_primary) in items {
+            let at = (a as i64 + shift) as usize;
+            let end = (b as i64 + shift) as usize;
+            if end > at {
+                let removed = self.buffer.slice_bytes(at, end);
+                self.buffer.replace_range_bytes(at, end - at, &[]);
+                ops.push(Op { at, removed, inserted: Vec::new() });
+                shift -= (end - at) as i64;
+            }
+            if is_primary {
+                new_primary = at;
+            } else {
+                new_secs.push(Caret { pos: at, anchor: None, goal_col: None });
+            }
+        }
+        self.buffer.set_caret(new_primary, None);
+        self.buffer.set_secondary_carets(new_secs);
+        self.buffer.normalize_carets();
+        let sec_after = self.buffer.secondary_carets().to_vec();
+        self.buffer.set_building(false);
+        if !ops.is_empty() {
+            self.record_multi(ops, Kind::Other, cb, ab, new_primary, None, sec_before, sec_after);
+        }
+    }
+
     /// Record a multi-caret edit (N ops) as ONE undo unit. A `MultiInsert` typing run coalesces into
     /// the previous unit (matched by caret index) so a run undoes at once; anything else is its own step.
     #[allow(clippy::too_many_arguments)]

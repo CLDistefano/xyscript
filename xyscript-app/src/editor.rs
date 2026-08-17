@@ -4770,6 +4770,46 @@ mod tests {
     }
 
     #[test]
+    fn multi_caret_copy_distributes_pieces_on_paste() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+
+        // Copy three DISTINCT selections, then paste into three bare carets → piece i lands at caret i.
+        let mut e = ed();
+        e.run_command("insert \"1 2 3 .....\""); // digits to copy, dots as paste targets
+        e.run_command("TOP");
+        e.run_command(r#"CARETALL/R \d"#); // three selection-carets: "1", "2", "3"
+        e.run_command("COPY"); // pieces = ["1","2","3"]
+        e.run_command("CARETONE");
+        e.run_command("JMP 6"); // primary at the first dot
+        e.run_command("CARETADD 7");
+        e.run_command("CARETADD 8"); // three bare carets at offsets 6,7,8
+        e.run_command("PR $CARETS");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command("PASTE"); // distribute: "1"→6, "2"→7, "3"→8 (before the first three dots)
+        assert_eq!(text(&e), "1 2 3 1.2.3...");
+
+        // Multi-caret CUT removes every selection and stores the pieces.
+        let mut e = ed();
+        e.run_command(r#"insert "aaa bbb ccc""#);
+        e.run_command("TOP");
+        e.run_command(r#"CARETALL/R [a-c]+"#); // select aaa, bbb, ccc
+        e.run_command("CUT");
+        assert_eq!(text(&e), "  "); // the three words gone, the two spaces remain
+
+        // Count mismatch falls back to pasting the joined clipboard at every caret.
+        let mut e = ed();
+        e.run_command(r#"insert "x y""#);
+        e.run_command("TOP");
+        e.run_command(r#"CARETALL/R \w"#); // 2 carets ("x","y"), pieces ["x","y"]
+        e.run_command("COPY");
+        e.run_command("CARETONE"); // now a single caret → count (1) != pieces (2)
+        e.run_command("BOTTOM");
+        e.run_command("PASTE"); // fallback: insert the joined "x<nl>y" once
+        assert!(text(&e).replace('\r', "").ends_with("x\ny"));
+    }
+
+    #[test]
     fn caretskip_moves_the_primary_past_an_unwanted_match() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();
