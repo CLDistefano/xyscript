@@ -201,6 +201,7 @@ That was the tour. The rest of the manual takes each piece in turn:
 
 - the window and menus in detail (*The Interface*);
 - moving, selecting, and editing (*Editing*);
+- making the same edit in many places at once (*Working with Multiple Carets*);
 - opening, saving, directory listings, and encodings (*Files, Tabs, and Directories*);
 - the search-and-replace family (*Find and Replace*);
 - the command line end to end (*The Command Line*);
@@ -566,6 +567,112 @@ The clipboard verbs — #raw("CUT"), #raw("COPY"), #raw("PASTE") — are the usu
 can gather several pieces before pasting. #raw("UNDO") and #raw("REDO") step through the edit history;
 a sweeping change such as a global #raw("CH") collapses to a single undo step, so one #raw("UNDO")
 rolls the whole pass back.
+
+// ===================================================================================================
+= Working with Multiple Carets
+
+Most of the time there is one caret — the blinking bar where your typing lands. But XyScript can carry
+*many* carets at once, each with its own optional selection. Type, delete, or move, and every caret
+does the same thing at the same moment, as a single undo step. It is the fastest way to make one edit
+in many places: rename a variable at every use, add a prefix to a block of lines, or wrap a list of
+items in quotes.
+
+Everything in this chapter is inert until you actually make a second caret. With a single caret the
+editor behaves exactly as the rest of this manual describes, and the classic variables (#raw("$SE"),
+#raw("$LN"), …) read that one caret as always. The verbs all begin with #raw("CARET"). One caret is the
+*primary* — the window follows it and the classic variables read it — and the rest ride along.
+
+== Making a set of carets
+
+The quickest way is the mouse: hold #kbd("Ctrl") and click to drop an extra caret wherever you click,
+and #kbd("Ctrl")-click a caret again to take it away. A plain click, with no #kbd("Ctrl"), collapses
+back to one.
+
+From the keyboard, #raw("CARETADD") (#kbd("Ctrl+Alt+A")) plants a caret at the current spot and enters
+a *building* state: the arrow keys now move only the primary caret, so you can roam to the next place
+and #raw("CARETADD") again, and again. The first edit you make ends building, and from then on the
+carets are equal partners. (#raw("CARETADD <n>") plants one at an exact character offset — the
+scriptable form.)
+
+To stack a column of carets, use #raw("CARETUP") and #raw("CARETDOWN") (#kbd("Ctrl+Alt+Up") /
+#kbd("Ctrl+Alt+Down")): each adds a caret one line above or below every current caret, keeping its
+column. Four presses of #kbd("Ctrl+Alt+Down") give you five carets stacked down the same column.
+
+#raw("CARETCOL") turns a *selection* into a column of carets — one on every line the selection spans,
+all at the cursor's column (a line too short for that column gets its caret at the line's end). Because
+that is the natural thing to want when a block is highlighted, a bare #raw("CARETADD") with a selection
+active does #raw("CARETCOL") for you — so #kbd("Ctrl+Alt+A") over a highlighted block lays a caret down
+every line at once.
+
+Finally, hold #kbd("Alt") and drag the mouse for a *box* (column) selection: a caret per line across
+the rectangle you drag, each selecting the same range of columns. Drag straight down (a zero-width box)
+and you get a plain insertion caret on each line.
+
+== Selecting every occurrence of something
+
+Two verbs turn matches into carets, so you can edit every occurrence of a word at once.
+
+#raw("CARETNEXT") (#kbd("Ctrl+D")) is the "add the next one" verb familiar from other editors. With
+nothing selected, the first press selects the word under the caret; each further press finds the next
+occurrence and adds a caret there, so you build the set one match at a time and watch it grow. It wraps
+around at the end of the document. When an occurrence is one you *don't* want, run #raw("CARETSKIP")
+instead of pressing #kbd("Ctrl+D") again: it moves your latest selection past that match to the next
+one, leaving the unwanted occurrence untouched.
+
+#raw("CARETALL") (#kbd("Ctrl+Shift+L")) does them all at once: a selection-caret at *every* match of
+the current selection (or of the word under the caret). Give it a pattern to match that instead, and
+add the familiar Find switches — #raw("/R") for a regular expression, #raw("/W") whole word, #raw("/A")
+case-sensitive, and #raw("/S") to confine the search to the current selection (turning one selection
+into a caret per match inside it). It is capped at 2000 carets and reports the count on the status line.
+
+#ex("CARETALL/R \\bid\\b")
+
+== Editing with many carets
+
+Once more than one caret is active, *every* editing and motion verb acts on all of them — there are no
+special multi-caret editing commands to learn. Type and the text appears at each caret; press
+#kbd("Backspace") and each caret deletes; word- and line-motions move the whole set (each caret keeps
+its own goal column); change case, apply #raw("MDA") styling, run auto-replace — all of it lands at
+every caret. The whole keystroke is one undo step, so a single #raw("UNDO") takes it all back.
+
+The clipboard is caret-aware, too. #raw("COPY") or #raw("CUT") with several selections remembers each
+piece separately (and puts the newline-joined text on the system clipboard for other apps). When you
+#raw("PASTE") into the *same number* of carets, each caret receives its own piece, in order — so you
+can lift a column of values and drop them one per line somewhere else. If the counts differ, the whole
+clipboard is pasted at every caret instead.
+
+== Splitting a selection into carets
+
+#raw("CARETSPLIT") replaces a selection that spans several lines with one caret at the *end* of each
+line it covers. Highlight a paragraph, #raw("CARETSPLIT"), and you have a caret waiting at the end of
+every line — ready to add a trailing comma or close a tag.
+
+== Managing the set
+
+/ #raw("CARETONE") (#kbd("Ctrl+Alt+O"), or a plain click): drop every caret but the primary — back to normal.
+/ #raw("CARETPOP") (#kbd("Ctrl+Shift+U")): remove the last caret you added, stepping back through the set one change at a time. (Any edit clears this history — it is for building the set, not for the document, which #raw("UNDO") handles.)
+/ #raw("CARETPRIMARY <n>"): make caret number #raw("n") (counting from 0 in document order) the primary, so the window follows it.
+
+Switching to another tab, or loading a file, also collapses back to a single caret.
+
+== Reading the carets from a script
+
+For scripts and key bindings, a small family of variables reports the set. #raw("$CARETS") is the count
+(#raw("1") when there is a single caret), and #raw("$CARETP") is the primary's index within it.
+
+Every per-caret variable you already know has a mirror array with one entry per caret, in document
+order: #raw("$SE") (selected text) has #raw("$MSE"), #raw("$CP") (caret offset) has #raw("$MCP"),
+#raw("$WD") (the word) has #raw("$MWD"), #raw("$LN") (line number) has #raw("$MLN"), and likewise
+#raw("$MSL"), #raw("$MDF"), #raw("$MDS"), #raw("$MDN"), #raw("$MCS"), #raw("$MCH"), and #raw("$MLI").
+They are ordinary 0-based arrays — count them with #raw("LEN($MSE)") (which equals #raw("$CARETS")) and
+loop them with #raw("FOR"):
+
+#ex("FOR sel IN $MSE
+  PR selection: $sel
+EW")
+
+The classic single variables keep reading the primary caret, so #raw("$SE") always equals
+#raw("$MSE[$CARETP]").
 
 // ===================================================================================================
 = Styling Text with MDA
