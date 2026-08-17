@@ -95,27 +95,27 @@ caret with no selection still has a location), `$MCH`, and `$MLN`, all by the mi
 
 ## 7. Idioms this enables
 
-    ; how many?
-    $CARETS                       ; or LEN($MSE)
+    # how many?
+    $CARETS                       # or LEN($MSE)
 
-    ; do something with every selection
+    # do something with every selection
     FOR piece IN $MSE
       ...
     EF
 
-    ; index + value  (inside an expression, index an $M array by a $-PREFIXED variable: $MDS[$i])
+    # index + value  (inside an expression, index an $M array by a $-PREFIXED variable: $MDS[$i])
     FOR i, piece IN $MSE
       PR selection $i is [$piece] at $(($MDS[$i]))..$(($MDN[$i]))
     EF
 
-    ; act only on the bare carets (no selection)
+    # act only on the bare carets (no selection)
     FOR i = 0 TO $CARETS - 1
       IF NOT $MDF[$i]
         ...
       EI
     EF
 
-    ; the primary, the long way (equals $SE)
+    # the primary, the long way (equals $SE)
     $(  $MSE[$CARETP]  )
 
 
