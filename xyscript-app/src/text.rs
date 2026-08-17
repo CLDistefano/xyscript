@@ -1018,7 +1018,12 @@ impl Buffer {
     /// reports. A `\r\n` break is one logical character, reported as `"\n"`; empty at
     /// end-of-buffer (nothing to the right).
     pub fn char_right(&self) -> String {
-        let at = self.cursor;
+        self.char_right_at(self.cursor)
+    }
+
+    /// The character to the right of byte offset `at` (`char_right`/`$CH` for an arbitrary caret —
+    /// the `$MCH` mirror). Empty at end-of-buffer; a `\r\n` reads as one `"\n"`.
+    pub fn char_right_at(&self, at: usize) -> String {
         let end = self.step_right(at);
         if end <= at {
             return String::new();
@@ -1028,6 +1033,11 @@ impl Buffer {
             return "\n".to_string();
         }
         self.enc.decode(&bytes)
+    }
+
+    /// The 0-based logical line index containing byte offset `pos` (for the `$MLN`/`$MLI` mirrors).
+    pub fn line_of(&self, pos: usize) -> usize {
+        self.rope.byte_to_line(pos)
     }
 
     /// Low-level edit for undo/redo: at byte offset `at`, remove `remove` bytes
@@ -1784,8 +1794,12 @@ impl Buffer {
     /// the cursor isn't on a word, the run of non-word chars at the cursor (so `RW`
     /// on punctuation/spaces clears that run).
     pub fn word_span(&self) -> (usize, usize) {
+        self.word_span_at(self.cursor)
+    }
+
+    /// [`word_span`](Self::word_span) around an arbitrary byte offset `c` (for the `$MWD` mirror).
+    pub fn word_span_at(&self, c: usize) -> (usize, usize) {
         let len = self.rope.len();
-        let c = self.cursor;
         let on_word = self.char_at(c).is_some_and(is_word)
             || (c > 0 && self.char_at(self.prev_boundary(c)).is_some_and(is_word));
         if on_word {
@@ -1867,6 +1881,14 @@ impl Buffer {
     /// Empty when the caret isn't on a word (e.g. on whitespace/punctuation).
     pub fn word_at(&self) -> String {
         let (s, e) = self.word_select_span();
+        self.slice(s, e)
+    }
+
+    /// The word at byte offset `pos` (`word_at`/`$WD` for an arbitrary caret — the `$MWD` mirror).
+    /// Empty when `pos` isn't on a word.
+    pub fn word_at_offset(&self, pos: usize) -> String {
+        let (s, e) = self.word_span_at(pos);
+        let (s, e) = self.trim_trailing_ws(s, e);
         self.slice(s, e)
     }
 

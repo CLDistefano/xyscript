@@ -11381,12 +11381,77 @@ impl Host for AppHost {
             "CP" => Some(Value::Int(b.cursor() as i64)),
             "LN" => Some(Value::Int(b.line() as i64)),
             // Multi-caret: `$CARETS` = number of carets, `$CARETP` = the primary's index in the
-            // document-order caret list, `$MCP` = the array of every caret's offset (the mirror of
-            // `$CP`). The classic caret specials above read the PRIMARY. See the multi-caret specs.
+            // document-order caret list. The classic caret specials above read the PRIMARY; the `$M…`
+            // arrays below MIRROR each classic caret-special, one 0-based element per caret in document
+            // order (so `$X == $MX[$CARETP]`, and `LEN($MX) == $CARETS`). See the multi-caret specs.
             "CARETS" => Some(Value::Int(b.caret_count() as i64)),
             "CARETP" => Some(Value::Int(b.primary_index() as i64)),
+            // `$MCP` — every caret's byte offset (mirror of `$CP`).
             "MCP" => Some(Value::Array(
-                b.caret_positions().into_iter().map(|p| Value::Int(p as i64)).collect(),
+                b.all_carets().iter().map(|c| Value::Int(c.pos as i64)).collect(),
+            )),
+            // `$MSE` — each caret's selected text (`""` for a bare caret); mirror of `$SE`.
+            "MSE" => Some(Value::Array(
+                b.all_carets()
+                    .iter()
+                    .map(|c| {
+                        Value::str(match c.anchor {
+                            Some(a) => b.slice(a.min(c.pos), a.max(c.pos)),
+                            None => String::new(),
+                        })
+                    })
+                    .collect(),
+            )),
+            // `$MSL` — chars selected by each caret (0 if bare); mirror of `$SL`.
+            "MSL" => Some(Value::Array(
+                b.all_carets()
+                    .iter()
+                    .map(|c| {
+                        Value::Int(match c.anchor {
+                            Some(a) => b.slice(a.min(c.pos), a.max(c.pos)).chars().count() as i64,
+                            None => 0,
+                        })
+                    })
+                    .collect(),
+            )),
+            // `$MDF` — 1 if each caret has a selection, else 0; mirror of `$DF`.
+            "MDF" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::Int(c.anchor.is_some() as i64)).collect(),
+            )),
+            // `$MDS` / `$MDN` — each caret's selection start / end (== its position if bare); mirrors
+            // of `$DS` / `$DN`.
+            "MDS" => Some(Value::Array(
+                b.all_carets()
+                    .iter()
+                    .map(|c| Value::Int(c.anchor.map_or(c.pos, |a| a.min(c.pos)) as i64))
+                    .collect(),
+            )),
+            "MDN" => Some(Value::Array(
+                b.all_carets()
+                    .iter()
+                    .map(|c| Value::Int(c.anchor.map_or(c.pos, |a| a.max(c.pos)) as i64))
+                    .collect(),
+            )),
+            // `$MCS` — 1 if each caret is on its own selection (always true when it has one), else 0;
+            // mirror of `$CS`.
+            "MCS" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::Int(c.anchor.is_some() as i64)).collect(),
+            )),
+            // `$MCH` — the char to the right of each caret; mirror of `$CH`.
+            "MCH" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::str(b.char_right_at(c.pos))).collect(),
+            )),
+            // `$MWD` — the word under each caret; mirror of `$WD`.
+            "MWD" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::str(b.word_at_offset(c.pos))).collect(),
+            )),
+            // `$MLI` — the text of each caret's line; mirror of `$LI`.
+            "MLI" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::str(b.line_text(b.line_of(c.pos)))).collect(),
+            )),
+            // `$MLN` — each caret's 1-based line number; mirror of `$LN`.
+            "MLN" => Some(Value::Array(
+                b.all_carets().iter().map(|c| Value::Int(b.line_of(c.pos) as i64 + 1)).collect(),
             )),
             // Caret's VISUAL column (0-based, wrap-aware) — the GUI pushes it each frame; headless
             // falls back to the logical column. (Logical line:column is `$LN`:`$LC`.)

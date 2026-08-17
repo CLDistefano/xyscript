@@ -4770,6 +4770,55 @@ mod tests {
     }
 
     #[test]
+    fn m_array_mirrors_report_every_caret_and_hold_the_invariants() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+
+        // A selection-caret set (three "foo"s).
+        let mut e = ed();
+        e.run_command(r#"insert "foo bar foo baz foo""#);
+        e.run_command("TOP");
+        e.run_command("CARETALL foo");
+        // LEN of every mirror == $CARETS.
+        e.run_command("PR $(LEN($MSE))");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // Each caret's selected text.
+        e.run_command("PR $($MSE[0])");
+        assert_eq!(out(&e).as_deref(), Some("foo"));
+        // The primary correspondence invariant: $SE == $MSE[$CARETP].
+        e.run_command("PR $(($SE == $MSE[$CARETP]))");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        // Start/end/length mirrors: $MSL[k] == $MDN[k] - $MDS[k].
+        e.run_command("PR $(($MDN[2] - $MDS[2]))");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command("PR $($MSL[1])");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        // Selection-present flag, word, and line number.
+        e.run_command("PR $($MDF[0])");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("PR $($MWD[2])");
+        assert_eq!(out(&e).as_deref(), Some("foo"));
+        e.run_command("PR $($MLN[0])");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+
+        // A BARE-caret set: mirrors report empty selections but valid positions/chars.
+        let mut e = ed();
+        e.run_command(r#"insert "abcdefgh""#);
+        e.run_command("TOP");
+        e.run_command("CARETADD 2");
+        e.run_command("CARETADD 4");
+        e.run_command("PR $(LEN($MCP))");
+        assert_eq!(out(&e).as_deref(), Some("3"));
+        e.run_command("PR $($MDF[0])"); // no selection
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        e.run_command("PR $($MSE[1])"); // empty selected text
+        assert_eq!(out(&e).as_deref(), Some(""));
+        e.run_command("PR $($MCH[0])"); // char to the right of caret 0 (offset 0)
+        assert_eq!(out(&e).as_deref(), Some("a"));
+        e.run_command("PR $($MCH[1])"); // caret at offset 2 → 'c'
+        assert_eq!(out(&e).as_deref(), Some("c"));
+    }
+
+    #[test]
     fn caretsplit_drops_a_caret_at_each_selected_line_end() {
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         let text = |e: &Editor| e.doc(e.active_index()).text();

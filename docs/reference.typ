@@ -1247,6 +1247,7 @@ Every special variable in one list, for quick lookup.
 / #sv("CARETS"): number of active carets (primary + secondaries) — `1` normally, more under multi-caret.
 / #sv("CARETP"): the primary caret's index in the document-order caret list, so `$CP == $MCP[$CARETP]`.
 / #sv("MCP"): array of every caret's character offset, in document order (the mirror of #sv("CP")). Loop it with `FOR p IN $MCP`; the count is `LEN($MCP)` (or #sv("CARETS")). The classic caret specials (#sv("CP")/#sv("WD")/#sv("LI")/…) read the primary caret.
+/ #sv("MSE") / #sv("MSL") / #sv("MDF") / #sv("MDS") / #sv("MDN") / #sv("MCS") / #sv("MCH") / #sv("MWD") / #sv("MLI") / #sv("MLN"): the `$M…` mirror family — one 0-based array element per caret, in document order, mirroring the classic caret specials #sv("SE") / #sv("SL") / #sv("DF") / #sv("DS") / #sv("DN") / #sv("CS") / #sv("CH") / #sv("WD") / #sv("LI") / #sv("LN") respectively (selected text, chars selected, has-selection 1/0, selection start / end offset, caret-on-selection 1/0, char to the right, word under caret, line text, 1-based line number). Every mirror has `LEN == ` #sv("CARETS") and `$X == $MX[$CARETP]`; a bare caret reports `""` / `0` for its selection but a valid position, char, word, and line.
 / #sv("CRCOLOR"): caret color.
 / #sv("CMCRCOLOR"): command-line caret color.
 / #sv("CRSHAPE"): caret shape.

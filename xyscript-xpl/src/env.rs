@@ -60,6 +60,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "D1", "DP", "DR",
     // cursor/offset
     "CP", "CX", "CY", "LN", "OF", "LI", "WD", "DOC", "CARETS", "CARETP", "MCP",
+    "MSE", "MSL", "MDF", "MDS", "MDN", "MCS", "MCH", "MWD", "MLI", "MLN",
     // selection
     "SE", "SEL", "SL", "DF", "DS", "DN", "CS",
     // editor state/flags (EN = active document's encoding-view name)
