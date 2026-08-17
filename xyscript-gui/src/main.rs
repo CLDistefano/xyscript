@@ -2868,6 +2868,32 @@ impl GuiApp {
                 })
                 .collect()
         };
+        // Multi-caret SECONDARY selections: recolour their glyphs to `SELFGCOLOR`, matching the
+        // primary selection (which cosmic recolours at draw time). Caret offsets are ROPE offsets, so
+        // convert to decoded then rebase to window-local display, like `emph_spans`/`find_spans`.
+        let sec_sel_spans: Vec<(usize, usize, CColor)> = {
+            let doc = self.editor.doc(self.editor.active_index());
+            if doc.is_multi() {
+                let (sfr3, sfg3, sfb3) = self.editor.sel_fg_color();
+                let sel_c = CColor::rgb(sfr3, sfg3, sfb3);
+                doc.secondary_carets()
+                    .iter()
+                    .filter_map(|c| {
+                        let a = c.anchor?;
+                        let s = doc.decoded_offset(a.min(c.pos)).max(lo);
+                        let e = doc.decoded_offset(a.max(c.pos)).min(hi);
+                        if s >= e {
+                            return None;
+                        }
+                        let sd = decoded_to_display(s - lo, &win.cr);
+                        let ed = decoded_to_display(e - lo, &win.cr);
+                        (sd < ed).then_some((sd, ed, sel_c))
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        };
         // `MDA` text attributes (bold/italic/underline) per selection, rebased to window-local display
         // offsets like `manual`. `attr_spans` are DECODED offsets. Bold/italic feed the per-glyph
         // weight/slant below; the underline bit is drawn as a rect in `raster` (cosmic has no glyph
@@ -2904,6 +2930,11 @@ impl GuiApp {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &find_spans {
+            colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
+        }
+        // Secondary-caret selections read as selections, so their glyph colour wins over syntax/find,
+        // matching the primary selection's SELFGCOLOR.
+        for &(s, e, cc) in &sec_sel_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         // Per display byte: the `MDA` bold/italic bits (underline is drawn separately). Grouped with
