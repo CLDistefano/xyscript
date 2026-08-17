@@ -6217,6 +6217,24 @@ impl GuiApp {
                     m_item(self.tr("menu.edit.case.swap", "Swap case"), "CC"),
                 ]),
                 MenuNode::Sep,
+                // Multi-caret: the argument-free CARET* verbs. Once more than one caret is active every
+                // edit acts on them all at once. The verbs collapse to no-ops with a single caret / no
+                // selection, so they're safe to pick anytime.
+                m_sub(self.tr("menu.edit.multicaret", "Multiple carets"), vec![
+                    m_item(self.tr("menu.edit.multicaret.add_above", "Add caret above"), "CARETUP"),
+                    m_item(self.tr("menu.edit.multicaret.add_below", "Add caret below"), "CARETDOWN"),
+                    MenuNode::Sep,
+                    m_item(self.tr("menu.edit.multicaret.next", "Add next occurrence"), "CARETNEXT"),
+                    m_item(self.tr("menu.edit.multicaret.skip", "Skip this occurrence"), "CARETSKIP"),
+                    m_item(self.tr("menu.edit.multicaret.all", "Select all occurrences"), "CARETALL"),
+                    MenuNode::Sep,
+                    m_item(self.tr("menu.edit.multicaret.column", "Column from selection"), "CARETCOL"),
+                    m_item(self.tr("menu.edit.multicaret.split", "Split selection into lines"), "CARETSPLIT"),
+                    MenuNode::Sep,
+                    m_item(self.tr("menu.edit.multicaret.pop", "Remove last caret"), "CARETPOP"),
+                    m_item(self.tr("menu.edit.multicaret.one", "Collapse to one caret"), "CARETONE"),
+                ]),
+                MenuNode::Sep,
                 // Colour the SELECTION (a transient span) — or the whole editor when nothing is
                 // selected. `FGCOLOR default` clears a selected span (selection-only).
                 m_item(self.tr("menu.edit.text_colour", "Text colour…"), "FGCOLORS"),
