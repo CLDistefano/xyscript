@@ -4991,6 +4991,13 @@ impl GuiApp {
             || self.editor.verify_active()
             || (self.editor.active_is_dir_listing() && !self.editor.cmline_open())
     }
+    /// The command line is open — the primary Enter submits it (it reaches egui, which hits the
+    /// cmline handler). Any OTHER key bound to the ENTER verb must submit too, not run the verb
+    /// (which would insert a newline into the cmline). Used alongside `modal_owns_keyboard` for the
+    /// ENTER synthetic-key case in `intercept_key`.
+    fn cmline_open(&self) -> bool {
+        self.editor.cmline_open()
+    }
     /// True when a *genuine blocking modal* (a prompt/dialog/INPUT/PICK/history/breakpoint/verify/
     /// close-open/quit sweep) currently owns the keyboard. This is `modal_owns_keyboard()` MINUS the
     /// read-only DIR/LS listing — a listing is a normal tab you can Tab away from and run commands

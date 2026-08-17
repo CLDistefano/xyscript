@@ -540,13 +540,17 @@ impl Handler {
             }
         };
         if let Some(xpl) = to_run {
-            // A key bound to the ENTER verb should, when a modal dialog or a DIR/LS listing owns
-            // the keyboard, ACTIVATE the selection (open file / run history command / choose /
-            // submit) exactly like the primary Enter — not insert a newline (which the read-only
-            // listing ignores anyway). Hand egui a synthetic Enter so every existing modal handler
-            // responds, and don't run the verb. (The primary Enter, scancode 28, is in ALWAYS_EGUI
-            // so it already reaches egui directly; this brings any OTHER key bound to ENTER inline.)
-            if xpl.trim().eq_ignore_ascii_case("ENTER") && self.app.modal_owns_keyboard() {
+            // A key bound to the ENTER verb should, when a modal dialog / DIR-LS listing owns the
+            // keyboard OR the command line is open, ACTIVATE (open file / run history command /
+            // choose / SUBMIT THE CMLINE) exactly like the primary Enter — not insert a newline
+            // (which the read-only listing ignores, and which on the cmline would drop a stray '\n'
+            // instead of running the command). Hand egui a synthetic Enter so every existing handler
+            // (modal AND the cmline's Enter→submit) responds, and don't run the verb. (The primary
+            // Enter, scancode 28, is in ALWAYS_EGUI so it already reaches egui directly; this brings
+            // any OTHER key bound to ENTER — e.g. numpad Enter, 104 — inline with it.)
+            if xpl.trim().eq_ignore_ascii_case("ENTER")
+                && (self.app.modal_owns_keyboard() || self.app.cmline_open())
+            {
                 if let Some(state) = self.egui_state.as_mut() {
                     state.egui_input_mut().events.push(egui::Event::Key {
                         key: egui::Key::Enter,
