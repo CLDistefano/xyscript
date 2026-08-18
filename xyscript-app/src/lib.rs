@@ -21,6 +21,7 @@ pub mod encoding;
 pub mod gfm;
 pub mod grep;
 pub mod help;
+pub mod hex;
 pub mod highlight;
 pub mod html;
 pub mod pdf;
