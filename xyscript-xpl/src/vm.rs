@@ -2408,6 +2408,18 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetHighlight(on))?;
                 Ok(Flow::Next)
             }
+            // `HEX on|off` (bare = on) — show the active document as a hex + text grid. A view mode;
+            // the bytes are unchanged. `$HEX` reads it.
+            "HEX" => {
+                let a = args.trim();
+                let on = match a.to_ascii_lowercase().as_str() {
+                    "on" | "1" | "true" | "yes" | "" => true,
+                    "off" | "0" | "false" | "no" => false,
+                    _ => return Err(XplError::trappable(format!("HEX: expected on|off, got {a:?}"))),
+                };
+                self.host_op(EditorOp::SetHexView(on))?;
+                Ok(Flow::Next)
+            }
             "HLAUTO" => {
                 let a = args.trim();
                 let on = match a.to_ascii_lowercase().as_str() {

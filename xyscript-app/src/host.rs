@@ -10104,6 +10104,11 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(msg));
             }
+            EditorOp::SetHexView(on) => {
+                // A per-document canvas view mode (hex + text grid); the bytes are untouched.
+                self.docs[self.active].set_hex_view(on);
+                return Ok(Value::str(if on { "hex view on" } else { "hex view off" }.to_string()));
+            }
             EditorOp::SetView { flag, kind } => {
                 let slot = match flag {
                     ViewFlag::MenuBar => &mut self.menu_bar,
@@ -11381,6 +11386,7 @@ impl Host for AppHost {
                 Some(Value::str(if self.caret_visual { "visual" } else { "logical" }.to_string()))
             }
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
+            "HEX" => Some(Value::Int(if self.active_doc().hex_view() { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),

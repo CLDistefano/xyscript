@@ -6139,6 +6139,7 @@ impl GuiApp {
         let hlauto_on = ed.special_str("HLAUTO") == "1";
         let autocfg_on = !ed.special_str("CFA").is_empty();
         let doctype = ed.special_str("DOCTYPE");
+        let hex_on = ed.hex_view();
         let enc = ed.special_str("EN");
         let autosave = ed.special_str("AU");
         let tabw = ed.special_str("TB");
@@ -6327,6 +6328,8 @@ impl GuiApp {
                     m_item(self.tr("menu.document.line_endings.crlf", "CRLF (Windows)"), "NEWLINE crlf"),
                 ]),
                 MenuNode::Sep,
+                // Hex + text view of the raw bytes (a per-document display mode; bytes unchanged).
+                m_tog(self.tr("menu.document.hex_view", "Hex view"), hex_on, if hex_on { "HEX off" } else { "HEX on" }),
                 m_tog(self.tr("menu.document.read_only", "Read-only"), ro_on, "RO"),
                 MenuNode::Sep,
                 m_item(self.tr("menu.document.word_count", "Word count"), "WORDCOUNT"),

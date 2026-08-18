@@ -574,6 +574,9 @@ pub enum EditorOp {
     /// Turn syntax highlighting on/off for the active document (`HIGHLIGHT
     /// on|off`). Off by default (a quiet screen).
     SetHighlight(bool),
+    /// Show the active document as a hex + text grid (`HEX on|off`). A canvas view mode; the bytes
+    /// are unchanged. Off by default. Read back via `$HEX`.
+    SetHexView(bool),
     /// Set/clear/toggle a GUI view flag (`SMB`/`CMB`/`TMB` menu bar, `SVR`/`CVR`/`TVR`
     /// visible returns ¶, `SLN`/`CLN`/`TLN` line-number gutter). Read back via `$MB`/
     /// `$VR`/`$LNS`. The host holds the flag; the GUI renders it.

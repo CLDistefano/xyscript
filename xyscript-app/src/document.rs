@@ -266,6 +266,10 @@ pub struct Document {
     /// `DOCTYPE` override for `TOPDF`/preview rendering. `None` = auto (decide by extension:
     /// `.typ` → Typst, else GFM); `Some(_)` forces that kind regardless of extension.
     render_override: Option<RenderKind>,
+    /// `HEX on|off`: view the document's raw bytes as a hex + text grid (a CANVAS display mode,
+    /// orthogonal to `render_override`/`DOCTYPE` which is about preview/print). Per-document,
+    /// session-only. The byte content is unchanged; only the GUI's rendering + navigation differ.
+    hex_view: bool,
     /// The nine `C1`..`C9` counters (XyWrite-style). Per-document and session-only (not persisted).
     counters: [crate::counter::Counter; 9],
     /// `EMPH` emphasis phrase: every case-insensitive occurrence is highlighted (a visual overlay,
@@ -341,6 +345,7 @@ impl Clone for Document {
             dir: self.dir.clone(),
             grammars: self.grammars.clone(),
             render_override: self.render_override,
+            hex_view: self.hex_view,
             counters: self.counters.clone(),
             emph: self.emph.clone(),
             emph_regex: self.emph_regex,
@@ -377,6 +382,7 @@ impl Default for Document {
             dir: None,
             grammars: Rc::new(RefCell::new(GrammarRegistry::default())),
             render_override: None, // auto: decide by extension
+            hex_view: false,       // documents open in the normal text view
             emph: None,
             emph_regex: false,
             grep: None,
@@ -770,6 +776,16 @@ impl Document {
     /// records exactly what the user chose rather than the effective kind.
     pub fn render_override(&self) -> Option<RenderKind> {
         self.render_override
+    }
+
+    /// `HEX on|off`: whether this document is shown as a hex + text grid rather than the normal
+    /// text canvas. A view mode only — the bytes are unchanged.
+    pub fn set_hex_view(&mut self, on: bool) {
+        self.hex_view = on;
+    }
+    /// Whether the hex + text view is active for this document.
+    pub fn hex_view(&self) -> bool {
+        self.hex_view
     }
 
     /// The `EMPH` emphasis phrase for this document (`None` = none). Every case-insensitive

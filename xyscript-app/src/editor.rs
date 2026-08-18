@@ -245,6 +245,11 @@ impl Editor {
     pub fn highlighter_name(&self) -> Option<&str> {
         self.host.active_doc().highlighter_name()
     }
+    /// Whether the active document is shown as a hex + text grid (`HEX on`). The GUI reads this to
+    /// pick the hex renderer + navigation instead of the text canvas.
+    pub fn hex_view(&self) -> bool {
+        self.host.active_doc().hex_view()
+    }
     pub fn cmline_open(&self) -> bool {
         self.host.target == Target::CmLine
     }
@@ -4699,6 +4704,24 @@ mod tests {
         e.run_command("CARETDOWN");
         e.run_command("PR $CARETS");
         assert_eq!(out(&e).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn hex_view_verb_toggles_the_per_document_flag() {
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        let mut e = ed();
+        assert!(!e.hex_view());
+        e.run_command("PR $HEX");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        e.run_command("HEX on");
+        assert!(e.hex_view());
+        e.run_command("PR $HEX");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("HEX off");
+        assert!(!e.hex_view());
+        // Bare HEX = on.
+        e.run_command("HEX");
+        assert!(e.hex_view());
     }
 
     #[test]
