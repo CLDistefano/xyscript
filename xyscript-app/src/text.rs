@@ -1803,6 +1803,15 @@ impl Buffer {
         self.cursor = self.snap_boundary(off);
     }
 
+    /// Place the caret at an **exact byte offset** (clamped to `0..=len`), WITHOUT snapping to a
+    /// character boundary — the hex view navigates raw bytes, so a continuation byte is a valid caret
+    /// home. Motion selection semantics as usual (`extend` grows/keeps the block; a plain move clears a
+    /// transient one but keeps a defined block).
+    pub fn move_to_byte(&mut self, off: usize, extend: bool) {
+        self.prepare_move(extend);
+        self.cursor = off.min(self.rope.len());
+    }
+
     /// `JMP +n` / `JMP -n` — move `delta` characters from the current position
     /// (forward if positive, back if negative), stepping over `\r\n` as one. Out of
     /// range silently clamps to the start/end of the buffer (no error). Counts

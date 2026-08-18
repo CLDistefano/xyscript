@@ -8002,10 +8002,19 @@ impl Host for AppHost {
         // read-only doc only blocks edits to that doc.
         if matches!(self.target, Target::Document)
             && self.blind.is_none() // blind-edit buffers are always writable (the RO lock is the visible doc's)
-            && self.docs[self.active].read_only()
             && op_mutates_buffer(&op)
         {
-            return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
+            if self.docs[self.active].read_only() {
+                return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
+            }
+            // The hex view is read-only for now (Phase 1): edits would corrupt the byte grid. Reject
+            // content mutations with a hex-specific hint. (Motion/selection/copy aren't mutations, so
+            // navigating and selecting bytes still work.)
+            if self.docs[self.active].hex_view() {
+                return Err(XplError::trappable(
+                    self.tr_msg("msg.hex_readonly", "hex view is read-only (HEX off to edit)"),
+                ));
+            }
         }
         match op {
             EditorOp::InsertText(s) => {
@@ -8067,6 +8076,48 @@ impl Host for AppHost {
             EditorOp::Delete(DeleteKind::Line) => self.active().delete_line(),
             EditorOp::Delete(DeleteKind::Sentence) => self.active().delete_sentence(),
             EditorOp::Delete(DeleteKind::Paragraph) => self.active().delete_paragraph(),
+            EditorOp::Move { motion, extend } if self.active_doc().hex_view() => {
+                // HEX view navigates raw BYTES, not logical text: Left/Right = ±1 byte, Up/Down = ±16
+                // (one grid row), Home/End = the row's edges, PgUp/PgDn = ±(page × 16), Doc edges = file
+                // ends. Word/paragraph/sentence motions have no byte meaning, so they nudge one byte (the
+                // keys stay live rather than dead). Only the PRIMARY caret moves — hex is single-caret.
+                let (vtop, vrows) = (self.viewport.0, self.viewport.1.max(1));
+                let page = (vrows.saturating_sub(1)).max(1);
+                let row = crate::hex::BYTES_PER_ROW;
+                let (cur, len) = {
+                    let b = self.active().buffer();
+                    (b.cursor(), b.len())
+                };
+                let row_start = cur - (cur % row);
+                let target: usize = match motion {
+                    Motion::Left | Motion::LeftSameLine => cur.saturating_sub(1),
+                    Motion::Right | Motion::RightSameLine => (cur + 1).min(len),
+                    Motion::Up | Motion::PrevLineStart | Motion::PrevPara => cur.saturating_sub(row),
+                    Motion::Down | Motion::NextLineStart | Motion::NextPara => (cur + row).min(len),
+                    Motion::LineStart | Motion::VisualLineStart => row_start,
+                    Motion::LineEnd | Motion::VisualLineEnd => (row_start + row - 1).min(len),
+                    Motion::DocStart => 0,
+                    Motion::DocEnd => len,
+                    Motion::PageDown => (cur + page * row).min(len),
+                    Motion::PageUp => cur.saturating_sub(page * row),
+                    Motion::ScreenTop => (vtop * row).min(len),
+                    Motion::ScreenBottom => ((vtop + vrows - 1) * row + row - 1).min(len),
+                    Motion::ToChar(n) => n.min(len),
+                    Motion::ByChar(d) => {
+                        if d >= 0 {
+                            (cur + d as usize).min(len)
+                        } else {
+                            cur.saturating_sub((-d) as usize)
+                        }
+                    }
+                    Motion::NextWord | Motion::NextSentence => (cur + 1).min(len),
+                    Motion::PrevWord | Motion::PrevSentence => cur.saturating_sub(1),
+                };
+                self.active().move_primary_to_byte(target, extend);
+                // No visual-caret refinement in hex view; clear any stale intent from a prior text move.
+                self.pending_visual_edge = None;
+                self.pending_visual_move = None;
+            }
             EditorOp::Move { motion, extend } => {
                 // Read the viewport hint before borrowing the active document.
                 let (vtop, vrows) = (self.viewport.0, self.viewport.1.max(1));

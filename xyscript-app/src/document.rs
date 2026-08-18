@@ -424,6 +424,12 @@ impl Document {
         &self.buffer
     }
 
+    /// Move the PRIMARY caret to an exact byte offset (the hex view's byte-granular navigation). Only
+    /// the primary moves — hex is a single-caret view — so any secondary carets are left untouched.
+    pub fn move_primary_to_byte(&mut self, off: usize, extend: bool) {
+        self.buffer.move_to_byte(off, extend);
+    }
+
     // ---- multi-caret set (the CARET* verb layer calls these) --------------
 
     /// Snapshot the caret set onto the `CARETPOP` ring before a set-changing verb mutates it. Bounded

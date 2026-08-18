@@ -512,8 +512,11 @@ impl Handler {
                             ARROW_UP | ARROW_DOWN | PAGE_UP | PAGE_DOWN
                                 | NUMPAD_UP | NUMPAD_DOWN | NUMPAD_PAGE_UP | NUMPAD_PAGE_DOWN
                         );
+                        // In the HEX view the vertical-nav keys must be CAPTURED (they drive the host's
+                        // byte-row motion — ↑/↓ = ±16 bytes, PgUp/PgDn = ±a screen); handing them to
+                        // egui would run wrap-aware TEXT scrolling over a grid that has no text layout.
                         let egui_owns = ALWAYS_EGUI.contains(&code)
-                            || (nav_key && !modified && is_gui_motion(&xpl));
+                            || (nav_key && !modified && is_gui_motion(&xpl) && !self.app.hex_view());
                         let capture = should_capture(code, &key.resolver, key.passthrough_mask)
                             || (!is_typing_cell(&xpl) && !egui_owns);
                         if capture {

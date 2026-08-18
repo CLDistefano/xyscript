@@ -500,7 +500,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 == Syntax highlighting
 
 / #cmd("HIGHLIGHT") / #cmd("HLAUTO"): turn highlighting on/off / auto-enable it for recognized files.
-/ #cmd("HEX"): `HEX on|off` — show the active document as a hex + text grid (for inspecting/editing binary files). A per-document view mode; the bytes are unchanged. #sv("HEX") reads it.
+/ #cmd("HEX"): `HEX on|off` — show the active document as a hex + text grid (for inspecting binary files). A per-document view mode; navigate by byte (arrows ±1, ↑/↓ one row). The view is read-only for now, so the bytes are unchanged. #sv("HEX") reads it.
 / #cmd("HLLANG") / #cmd("HLRULE"): declare a regex-grammar highlighter and its rules.
 / #cmd("HLCOLOR", "HLCOLORS") / #cmd("HLKINDS") / #cmd("HLRESET"): a token kind's color / list the kinds / restore the default theme.
 
@@ -742,7 +742,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("HM"): move to the top of what's currently on screen.
 / #cmd("HELP", "?"): look up reference help for a command, special, or function — `HELP CV`, `HELP $CWD`, `HELP UPPER` — shown in a scrollable box. A bare `HELP` gives a short overview; an unrecognized name suggests near matches. Same text as this reference, so it never drifts.
 / #cmd("HIGHLIGHT"): turn syntax highlighting on or off for the active file's type.
-/ #cmd("HEX"): `HEX on|off` (bare `HEX` = on) shows the active document as a hex + text grid — an offset gutter, 16 bytes per row as hex pairs, and a text column (the bytes through the current encoding, non-printable as `.`). A per-document canvas view mode for reading/editing binary files; the bytes themselves are untouched. #sv("HEX") reads it.
+/ #cmd("HEX"): `HEX on|off` (bare `HEX` = on) shows the active document as a hex + text grid — an offset gutter, 16 bytes per row as hex pairs, and a text column (the bytes through the current encoding, non-printable as `.`). A per-document canvas view mode for reading binary files. Navigate by byte: ←/→ move ±1, ↑/↓ move one row (16 bytes), Home/End jump to the row edges, PgUp/PgDn a screen, and a selection spans a byte range. The view is read-only for now, so the bytes themselves are untouched. #sv("HEX") reads it.
 / #cmd("HLAUTO"): auto-enable highlighting whenever a recognized file is opened (`on`/`off`).
 / #cmd("HLLANG"): declare a regex-grammar highlighter — `HLLANG <name> <.ext,…>` — then add rules with #cmd("HLRULE") (`HLRULE <kind> <regex>`, first match wins). Ready-made grammars ship in the `grammars/` folder beside the program (Rust, Python, JavaScript, HTML, shell, TOML, Typst, XyWrite, and `xpl.xpl` for XyScript's own XPL — `.xpl`/`.cfg`/`.lib`, coloring its control-flow keywords and every built-in `function`); `RUN` the one you want, then highlighting applies to that file type.
 / #cmd("HLCOLOR", "HLCOLORS"): a token kind's highlight color `R G B` (`…S` opens a picker; `HLCOLOR <kind> default` clears it).

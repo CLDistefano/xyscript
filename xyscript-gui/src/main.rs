@@ -2166,6 +2166,10 @@ struct GuiApp {
     /// Alt+drag box-select anchor corner, as `(line, column)` (0-based, logical). `Some` for the
     /// duration of a column-select drag; each drag update rebuilds a caret per spanned line.
     box_anchor: Option<(usize, usize)>,
+    /// Device-pixel width of one monospace character cell in the HEX view, measured from the shaped
+    /// glyphs on each `render_hex_canvas` pass and reused by the mouse hit-test so clicks land on the
+    /// right byte. `0.0` until the first hex frame (the hit-test falls back to the 0.6·em estimate).
+    hex_cell_w: f32,
     /// Mouse drag-select anchor for the command line (rope offset), like `drag_anchor` for the doc.
     cmline_drag_anchor: Option<usize>,
     preedit: String,
@@ -2383,6 +2387,7 @@ impl GuiApp {
             pane_wrap: std::collections::HashMap::new(),
             drag_anchor: None,
             box_anchor: None,
+            hex_cell_w: 0.0,
             cmline_drag_anchor: None,
             preedit: String::new(),
             goal_x: None,
@@ -4393,6 +4398,185 @@ impl GuiApp {
         egui::ColorImage::from_rgba_premultiplied([wp, hp], &rgba)
     }
 
+    /// Read-only **hex + text** ("hex dump") canvas — the `HEX on` view. Renders the active document's
+    /// raw bytes as a fixed 16-byte grid via [`xyscript_app::hex`] (offset gutter, hex pairs grouped
+    /// 8 + 8, text column through the active encoding), overlaying the caret (a byte offset) and any
+    /// selection with the module's cell geometry. `w`/`h` are POINTS like [`render_canvas`]; this is
+    /// the single-pane path only (a split renders normally). Scroll is reused as the top ROW index.
+    fn render_hex_canvas(&mut self, w: usize, h: usize) -> egui::ColorImage {
+        use xyscript_app::hex;
+        let scale = self.render_scale;
+        let wp = ((w as f32 * scale).round() as usize).max(1);
+        let hp = ((h as f32 * scale).round() as usize).max(1);
+        self.pane_view.canvas_px = (wp, hp);
+        // No live language-check overlay in hex view.
+        self.lint_panes.clear();
+        self.lint_visible = None;
+
+        let lh_px = self.line_height * scale;
+        let visible_rows = ((hp as f32 / lh_px).floor() as usize).max(1);
+
+        // Fold any accumulated pixel scroll (mouse wheel, `MU`/`MD`) into whole grid ROWS — the hex
+        // view scrolls one row at a time, so it reads `scroll_line` only and drains the pixel remainder.
+        if self.pane_view.scroll_vertical.abs() >= lh_px {
+            let delta_rows = (self.pane_view.scroll_vertical / lh_px).trunc();
+            self.pane_view.scroll_line =
+                (self.pane_view.scroll_line as f32 + delta_rows).max(0.0) as usize;
+            self.pane_view.scroll_vertical -= delta_rows * lh_px;
+        }
+
+        // Pull the document's byte state up front, then drop the borrow before touching `font_system`.
+        let (total, enc, caret, sel) = {
+            let buf = self.editor.doc(self.editor.active_index());
+            let total = buf.len();
+            (total, buf.encoding(), buf.cursor().min(total), buf.selection_span())
+        };
+        // One trailing (possibly empty) row always exists so the append caret at end-of-file has a home.
+        let total_rows = total / hex::BYTES_PER_ROW + 1;
+        let caret_row = caret / hex::BYTES_PER_ROW;
+
+        // Follow: bring the caret's row on screen (one-shot, mirrors the text raster).
+        if self.pane_view.follow {
+            let top = self.pane_view.scroll_line;
+            if caret_row < top {
+                self.pane_view.scroll_line = caret_row;
+            } else if caret_row >= top + visible_rows {
+                self.pane_view.scroll_line = caret_row + 1 - visible_rows;
+            }
+            self.pane_view.follow = false;
+        }
+        // Never scroll past the last row.
+        let max_top = total_rows.saturating_sub(1);
+        if self.pane_view.scroll_line > max_top {
+            self.pane_view.scroll_line = max_top;
+        }
+        let top_row = self.pane_view.scroll_line;
+
+        // Colours + font, captured as owned values (no `self` borrow held while cosmic draws).
+        let (br, bgc, bb) = self.editor.bg_color();
+        let (fr, fgc, fbc) = self.editor.fg_color();
+        let (selr, selg, selb) = self.editor.sel_bg_color();
+        let fam = self.editor_family();
+        let (e_weight, e_style) = editor_cosmic_style(self.editor.editor_font_style());
+        let cmline_open = self.editor.cmline_open();
+        let (crr, crg, crb) = self.editor.caret_color();
+        let caret_shape = self.editor.caret_shape();
+
+        // Compose the visible rows into one monospace block; count how many actually rendered.
+        let mut text = String::new();
+        let mut row_count = 0usize;
+        {
+            let buf = self.editor.doc(self.editor.active_index());
+            for r in 0..visible_rows {
+                let base = (top_row + r) * hex::BYTES_PER_ROW;
+                if base > total {
+                    break;
+                }
+                let end = (base + hex::BYTES_PER_ROW).min(total);
+                let bytes = buf.slice_bytes(base, end);
+                if r > 0 {
+                    text.push('\n');
+                }
+                text.push_str(&hex::format_row(&bytes, base, &enc));
+                row_count += 1;
+            }
+        }
+
+        // Canvas: opaque `BGCOLOR` fill.
+        let mut canvas = vec![0u8; wp * hp * 4];
+        for px in canvas.chunks_exact_mut(4) {
+            px.copy_from_slice(&[br, bgc, bb, 255]);
+        }
+
+        // Cosmic buffer: shape once, measure the true monospace advance, then draw.
+        let text_c = CColor::rgb(fr, fgc, fbc);
+        let attrs = match &fam {
+            Some(n) => Attrs::new().family(Family::Name(n)),
+            None => Attrs::new().family(Family::Monospace),
+        }
+        .weight(e_weight)
+        .style(e_style)
+        .color(text_c);
+        let mut cbuf = Buffer::new(&mut self.font_system, Metrics::new(self.font_size * scale, lh_px));
+        cbuf.set_wrap(Wrap::None);
+        cbuf.set_size(Some(wp as f32), Some(hp as f32));
+        cbuf.set_text(&text, &attrs, Shaping::Advanced, None);
+        cbuf.shape_until_scroll(&mut self.font_system, false);
+        // Exact cell width from the offset gutter's consecutive monospace glyphs; fall back to the
+        // 0.6·em approximation the editor caret uses if a row somehow lays out fewer than two glyphs.
+        let mut cell_w = self.font_size * scale * 0.6;
+        for run in cbuf.layout_runs() {
+            if run.glyphs.len() >= 2 {
+                let dx = (run.glyphs[1].x - run.glyphs[0].x).abs();
+                if dx > 0.0 {
+                    cell_w = dx;
+                }
+                break;
+            }
+        }
+        self.hex_cell_w = cell_w; // remembered for the mouse hit-test (see `hex_hit`)
+
+        // Selection band: each selected byte's hex pair + text glyph, painted BEHIND the glyphs.
+        if let Some((a, b)) = sel {
+            let (a, b) = (a.min(total), b.min(total));
+            let cellw_i = cell_w as i32;
+            let lh_i = lh_px as i32;
+            for off in a..b {
+                let row = off / hex::BYTES_PER_ROW;
+                if row < top_row || row >= top_row + row_count {
+                    continue;
+                }
+                let ry = ((row - top_row) as f32 * lh_px) as i32;
+                let i = off % hex::BYTES_PER_ROW;
+                let hx = (hex::hex_digit_col(i) as f32 * cell_w) as i32;
+                fill_blend(&mut canvas, wp, hp, hx, ry, hx + 2 * cellw_i, ry + lh_i, selr, selg, selb, 1.0);
+                let tx = (hex::text_col(i) as f32 * cell_w) as i32;
+                fill_blend(&mut canvas, wp, hp, tx, ry, tx + cellw_i, ry + lh_i, selr, selg, selb, 1.0);
+            }
+        }
+
+        // Glyphs.
+        cbuf.draw(&mut self.font_system, &mut self.swash, text_c, |x, y, cw, ch, color| {
+            blend_cell(&mut canvas, wp, hp, x, y, cw, ch, color);
+        });
+
+        // Caret at the byte offset (hidden while the command line is focused, like the text caret).
+        if !cmline_open && caret_row >= top_row && caret_row < top_row + row_count {
+            let ry = ((caret_row - top_row) as f32 * lh_px) as i32;
+            let i = caret % hex::BYTES_PER_ROW;
+            let cx = (hex::hex_digit_col(i) as f32 * cell_w) as i32;
+            let cellw_i = cell_w as i32;
+            let lh_i = lh_px as i32;
+            let bar = (2.0 * scale).round().max(1.0) as i32;
+            let (x0, x1, y0, y1, alpha) = match caret_shape {
+                CaretShape::Bar => (cx, cx + bar, ry, ry + lh_i, 255u16),
+                CaretShape::Block => (cx, cx + 2 * cellw_i, ry, ry + lh_i, 115u16), // covers the whole hex pair
+                CaretShape::Underline => (cx, cx + 2 * cellw_i, ry + lh_i - bar, ry + lh_i, 255u16),
+            };
+            for py in y0..y1 {
+                for px in x0..x1 {
+                    if px < 0 || py < 0 || px as usize >= wp || py as usize >= hp {
+                        continue;
+                    }
+                    let idx = (py as usize * wp + px as usize) * 4;
+                    if alpha >= 255 {
+                        canvas[idx] = crr;
+                        canvas[idx + 1] = crg;
+                        canvas[idx + 2] = crb;
+                    } else {
+                        let al = alpha as f32 / 255.0;
+                        for (c, s) in [(0usize, crr as f32), (1, crg as f32), (2, crb as f32)] {
+                            let d = canvas[idx + c] as f32;
+                            canvas[idx + c] = (s * al + d * (1.0 - al)).round() as u8;
+                        }
+                    }
+                }
+            }
+        }
+
+        egui::ColorImage::from_rgba_premultiplied([wp, hp], &canvas)
+    }
+
     /// Composite renderer for a SPLIT layout: raster each pane into its sub-rect of one big canvas via
     /// swap-state (point `active`/`pane_view` at each pane, render, restore), then paint the dividers
     /// and a border around the focused pane. `w`/`h` are POINTS, like [`render_canvas`]. Single-pane
@@ -4574,6 +4758,13 @@ impl GuiApp {
     /// Otherwise return `false` so the caller runs the verb as written (the logical by-line move,
     /// which is what the cmline / a listing / a script wants). This is what makes a key bound to
     /// `LD` behave like the Down arrow instead of jumping over a wrapped line's continuation rows.
+    /// Whether the active document is in the hex-dump view (`HEX on`). The runtime reads this to keep
+    /// the vertical-nav keys CAPTURED in hex view (so they run the host's byte-row motion) instead of
+    /// handing them to egui's wrap-aware text scrolling, which is meaningless over a hex grid.
+    fn hex_view(&self) -> bool {
+        self.editor.hex_view()
+    }
+
     fn try_visual_vmotion(&mut self, xpl: &str) -> bool {
         let mut words = xpl.split_whitespace();
         let down = match words.next().map(|w| w.to_ascii_uppercase()).as_deref() {
@@ -4588,6 +4779,11 @@ impl GuiApp {
             _ => return false,
         };
         if self.editor.cmline_open() || self.modal_owns_keyboard() || self.active_is_dir_listing() {
+            return false;
+        }
+        // Hex view moves the caret by a whole grid ROW (±16 bytes), not by a visual text row — let the
+        // verb run as an ordinary command so the host's hex byte-motion handles it.
+        if self.editor.hex_view() {
             return false;
         }
         self.visual_vmove(down, extend);
@@ -4796,11 +4992,33 @@ impl GuiApp {
         }
     }
 
+    /// HEX view: map a device-pixel point `(x, y)` within the canvas to a byte offset, using the grid
+    /// geometry (`scroll_line` = top row; row height = the scaled line height; cell width = the advance
+    /// measured by `render_hex_canvas`). The column → byte-within-row inverse lives in
+    /// [`xyscript_app::hex::byte_at_col`]; the result is clamped to the document length.
+    fn hex_hit(&self, x: f32, y: f32) -> Option<usize> {
+        let s = self.render_scale;
+        let lh_px = self.line_height * s;
+        let cell_w = if self.hex_cell_w > 0.0 { self.hex_cell_w } else { (self.font_size * s * 0.6).max(1.0) };
+        if lh_px <= 0.0 {
+            return None;
+        }
+        let row_rel = (y.max(0.0) / lh_px).floor() as usize;
+        let row = self.pane_view.scroll_line + row_rel;
+        let col = (x.max(0.0) / cell_w) as usize;
+        let i = xyscript_app::hex::byte_at_col(col);
+        let total = self.editor.doc(self.editor.active_index()).len();
+        Some((row * xyscript_app::hex::BYTES_PER_ROW + i).min(total))
+    }
+
     /// Pixel (in canvas space) → document **rope** byte offset, via cosmic-text
     /// hit-testing. The hit lands in decoded-string space; map it back to a rope
     /// offset (they differ under single-byte views) before it becomes a caret.
     /// Map a click at PIXEL offset `(x, y)` within the canvas to a rope offset.
     fn hit(&mut self, x: f32, y: f32) -> Option<usize> {
+        if self.editor.hex_view() {
+            return self.hex_hit(x, y);
+        }
         let (w, h) = self.pane_view.canvas_px; // PIXELS
         let (buffer, win) = self.windowed_buffer(w, h);
         // WRAPINDENT: a continuation row is drawn shifted right by its indent, so undo that on the
@@ -4820,6 +5038,9 @@ impl GuiApp {
     /// font (no cell-width guessing). Falls back to `hit` when the point is left/right of the row's
     /// glyphs, on an empty row, or off the text entirely.
     fn hit_leading(&mut self, x: f32, y: f32) -> Option<usize> {
+        if self.editor.hex_view() {
+            return self.hex_hit(x, y); // a byte IS its own leading edge in the grid
+        }
         let (w, h) = self.pane_view.canvas_px; // PIXELS
         let (buffer, win) = self.windowed_buffer(w, h);
         // WRAPINDENT: undo the continuation row's draw shift before matching against its glyphs.
@@ -4837,6 +5058,11 @@ impl GuiApp {
     /// under `(x, y)`. Anchors a LEFTWARD drag-select on the pressed character: with the anchor at the
     /// char's right edge, a drag to the left encloses it (mirror of `hit_leading` for rightward drags).
     fn hit_trailing(&mut self, x: f32, y: f32) -> Option<usize> {
+        if self.editor.hex_view() {
+            // Trailing edge = just past the pressed byte, so a leftward drag encloses it.
+            let total = self.editor.doc(self.editor.active_index()).len();
+            return self.hex_hit(x, y).map(|b| (b + 1).min(total));
+        }
         let (w, h) = self.pane_view.canvas_px; // PIXELS
         let (buffer, win) = self.windowed_buffer(w, h);
         let x = x - self.wi_offset_at_y(y) + self.pane_view.scroll_h;
@@ -8977,7 +9203,9 @@ impl GuiApp {
         if self.find_dialog.is_some() {
             self.refresh_find_highlights();
         }
-        let img = if multi {
+        let img = if !multi && self.editor.hex_view() {
+            self.render_hex_canvas(w, h)
+        } else if multi {
             self.render_canvas_panes(w, h)
         } else {
             self.render_canvas(w, h)

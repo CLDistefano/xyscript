@@ -28,6 +28,26 @@ pub fn text_col(i: usize) -> usize {
 /// Total width, in char cells, of a full row (`text_col(last) + 1`) — the canvas is sized to this.
 pub const ROW_WIDTH: usize = 60 + BYTES_PER_ROW;
 
+/// Inverse of the column layout for mouse hit-testing: the byte index (`0..BYTES_PER_ROW`) that a
+/// character column falls on, whether the column is in the hex-pair area or the text area. Columns in
+/// the offset gutter map to byte 0; columns past the last text glyph clamp to the last byte. Each hex
+/// pair owns a 3-column slot (two digits + the trailing space/group-gap); the text area is one column
+/// per byte.
+pub fn byte_at_col(col: usize) -> usize {
+    // Text area (unambiguous): one column per byte.
+    if col >= text_col(0) {
+        return (col - text_col(0)).min(BYTES_PER_ROW - 1);
+    }
+    // Hex area: the pair whose 3-column slot (from its first digit) contains `col`. Scanning low→high
+    // also folds the gutter (col < 10 → byte 0) and the group gap onto the adjacent byte.
+    for i in 0..BYTES_PER_ROW {
+        if col < hex_digit_col(i) + 3 {
+            return i;
+        }
+    }
+    BYTES_PER_ROW - 1
+}
+
 /// The text-column glyph for a byte, decoded through `enc`. Control / non-printable bytes — and any
 /// byte the encoding can't represent as one printable char (e.g. a lone 0x80+ under UTF-8) — render
 /// as `.`. Single-byte code pages (CP437, Latin-1, …) show their high-byte glyphs.
@@ -102,6 +122,20 @@ mod tests {
         assert_eq!(chars[text_col(1)], 'b');
         // Nothing padded into the text column beyond the present bytes.
         assert_eq!(row.chars().count(), text_col(1) + 1);
+    }
+
+    #[test]
+    fn byte_at_col_inverts_the_layout_for_both_areas() {
+        // Each byte's own hex digits map back to its index.
+        for i in 0..BYTES_PER_ROW {
+            assert_eq!(byte_at_col(hex_digit_col(i)), i, "hex hi-digit of byte {i}");
+            assert_eq!(byte_at_col(hex_digit_col(i) + 1), i, "hex lo-digit of byte {i}");
+            assert_eq!(byte_at_col(text_col(i)), i, "text glyph of byte {i}");
+        }
+        // Gutter columns fold onto byte 0; far-right columns clamp to the last byte.
+        assert_eq!(byte_at_col(0), 0);
+        assert_eq!(byte_at_col(5), 0);
+        assert_eq!(byte_at_col(ROW_WIDTH + 20), BYTES_PER_ROW - 1);
     }
 
     #[test]

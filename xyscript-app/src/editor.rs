@@ -4725,6 +4725,34 @@ mod tests {
     }
 
     #[test]
+    fn hex_view_navigates_by_byte_and_blocks_edits() {
+        let cur = |e: &Editor| e.doc(e.active_index()).cursor();
+        let len = |e: &Editor| e.doc(e.active_index()).len();
+        let mut e = ed();
+        // 40 bytes — spans three 16-byte grid rows.
+        e.run_command(r#"insert "0123456789abcdefghijklmnopqrstuvwxyzABCD""#);
+        e.run_command("HEX on");
+        e.run_command("TOP");
+        assert_eq!(cur(&e), 0);
+        e.run_command("RIGHT");
+        assert_eq!(cur(&e), 1, "Right = +1 byte");
+        e.run_command("DOWN");
+        assert_eq!(cur(&e), 17, "Down = +16 bytes (one grid row)");
+        e.run_command("UP");
+        assert_eq!(cur(&e), 1, "Up = -16 bytes");
+        e.run_command("LEFT");
+        assert_eq!(cur(&e), 0, "Left clamps at the start");
+        // Phase-1 read-only: content edits are rejected, so the byte count is unchanged.
+        let before = len(&e);
+        e.run_command(r#"insert "X""#);
+        assert_eq!(len(&e), before, "hex view blocks inserts (read-only)");
+        // Turning hex off restores editability.
+        e.run_command("HEX off");
+        e.run_command(r#"insert "X""#);
+        assert_eq!(len(&e), before + 1, "edits resume once hex view is off");
+    }
+
+    #[test]
     fn find_replace_overwrites_the_match_even_under_persistent_selection() {
         let text = |e: &Editor| e.doc(e.active_index()).text();
         // The Find dialog's single Replace uses replace_selection, which overwrites the selected match
