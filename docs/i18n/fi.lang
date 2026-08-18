@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fi.lang
-# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -114,6 +114,7 @@ menu.document.encoding.convert_to = Muunna muotoon (uusi tiedosto)   # Convert t
 menu.document.line_endings = Rivinvaihdot   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.hex_view =    # Hex view
 menu.document.read_only = Vain luku   # Read-only
 menu.document.word_count = Sanamäärä   # Word count
 menu.document.char_count = Merkkimäärä   # Character count
@@ -309,4 +310,5 @@ msg.search.not_found = ei löytynyt: {find}   # not found: {find}
 msg.save.written = tallennettu {name}   # saved {name}
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
 msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
+msg.hex_readonly =    # hex view is read-only (HEX off to edit)
 msg.grep.searching = GREP: etsitään…   # GREP: searching…

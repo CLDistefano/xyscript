@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\el.lang
-# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -114,6 +114,7 @@ menu.document.encoding.convert_to = Μετατροπή σε (νέο αρχείο
 menu.document.line_endings = Τέλη γραμμών   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.hex_view =    # Hex view
 menu.document.read_only = Μόνο για ανάγνωση   # Read-only
 menu.document.word_count = Καταμέτρηση λέξεων   # Word count
 menu.document.char_count = Καταμέτρηση χαρακτήρων   # Character count
@@ -309,4 +310,5 @@ msg.search.not_found = δεν βρέθηκε: {find}   # not found: {find}
 msg.save.written = αποθηκεύτηκε {name}   # saved {name}
 msg.open.not_found = το αρχείο δεν βρέθηκε: {path}   # file not found: {path}
 msg.readonly = το έγγραφο είναι μόνο για ανάγνωση (RO για ξεκλείδωμα)   # document is read-only (RO to unlock)
+msg.hex_readonly =    # hex view is read-only (HEX off to edit)
 msg.grep.searching = GREP: αναζήτηση…   # GREP: searching…

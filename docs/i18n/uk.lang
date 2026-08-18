@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\uk.lang
-# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -118,6 +118,7 @@ menu.document.encoding.convert_to = Перетворити на (новий фа
 menu.document.line_endings = Символи кінця рядка   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
+menu.document.hex_view =    # Hex view
 menu.document.read_only = Лише для читання   # Read-only
 menu.document.word_count = Кількість слів   # Word count
 menu.document.char_count = Кількість символів   # Character count
@@ -315,4 +316,5 @@ msg.search.not_found = не знайдено: {find}   # not found: {find}
 msg.save.written = збережено {name}   # saved {name}
 msg.open.not_found = файл не знайдено: {path}   # file not found: {path}
 msg.readonly = документ лише для читання (RO щоб розблокувати)   # document is read-only (RO to unlock)
+msg.hex_readonly =    # hex view is read-only (HEX off to edit)
 msg.grep.searching = GREP: пошук…   # GREP: searching…
