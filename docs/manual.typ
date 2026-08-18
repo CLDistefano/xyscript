@@ -892,7 +892,9 @@ view*). It is a per-document mode: each tab remembers its own setting, and #raw(
 canvas becomes the familiar hex-dump grid — an 8-digit offset gutter, sixteen bytes per row as hex pairs
 (grouped 8 + 8), then a text column showing each byte through the current encoding
 (non-printable bytes as `.`). Everything text-only — wrapping, styling, spell-check, syntax highlighting
-— steps aside; this is a view of the bytes themselves.
+— steps aside; this is a view of the bytes themselves. To open a file directly in the hex view, add #raw("/HEX") to any of the
+open commands — #raw("OPEN/HEX <file>"), #raw("CA/HEX"), #raw("ED/HEX"), #raw("EDIT/HEX"), or
+#raw("READ/HEX") (read-only).
 
 *Navigating* is by byte: ←/→ move one byte, ↑/↓ move a whole row (sixteen bytes), Home/End jump to the
 row's edges, PgUp/PgDn a screen, and a drag selects a byte range. A click lands the caret on the exact

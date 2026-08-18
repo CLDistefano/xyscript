@@ -178,7 +178,7 @@ impl Editor {
     // Each returns the status message on success or the (trappable) error text.
 
     pub fn open(&mut self, path: &str) -> Result<String, String> {
-        op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false }))
+        op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false, hex: false }))
     }
     pub fn save(&mut self) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Save(None)))
@@ -4820,6 +4820,23 @@ mod tests {
         e.run_command("HEX off");
         e.run_command(r#"insert "X""#);
         assert_eq!(len(&e), before + 1, "text edits resume once hex view is off");
+    }
+
+    #[test]
+    fn open_and_read_hex_switch_open_in_hex_view() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // OPEN/HEX of a (new) file opens straight into the hex view.
+        e.run_command("OPEN/HEX newbin.dat");
+        assert!(e.hex_view(), "OPEN/HEX opens in hex view");
+        // A plain OPEN (no /HEX) stays in the normal text view.
+        e.run_command("OPEN another.txt");
+        assert!(!e.hex_view(), "plain OPEN is the text view");
+        // READ/HEX of an existing file: hex view AND read-only.
+        e.host_mut().files.insert("data.bin".to_string(), "ABCD".to_string());
+        e.run_command("READ/HEX data.bin");
+        assert!(e.hex_view(), "READ/HEX opens in hex view");
+        assert!(e.active_read_only(), "READ opens read-only");
     }
 
     #[test]

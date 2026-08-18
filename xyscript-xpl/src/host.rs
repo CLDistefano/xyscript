@@ -175,12 +175,13 @@ pub enum EditorOp {
     /// informational "already exists" status.
     NewNamed { path: String },
     /// Open a file into a tab (`OPEN <path>`). `force` (`OPEN/NV`) skips the "already open in
-    /// another tab?" prompt and opens a fresh tab unconditionally.
-    Open { path: String, force: bool },
+    /// another tab?" prompt and opens a fresh tab unconditionally. `hex` (`OPEN/HEX`) opens the file
+    /// straight into the hex + text view.
+    Open { path: String, force: bool, hex: bool },
     /// Open an EXISTING file in a read-only tab (`READ <path>`). Unlike `Open`, a missing file is a
     /// trappable error (not a new buffer); the opened doc is locked (toggle off with `RO`). `force`
-    /// (`READ/NV`) skips the already-open prompt.
-    OpenReadOnly { path: String, force: bool },
+    /// (`READ/NV`) skips the already-open prompt. `hex` (`READ/HEX`) opens it in the hex view.
+    OpenReadOnly { path: String, force: bool, hex: bool },
     /// Change the editor's working directory (`CD <path>`; `/D` is accepted and
     /// harmless since the cwd is managed in-process). Relative paths resolve against
     /// the current cwd.

@@ -1070,7 +1070,7 @@ impl Vm<'_, '_> {
             }
             Err(fatal) => return Err(fatal),
         }
-        self.host_op(EditorOp::Open { path: path.clone(), force: true })?; // open the result, no prompt
+        self.host_op(EditorOp::Open { path: path.clone(), force: true, hex: false })?; // open the result, no prompt
         if !self.ctx.env.error {
             *self.ctx.status =
                 Some(format!("PRINTEX: expanded {count} field{plural} to {path} (opened)"));
@@ -1776,10 +1776,12 @@ impl Vm<'_, '_> {
                     self.host_op(EditorOp::PaneSplitNew { stacked })?;
                 }
                 let force = split.is_some() || vswitches.iter().any(|s| s.eq_ignore_ascii_case("NV"));
+                // `/HEX` — open the file straight into the hex + text view.
+                let hex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HEX"));
                 if p.is_empty() {
                     self.host_op(EditorOp::OpenPrompt)?;
                 } else {
-                    self.host_op(EditorOp::Open { path: p.to_string(), force })?;
+                    self.host_op(EditorOp::Open { path: p.to_string(), force, hex })?;
                 }
                 Ok(Flow::Next)
             }
@@ -1799,7 +1801,8 @@ impl Vm<'_, '_> {
                     self.host_op(EditorOp::PaneSplitNew { stacked })?;
                 }
                 let force = vswitches.iter().any(|s| s.eq_ignore_ascii_case("NV"));
-                self.host_op(EditorOp::OpenReadOnly { path: args.trim().to_string(), force })?;
+                let hex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HEX"));
+                self.host_op(EditorOp::OpenReadOnly { path: args.trim().to_string(), force, hex })?;
                 Ok(Flow::Next)
             }
             // `SAVE`/`SA` (no arg) saves the active file in place. `SAVE <filename>` writes a
@@ -5051,7 +5054,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "CARETSKIP" => &["R", "W", "A"], // same match flags as CARETNEXT
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
-        "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V"],
+        "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V", "HEX"],
         "SW" | "SHELLWIN" => &["H", "V"], // `/H` `/V` — show *Shell Output* in a split pane
 
         "CD" => &["D"], // `/D` (change-drive) — accepted, harmless (cwd is in-process)

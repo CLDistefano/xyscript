@@ -1402,6 +1402,7 @@ struct PendingOpen {
     path: String,
     existing: usize,
     read_only: bool,
+    hex: bool,
 }
 
 /// Which font the GUI font-picker dialog targets (`EDFONTS`/`UIFONTS`/`TXTFONTS`). The dialog is
@@ -6343,7 +6344,7 @@ impl AppHost {
     /// Load `path` into a new tab (the shared body of `OPEN`/`READ`, with the already-open check
     /// already done). `read_only` locks the tab and makes a missing file an error (vs `OPEN`, which
     /// starts a new buffer for a missing file).
-    fn open_doc(&mut self, path: &str, read_only: bool) -> VmResult<Value> {
+    fn open_doc(&mut self, path: &str, read_only: bool, hex: bool) -> VmResult<Value> {
         let target: PathBuf =
             if self.virtual_fs { PathBuf::from(path) } else { self.resolve_path(path) };
         let key = target.to_string_lossy().into_owned();
@@ -6377,6 +6378,7 @@ impl AppHost {
             let name = doc.file_name().unwrap_or_else(|| key.clone());
             format!("new file {name}")
         };
+        doc.set_hex_view(hex); // `/HEX` — open straight into the hex + text view
         self.add_opened_doc(doc);
         // Leave the caret IN the opened text (not the command line), so the user is editing the
         // file immediately — even when OPEN/READ was run from the cmline. Matches DIR's behavior.
@@ -6407,8 +6409,8 @@ impl AppHost {
                 self.set_active(i);
                 Ok(Value::str("switched to the open copy"))
             }
-            OpenAnswer::Yes => self.open_doc(&p.path, p.read_only),
-            OpenAnswer::Read => self.open_doc(&p.path, true),
+            OpenAnswer::Yes => self.open_doc(&p.path, p.read_only, p.hex),
+            OpenAnswer::Read => self.open_doc(&p.path, true, p.hex),
         }
     }
 
@@ -6627,7 +6629,7 @@ impl AppHost {
         if let Some(idx) = self.find_open_tab(&path_str) {
             self.set_active(idx);
         } else {
-            self.open_doc(&path_str, false)?;
+            self.open_doc(&path_str, false, false)?;
         }
         if let Some(phrase) = emph {
             self.active().set_emph(Some(phrase), emph_regex);
@@ -8508,7 +8510,7 @@ impl Host for AppHost {
                         self.set_active(idx); // switch tab + focus the document
                         return Ok(Value::str(format!("{path} already exists (switched to open tab)")));
                     }
-                    self.open_doc(&key, false)?; // loads it into a tab
+                    self.open_doc(&key, false, false)?; // loads it into a tab
                     return Ok(Value::str(format!("{path} already exists — opened")));
                 }
                 // New file: a fresh empty buffer named for it, ready to SAVE.
@@ -8519,7 +8521,7 @@ impl Host for AppHost {
                 self.set_focus(Target::Document); // caret in the fresh buffer, not the cmline
                 return Ok(Value::str(format!("new file {name}")));
             }
-            EditorOp::Open { path, force } => {
+            EditorOp::Open { path, force, hex } => {
                 if path.trim().is_empty() {
                     return Err(XplError::trappable("OPEN: a path is required"));
                 }
@@ -8533,20 +8535,21 @@ impl Host for AppHost {
                             self.set_active(i);
                             return Ok(Value::str("switched to the open copy"));
                         }
-                        self.pending_open = Some(PendingOpen { path, existing, read_only: false });
+                        self.pending_open =
+                            Some(PendingOpen { path, existing, read_only: false, hex });
                         return Ok(Value::str("")); // prompt surfaced via `open_prompt`
                     }
                 }
-                return self.open_doc(&path, false);
+                return self.open_doc(&path, false, hex);
             }
-            EditorOp::OpenReadOnly { path, force: _ } => {
+            EditorOp::OpenReadOnly { path, force: _, hex } => {
                 // `READ <path>` — open an EXISTING file in a locked (read-only) tab. For XyWrite
                 // parity, READ ALWAYS opens a fresh copy with no "already open?" prompt, so you can
                 // hold several read-only views of the same file at once (`/NV` is thus a no-op here).
                 if path.trim().is_empty() {
                     return Err(XplError::trappable("READ: a filename is required"));
                 }
-                return self.open_doc(&path, true);
+                return self.open_doc(&path, true, hex);
             }
             EditorOp::BlindEdit(path) => {
                 if self.blind.is_some() {
@@ -11958,7 +11961,7 @@ impl Host for AppHost {
             self.set_active(idx); // already open → just switch to it
             return Ok(format!("switched to {path}"));
         }
-        let msg = self.open_doc(path, false)?; // opens + focuses the document
+        let msg = self.open_doc(path, false, false)?; // opens + focuses the document
         let len = self.active().buffer().len();
         self.set_active_caret(caret.min(len), None); // restore caret (clamped; byte-rope, any offset valid)
         Ok(msg.to_str())

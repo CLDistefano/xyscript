@@ -816,7 +816,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 == O
 
 / #cmd("OF") / #cmd("OFL") / #cmd("OFR"): set both margins / the left margin / the right margin, in columns (`+n`/`-n` adjusts).
-/ #cmd("OPEN", "CA", "ED", "EDIT"): open a file (bare = the GUI open dialog). `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/NV` reopens without the "already open?" prompt.
+/ #cmd("OPEN", "CA", "ED", "EDIT"): open a file (bare = the GUI open dialog). `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/NV` reopens without the "already open?" prompt; `/HEX` opens it straight into the #cmd("HEX") view.
 
 == P
 
@@ -848,7 +848,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("RC"): delete the character after the caret (forward delete).
 / #cmd("RD"): delete the selection into the deletion buffer; #cmd("UD") pastes it back.
 / #cmd("RE") / #cmd("RL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete from the caret to end-of-line / the line / the word / the sentence / the paragraph.
-/ #cmd("READ"): open an existing file in a read-only tab (unlock it with `RO`); a missing file is an error. Always opens a fresh copy — no "already open?" prompt — so you can hold several read-only views of one file. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab.
+/ #cmd("READ"): open an existing file in a read-only tab (unlock it with `RO`); a missing file is an error. Always opens a fresh copy — no "already open?" prompt — so you can hold several read-only views of one file. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/HEX` opens it in the #cmd("HEX") view.
 / #cmd("READKEY", "RK"): pause for a single keystroke into a variable — `READKEY <var> [message]`. With a `message` (a quoted string; `\n` for line breaks), it pops a modal box showing the message while it waits (handy for a keypress menu: `READKEY k "Pick:\nA\nB\nC"` then `SWITCH UPPER($k)`). A bare modifier press (Shift / Ctrl / Alt / …) is ignored — it waits for a real key. That key's scancode lands in #sv("SC"), and #sv("SCC") holds the *computed* scancode (the scancode plus the bit value of any held modifier keys), so a script can tell a plain key from its Shift / Ctrl / Alt-modified form (e.g. `SWITCH $SCC` or `KEY($SCC)`). With `/D` (`READKEY/D <var>`) the variable instead gets a readable *description* of the key — the held modifiers (named and bit-valued exactly as the loaded KBD file defines them — the built-in default uses `CTRL` / `ALT` / `SHIFT` / `CAPS`, and any user-defined modifier such as `HOTKEY` is recognised) joined with `+` to the key label, e.g. `CTRL+Y`, `SHIFT+F3`, `HOTKEY+A`, `Enter`, `A` — handy for showing the user which key they pressed.
 / #cmd("REC", "RECALL"): revert the document to its last saved state.
 / #cmd("REOPEN"): choose a recently-closed file from a list to reopen, restoring the caret to where it was (in the GUI: #emph[File ▸ Reopen closed…]). `REOPEN <n>` skips the picker and reopens the first `n` closed files straight away (`REOPEN 1` = the most recent; `n` is clamped to the list length, and the most-recent of the batch ends up active). (The list is `SaveCfg`-persisted; see `SaveClosed`/`LoadClosed`.) #cmd("CLEARCLOSED"): empty the recently-closed list.
