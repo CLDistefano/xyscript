@@ -1779,7 +1779,7 @@ impl Vm<'_, '_> {
                 // `/HEX` — open the file straight into the hex + text view.
                 let hex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HEX"));
                 if p.is_empty() {
-                    self.host_op(EditorOp::OpenPrompt)?;
+                    self.host_op(EditorOp::OpenPrompt { hex })?;
                 } else {
                     self.host_op(EditorOp::Open { path: p.to_string(), force, hex })?;
                 }

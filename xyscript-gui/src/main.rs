@@ -517,7 +517,8 @@ enum Act {
 /// while it's open (it stays put), while clicking another application still switches to it.
 #[derive(Clone)]
 enum PendingDialog {
-    Open,
+    /// `hex` = open the picked file in the hex view (`OPEN/HEX` with no path).
+    Open { hex: bool },
     SaveAs,
     Export,
     Run { save: bool, filter: Option<(String, Vec<String>)>, template: String, dir: Option<std::path::PathBuf> },
@@ -6955,7 +6956,7 @@ impl GuiApp {
                 }
             }
             MenuAct::PickOpen => {
-                self.pending_dialog = Some(PendingDialog::Open);
+                self.pending_dialog = Some(PendingDialog::Open { hex: false });
                 None
             }
             MenuAct::PickSaveAs => {
@@ -7010,8 +7011,8 @@ impl GuiApp {
             return; // cancelled — nothing else to do
         };
         match req {
-            PendingDialog::Open => {
-                let r = self.editor.open(&p.to_string_lossy());
+            PendingDialog::Open { hex } => {
+                let r = self.editor.open_hex(&p.to_string_lossy(), hex);
                 self.reset_view();
                 self.note(r);
             }
@@ -7978,8 +7979,8 @@ impl GuiApp {
         if std::mem::take(&mut self.pending_save_as) {
             self.pending_dialog = Some(PendingDialog::SaveAs);
         }
-        if self.editor.take_open_request() {
-            self.pending_dialog = Some(PendingDialog::Open);
+        if let Some(hex) = self.editor.take_open_request() {
+            self.pending_dialog = Some(PendingDialog::Open { hex });
         }
         // `FIND` requests the non-modal Find/Replace dialog (e.g. a bound key or the command line).
         if self.editor.take_find_request() {

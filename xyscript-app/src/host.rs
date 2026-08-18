@@ -2212,8 +2212,9 @@ pub struct AppHost {
     pending_message: Option<(String, Option<u64>)>,
     /// `SAAS` with no path asked for the native Save-As dialog; the GUI drains this.
     save_as_requested: bool,
-    /// `OPEN` with no path asked for the native Open-file dialog; the GUI drains this.
-    open_requested: bool,
+    /// `OPEN` with no path asked for the native Open-file dialog; the GUI drains this. `Some(hex)`
+    /// carries the `/HEX` intent (open the chosen file in the hex view); `None` = no request.
+    open_requested: Option<bool>,
     /// `EDFONTS`/`UIFONTS`/`TXTFONTS` asked for the GUI font-picker dialog; the GUI drains this.
     font_picker_request: Option<FontPickerKind>,
     /// `*COLORS`/`HLCOLORS <kind>` asked for the GUI colour-picker dialog; the GUI drains this.
@@ -2669,7 +2670,7 @@ impl AppHost {
             stopwatch_start: std::time::Instant::now(),
             pending_message: None,
             save_as_requested: false,
-            open_requested: false,
+            open_requested: None,
             find_requested: false,
             grep_dialog_requested: false,
             reveal_center: false,
@@ -3217,8 +3218,10 @@ impl AppHost {
         std::mem::take(&mut self.save_as_requested)
     }
     /// Whether `OPEN` (no path) asked for the native Open-file dialog; consumes the request.
-    pub fn take_open_request(&mut self) -> bool {
-        std::mem::take(&mut self.open_requested)
+    /// Drain a pending native-Open-dialog request: `Some(hex)` when `OPEN` (with no path) asked for
+    /// it — `hex` is the `/HEX` intent — else `None`.
+    pub fn take_open_request(&mut self) -> Option<bool> {
+        self.open_requested.take()
     }
 
     pub fn take_find_request(&mut self) -> bool {
@@ -9303,8 +9306,8 @@ impl Host for AppHost {
                 self.save_as_requested = true;
                 return Ok(Value::str(""));
             }
-            EditorOp::OpenPrompt => {
-                self.open_requested = true;
+            EditorOp::OpenPrompt { hex } => {
+                self.open_requested = Some(hex);
                 return Ok(Value::str(""));
             }
             EditorOp::OpenFind => {

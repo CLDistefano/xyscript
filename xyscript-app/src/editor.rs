@@ -178,7 +178,12 @@ impl Editor {
     // Each returns the status message on success or the (trappable) error text.
 
     pub fn open(&mut self, path: &str) -> Result<String, String> {
-        op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false, hex: false }))
+        self.open_hex(path, false)
+    }
+    /// Like [`open`](Self::open) but opens the file in the hex view when `hex` — the native
+    /// Open dialog's `/HEX` path (a file the user picked via `OPEN/HEX` with no path).
+    pub fn open_hex(&mut self, path: &str, hex: bool) -> Result<String, String> {
+        op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false, hex }))
     }
     pub fn save(&mut self) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Save(None)))
@@ -889,7 +894,8 @@ impl Editor {
         self.host.take_save_as_request()
     }
     /// Whether `OPEN` (no path) requested the native Open-file dialog; consumes the request.
-    pub fn take_open_request(&mut self) -> bool {
+    /// `Some(hex)` carries the `/HEX` intent (open the picked file in the hex view).
+    pub fn take_open_request(&mut self) -> Option<bool> {
         self.host.take_open_request()
     }
     /// Whether `FIND` requested the GUI's Find/Replace dialog; consumes the request.

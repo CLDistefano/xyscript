@@ -187,10 +187,18 @@ fn run_file_dialog(
     use crate::PendingDialog;
     let base = rfd::FileDialog::new().set_parent(window);
     match req {
-        PendingDialog::Open => base
-            .add_filter("Text files", TEXT_EXTENSIONS)
-            .add_filter("All files", &["*"])
-            .pick_file(),
+        PendingDialog::Open { hex } => {
+            // A `/HEX` open is usually a binary, so lead with the All-files filter there.
+            if *hex {
+                base.add_filter("All files", &["*"])
+                    .add_filter("Text files", TEXT_EXTENSIONS)
+                    .pick_file()
+            } else {
+                base.add_filter("Text files", TEXT_EXTENSIONS)
+                    .add_filter("All files", &["*"])
+                    .pick_file()
+            }
+        }
         // Save-As offers the authoring formats plus an All-files escape hatch. The FIRST filter is
         // the default (its first ext is appended to a bare name), so lead with the active document's
         // flavor: Typst first for a Typst doc, else Markdown.

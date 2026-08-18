@@ -316,8 +316,9 @@ pub enum EditorOp {
     /// record the request; the GUI drains it and opens the picker.
     SaveAsPrompt,
     /// Request the GUI's native Open-file dialog (`OPEN` with no path). The GUI drains it and
-    /// opens the chosen file; headless hosts just record the request.
-    OpenPrompt,
+    /// opens the chosen file; headless hosts just record the request. `hex` (`OPEN/HEX` with no
+    /// path) opens whatever the user picks in the hex view.
+    OpenPrompt { hex: bool },
     /// Request the GUI's non-modal Find/Replace dialog (`FIND`). The GUI drains it and opens the
     /// dialog; headless hosts just record the request (it does nothing without a GUI).
     OpenFind,
