@@ -310,5 +310,5 @@ msg.search.not_found = δεν βρέθηκε: {find}   # not found: {find}
 msg.save.written = αποθηκεύτηκε {name}   # saved {name}
 msg.open.not_found = το αρχείο δεν βρέθηκε: {path}   # file not found: {path}
 msg.readonly = το έγγραφο είναι μόνο για ανάγνωση (RO για ξεκλείδωμα)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: αναζήτηση…   # GREP: searching…

@@ -884,6 +884,29 @@ and #raw("»") restored to bytes 174 / 175 (where XyWrite expects them) and the 
 letters relocated, so old XyWrite Cyrillic files read correctly. An unrecognized byte in any single-byte
 encoding is preserved intact through an edit-and-save, never silently dropped.]
 
+== The hex view
+
+When you need to look at — or edit — a file *as raw bytes*, turn on the hex view with #raw("HEX on")
+(bare #raw("HEX") also turns it on; #raw("HEX off") returns to the text view, or use *Document ▸ Hex
+view*). It is a per-document mode: each tab remembers its own setting, and #raw("$HEX") reports it. The
+canvas becomes the familiar hex-dump grid — an 8-digit offset gutter, sixteen bytes per row as hex pairs
+(grouped 8 + 8), then a text column showing each byte through the current encoding
+(non-printable bytes as `.`). Everything text-only — wrapping, styling, spell-check, syntax highlighting
+— steps aside; this is a view of the bytes themselves.
+
+*Navigating* is by byte: ←/→ move one byte, ↑/↓ move a whole row (sixteen bytes), Home/End jump to the
+row's edges, PgUp/PgDn a screen, and a drag selects a byte range. A click lands the caret on the exact
+byte under the pointer, in whichever column — hex or text — you clicked.
+
+*Editing* is in place and *overwrites* by default, so a file keeps its size and its offsets stay put —
+what binary formats need. In the hex column, type the digits #raw("0")–#raw("9") and #raw("a")–#raw("f"):
+the first sets a byte's high nibble, the second its low nibble, then the caret steps on. Press #raw("Tab")
+to jump to the text column, where a typed character sets that byte through the active encoding (so under
+CP437 you can type accented letters, box-drawing characters, and the like). #raw("Insert") adds a
+#raw("00") byte at the caret; #raw("Delete") and #raw("Backspace") remove the byte at or before it, or
+the selection if one is defined. Copy, cut, and paste move raw bytes (paste overwrites at the caret), and
+undo/redo behave as everywhere else. A document locked with #raw("RO") stays read-only here too.
+
 == Line endings
 
 #raw("NEWLINE lf") and #raw("NEWLINE crlf") convert the document's line endings and adopt that style

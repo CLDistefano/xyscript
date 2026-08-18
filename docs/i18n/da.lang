@@ -310,5 +310,5 @@ msg.search.not_found = ikke fundet: {find}   # not found: {find}
 msg.save.written = gemte {name}   # saved {name}
 msg.open.not_found = fil ikke fundet: {path}   # file not found: {path}
 msg.readonly = dokumentet er skrivebeskyttet (RO for at låse op)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: søger…   # GREP: searching…

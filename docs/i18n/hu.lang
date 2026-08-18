@@ -310,5 +310,5 @@ msg.search.not_found = nem található: {find}   # not found: {find}
 msg.save.written = mentve: {name}   # saved {name}
 msg.open.not_found = a fájl nem található: {path}   # file not found: {path}
 msg.readonly = a dokumentum csak olvasható (RO a feloldáshoz)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: keresés…   # GREP: searching…

@@ -316,5 +316,5 @@ msg.search.not_found = nenalezeno: {find}   # not found: {find}
 msg.save.written = uloženo {name}   # saved {name}
 msg.open.not_found = soubor nenalezen: {path}   # file not found: {path}
 msg.readonly = dokument je jen pro čtení (RO pro odemčení)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: hledání…   # GREP: searching…

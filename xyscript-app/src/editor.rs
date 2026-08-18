@@ -250,6 +250,52 @@ impl Editor {
     pub fn hex_view(&self) -> bool {
         self.host.active_doc().hex_view()
     }
+
+    // ---- hex-view editing (Phase 2): the GUI's byte-entry keystrokes route through these ----------
+    /// The hex caret as a byte offset, and the document's byte length.
+    pub fn hex_caret(&self) -> usize {
+        self.host.active_doc().buffer().cursor()
+    }
+    pub fn hex_len(&self) -> usize {
+        self.host.active_doc().buffer().len()
+    }
+    /// Whether the active document is `RO`-locked (blocks even hex editing).
+    pub fn active_read_only(&self) -> bool {
+        self.host.active_doc().read_only()
+    }
+    /// Move the hex caret to an exact byte offset (NO char-boundary snap), clearing any selection.
+    pub fn hex_set_caret(&mut self, byte: usize) {
+        self.host.hex_set_caret(byte);
+    }
+    /// The selected bytes (verbatim), for a hex copy — `None` when nothing is selected.
+    pub fn hex_selection_bytes(&self) -> Option<Vec<u8>> {
+        let b = self.host.active_doc().buffer();
+        b.selection_span().map(|(a, e)| b.slice_bytes(a, e))
+    }
+    /// Set the hi/lo nibble of the byte at the caret (hex-column entry). Undoable.
+    pub fn hex_set_nibble(&mut self, hi: bool, val: u8) {
+        let _ = self.host.editor_op(EditorOp::HexSetNibble { hi, val });
+    }
+    /// Overwrite the whole byte at the caret (text-column entry). Undoable.
+    pub fn hex_overwrite(&mut self, byte: u8) {
+        let _ = self.host.editor_op(EditorOp::HexOverwrite(byte));
+    }
+    /// Insert bytes at the caret (byte insert). Undoable.
+    pub fn hex_insert(&mut self, bytes: Vec<u8>) {
+        let _ = self.host.editor_op(EditorOp::HexInsert(bytes));
+    }
+    /// Delete one byte — at the caret (`before = false`) or before it (`before = true`). Undoable.
+    pub fn hex_delete(&mut self, before: bool) {
+        let _ = self.host.editor_op(EditorOp::HexDelete { before });
+    }
+    /// Paste bytes at the caret in overwrite mode. Undoable.
+    pub fn hex_paste(&mut self, bytes: Vec<u8>) {
+        let _ = self.host.editor_op(EditorOp::HexPaste(bytes));
+    }
+    /// Delete the selected byte range (hex cut). Undoable.
+    pub fn hex_delete_selection(&mut self) {
+        let _ = self.host.editor_op(EditorOp::HexDeleteSelection);
+    }
     pub fn cmline_open(&self) -> bool {
         self.host.target == Target::CmLine
     }
@@ -4766,14 +4812,63 @@ mod tests {
         assert_eq!(cur(&e), 1, "Up = -16 bytes");
         e.run_command("LEFT");
         assert_eq!(cur(&e), 0, "Left clamps at the start");
-        // Phase-1 read-only: content edits are rejected, so the byte count is unchanged.
+        // TEXT edits (typing) are rejected in hex view — only the dedicated hex-edit ops mutate bytes.
         let before = len(&e);
         e.run_command(r#"insert "X""#);
-        assert_eq!(len(&e), before, "hex view blocks inserts (read-only)");
-        // Turning hex off restores editability.
+        assert_eq!(len(&e), before, "hex view blocks text inserts");
+        // Turning hex off restores text editability.
         e.run_command("HEX off");
         e.run_command(r#"insert "X""#);
-        assert_eq!(len(&e), before + 1, "edits resume once hex view is off");
+        assert_eq!(len(&e), before + 1, "text edits resume once hex view is off");
+    }
+
+    #[test]
+    fn hex_editing_overwrites_inserts_deletes_and_undoes() {
+        let bytes = |e: &Editor| {
+            let b = e.doc(e.active_index());
+            b.slice_bytes(0, b.len())
+        };
+        let mut e = ed();
+        e.run_command(r#"insert "ABCD""#); // 0x41 0x42 0x43 0x44
+        e.run_command("HEX on");
+        e.run_command("TOP");
+        // Hex-column nibble entry: set byte 0 to 0x7F (hi=7, then lo=F).
+        e.hex_set_nibble(true, 0x7);
+        e.hex_set_nibble(false, 0xF);
+        assert_eq!(bytes(&e)[0], 0x7F, "two nibbles compose a byte");
+        // Text-column overwrite: whole byte at the caret.
+        e.hex_overwrite(0x00);
+        assert_eq!(bytes(&e)[0], 0x00);
+        // Text typing is still blocked (only hex-edit ops mutate).
+        let before = e.hex_len();
+        e.run_command(r#"insert "z""#);
+        assert_eq!(e.hex_len(), before, "text insert still blocked while editing hex");
+        // Byte insert at the caret (byte 0).
+        e.hex_insert(vec![0xAA]);
+        assert_eq!(bytes(&e), vec![0xAA, 0x00, 0x42, 0x43, 0x44]);
+        // Delete the byte at the caret.
+        e.hex_delete(false);
+        assert_eq!(bytes(&e), vec![0x00, 0x42, 0x43, 0x44]);
+        // Undo restores the deleted byte (each hex edit is one undo unit).
+        e.run_command("UNDO");
+        assert_eq!(bytes(&e), vec![0xAA, 0x00, 0x42, 0x43, 0x44], "undo restores the delete");
+        // Byte copy/paste through the clipboard verbs (COPY/PASTE operate on raw bytes in hex view).
+        // Bytes are now [AA, 00, 42, 43, 44]; select the first two and copy them.
+        e.hex_set_caret(0);
+        e.run_command("RIGHT SEL"); // extend to byte 1
+        e.run_command("RIGHT SEL"); // extend to byte 2 → selection [0,2) = [AA,00]
+        assert_eq!(e.hex_selection_bytes(), Some(vec![0xAA, 0x00]));
+        e.run_command("COPY");
+        // Paste over byte 2 (overwrite): move caret to 2, paste → bytes 2,3 become AA,00.
+        e.hex_set_caret(2);
+        e.run_command("PASTE");
+        assert_eq!(bytes(&e), vec![0xAA, 0x00, 0xAA, 0x00, 0x44], "paste overwrites bytes at the caret");
+        // A real RO lock blocks hex editing too.
+        e.run_command("RO");
+        let locked = bytes(&e);
+        e.hex_overwrite(0x55);
+        e.run_command("PASTE");
+        assert_eq!(bytes(&e), locked, "RO lock blocks hex edits and paste");
     }
 
     #[test]

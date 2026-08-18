@@ -309,5 +309,5 @@ msg.search.not_found = [ñòţ ƒòùñđ: {find} ····]   # not found: {find
 msg.save.written = [šàṽèđ {name} ··]   # saved {name}
 msg.open.not_found = [ƒìĺè ñòţ ƒòùñđ: {path} ······]   # file not found: {path}
 msg.readonly = [đòçùɱèñţ ìš ŕèàđ-òñĺý (ŔÒ ţò ùñĺòçķ) ··············]   # document is read-only (RO to unlock)
-msg.hex_readonly = [ĥèẋ ṽìèŵ ìš ŕèàđ-òñĺý (ĤÈẊ òƒƒ ţò èđìţ) ················]   # hex view is read-only (HEX off to edit)
+msg.hex_readonly = [ĥèẋ ṽìèŵ ìš ŕèàđ-òñĺý ƒòŕ ţèẋţ èđìţš (ĤÈẊ òƒƒ) ··················]   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = [ĜŔÈÞ: šèàŕçĥìñĝ… ······]   # GREP: searching…

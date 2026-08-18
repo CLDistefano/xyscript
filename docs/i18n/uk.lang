@@ -316,5 +316,5 @@ msg.search.not_found = не знайдено: {find}   # not found: {find}
 msg.save.written = збережено {name}   # saved {name}
 msg.open.not_found = файл не знайдено: {path}   # file not found: {path}
 msg.readonly = документ лише для читання (RO щоб розблокувати)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: пошук…   # GREP: searching…

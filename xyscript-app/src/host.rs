@@ -496,11 +496,31 @@ fn op_mutates_buffer(op: &EditorOp) -> bool {
         | EditorOp::Undo(_)
         | EditorOp::Redo(_)
         | EditorOp::AutoReplace
+        | EditorOp::HexSetNibble { .. }
+        | EditorOp::HexOverwrite(_)
+        | EditorOp::HexInsert(_)
+        | EditorOp::HexDelete { .. }
+        | EditorOp::HexPaste(_)
+        | EditorOp::HexDeleteSelection
         | EditorOp::Newline => true,
         EditorOp::Search(spec) => spec.replace.is_some(),
         EditorOp::Clip(ClipKind::Cut | ClipKind::Paste) => true,
         _ => false,
     }
+}
+
+/// The HEX-view editing ops — buffer mutations that ARE allowed while the hex view is on (they are
+/// the intended editing). A genuine `RO` lock still blocks them; only the hex read-only gate defers.
+fn is_hex_edit_op(op: &EditorOp) -> bool {
+    matches!(
+        op,
+        EditorOp::HexSetNibble { .. }
+            | EditorOp::HexOverwrite(_)
+            | EditorOp::HexInsert(_)
+            | EditorOp::HexDelete { .. }
+            | EditorOp::HexPaste(_)
+            | EditorOp::HexDeleteSelection
+    )
 }
 
 /// Return the contents of the Markdown fenced code block that line `cursor_line` sits in
@@ -2045,6 +2065,9 @@ pub struct AppHost {
     pub(crate) explicit_focus: bool,
     /// Clipboard contents (`$CB`) — the joined/OS-visible form.
     clipboard: String,
+    /// HEX-view byte clipboard — raw bytes from a hex copy/cut, byte-faithful (the text clipboard
+    /// would lose non-text bytes). Used only by the hex-view copy/cut/paste branch of `do_clip`.
+    hex_clipboard: Vec<u8>,
     /// Multi-caret clipboard pieces: the N selections a multi-caret COPY/CUT stored, in document
     /// order. When it holds ≥ 2 pieces AND the count matches the carets at PASTE time, paste
     /// DISTRIBUTES piece i → caret i; otherwise paste falls back to `clipboard` at every caret. Any
@@ -2602,6 +2625,7 @@ impl AppHost {
             explicit_focus: false,
             clipboard: String::new(),
             clipboard_pieces: Vec::new(),
+            hex_clipboard: Vec::new(),
             deletion_buffer: String::new(),
             last_selection: String::new(),
             os: std::env::consts::OS.to_string(),
@@ -5718,6 +5742,44 @@ impl AppHost {
     /// selection (trappable error otherwise); paste inserts at the cursor,
     /// replacing any selection. The GUI mirrors `$CB` to/from the OS clipboard.
     fn do_clip(&mut self, kind: ClipKind) -> VmResult<Value> {
+        // HEX view: copy/cut/paste operate on RAW BYTES via a dedicated byte clipboard — the text
+        // clipboard would lose any non-text bytes. Paste overwrites at the caret (keeps file size
+        // stable). `Set` (programmatic) falls through to the normal text path.
+        if self.active_doc().hex_view()
+            && matches!(kind, ClipKind::Copy | ClipKind::Cut | ClipKind::Paste)
+        {
+            match kind {
+                ClipKind::Copy => {
+                    let bytes = {
+                        let b = self.active().buffer();
+                        b.selection_span().map(|(a, e)| b.slice_bytes(a, e))
+                    };
+                    let bytes = bytes.ok_or_else(|| XplError::trappable("no bytes selected"))?;
+                    let n = bytes.len();
+                    self.hex_clipboard = bytes;
+                    return Ok(Value::str(format!("copied {n} byte{}", if n == 1 { "" } else { "s" })));
+                }
+                ClipKind::Cut => {
+                    let removed = self.active().hex_delete_selection();
+                    if removed.is_empty() {
+                        return Err(XplError::trappable("no bytes selected"));
+                    }
+                    let n = removed.len();
+                    self.hex_clipboard = removed;
+                    return Ok(Value::str(format!("cut {n} byte{}", if n == 1 { "" } else { "s" })));
+                }
+                ClipKind::Paste => {
+                    if self.hex_clipboard.is_empty() {
+                        return Ok(Value::str("byte clipboard is empty"));
+                    }
+                    let bytes = self.hex_clipboard.clone();
+                    let n = bytes.len();
+                    self.active().hex_paste(&bytes);
+                    return Ok(Value::str(format!("pasted {n} byte{}", if n == 1 { "" } else { "s" })));
+                }
+                _ => unreachable!("guard restricts to Copy/Cut/Paste"),
+            }
+        }
         // Read the active selection (empty `None` when there isn't one).
         let selection = {
             let b = self.active().buffer();
@@ -7308,6 +7370,13 @@ impl AppHost {
         }
     }
 
+    /// Move the active document's caret to an EXACT byte offset (no char-boundary snap) — the hex
+    /// view's byte-granular caret advance after an edit. Clears any selection.
+    pub fn hex_set_caret(&mut self, byte: usize) {
+        self.capture_last_selection();
+        self.docs[self.active].move_primary_to_byte(byte, false);
+    }
+
     /// Place the command line's caret at rope offset `off` (a GUI mouse click into the
     /// CMline). The cmline is a buffer separate from the document stack, so this is its
     /// own entry point rather than going through [`set_active_caret`].
@@ -8019,12 +8088,17 @@ impl Host for AppHost {
             if self.docs[self.active].read_only() {
                 return Err(XplError::trappable(self.tr_msg("msg.readonly", "document is read-only (RO to unlock)")));
             }
-            // The hex view is read-only for now (Phase 1): edits would corrupt the byte grid. Reject
-            // content mutations with a hex-specific hint. (Motion/selection/copy aren't mutations, so
-            // navigating and selecting bytes still work.)
-            if self.docs[self.active].hex_view() {
+            // In the hex view, TEXT edits (typing, newline, paste-as-text) don't make sense and would
+            // corrupt the grid, so they're rejected — but the dedicated HEX editing ops (nibble /
+            // overwrite / byte insert-delete / byte paste) ARE the intended editing, and undo/redo
+            // replay recorded byte edits, so all of those pass through.
+            // Byte edits, undo/redo replay, AND the clipboard ops (which get a byte branch in
+            // `do_clip`) are the hex-view editing surface; everything else that mutates is a text edit.
+            let hex_ok = is_hex_edit_op(&op)
+                || matches!(op, EditorOp::Undo(_) | EditorOp::Redo(_) | EditorOp::Clip(_));
+            if self.docs[self.active].hex_view() && !hex_ok {
                 return Err(XplError::trappable(
-                    self.tr_msg("msg.hex_readonly", "hex view is read-only (HEX off to edit)"),
+                    self.tr_msg("msg.hex_readonly", "hex view is read-only for text edits (HEX off)"),
                 ));
             }
         }
@@ -10171,6 +10245,31 @@ impl Host for AppHost {
                 // A per-document canvas view mode (hex + text grid); the bytes are untouched.
                 self.docs[self.active].set_hex_view(on);
                 return Ok(Value::str(if on { "hex view on" } else { "hex view off" }.to_string()));
+            }
+            // HEX-view editing (byte-granular; the read-only gate above lets these through in hex view).
+            EditorOp::HexSetNibble { hi, val } => {
+                self.active().hex_set_nibble(hi, val);
+                return Ok(Value::str(""));
+            }
+            EditorOp::HexOverwrite(byte) => {
+                self.active().hex_overwrite(byte);
+                return Ok(Value::str(""));
+            }
+            EditorOp::HexInsert(bytes) => {
+                self.active().hex_insert(&bytes);
+                return Ok(Value::str(""));
+            }
+            EditorOp::HexDelete { before } => {
+                self.active().hex_delete(before);
+                return Ok(Value::str(""));
+            }
+            EditorOp::HexPaste(bytes) => {
+                self.active().hex_paste(&bytes);
+                return Ok(Value::str(""));
+            }
+            EditorOp::HexDeleteSelection => {
+                self.active().hex_delete_selection();
+                return Ok(Value::str(""));
             }
             EditorOp::SetView { flag, kind } => {
                 let slot = match flag {

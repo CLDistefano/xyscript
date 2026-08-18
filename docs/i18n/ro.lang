@@ -316,5 +316,5 @@ msg.search.not_found = negăsit: {find}   # not found: {find}
 msg.save.written = salvat {name}   # saved {name}
 msg.open.not_found = fișier negăsit: {path}   # file not found: {path}
 msg.readonly = documentul este doar-citire (RO pentru deblocare)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: se caută…   # GREP: searching…

@@ -484,6 +484,20 @@ impl Handler {
         let Some(code) = self.key.as_ref().and_then(|k| k.table.to_canonical(native)) else {
             return false;
         };
+        // HEX view: Tab switches the edit column (hex pairs ↔ text). Handle it HERE, before the KBD
+        // resolver (a bound `TAB` verb would insert a tab) AND before egui (which hijacks Tab for
+        // focus navigation, so it never reaches the canvas). Plain Tab only; Ctrl/Alt+Tab fall through.
+        const TAB_CODE: u8 = 15;
+        if matches!(ev.state, ElementState::Pressed)
+            && code == TAB_CODE
+            && self.app.hex_view()
+            && !self.mods.control_key()
+            && !self.mods.alt_key()
+        {
+            self.app.hex_toggle_column();
+            self.request_redraw();
+            return true; // consumed — don't run the verb or forward to egui
+        }
         let consumed = {
             let Some(key) = self.key.as_mut() else {
                 return false;
@@ -515,7 +529,13 @@ impl Handler {
                         // In the HEX view the vertical-nav keys must be CAPTURED (they drive the host's
                         // byte-row motion — ↑/↓ = ±16 bytes, PgUp/PgDn = ±a screen); handing them to
                         // egui would run wrap-aware TEXT scrolling over a grid that has no text layout.
+                        // The byte-DELETE keys go the other way: Backspace/Delete must reach egui in the
+                        // hex view (they run the GUI's byte delete), not the KBD's text-delete verb.
+                        // (Tab is handled earlier — egui would hijack it here, so it can't come this way.)
+                        let hex_edit_key =
+                            self.app.hex_view() && (code == BACKSPACE || DELETE_CODES.contains(&code));
                         let egui_owns = ALWAYS_EGUI.contains(&code)
+                            || hex_edit_key
                             || (nav_key && !modified && is_gui_motion(&xpl) && !self.app.hex_view());
                         let capture = should_capture(code, &key.resolver, key.passthrough_mask)
                             || (!is_typing_cell(&xpl) && !egui_owns);

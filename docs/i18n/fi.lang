@@ -310,5 +310,5 @@ msg.search.not_found = ei löytynyt: {find}   # not found: {find}
 msg.save.written = tallennettu {name}   # saved {name}
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
 msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: etsitään…   # GREP: searching…

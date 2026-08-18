@@ -1618,6 +1618,86 @@ impl Document {
         self.buffer.set_caret(end, Some(start));
     }
 
+    // ---- hex-view editing (raw bytes, byte-granular; see `hex.rs` + the HEX view) --------------
+    // Overwrite is the default (keeps file size + offsets stable, which matters for binary formats);
+    // insert/delete are available. Every edit here is byte-faithful (no re-encoding) and recorded for
+    // undo. The caret is a byte offset, so these rest on any byte boundary — matching the grid.
+
+    /// Core raw-byte recorded edit: at byte `at`, remove `remove` bytes and splice `insert` verbatim,
+    /// then place the caret at `caret` (clamped). Records the inverse for undo. All the hex editors
+    /// below funnel through here.
+    fn hex_write(&mut self, at: usize, remove: usize, insert: &[u8], caret: usize) {
+        self.buffer.commit_define();
+        let removed = self.buffer.slice_bytes(at, at + remove);
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        self.buffer.replace_range_bytes(at, remove, insert);
+        let new_caret = caret.min(self.buffer.len());
+        self.buffer.set_caret(new_caret, None);
+        let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
+        self.record(Op { at, removed, inserted: insert.to_vec() }, Kind::Other, cb, ab, ca, aa);
+    }
+
+    /// Set the hi or lo nibble of the byte at the caret to `val` (`0x0..=0xF`) — hex-column entry.
+    /// Reads the current byte (0 when the caret is at end-of-file, where a fresh byte is created),
+    /// replaces the chosen nibble, and records the edit. The caret stays put (the GUI advances after
+    /// the low nibble completes the byte).
+    pub fn hex_set_nibble(&mut self, hi: bool, val: u8) {
+        let at = self.buffer.cursor();
+        let cur = self.buffer.byte_at(at).unwrap_or(0);
+        let byte = if hi { (val << 4) | (cur & 0x0F) } else { (cur & 0xF0) | (val & 0x0F) };
+        let remove = usize::from(at < self.buffer.len());
+        self.hex_write(at, remove, &[byte], at);
+    }
+
+    /// Overwrite the byte at the caret with `byte` (text-column entry) — creates a byte at end-of-file.
+    /// Caret unchanged; the GUI advances.
+    pub fn hex_overwrite(&mut self, byte: u8) {
+        let at = self.buffer.cursor();
+        let remove = usize::from(at < self.buffer.len());
+        self.hex_write(at, remove, &[byte], at);
+    }
+
+    /// Insert `bytes` at the caret (byte insert). The caret stays at the insertion point.
+    pub fn hex_insert(&mut self, bytes: &[u8]) {
+        let at = self.buffer.cursor();
+        self.hex_write(at, 0, bytes, at);
+    }
+
+    /// Delete one byte: the byte AT the caret (`before == false`) or the byte just before it
+    /// (`before == true`, caret moves back one). No-op at the respective edge.
+    pub fn hex_delete(&mut self, before: bool) {
+        let at = self.buffer.cursor();
+        if before {
+            if at > 0 {
+                self.hex_write(at - 1, 1, &[], at - 1);
+            }
+        } else if at < self.buffer.len() {
+            self.hex_write(at, 1, &[], at);
+        }
+    }
+
+    /// Paste `bytes` at the caret in OVERWRITE mode (replaces up to `bytes.len()` existing bytes, so
+    /// file size stays stable unless it runs past end-of-file, which extends). Leaves the caret just
+    /// after the pasted run.
+    pub fn hex_paste(&mut self, bytes: &[u8]) {
+        let at = self.buffer.cursor();
+        let remove = bytes.len().min(self.buffer.len() - at);
+        self.hex_write(at, remove, bytes, at + bytes.len());
+    }
+
+    /// Delete the selected byte range (hex cut); the caret lands at the range start. No-op without a
+    /// selection. Returns the removed bytes (for the caller's clipboard).
+    pub fn hex_delete_selection(&mut self) -> Vec<u8> {
+        match self.buffer.selection_span() {
+            Some((a, b)) if b > a => {
+                let removed = self.buffer.slice_bytes(a, b);
+                self.hex_write(a, b - a, &[], a);
+                removed
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// `TYPEPAIRS` — handle a single interactively-typed `c` that is a bracket or quote. Returns
     /// `true` if the character was handled specially (so the caller must NOT also insert it):
     ///  - **wrap:** with a selection, typing an opener/quote wraps the selection (`(sel)`), keeping

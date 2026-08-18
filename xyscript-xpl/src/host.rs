@@ -577,6 +577,22 @@ pub enum EditorOp {
     /// Show the active document as a hex + text grid (`HEX on|off`). A canvas view mode; the bytes
     /// are unchanged. Off by default. Read back via `$HEX`.
     SetHexView(bool),
+    /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
+    /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
+    /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.
+    ///
+    /// Set the hi (`hi = true`) or lo nibble of the byte at the caret to `val` (`0x0..=0xF`).
+    HexSetNibble { hi: bool, val: u8 },
+    /// Overwrite the whole byte at the caret (text-column entry / single-byte paste).
+    HexOverwrite(u8),
+    /// Insert bytes at the caret (byte insert; usually a single `0x00`).
+    HexInsert(Vec<u8>),
+    /// Delete one byte: at the caret (`before = false`) or just before it (`before = true`).
+    HexDelete { before: bool },
+    /// Paste bytes at the caret in overwrite mode (keeps file size stable), caret after the run.
+    HexPaste(Vec<u8>),
+    /// Delete the selected byte range (hex cut); caret lands at the range start. No-op without one.
+    HexDeleteSelection,
     /// Set/clear/toggle a GUI view flag (`SMB`/`CMB`/`TMB` menu bar, `SVR`/`CVR`/`TVR`
     /// visible returns ¶, `SLN`/`CLN`/`TLN` line-number gutter). Read back via `$MB`/
     /// `$VR`/`$LNS`. The host holds the flag; the GUI renders it.

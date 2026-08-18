@@ -2170,6 +2170,14 @@ struct GuiApp {
     /// glyphs on each `render_hex_canvas` pass and reused by the mouse hit-test so clicks land on the
     /// right byte. `0.0` until the first hex frame (the hit-test falls back to the 0.6·em estimate).
     hex_cell_w: f32,
+    /// HEX-view editing focus: `false` = the hex-pair column (nibble entry), `true` = the text column
+    /// (whole-byte entry). Tab toggles it. Only meaningful while `hex_view()` is on.
+    hex_text_col: bool,
+    /// HEX-view nibble sub-position in the hex column: `Some(off)` means a HIGH nibble was just
+    /// entered at byte `off` and the next hex digit sets its LOW nibble; `None` means the next digit
+    /// starts a fresh byte. Keyed by byte offset so it SELF-CORRECTS — any caret move (nav/click)
+    /// leaves `off` pointing at a byte the caret is no longer on, so the next digit starts fresh.
+    hex_nibble_at: Option<usize>,
     /// Mouse drag-select anchor for the command line (rope offset), like `drag_anchor` for the doc.
     cmline_drag_anchor: Option<usize>,
     preedit: String,
@@ -2388,6 +2396,8 @@ impl GuiApp {
             drag_anchor: None,
             box_anchor: None,
             hex_cell_w: 0.0,
+            hex_text_col: false,
+            hex_nibble_at: None,
             cmline_drag_anchor: None,
             preedit: String::new(),
             goal_x: None,
@@ -4461,6 +4471,10 @@ impl GuiApp {
         let cmline_open = self.editor.cmline_open();
         let (crr, crg, crb) = self.editor.caret_color();
         let caret_shape = self.editor.caret_shape();
+        // Hex-editing focus: which column the caret sits in, and (in the hex column) which nibble —
+        // the low nibble is active only while a high nibble was just entered AT this caret byte.
+        let hex_text_col = self.hex_text_col;
+        let hex_nibble_lo = self.hex_nibble_at == Some(caret);
 
         // Compose the visible rows into one monospace block; count how many actually rendered.
         let mut text = String::new();
@@ -4541,37 +4555,58 @@ impl GuiApp {
         });
 
         // Caret at the byte offset (hidden while the command line is focused, like the text caret).
+        // In hex view the caret sits on ONE cell — the active hex nibble (high, or low mid-entry) or
+        // the text glyph — in the FOCUSED column, with a faint companion marking the same byte in the
+        // other column so you can orient across the two.
         if !cmline_open && caret_row >= top_row && caret_row < top_row + row_count {
             let ry = ((caret_row - top_row) as f32 * lh_px) as i32;
             let i = caret % hex::BYTES_PER_ROW;
-            let cx = (hex::hex_digit_col(i) as f32 * cell_w) as i32;
             let cellw_i = cell_w as i32;
             let lh_i = lh_px as i32;
             let bar = (2.0 * scale).round().max(1.0) as i32;
-            let (x0, x1, y0, y1, alpha) = match caret_shape {
-                CaretShape::Bar => (cx, cx + bar, ry, ry + lh_i, 255u16),
-                CaretShape::Block => (cx, cx + 2 * cellw_i, ry, ry + lh_i, 115u16), // covers the whole hex pair
-                CaretShape::Underline => (cx, cx + 2 * cellw_i, ry + lh_i - bar, ry + lh_i, 255u16),
-            };
-            for py in y0..y1 {
-                for px in x0..x1 {
-                    if px < 0 || py < 0 || px as usize >= wp || py as usize >= hp {
-                        continue;
-                    }
-                    let idx = (py as usize * wp + px as usize) * 4;
-                    if alpha >= 255 {
-                        canvas[idx] = crr;
-                        canvas[idx + 1] = crg;
-                        canvas[idx + 2] = crb;
-                    } else {
-                        let al = alpha as f32 / 255.0;
-                        for (c, s) in [(0usize, crr as f32), (1, crg as f32), (2, crb as f32)] {
-                            let d = canvas[idx + c] as f32;
-                            canvas[idx + c] = (s * al + d * (1.0 - al)).round() as u8;
+            let col_x = |col: usize| (col as f32 * cell_w) as i32;
+            let mut paint = |x0: i32, x1: i32, y0: i32, y1: i32, alpha: u16| {
+                for py in y0..y1 {
+                    for px in x0..x1 {
+                        if px < 0 || py < 0 || px as usize >= wp || py as usize >= hp {
+                            continue;
+                        }
+                        let idx = (py as usize * wp + px as usize) * 4;
+                        if alpha >= 255 {
+                            canvas[idx] = crr;
+                            canvas[idx + 1] = crg;
+                            canvas[idx + 2] = crb;
+                        } else {
+                            let al = alpha as f32 / 255.0;
+                            for (c, s) in [(0usize, crr as f32), (1, crg as f32), (2, crb as f32)] {
+                                let d = canvas[idx + c] as f32;
+                                canvas[idx + c] = (s * al + d * (1.0 - al)).round() as u8;
+                            }
                         }
                     }
                 }
-            }
+            };
+            // Focused caret cell (one cell): the active nibble in the hex column, or the text glyph.
+            let focus_col = if hex_text_col {
+                hex::text_col(i)
+            } else {
+                hex::hex_digit_col(i) + usize::from(hex_nibble_lo)
+            };
+            let fx = col_x(focus_col);
+            let (x0, x1, y0, y1, alpha) = match caret_shape {
+                CaretShape::Bar => (fx, fx + bar, ry, ry + lh_i, 255u16),
+                CaretShape::Block => (fx, fx + cellw_i, ry, ry + lh_i, 130u16),
+                CaretShape::Underline => (fx, fx + cellw_i, ry + lh_i - bar, ry + lh_i, 255u16),
+            };
+            paint(x0, x1, y0, y1, alpha);
+            // Faint companion in the OTHER column (the whole hex pair, or the text glyph).
+            let (comp_start, comp_cells) = if hex_text_col {
+                (hex::hex_digit_col(i), 2)
+            } else {
+                (hex::text_col(i), 1)
+            };
+            let cxs = col_x(comp_start);
+            paint(cxs, cxs + comp_cells * cellw_i, ry, ry + lh_i, 55);
         }
 
         egui::ColorImage::from_rgba_premultiplied([wp, hp], &canvas)
@@ -4763,6 +4798,116 @@ impl GuiApp {
     /// handing them to egui's wrap-aware text scrolling, which is meaningless over a hex grid.
     fn hex_view(&self) -> bool {
         self.editor.hex_view()
+    }
+
+    /// Toggle the hex-view edit column (hex pairs ↔ text). Driven from the runtime's Tab intercept —
+    /// Tab can't go through egui here (egui hijacks it for focus navigation) or the KBD (a bound TAB
+    /// verb would insert a tab), so the runtime consumes it and calls this directly.
+    fn hex_toggle_column(&mut self) {
+        self.hex_text_col = !self.hex_text_col;
+        self.hex_nibble_at = None;
+    }
+
+    /// Encode a typed char to a single byte for text-column entry: ASCII maps directly; under a
+    /// single-byte view (CP437/Latin-1/…) reverse-look-up the byte whose glyph is `ch`; under UTF-8 a
+    /// non-ASCII char is multi-byte, so it's skipped (`None`) — basic byte entry, not text insertion.
+    fn hex_encode_char(&self, ch: char) -> Option<u8> {
+        use xyscript_app::Encoding; // `decode`/`is_single_byte` live on the trait
+        if ch.is_ascii() {
+            return Some(ch as u8);
+        }
+        let enc = self.editor.doc(self.editor.active_index()).encoding();
+        if enc.is_single_byte() {
+            (0u8..=255).find(|&b| {
+                let s = enc.decode(&[b]);
+                let mut it = s.chars();
+                it.next() == Some(ch) && it.next().is_none()
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Advance the hex caret one byte (clamped), after a completed byte entry.
+    fn hex_advance(&mut self) {
+        let next = (self.editor.hex_caret() + 1).min(self.editor.hex_len());
+        self.editor.hex_set_caret(next);
+    }
+
+    /// Delete in the hex view: the selected byte range if there is one, else a single byte — the one
+    /// AT the caret (`before = false`, Delete) or just before it (`before = true`, Backspace).
+    fn hex_delete_key(&mut self, before: bool) {
+        if self.editor.hex_selection_bytes().is_some() {
+            self.editor.hex_delete_selection();
+        } else {
+            self.editor.hex_delete(before);
+        }
+        self.hex_nibble_at = None;
+        self.pane_view.follow = true;
+    }
+
+    /// HEX-view editing input: handle a typed char / edit key as a byte edit. Returns `true` when the
+    /// event was consumed (so the caller skips the normal text path). Copy/cut/paste and navigation
+    /// go through the host verbs (Ctrl+C/X/V, arrows) — not here. Only called while the hex view is
+    /// on, the doc is writable, and the cmline is closed.
+    fn hex_edit_event(&mut self, ev: &egui::Event) -> bool {
+        match ev {
+            egui::Event::Text(s) => {
+                for ch in s.chars() {
+                    // Skip control chars: Tab/Enter/etc. arrive as BOTH a Key event (handled below or
+                    // captured) AND a Text event ("\t"…); the Text copy must not write a byte.
+                    if ch.is_control() {
+                        continue;
+                    }
+                    let caret = self.editor.hex_caret();
+                    if self.hex_text_col {
+                        // Text column: overwrite the whole byte with the char's byte, then advance.
+                        if let Some(b) = self.hex_encode_char(ch) {
+                            self.editor.hex_overwrite(b);
+                            self.hex_advance();
+                        }
+                    } else if let Some(v) = ch.to_digit(16) {
+                        // Hex column: the first digit at a byte sets its HIGH nibble (remembering the
+                        // offset); a second digit at the SAME byte sets the LOW nibble and advances.
+                        // Keying on the offset means a caret move between digits starts a fresh byte.
+                        if self.hex_nibble_at == Some(caret) {
+                            self.editor.hex_set_nibble(false, v as u8);
+                            self.hex_nibble_at = None;
+                            self.hex_advance();
+                        } else {
+                            self.editor.hex_set_nibble(true, v as u8);
+                            self.hex_nibble_at = Some(caret);
+                        }
+                    }
+                    // Non-hex chars in the hex column are ignored (still consumed).
+                }
+                self.pane_view.follow = true;
+                true // consume ALL typed text in hex view — never fall through to a text insert
+            }
+            // (Tab is intercepted in the runtime — egui would hijack it here for focus navigation.)
+            // Insert / Delete / Backspace edit bytes (the runtime leaves these to egui in hex view).
+            egui::Event::Key { key: egui::Key::Insert, pressed: true, modifiers, .. }
+                if !modifiers.ctrl && !modifiers.alt =>
+            {
+                self.editor.hex_insert(vec![0x00]);
+                self.hex_nibble_at = None;
+                self.pane_view.follow = true;
+                true
+            }
+            egui::Event::Key { key: egui::Key::Delete, pressed: true, modifiers, .. }
+                if !modifiers.ctrl && !modifiers.alt =>
+            {
+                self.hex_delete_key(false);
+                true
+            }
+            egui::Event::Key { key: egui::Key::Backspace, pressed: true, modifiers, .. }
+                if !modifiers.ctrl && !modifiers.alt =>
+            {
+                self.hex_delete_key(true);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn try_visual_vmotion(&mut self, xpl: &str) -> bool {
@@ -8202,6 +8347,15 @@ impl GuiApp {
             // A per-frame repaint pins the render loop and backs input up — felt as lag.
         } else if canvas_has_keys {
         for ev in ctx.input(|i| i.events.clone()) {
+            // HEX editing: in a writable hex view (cmline closed), typed chars and edit keys become
+            // byte edits (nibble / whole-byte / insert / delete / cut-copy-paste). Consumed events
+            // skip the normal text path; navigation keys fall through to the host's byte-motion.
+            if self.editor.hex_view() && !self.editor.active_read_only() && !self.editor.cmline_open() {
+                if self.hex_edit_event(&ev) {
+                    ctx.request_repaint();
+                    continue;
+                }
+            }
             match ev {
                 egui::Event::Key { key, physical_key, pressed: true, modifiers, .. } => {
                     // In command-line mode, Enter submits and Esc cancels; every
@@ -9628,7 +9782,17 @@ impl GuiApp {
             } else if rel.x >= 0.0 && rel.y >= 0.0 {
                 if let Some(off) = self.hit(rel.x * s, rel.y * s) {
                     self.goal_x = None; // a click/drag drops the vertical goal column
-                    if dir_double {
+                    if self.editor.hex_view() {
+                        // HEX: place the caret on the EXACT byte (no char snap), switch the edit column
+                        // to whichever the click landed in (hex pairs vs text), and reset the nibble.
+                        self.hex_nibble_at = None;
+                        let col = (rel.x * s / self.hex_cell_w.max(1.0)) as usize;
+                        self.hex_text_col = col >= xyscript_app::hex::text_col(0);
+                        if resp.drag_started() {
+                            self.drag_anchor = Some(off); // start a byte-range drag-select
+                        }
+                        self.editor.hex_set_caret(off);
+                    } else if dir_double {
                         // Land the caret on the clicked entry, then activate it like Enter.
                         self.editor.host_mut().click_active_caret(off);
                         self.editor.dir_enter();

@@ -310,5 +310,5 @@ msg.search.not_found = non trovato: {find}   # not found: {find}
 msg.save.written = salvato {name}   # saved {name}
 msg.open.not_found = file non trovato: {path}   # file not found: {path}
 msg.readonly = il documento è in sola lettura (RO per sbloccare)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only (HEX off to edit)
+msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: ricerca in corso…   # GREP: searching…
