@@ -2261,6 +2261,30 @@ mod tests {
     }
 
     #[test]
+    fn savecm_reescapes_control_chars_so_the_loadcm_line_cannot_break() {
+        // Regression: a recorded entry can hold LITERAL control chars (a corrupted/multi-char path or
+        // command). SaveCM must re-escape them, or a literal newline splits the `LoadCM "…"` across
+        // physical lines and re-RUNning the saved file mis-parses the tail (`EW: unknown switch …`),
+        // fatally aborting the caller's script — e.g. a startup that restores command history.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // `\r`/`\t` decode to a real CR and TAB stored inside the single entry (no `\n` separator).
+        e.run_command(r#"LoadCM "a\rb\tc""#);
+        assert_eq!(e.command_history(), ["a\rb\tc"]);
+        e.run_command("CAPTURE snap SAVECM");
+        e.run_command("PR $snap");
+        // The snapshot is `# header\nLoadCM "…"\n` (one output entry); pull out the LoadCM line.
+        let snap = e.output().iter().rev().find(|l| l.contains("LoadCM \"")).unwrap().clone();
+        let line = snap.lines().find(|l| l.starts_with("LoadCM")).unwrap().to_string();
+        assert!(!line.contains('\r') && !line.contains('\t'), "raw control chars reached the file: {line:?}");
+        assert!(line.contains(r"\r") && line.contains(r"\t"), "control chars must be escaped: {line:?}");
+        // Round-trip: re-running the saved line restores the exact entry (no fatal parse error).
+        e.run_command(r#"LoadCM "clobber""#);
+        e.run_command(&line);
+        assert_eq!(e.command_history(), ["a\rb\tc"], "control-char entry round-trips exactly");
+    }
+
+    #[test]
     fn savelib_round_trips_user_routines() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

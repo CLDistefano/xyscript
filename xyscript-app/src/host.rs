@@ -7441,10 +7441,22 @@ impl AppHost {
         if self.command_history.is_empty() {
             return None;
         }
+        // Escape backslash first, then the quote, then any LITERAL control chars an entry may hold
+        // (a recorded path/command can contain a real CR/TAB/newline). Without escaping the control
+        // chars, a literal newline in an entry would split the `LoadCM "…"` across physical lines, so
+        // re-`RUN`ning the saved file mis-parses the tail as commands (`EW: unknown switch …`) and a
+        // fatal error aborts the rest of the caller's script (e.g. a startup that restores history).
+        // Entries are joined by a `\n` separator ADDED AFTER this per-entry escaping.
         let joined = self
             .command_history
             .iter()
-            .map(|c| c.replace('\\', "\\\\").replace('"', "\\\""))
+            .map(|c| {
+                c.replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\t', "\\t")
+                    .replace('\r', "\\r")
+                    .replace('\n', "\\n")
+            })
             .collect::<Vec<_>>()
             .join("\\n");
         Some(format!("LoadCM \"{joined}\""))
