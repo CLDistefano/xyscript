@@ -579,20 +579,31 @@ impl Handler {
             // (modal AND the cmline's Enter→submit) responds, and don't run the verb. (The primary
             // Enter, scancode 28, is in ALWAYS_EGUI so it already reaches egui directly; this brings
             // any OTHER key bound to ENTER — e.g. numpad Enter, 104 — inline with it.)
-            if xpl.trim().eq_ignore_ascii_case("ENTER")
-                && (self.app.modal_owns_keyboard() || self.app.cmline_open())
-            {
-                if let Some(state) = self.egui_state.as_mut() {
-                    state.egui_input_mut().events.push(egui::Event::Key {
-                        key: egui::Key::Enter,
-                        physical_key: None,
-                        pressed: true,
-                        repeat: false,
-                        modifiers: egui::Modifiers::default(),
-                    });
+            //
+            // Also handle a CHAIN that ends in ENTER, e.g. `104=AR;ENTER`: on the cmline, run the
+            // part before ENTER (auto-replace, etc.) FIRST, then submit. `enter_submit_prefix`
+            // returns the pre-ENTER text (`""` for a bare ENTER), or `None` if ENTER isn't the last
+            // `;`-separated token.
+            if let Some(prefix) = enter_submit_prefix(&xpl) {
+                let modal = self.app.modal_owns_keyboard();
+                if modal || self.app.cmline_open() {
+                    // On the cmline (not a blocking modal, where bindings are inert), run everything
+                    // before the trailing ENTER against the cmline before the submit.
+                    if !modal && !prefix.is_empty() {
+                        self.app.run_captured(prefix);
+                    }
+                    if let Some(state) = self.egui_state.as_mut() {
+                        state.egui_input_mut().events.push(egui::Event::Key {
+                            key: egui::Key::Enter,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::default(),
+                        });
+                    }
+                    self.request_redraw();
+                    return true;
                 }
-                self.request_redraw();
-                return true;
             }
             // While a genuine blocking modal owns the keyboard (INPUT/PICK/history/MSG/breakpoint/
             // close-open/verify/quit prompt), a bound NAVIGATION verb (up/down/left/right/page)
@@ -2354,6 +2365,19 @@ fn is_typing_cell(xpl: &str) -> bool {
     xpl.trim_start().starts_with("insert \"")
 }
 
+/// The command text BEFORE a trailing `ENTER` verb in a resolved binding — so a chain like
+/// `AR;ENTER` can run its prefix (`AR`) and then submit the command line. Returns `Some("")` for a
+/// bare `ENTER`, `Some(prefix)` when the LAST `;`-separated token is `ENTER` (case-insensitive), or
+/// `None` otherwise. Splitting on the last `;` suffices for the keyboard bindings this targets.
+fn enter_submit_prefix(xpl: &str) -> Option<&str> {
+    let t = xpl.trim();
+    if t.eq_ignore_ascii_case("ENTER") {
+        return Some("");
+    }
+    let idx = t.rfind(';')?;
+    t[idx + 1..].trim().eq_ignore_ascii_case("ENTER").then(|| t[..idx].trim_end())
+}
+
 /// Whether `xpl`'s first word is a vertical/page motion verb the GUI handles VISUALLY (wrap-aware
 /// line move for arrows via [`try_visual_vmotion`], page move for PageUp/Down in the egui input
 /// path). An arrow/numpad-nav key bound to one of these is left to egui so it scrolls wrap-aware;
@@ -2458,9 +2482,24 @@ fn should_capture(code: u8, resolver: &Resolver, passthrough_mask: u32) -> bool 
 #[cfg(test)]
 mod tests {
     use super::{
-        describe_key, edit_code_egui_key, is_gui_motion, is_modifier_key, is_typing_cell,
-        nav_verb_egui_key,
+        describe_key, edit_code_egui_key, enter_submit_prefix, is_gui_motion, is_modifier_key,
+        is_typing_cell, nav_verb_egui_key,
     };
+
+    #[test]
+    fn enter_submit_prefix_detects_a_trailing_enter() {
+        // Bare ENTER → submit with no prefix.
+        assert_eq!(enter_submit_prefix("ENTER"), Some(""));
+        assert_eq!(enter_submit_prefix("  enter  "), Some(""));
+        // A chain ending in ENTER → run the prefix, then submit.
+        assert_eq!(enter_submit_prefix("AR;ENTER"), Some("AR"));
+        assert_eq!(enter_submit_prefix("AR ; enter"), Some("AR"));
+        assert_eq!(enter_submit_prefix("FOO;BAR;ENTER"), Some("FOO;BAR"));
+        // No trailing ENTER → not a submit.
+        assert_eq!(enter_submit_prefix("GT;TH"), None);
+        assert_eq!(enter_submit_prefix("ENTER;AR"), None); // ENTER not last
+        assert_eq!(enter_submit_prefix("insert \"x\""), None);
+    }
 
     #[test]
     fn describe_key_uses_keymap_modifier_names_and_bits() {
