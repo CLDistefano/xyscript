@@ -1895,23 +1895,23 @@ fn draw_vscrollbar(
 ) {
     let total_logical = line_count.max(1) as f32;
     let ratio = wrap_ratio.max(1.0);
-    let total = (total_logical * ratio).max(1.0); // estimated total visual rows
+    let total = (total_logical * ratio).max(1.0); // estimated total visual rows (drives POSITION)
     let visible = (track.height() / line_height).max(1.0); // viewport visual rows
     let lh_px = line_height * render_scale;
     // Current scroll position in visual rows: whole logical lines above (× ratio) + the sub-line
     // residual already scrolled within the window.
     let pos_visual = view.scroll_line as f32 * ratio + view.scroll_vertical / lh_px;
     let track_h = track.height();
-    // Thumb SIZE is the fraction of the document currently visible = viewport rows / total rows, BOTH
-    // in VISUAL (wrapped) rows — `visible / total`, the same wrap-aware `total` the POSITION uses below.
-    // (Sizing off `total_logical` instead mixes units — visual-row numerator over logical-line
-    // denominator — so with `WRAP on` the thumb came out inflated by the wrap ratio, i.e. too long.)
-    // `total` is re-estimated from the visible window each frame, so the thumb can vary slightly as you
-    // scroll through denser/sparser-wrapping regions; a proportional thumb is worth that. `WRAP off`
-    // has `wrap_ratio == 1`, so `total == total_logical` and this is unchanged (and jitter-free) there.
+    // Thumb SIZE is held CONSTANT as you scroll: it's the viewport rows over the document's LOGICAL
+    // line count — both fixed while scrolling (only a resize/edit changes them). Sizing off the
+    // wrap-aware `total` instead made the thumb breathe, because `total` is re-estimated from the
+    // visible window each frame and denser/sparser-wrapping regions gave different wrap ratios. The
+    // POSITION below stays wrap-aware (smooth + accurate); only the SIZE is decoupled from it. `WRAP
+    // off` has `ratio == 1`, so `total == total_logical` and size and position agree exactly there.
     // Min thumb 24px, but never taller than the track — a very short pane makes `track_h < 24`, and
     // `clamp(24, track_h)` would then have min > max and PANIC (crashing from the render path).
-    let thumb_h = (track_h * (visible / total).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_h), track_h);
+    let thumb_h =
+        (track_h * (visible / total_logical).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_h), track_h);
     let denom = (total - visible).max(1.0);
     let pos_frac = (pos_visual / denom).clamp(0.0, 1.0);
     let thumb_top = track.min.y + pos_frac * (track_h - thumb_h);
