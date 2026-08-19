@@ -9262,6 +9262,39 @@ mod tests {
     }
 
     #[test]
+    fn marklist_chooser_jumps_to_the_picked_bookmark() {
+        let mut e = Editor::new(typing_keymap());
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        e.run_command(r#"insert "abcdefghij""#);
+        // No bookmarks yet → MARKLIST is a status note, not a chooser.
+        e.run_command("MARKLIST");
+        assert!(e.pick_request().is_none(), "no chooser without bookmarks");
+        // Two bookmarks, at offsets 0 and 5.
+        e.run_command("TF");
+        e.run_command("MARKSET");
+        e.run_command("JMP 5");
+        e.run_command("MARKSET");
+        // Caret away from both, then open the chooser.
+        e.run_command("TF");
+        e.run_command("MARKLIST");
+        let (title, items) = e.pick_request().expect("MARKLIST opens the chooser");
+        assert_eq!(title.as_deref(), Some("Go to bookmark"));
+        assert_eq!(items.len(), 2);
+        assert!(items[0].starts_with("L1"), "preview shows the line number: {items:?}");
+        // Pick the second row → the caret jumps to that bookmark (offset 5).
+        e.pick_respond(Some(1));
+        assert!(e.pick_request().is_none());
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("5"));
+        // Cancelling leaves the caret put and sets $ERROR.
+        e.run_command("MARKLIST");
+        assert!(e.pick_request().is_some());
+        e.pick_respond(None);
+        e.run_command("PR $ERROR");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+    }
+
+    #[test]
     fn listtabs_cancel_leaves_the_active_tab_unchanged() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

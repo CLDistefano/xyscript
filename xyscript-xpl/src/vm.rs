@@ -149,6 +149,7 @@ impl Interpreter {
                 | SuspendReason::CpPick { title, items, .. }
                 | SuspendReason::ReopenPick { title, items, .. }
                 | SuspendReason::TabPick { title, items, .. }
+                | SuspendReason::MarkPick { title, items, .. }
                 | SuspendReason::LintFixPick { title, items, .. },
             ) => Some((title.clone(), items.clone())),
             _ => None,
@@ -172,6 +173,7 @@ impl Interpreter {
             Cp(Vec<usize>),
             Reopen(Vec<(String, usize)>),
             Tab(Vec<usize>),
+            Mark(Vec<usize>),
             LintFix((usize, usize), Vec<String>),
         }
         let kind = match self.suspended.last().map(|s| &s.reason) {
@@ -181,6 +183,7 @@ impl Interpreter {
             Some(SuspendReason::CpPick { sources, .. }) => Kind::Cp(sources.clone()),
             Some(SuspendReason::ReopenPick { entries, .. }) => Kind::Reopen(entries.clone()),
             Some(SuspendReason::TabPick { targets, .. }) => Kind::Tab(targets.clone()),
+            Some(SuspendReason::MarkPick { targets, .. }) => Kind::Mark(targets.clone()),
             Some(SuspendReason::LintFixPick { span, replacements, .. }) => {
                 Kind::LintFix(*span, replacements.clone())
             }
@@ -225,6 +228,13 @@ impl Interpreter {
                     host.switch_to_buffer(buf)?; // make that tab active
                 }
                 None => self.env.error = true, // cancelled — active tab unchanged
+            },
+            Kind::Mark(targets) => match choice.and_then(|i| targets.get(i).copied()) {
+                Some(off) => {
+                    self.env.error = false;
+                    host.jump_to_offset(off)?; // move the caret to that bookmark (centered)
+                }
+                None => self.env.error = true, // cancelled — caret unchanged
             },
             Kind::LintFix(span, replacements) => {
                 match choice.and_then(|i| replacements.get(i).cloned()) {
@@ -801,6 +811,10 @@ enum SuspendReason {
     /// buffer index behind row `i`; on resume the chosen tab is switched to. Cancel leaves the active
     /// tab unchanged (and sets `$ERROR`).
     TabPick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
+    /// `MARKLIST` — a MODAL chooser (sharing the PICK dialog) of the active document's bookmarks.
+    /// `targets[i]` is the byte offset behind row `i`; on resume the caret jumps there (centered).
+    /// Cancel leaves the caret unchanged (and sets `$ERROR`).
+    MarkPick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
     /// `LINTFIX` — a MODAL chooser (sharing the PICK dialog) of a language issue's corrections. On
     /// resume the chosen `replacements[i]` replaces the document `span`. Cancel leaves it unchanged.
     LintFixPick {
@@ -2442,6 +2456,22 @@ impl Vm<'_, '_> {
                 };
                 self.host_op(op)?;
                 Ok(Flow::Next)
+            }
+            // `MARKLIST` — a MODAL chooser (sharing the PICK dialog) of the active document's
+            // bookmarks; choosing one jumps the caret there (centered). Empty list = a status note.
+            "MARKLIST" => {
+                let marks = self.ctx.host.bookmark_list();
+                if marks.is_empty() {
+                    *self.ctx.status = Some("MARKLIST: no bookmarks".to_string());
+                    return Ok(Flow::Next);
+                }
+                let (targets, items): (Vec<usize>, Vec<String>) = marks.into_iter().unzip();
+                self.suspend = Some(SuspendReason::MarkPick {
+                    title: Some("Go to bookmark".to_string()),
+                    items,
+                    targets,
+                });
+                Ok(Flow::Suspend)
             }
             "HLAUTO" => {
                 let a = args.trim();
@@ -5029,8 +5059,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.
     "DELSEL", "RW", "RL", "RS", "RP", "RE",
-    // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate it.
-    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV",
+    // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
+    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",

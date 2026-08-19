@@ -386,6 +386,10 @@ it into view. A dot appears in the left margin on every bookmarked line.
 cursor and clears it if there is. From a script, #raw("$MARKS") is the count and #raw("$MARK") is
 #raw("1") when the cursor is sitting on a bookmark.
 
+When you have several, #raw("MARKLIST") opens a chooser — one row per bookmark, showing its line
+number and the text there — and jumps to whichever you pick. It is the quickest way back to a spot
+you can recognise but can't remember the order of; bind it to a key for a pop-up "go to bookmark" menu.
+
 Bookmarks belong to the file, not the session: they are saved alongside your other per-document
 metadata in the hidden #raw(".xymeta") sidecar and come back when you reopen the file. If the file
 was changed by another program in the meantime, a bookmark whose text has shifted is *relocated* to

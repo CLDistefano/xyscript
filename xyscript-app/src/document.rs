@@ -1373,6 +1373,28 @@ impl Document {
         moved
     }
 
+    /// `(offset, preview)` for each bookmark, for the `MARKLIST` chooser. The preview is the 1-based
+    /// line number plus the trimmed line text (elided when long), e.g. `L42  the marked line`.
+    pub fn mark_previews(&self) -> Vec<(usize, String)> {
+        self.marks
+            .iter()
+            .map(|m| {
+                let line = self.buffer.line_of(m.off);
+                let text = self.buffer.line_text(line);
+                let trimmed = text.trim();
+                let snippet: String = trimmed.chars().take(60).collect();
+                let snippet = if trimmed.chars().count() > 60 {
+                    format!("{snippet}…")
+                } else if snippet.is_empty() {
+                    "(blank line)".to_string()
+                } else {
+                    snippet
+                };
+                (m.off, format!("L{}  {snippet}", line + 1))
+            })
+            .collect()
+    }
+
     /// Bookmarks with FRESH context captured from the current buffer, for persisting to the sidecar
     /// (`(off, split, ctx)`). Recomputed at save time so the stored anchor matches the saved bytes,
     /// even after a session of edits shifted the live offsets.

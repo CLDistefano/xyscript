@@ -12153,6 +12153,18 @@ impl Host for AppHost {
         Ok(())
     }
 
+    fn bookmark_list(&self) -> Vec<(usize, String)> {
+        self.active_doc().mark_previews()
+    }
+
+    fn jump_to_offset(&mut self, offset: usize) -> VmResult<()> {
+        let len = self.active().buffer().len();
+        self.active().set_caret(offset.min(len), None);
+        self.reveal_center = true; // scroll the target to mid-screen, like MARKNEXT/PREV
+        self.set_focus(Target::Document);
+        Ok(())
+    }
+
     fn lint_fix_options(&mut self) -> Option<LintFixChoices> {
         #[cfg(feature = "lint")]
         {

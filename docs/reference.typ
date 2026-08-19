@@ -353,7 +353,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 == Bookmarks
 
 / #cmd("MARKSET") / #cmd("MARKCLEAR") / #cmd("MARKTOGGLE"): set / clear / toggle a bookmark at the caret. #cmd("MARKCLEARALL"): remove every bookmark in the document.
-/ #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping around the ends. #sv("MARKS") is the count; #sv("MARK") is `1` when the caret sits on one.
+/ #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping around the ends. #cmd("MARKLIST"): a chooser of every bookmark (line number + text) — pick one to jump to it. #sv("MARKS") is the count; #sv("MARK") is `1` when the caret sits on one.
 Bookmarks are per-document, marked by a dot in the left gutter, and saved in the file's hidden `.xymeta` sidecar — a mark whose text has moved is relocated to the nearby text (a status note says so).
 
 == Selecting and defining blocks
@@ -807,6 +807,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("MDAS"): open a colour #underline[picker] for the selection's #cmd("MDA") block colour — bare picks the foreground, `MDAS/B` the background. On accept it runs `MDA`/`MDA/B <r g b>`. In the GUI: #emph[Settings ▸ Appearance ▸ Colors ▸ Block colour].
 / #cmd("MARKSET") / #cmd("MARKCLEAR"): set / clear a bookmark at the caret (`MARKCLEAR` where there is none is a trappable error). #cmd("MARKTOGGLE"): set one if absent, clear it if present. #cmd("MARKCLEARALL"): remove every bookmark in the document.
 / #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping at the ends, and scroll it into view. A bookmark whose text has moved (the file changed since it was saved) is relocated to the nearby text, noted in the status line. Bookmarks are per-document, persist in the hidden `.xymeta` sidecar, and show as a dot in the left gutter. See #sv("MARKS") / #sv("MARK").
+/ #cmd("MARKLIST"): open a modal chooser of the document's bookmarks — each row is the line number and its text — and jump the caret to the one you pick (centered). Bind it to a key for a quick "go to bookmark" menu. A no-op note when there are none.
 / #cmd("MENU"): keyboard control of the menu bar. Bare `MENU` toggles it — opens the first menu for arrow-key navigation (Left/Right between menus, Up/Down through items, Enter to open a submenu or run an item, Esc to back out) or closes it if open. `MENU "f"` opens a specific menu by its #underline[accelerator] letter (the underlined letter in each label; e.g. `f` = File). While a menu is open, typing an item's accelerator letter jumps to and runs it. The bar takes mouse and keyboard interchangeably — a menu opened with the mouse is immediately arrow-navigable, and vice versa. Bind it to a key (e.g. `nn=MENU` or `nn=MENU "f"`) for mouse-free menus. GUI only.
 / #cmd("MERGE", "ME"): insert a file's contents at the caret.
 / #cmd("MSG"): show a message box — a bare `MSG` is modal and pauses the script; `MSG /T:<seconds>` is a non-blocking toast.

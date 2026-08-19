@@ -1655,6 +1655,16 @@ pub trait Host {
     fn switch_to_buffer(&mut self, _index: usize) -> VmResult<()> {
         Err(crate::error::XplError::trappable("LISTTABS: unavailable"))
     }
+    /// The active document's bookmarks for the `MARKLIST` chooser: `(offset, preview)` per row, in
+    /// document order. `preview` is a short label (line number + surrounding text). Default: none.
+    fn bookmark_list(&self) -> Vec<(usize, String)> {
+        Vec::new()
+    }
+    /// Move the active document's caret to byte `offset` and scroll it into view. Used by the
+    /// `MARKLIST` chooser on resume. Default: unavailable.
+    fn jump_to_offset(&mut self, _offset: usize) -> VmResult<()> {
+        Err(crate::error::XplError::trappable("MARKLIST: unavailable"))
+    }
     /// The correction choices for the language issue at the caret (`LINTFIX`), or `None` if there
     /// isn't one. Default: none (no language checking).
     fn lint_fix_options(&mut self) -> Option<LintFixChoices> {
