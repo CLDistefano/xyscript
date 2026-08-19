@@ -4829,6 +4829,36 @@ mod tests {
     }
 
     #[test]
+    fn rs_deletes_the_sentence_after_a_gap_and_keeps_a_trailing_newline() {
+        let text = |e: &Editor| e.doc(e.active_index()).text();
+        // A) Caret on the space between two sentences deletes the sentence AFTER (was: the one before).
+        let mut e = ed();
+        e.run_command(r#"insert "Foo. Bar. Baz.""#);
+        e.run_command("JMP 4"); // caret on the space after "Foo."
+        e.run_command("RS");
+        assert_eq!(text(&e), "Foo. Baz.", "gap → deletes Bar. (after), keeps Foo.");
+        // Baseline: caret WITHIN a sentence still deletes that sentence (+ its trailing space).
+        let mut e = ed();
+        e.run_command(r#"insert "Foo. Bar. Baz.""#);
+        e.run_command("TOP");
+        e.run_command("RS");
+        assert_eq!(text(&e), "Bar. Baz.");
+        // B) A sentence that ends at end of line: RS deletes the sentence but LEAVES the newline.
+        let mut e = ed();
+        e.run_command(r#"insert "Hello world.\nNext line.""#);
+        e.run_command("TOP");
+        e.run_command("RS");
+        assert_eq!(text(&e), "\nNext line.", "B → keeps the line break");
+        // The A "delete after" must NOT jump across a line break: caret on trailing spaces before a
+        // newline deletes the CURRENT sentence (and the spaces) but keeps the newline.
+        let mut e = ed();
+        e.run_command(r#"insert "First.  \nSecond.""#);
+        e.run_command("JMP 6"); // caret on a trailing space, before the newline
+        e.run_command("RS");
+        assert_eq!(text(&e), "\nSecond.", "gap across a break → deletes First., keeps the newline");
+    }
+
+    #[test]
     fn open_and_read_hex_switch_open_in_hex_view() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

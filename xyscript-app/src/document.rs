@@ -2114,9 +2114,31 @@ impl Document {
 
     /// `RS` — delete the whole sentence at the cursor (+ trailing space). Recorded.
     pub fn delete_sentence(&mut self) {
+        let cursor = self.buffer.cursor();
         let (s, e) = self.buffer.sentence_span();
-        if e > s {
-            self.replace_span(s, e, "");
+        let content_end = self.buffer.content_end(s, e);
+        // A) If the caret sits in the SAME-LINE whitespace gap AFTER this sentence (e.g. on the space
+        //    between two sentences), delete the sentence AFTER it — the one the caret points toward —
+        //    not the one before. A gap that crosses a line break (the sentence ended at end of line,
+        //    the next is on another line) does NOT count, so RS there still deletes the current one.
+        let same_line_gap = content_end < e
+            && cursor >= content_end
+            && self.buffer.first_line_break(content_end, e).is_none();
+        let (start, mut end) = if same_line_gap {
+            let (ns, ne) = self.buffer.sentence_span_from(e);
+            if ne > ns { (ns, ne) } else { (s, e) }
+        } else {
+            (s, e)
+        };
+        // B) Leave a trailing NEWLINE in place: if the target sentence's trailing whitespace crosses a
+        //    line break (the sentence ends at end of line), stop the delete before that break — so the
+        //    line structure survives; only the sentence (and any spaces before the break) go.
+        let ce = self.buffer.content_end(start, end);
+        if let Some(nl) = self.buffer.first_line_break(ce, end) {
+            end = nl;
+        }
+        if end > start {
+            self.replace_span(start, end, "");
         }
     }
 

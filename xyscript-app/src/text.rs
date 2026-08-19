@@ -1984,6 +1984,32 @@ impl Buffer {
         self.trim_trailing_ws(s, e)
     }
 
+    /// The trailing-whitespace-trimmed END of a span — the offset just past its last non-blank char.
+    /// (Public wrapper over [`trim_trailing_ws`], used by `RS`'s sentence-boundary logic.)
+    pub fn content_end(&self, start: usize, end: usize) -> usize {
+        self.trim_trailing_ws(start, end).1
+    }
+
+    /// The sentence span whose start is `from` (assumed a sentence boundary): `from` to its end
+    /// (past the terminator + trailing whitespace). Used by `RS` to target the sentence AFTER the
+    /// caret's inter-sentence gap.
+    pub fn sentence_span_from(&self, from: usize) -> (usize, usize) {
+        (from, self.sentence_end_from(from))
+    }
+
+    /// Byte offset of the FIRST line break (`\n` or `\r`) in `[from, to)`, or `None` if there is
+    /// none. Used by `RS` to keep a sentence's trailing newline in place (delete up to, not past it).
+    pub fn first_line_break(&self, from: usize, to: usize) -> Option<usize> {
+        let mut i = from;
+        while i < to {
+            if self.char_at(i).is_some_and(|c| c == '\n' || c == '\r') {
+                return Some(i);
+            }
+            i = self.next_boundary(i);
+        }
+        None
+    }
+
     /// `DP` select span — the paragraph's lines (incl. internal breaks) up to the
     /// last non-blank line's content end; excludes the separating blank line(s).
     pub fn para_select_span(&self) -> (usize, usize) {
