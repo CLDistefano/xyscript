@@ -1837,6 +1837,12 @@ struct PaneView {
     content_w: f32,
     /// Canvas size in PHYSICAL PIXELS (the cosmic/raster layer works in pixels; layout in points).
     canvas_px: (usize, usize),
+    /// While a vertical-scrollbar DRAG is in progress, the wrap ratio frozen at drag-start. The
+    /// per-frame `wrap_ratio` is sampled from the visible window, so a drag that scrolls into a
+    /// denser/sparser-wrapping region shifts it — and since the drag maps pointer→line THROUGH the
+    /// ratio, that shift feeds back into the position and the document jitters. Holding the ratio for
+    /// the duration of the drag makes the mapping a fixed linear function (smooth); `None` when idle.
+    scroll_drag_ratio: Option<f32>,
 }
 
 // --- Split-pane compositing helpers (Phase 2) -----------------------------------------------------
@@ -1894,24 +1900,43 @@ fn draw_vscrollbar(
     view: &mut PaneView,
 ) {
     let total_logical = line_count.max(1) as f32;
-    let ratio = wrap_ratio.max(1.0);
-    let total = (total_logical * ratio).max(1.0); // estimated total visual rows (drives POSITION)
     let visible = (track.height() / line_height).max(1.0); // viewport visual rows
     let lh_px = line_height * render_scale;
-    // Current scroll position in visual rows: whole logical lines above (× ratio) + the sub-line
-    // residual already scrolled within the window.
-    let pos_visual = view.scroll_line as f32 * ratio + view.scroll_vertical / lh_px;
     let track_h = track.height();
     // Thumb SIZE is held CONSTANT as you scroll: it's the viewport rows over the document's LOGICAL
     // line count — both fixed while scrolling (only a resize/edit changes them). Sizing off the
-    // wrap-aware `total` instead made the thumb breathe, because `total` is re-estimated from the
-    // visible window each frame and denser/sparser-wrapping regions gave different wrap ratios. The
-    // POSITION below stays wrap-aware (smooth + accurate); only the SIZE is decoupled from it. `WRAP
-    // off` has `ratio == 1`, so `total == total_logical` and size and position agree exactly there.
+    // wrap-aware total instead made the thumb breathe, because the total is re-estimated from the
+    // visible window each frame and denser/sparser-wrapping regions gave different wrap ratios.
     // Min thumb 24px, but never taller than the track — a very short pane makes `track_h < 24`, and
     // `clamp(24, track_h)` would then have min > max and PANIC (crashing from the render path).
     let thumb_h =
         (track_h * (visible / total_logical).clamp(0.0, 1.0)).clamp(24.0_f32.min(track_h), track_h);
+
+    // Interact BEFORE computing the position, so a drag can FREEZE the wrap ratio for its whole
+    // duration. `wrap_ratio` is sampled per-frame from the visible window; letting the drag map
+    // pointer→line through a ratio that changes as the drag scrolls creates a feedback loop that
+    // makes the document jitter. Capturing it at drag-start and holding it makes the mapping a fixed
+    // linear function — smooth. On release we drop back to the live ratio (one tiny thumb settle,
+    // no content move). A click (no drag) just uses the live ratio for its single-shot jump.
+    let interactive = track_h - thumb_h > 0.5;
+    let sb = interactive.then(|| {
+        ui.interact(track, ui.id().with(("vscrollbar", id_salt)), egui::Sense::click_and_drag())
+    });
+    if let Some(sb) = &sb {
+        if sb.drag_started() {
+            view.scroll_drag_ratio = Some(wrap_ratio.max(1.0));
+        } else if !sb.dragged() {
+            view.scroll_drag_ratio = None;
+        }
+    } else {
+        view.scroll_drag_ratio = None;
+    }
+    let ratio = view.scroll_drag_ratio.unwrap_or(wrap_ratio).max(1.0);
+
+    let total = (total_logical * ratio).max(1.0); // estimated total visual rows (drives POSITION)
+    // Current scroll position in visual rows: whole logical lines above (× ratio) + the sub-line
+    // residual already scrolled within the window.
+    let pos_visual = view.scroll_line as f32 * ratio + view.scroll_vertical / lh_px;
     let denom = (total - visible).max(1.0);
     let pos_frac = (pos_visual / denom).clamp(0.0, 1.0);
     let thumb_top = track.min.y + pos_frac * (track_h - thumb_h);
@@ -1927,13 +1952,12 @@ fn draw_vscrollbar(
         egui::Color32::from_rgba_unmultiplied(fr, fgc, fb, 120),
     );
     // Click / drag to scroll — only when the content actually overflows the view.
-    if track_h - thumb_h > 0.5 {
-        let sb = ui.interact(track, ui.id().with(("vscrollbar", id_salt)), egui::Sense::click_and_drag());
+    if let Some(sb) = &sb {
         if sb.dragged() || sb.clicked() {
             if let Some(p) = sb.interact_pointer_pos() {
                 let f = ((p.y - track.min.y - thumb_h / 2.0) / (track_h - thumb_h)).clamp(0.0, 1.0);
                 // Map the dragged fraction (visual rows from the top) back to a logical line via the
-                // same wrap-ratio estimate; `follow=false` + the next shape settle the residual.
+                // (frozen-during-drag) wrap-ratio estimate; `follow=false` + the next shape settle it.
                 let target_visual = f * denom;
                 view.scroll_line =
                     ((target_visual / ratio).round() as usize).min((total_logical as usize).saturating_sub(1));
@@ -2387,7 +2411,7 @@ impl GuiApp {
             message_box: None,
             capture_keymap: Some(capture_keymap),
             pending_save_as: false,
-            pane_view: PaneView { scroll_line: 0, scroll_vertical: 0.0, follow: true, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0) },
+            pane_view: PaneView { scroll_line: 0, scroll_vertical: 0.0, follow: true, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0), scroll_drag_ratio: None },
             pane_views: std::collections::HashMap::new(),
             last_focus: None,
             doc_scroll: std::collections::HashMap::new(),
@@ -5934,7 +5958,7 @@ impl GuiApp {
         self.pane_views.clear();
         for (pid, _doc) in self.editor.host().panes().panes() {
             if let Some((sl, sv, f)) = self.editor.host().pane_scroll(pid) {
-                let pv = PaneView { scroll_line: sl, scroll_vertical: sv, follow: f, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0) };
+                let pv = PaneView { scroll_line: sl, scroll_vertical: sv, follow: f, scroll_h: 0.0, content_w: 0.0, canvas_px: (0, 0), scroll_drag_ratio: None };
                 if pid == focused {
                     self.pane_view = pv;
                 } else {
