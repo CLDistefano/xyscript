@@ -1619,6 +1619,17 @@ impl Handler {
         }
     }
 
+    /// Persist the MAIN window's geometry now if `WINGEO` is on — called on live move/resize (like the
+    /// TXT/DIR/Find windows), so the disk copy is always current no matter HOW the app exits (X, QUIT,
+    /// or a crash). The exit-time save (`exiting`) then just backstops it.
+    fn save_main_geometry_if_wingeo(&self) {
+        if self.app.remember_window_geometry() {
+            if let Some(w) = self.window.as_ref() {
+                save_geometry(w, "window.txt");
+            }
+        }
+    }
+
     fn find_window_event(&mut self, event: WindowEvent) {
         match &event {
             WindowEvent::CloseRequested => {
@@ -2053,6 +2064,8 @@ impl ApplicationHandler for Handler {
         } else {
             None
         };
+        let mut restored_pos: Option<PhysicalPosition<i32>> = None;
+        let mut restored_size: Option<LogicalSize<f64>> = None;
         if let Some((lw, lh, x, y)) = restored {
             let (lw, lh, x, y) = clamp_geometry(event_loop, lw, lh, x, y);
             // Size is LOGICAL: winit converts it with the target monitor's scale factor, so the
@@ -2060,11 +2073,17 @@ impl ApplicationHandler for Handler {
             attrs = attrs
                 .with_inner_size(LogicalSize::new(lw, lh))
                 .with_position(PhysicalPosition::new(x, y));
+            restored_pos = Some(PhysicalPosition::new(x, y));
+            restored_size = Some(LogicalSize::new(lw, lh));
         } else {
             attrs = attrs.with_inner_size(winit::dpi::LogicalSize::new(900.0, 600.0));
         }
-        // Honour a `TITLEBAR off` restored from config at startup (avoids a decorated→borderless flash).
-        self.decorations = self.app.show_titlebar();
+        // Honour a `TITLEBAR off` (or Writer's View) restored from config at startup — create the
+        // window already borderless, so we avoid a decorated→borderless flash AND the size bug it
+        // causes: toggling decorations OFF after creation makes Windows keep the OUTER size and grow
+        // the CLIENT by the title-bar height, so the restored window came back ~a title bar too tall.
+        // The effective state MUST match the per-frame sync below (`show_titlebar && !writer_view`).
+        self.decorations = self.app.show_titlebar() && !self.app.writer_view();
         attrs = attrs.with_decorations(self.decorations);
         // Linux: set a stable X11 WM_CLASS and Wayland app-id of "xyscript". This is what a
         // compositor matches against `xyscript.desktop` (StartupWMClass=xyscript) to give the
@@ -2078,6 +2097,20 @@ impl ApplicationHandler for Handler {
             attrs = WindowAttributesExtWayland::with_name(attrs, "xyscript", "xyscript");
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        // Multi-monitor: the `with_position` creation hint is unreliable across monitors on Windows
+        // (the window can land on the primary display instead of the saved one). Re-assert the saved
+        // physical position AFTER creation — the same thing the TXT/DIR/Find windows do — so it lands
+        // back on the monitor it was closed on.
+        if let Some(p) = restored_pos {
+            let _ = window.set_outer_position(p);
+        }
+        // Re-assert the saved CLIENT size after creation, as a cheap guard against the `with_inner_size`
+        // creation hint being computed against a transitional frame on Windows. (The main title-bar
+        // growth bug is fixed at the decoration toggle itself — see the `set_decorations` sync — but
+        // pinning inner here keeps the restore exact regardless of decoration/DPI accounting.)
+        if let Some(sz) = restored_size {
+            let _ = window.request_inner_size(sz);
+        }
 
         let egui_state = egui_winit::State::new(
             self.egui_ctx.clone(),
@@ -2155,7 +2188,14 @@ impl ApplicationHandler for Handler {
                 // Reconcile immediately (redraw also does, as the safety net for DPI changes whose
                 // resize is skipped/reordered — see `ensure_surface`).
                 self.ensure_surface(size.width, size.height);
+                // Persist the new size live (per `WINGEO`), so the disk copy is current for ANY exit.
+                self.save_main_geometry_if_wingeo();
                 // fall through so egui updates its screen rect too
+            }
+            // Persist the new position live (per `WINGEO`) — the main window, like the TXT/DIR/Find
+            // windows, now saves on every move, so QUIT and X both restore the last spot.
+            WindowEvent::Moved(_) => {
+                self.save_main_geometry_if_wingeo();
             }
             WindowEvent::ModifiersChanged(m) => {
                 self.mods = m.state();
@@ -2277,7 +2317,15 @@ impl ApplicationHandler for Handler {
         if let Some(window) = self.window.as_ref() {
             let want = self.app.show_titlebar() && !self.app.writer_view();
             if want != self.decorations {
+                // Preserve the CLIENT (inner) size across the toggle. On Windows, `set_decorations`
+                // keeps the OUTER size and lets the client absorb (off) or give up (on) the title-bar
+                // height — so removing the title bar silently GREW the window by ~a title bar every
+                // time it was toggled off, and that inflated size got saved by `WINGEO`, compounding
+                // each launch. Re-asserting the pre-toggle inner size keeps the document area constant
+                // (what the user actually sized) and stops the growth.
+                let inner = window.inner_size();
                 window.set_decorations(want);
+                let _ = window.request_inner_size(inner);
                 self.decorations = want;
             }
             // The title-bar drag strip was grabbed → start an OS-driven window move.
