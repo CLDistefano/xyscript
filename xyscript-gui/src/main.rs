@@ -4346,14 +4346,17 @@ impl GuiApp {
         // logical line that holds a bookmark. Collected independent of `$LNS` so bookmarks show even
         // with line numbers off (a dedicated strip is reserved in the layout when the doc has marks).
         self.mark_rows.clear();
-        let mark_lines: std::collections::HashSet<usize> = self.editor.mark_lines().into_iter().collect();
-        if !mark_lines.is_empty() {
-            let mut last: Option<usize> = None;
-            for run in buffer.layout_runs() {
-                if last != Some(run.line_i) {
-                    last = Some(run.line_i);
-                    if mark_lines.contains(&(win.start_line + run.line_i)) {
-                        self.mark_rows.push(run.line_top);
+        if self.editor.mark_gutter() {
+            let mark_lines: std::collections::HashSet<usize> =
+                self.editor.mark_lines().into_iter().collect();
+            if !mark_lines.is_empty() {
+                let mut last: Option<usize> = None;
+                for run in buffer.layout_runs() {
+                    if last != Some(run.line_i) {
+                        last = Some(run.line_i);
+                        if mark_lines.contains(&(win.start_line + run.line_i)) {
+                            self.mark_rows.push(run.line_top);
+                        }
                     }
                 }
             }
@@ -9393,7 +9396,7 @@ impl GuiApp {
         };
         // A thin strip at the far left for bookmark glyphs — reserved only when the doc HAS bookmarks
         // (single pane), so layout is unchanged otherwise. Sits left of the line-number gutter.
-        let mark_w = if !multi && self.editor.has_marks() {
+        let mark_w = if !multi && self.editor.mark_gutter() && self.editor.has_marks() {
             (cell_w * 1.4).ceil()
         } else {
             0.0

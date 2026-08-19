@@ -390,6 +390,10 @@ When you have several, #raw("MARKLIST") opens a chooser — one row per bookmark
 number and the text there — and jumps to whichever you pick. It is the quickest way back to a spot
 you can recognise but can't remember the order of; bind it to a key for a pop-up "go to bookmark" menu.
 
+The dot in the margin is optional: #raw("MARKGUTTER off") hides it (the bookmarks still work — you
+just navigate them with the commands above), and #raw("MARKGUTTER on") brings it back; bare
+#raw("MARKGUTTER") toggles. The setting is saved with #raw("SAVECFG").
+
 Bookmarks belong to the file, not the session: they are saved alongside your other per-document
 metadata in the hidden #raw(".xymeta") sidecar and come back when you reopen the file. If the file
 was changed by another program in the meantime, a bookmark whose text has shifted is *relocated* to

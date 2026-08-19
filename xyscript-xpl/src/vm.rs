@@ -3569,6 +3569,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetGotoOpen(want))?;
                 Ok(Flow::Next)
             }
+            // `MARKGUTTER on|off` (bare = toggle) — whether bookmarks show a dot in the left gutter.
+            // On by default. Persisted by SaveCfg. `$MARKGUTTER`.
+            "MARKGUTTER" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "MARKGUTTER: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetMarkGutter(want))?;
+                Ok(Flow::Next)
+            }
             // `ULSPACES on|off` (bare = toggle) — whether an `MDA` UNDERLINE runs through the spaces
             // between words (on, default) or breaks at them so only word glyphs are underlined (off).
             // `$ULSPACES`.

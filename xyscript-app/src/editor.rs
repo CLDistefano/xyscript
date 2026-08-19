@@ -262,6 +262,11 @@ impl Editor {
         !self.host.active_doc().marks().is_empty()
     }
 
+    /// Whether the bookmark gutter dot is enabled (`MARKGUTTER`). The GUI skips the strip when off.
+    pub fn mark_gutter(&self) -> bool {
+        self.host.mark_gutter()
+    }
+
     /// The 0-based logical line of each bookmark in the active document, for the gutter glyphs.
     pub fn mark_lines(&self) -> Vec<usize> {
         let doc = self.host.active_doc();
@@ -4240,6 +4245,24 @@ mod tests {
         e.run_command("SAVECFG wh.cfg");
         let cfg = e.host_mut().files.get("wh.cfg").unwrap().clone();
         assert!(cfg.contains("WRAPHANG 4"), "config carries WRAPHANG: {cfg}");
+    }
+
+    #[test]
+    fn markgutter_toggles_reports_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("MARKGUTTER"), "1"); // default on
+        e.run_command("MARKGUTTER off");
+        assert_eq!(e.special_str("MARKGUTTER"), "0");
+        e.run_command("MARKGUTTER"); // bare toggles → back on
+        assert_eq!(e.special_str("MARKGUTTER"), "1");
+        e.run_command("MARKGUTTER maybe");
+        assert!(e.last_error().is_some(), "bad value errors");
+        // SaveCfg carries it.
+        e.run_command("MARKGUTTER off");
+        e.run_command("SAVECFG mg.cfg");
+        let cfg = e.host_mut().files.get("mg.cfg").unwrap().clone();
+        assert!(cfg.contains("MARKGUTTER off"), "config carries MARKGUTTER: {cfg}");
     }
 
     #[test]

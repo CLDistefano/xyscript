@@ -519,6 +519,9 @@ pub enum EditorOp {
     /// to the existing tab (`GOTOOPEN on|off`; `None` toggles). Off (default) keeps the prompt.
     /// `$GOTOOPEN`.
     SetGotoOpen(Option<bool>),
+    /// Whether bookmarks show a dot in the left gutter (`MARKGUTTER on|off`; `None` toggles). On by
+    /// default. Persisted by SaveCfg. `$MARKGUTTER`.
+    SetMarkGutter(Option<bool>),
     /// Toggle whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES on|off`;
     /// `None` toggles). On (default) draws one continuous underline; off breaks it at spaces/tabs so
     /// only word glyphs are underlined. `$ULSPACES`.

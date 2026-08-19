@@ -2474,6 +2474,9 @@ pub struct AppHost {
     /// Whether opening an already-open file skips the "already open" prompt and switches to the
     /// existing tab. Off (default) prompts. (`GOTOOPEN`; `$GOTOOPEN`.)
     goto_open: bool,
+    /// Whether bookmarks show a dot in the left gutter. On (default). (`MARKGUTTER`; `$MARKGUTTER`;
+    /// SaveCfg.) A pure display toggle — bookmarks still work, just without the glyph.
+    mark_gutter: bool,
     /// Whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES`; `$ULSPACES`).
     /// On (default) = one continuous underline; off = broken at spaces/tabs (word glyphs only).
     ul_spaces: bool,
@@ -2870,6 +2873,7 @@ impl AppHost {
             wrap_hang: 0,
             untitled_auto_close: true,
             goto_open: false, // default: keep the "already open" prompt
+            mark_gutter: true, // default: show the bookmark dot in the gutter
             ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -3206,6 +3210,10 @@ impl AppHost {
     /// (`GOTOOPEN`/`$GOTOOPEN`).
     pub fn goto_open(&self) -> bool {
         self.goto_open
+    }
+    /// Whether bookmarks show a dot in the left gutter (`MARKGUTTER`/`$MARKGUTTER`).
+    pub fn mark_gutter(&self) -> bool {
+        self.mark_gutter
     }
     /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`/`$ULSPACES`).
     pub fn ul_spaces(&self) -> bool {
@@ -7725,6 +7733,7 @@ impl AppHost {
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
         put(&mut s, "Opening an already-open file switches to its tab instead of prompting — on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
+        put(&mut s, "Show a dot in the left gutter on bookmarked lines — on | off", format!("MARKGUTTER {}", if self.mark_gutter { "on" } else { "off" }));
         put(&mut s, "Underline the spaces between words in MDA underline styling — on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -10949,6 +10958,13 @@ impl Host for AppHost {
                     if self.goto_open { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetMarkGutter(opt) => {
+                self.mark_gutter = opt.unwrap_or(!self.mark_gutter);
+                return Ok(Value::str(format!(
+                    "MARKGUTTER {}",
+                    if self.mark_gutter { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetUlSpaces(opt) => {
                 self.ul_spaces = opt.unwrap_or(!self.ul_spaces);
                 return Ok(Value::str(format!(
@@ -11675,6 +11691,7 @@ impl Host for AppHost {
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),
+            "MARKGUTTER" => Some(Value::Int(if self.mark_gutter { 1 } else { 0 })),
             "ULSPACES" => Some(Value::Int(if self.ul_spaces { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),
