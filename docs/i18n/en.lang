@@ -71,6 +71,13 @@ menu.search.emphasize.selection = Selection
 menu.search.emphasize.word = Word or phrase…
 menu.search.emphasize.regex = Regular expression…
 menu.search.emphasize.clear = Clear
+menu.search.bookmarks = Bookmarks
+menu.search.bookmarks.toggle = Bookmark
+menu.search.bookmarks.next = Next bookmark
+menu.search.bookmarks.prev = Previous bookmark
+menu.search.bookmarks.list = Go to bookmark…
+menu.search.bookmarks.clear_all = Clear all bookmarks
+menu.search.bookmarks.gutter = Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Highlighting

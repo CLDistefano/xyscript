@@ -6587,6 +6587,8 @@ impl GuiApp {
         let autocfg_on = !ed.special_str("CFA").is_empty();
         let doctype = ed.special_str("DOCTYPE");
         let hex_on = ed.hex_view();
+        let mark_here_on = ed.special_str("MARK") == "1"; // caret sits on a bookmark
+        let markgutter_on = ed.special_str("MARKGUTTER") == "1";
         let enc = ed.special_str("EN");
         let autosave = ed.special_str("AU");
         let tabw = ed.special_str("TB");
@@ -6718,6 +6720,20 @@ impl GuiApp {
                     m_stage(self.tr("menu.search.emphasize.regex", "Regular expression…"), emph_rx_stage),
                     MenuNode::Sep,
                     m_item(self.tr("menu.search.emphasize.clear", "Clear"), "EMPH"),
+                ]),
+                MenuNode::Sep,
+                // Bookmarks — mark positions and jump between them (the navigation sibling of Find
+                // next/previous). The checkmark on "Bookmark" reflects whether the caret is on one.
+                m_sub(self.tr("menu.search.bookmarks", "Bookmarks"), vec![
+                    m_tog(self.tr("menu.search.bookmarks.toggle", "Bookmark"), mark_here_on, "MARKTOGGLE"),
+                    MenuNode::Sep,
+                    m_item(self.tr("menu.search.bookmarks.next", "Next bookmark"), "MARKNEXT"),
+                    m_item(self.tr("menu.search.bookmarks.prev", "Previous bookmark"), "MARKPREV"),
+                    m_item(self.tr("menu.search.bookmarks.list", "Go to bookmark…"), "MARKLIST"),
+                    MenuNode::Sep,
+                    m_item(self.tr("menu.search.bookmarks.clear_all", "Clear all bookmarks"), "MARKCLEARALL"),
+                    MenuNode::Sep,
+                    m_tog(self.tr("menu.search.bookmarks.gutter", "Gutter marks"), markgutter_on, "MARKGUTTER"),
                 ]),
             ]),
             m_sub(self.tr("menubar.view", "View"), vec![

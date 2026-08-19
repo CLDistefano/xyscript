@@ -394,6 +394,9 @@ The dot in the margin is optional: #raw("MARKGUTTER off") hides it (the bookmark
 just navigate them with the commands above), and #raw("MARKGUTTER on") brings it back; bare
 #raw("MARKGUTTER") toggles. The setting is saved with #raw("SAVECFG").
 
+All of this is on the menu too, under *Search ▸ Bookmarks*: toggle a bookmark here, jump to the next
+or previous one, open the chooser, clear them all, or turn the gutter dot on and off.
+
 Bookmarks belong to the file, not the session: they are saved alongside your other per-document
 metadata in the hidden #raw(".xymeta") sidecar and come back when you reopen the file. If the file
 was changed by another program in the meantime, a bookmark whose text has shifted is *relocated* to
