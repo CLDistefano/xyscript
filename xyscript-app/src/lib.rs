@@ -39,6 +39,7 @@ pub mod viewport;
 
 pub use byte_rope::ByteRope;
 pub use document::Document;
+pub use document::{Bookmark, MarkNav};
 pub use panes::{Divider, DocId, PaneId, PaneRect, PaneTree, Rect as PaneRectF, Side, Split};
 pub use editor::Editor;
 pub use encoding::{cp437, latin1, utf8, Charset, Encoding};

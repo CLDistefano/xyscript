@@ -256,6 +256,19 @@ impl Editor {
         self.host.active_doc().hex_view()
     }
 
+    /// Whether the active document has any bookmarks (`MARKSET`). The GUI reserves the left gutter
+    /// strip only when this is true.
+    pub fn has_marks(&self) -> bool {
+        !self.host.active_doc().marks().is_empty()
+    }
+
+    /// The 0-based logical line of each bookmark in the active document, for the gutter glyphs.
+    pub fn mark_lines(&self) -> Vec<usize> {
+        let doc = self.host.active_doc();
+        let b = doc.buffer();
+        doc.marks().iter().map(|m| b.line_of(m.off)).collect()
+    }
+
     // ---- hex-view editing (Phase 2): the GUI's byte-entry keystrokes route through these ----------
     /// The hex caret as a byte offset, and the document's byte length.
     pub fn hex_caret(&self) -> usize {
@@ -11128,6 +11141,81 @@ mod tests {
         assert_eq!(out(&e).as_deref(), Some("5"), "DE lands the caret at the block end");
         e.run_command("PR $DF");
         assert_eq!(out(&e).as_deref(), Some("1"), "the defined block survives DE");
+    }
+
+    #[test]
+    fn mark_verbs_set_clear_and_navigate() {
+        let mut e = Editor::new(typing_keymap());
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        e.run_command(r#"insert "abcdefghij""#);
+        e.run_command("TF");
+        e.run_command("PR $MARKS");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        // Set bookmarks at offsets 0 and 5.
+        e.run_command("MARKSET");
+        e.run_command("JMP 5");
+        e.run_command("MARKSET");
+        e.run_command("PR $MARKS");
+        assert_eq!(out(&e).as_deref(), Some("2"));
+        e.run_command("PR $MARK"); // caret at 5 sits on a bookmark
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        // Re-setting where one already exists is a trappable error.
+        e.run_command("MARKSET");
+        e.run_command("PR $ERROR");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        // Off a bookmark, $MARK is 0.
+        e.run_command("JMP 3");
+        e.run_command("PR $MARK");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        // MARKNEXT: 3 → 5, then wraps 5 → 0.
+        e.run_command("MARKNEXT");
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("5"));
+        e.run_command("MARKNEXT");
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        // MARKPREV from 0 wraps → 5.
+        e.run_command("MARKPREV");
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("5"));
+        // Clear at 5 (one left); clearing again there errors; MARKCLEARALL empties.
+        e.run_command("MARKCLEAR");
+        e.run_command("PR $MARKS");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("MARKCLEAR");
+        e.run_command("PR $ERROR");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("MARKCLEARALL");
+        e.run_command("PR $MARKS");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        // With no bookmarks, MARKNEXT is a trappable error.
+        e.run_command("MARKNEXT");
+        e.run_command("PR $ERROR");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn bookmarks_ride_edits_and_relocate_when_text_moved() {
+        use crate::Document;
+        // Live anchor: an insert BEFORE the mark shifts its offset, no relocation.
+        let mut d = Document::from_str("hello world foo");
+        d.set_caret(6, None); // start of "world"
+        assert!(d.mark_set());
+        d.set_caret(0, None);
+        d.insert("XYZ ");
+        assert_eq!(d.marks()[0].off, 10, "live anchor followed the insert");
+        assert!(!d.marks()[0].moved, "an in-session shift is not a relocation");
+
+        // Cross-session: restore a mark captured in the ORIGINAL text into CHANGED text — its content
+        // anchor relocates it (and flags the move).
+        let mut src = Document::from_str("hello world foo");
+        src.set_caret(6, None);
+        src.mark_set();
+        let saved = src.marks().to_vec();
+        let mut d2 = Document::from_str("XYZ hello world foo");
+        d2.set_marks_restored(saved);
+        assert_eq!(d2.marks()[0].off, 10, "relocated by content search");
+        assert!(d2.marks()[0].moved, "flagged as moved");
     }
 
     #[test]

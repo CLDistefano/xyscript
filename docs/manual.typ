@@ -374,6 +374,27 @@ the cursor drags a highlight along with it as it moves — the keyboard equivale
 When a script needs to remember a spot and return to it, #raw("$CP") is the cursor's character offset
 and #raw("$LN") is its line number.
 
+== Bookmarks
+
+When you keep jumping between a few places in a long file, drop a *bookmark* at each one and hop
+between them. #raw("MARKSET") sets a bookmark at the cursor; #raw("MARKNEXT") and #raw("MARKPREV")
+move the cursor to the next and previous bookmark, wrapping around the ends of the file, and scroll
+it into view. A dot appears in the left margin on every bookmarked line.
+
+#raw("MARKCLEAR") removes the bookmark at the cursor, #raw("MARKCLEARALL") removes them all, and
+#raw("MARKTOGGLE") — the handy one to bind to a key — sets a bookmark if there isn't one at the
+cursor and clears it if there is. From a script, #raw("$MARKS") is the count and #raw("$MARK") is
+#raw("1") when the cursor is sitting on a bookmark.
+
+Bookmarks belong to the file, not the session: they are saved alongside your other per-document
+metadata in the hidden #raw(".xymeta") sidecar and come back when you reopen the file. If the file
+was changed by another program in the meantime, a bookmark whose text has shifted is *relocated* to
+that text where it can still be found nearby, and the status line notes that it moved.
+
+#tip("A bookmark holds its place as you edit")[While the file is open, a bookmark rides its
+surrounding text — insert or delete above it and it moves right along, still marking the same spot.
+You only see the "moved" note when the file changed *outside* this session.]
+
 == Right-to-left text and the cursor
 
 XyScript shapes and displays right-to-left scripts — Arabic, Hebrew — correctly out of the box: Arabic

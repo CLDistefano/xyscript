@@ -2225,6 +2225,9 @@ struct GuiApp {
     // Line-number gutter (`$LNS`): `(document line, canvas-relative y)` for the first visual
     // row of each visible logical line, collected during `raster` and painted by the gutter.
     gutter_lines: Vec<(usize, f32)>,
+    // Bookmark rows: canvas-relative y of the first visual row of each visible logical line that
+    // holds a `MARKSET` bookmark. Collected during `raster`, painted as a glyph in the left strip.
+    mark_rows: Vec<f32>,
     // Average VISUAL rows per LOGICAL line over the laid-out window, measured each frame in
     // `raster`. The visual scrollbar multiplies the document's logical-line count by this to
     // estimate the total visual extent — an O(viewport) estimate (no whole-document shaping).
@@ -2431,6 +2434,7 @@ impl GuiApp {
             font_size: 22.0,
             line_height: 32.0,
             gutter_lines: Vec::new(),
+            mark_rows: Vec::new(),
             wrap_ratio: 1.0,
             os_clipboard: arboard::Clipboard::new().ok(),
             os_clip_mirror: String::new(),
@@ -4334,6 +4338,23 @@ impl GuiApp {
                 if last != Some(run.line_i) {
                     last = Some(run.line_i);
                     self.gutter_lines.push((win.start_line + run.line_i + 1, run.line_top));
+                }
+            }
+        }
+
+        // Bookmark gutter glyphs (`MARKSET`): the canvas-y of the first visual row of each visible
+        // logical line that holds a bookmark. Collected independent of `$LNS` so bookmarks show even
+        // with line numbers off (a dedicated strip is reserved in the layout when the doc has marks).
+        self.mark_rows.clear();
+        let mark_lines: std::collections::HashSet<usize> = self.editor.mark_lines().into_iter().collect();
+        if !mark_lines.is_empty() {
+            let mut last: Option<usize> = None;
+            for run in buffer.layout_runs() {
+                if last != Some(run.line_i) {
+                    last = Some(run.line_i);
+                    if mark_lines.contains(&(win.start_line + run.line_i)) {
+                        self.mark_rows.push(run.line_top);
+                    }
                 }
             }
         }
@@ -9370,9 +9391,16 @@ impl GuiApp {
         } else {
             0.0
         };
+        // A thin strip at the far left for bookmark glyphs — reserved only when the doc HAS bookmarks
+        // (single pane), so layout is unchanged otherwise. Sits left of the line-number gutter.
+        let mark_w = if !multi && self.editor.has_marks() {
+            (cell_w * 1.4).ceil()
+        } else {
+            0.0
+        };
         let margin_l = if multi { 0.0 } else { (self.editor.margin_left() * cell_w).round() };
         let margin_r = if multi { 0.0 } else { (self.editor.margin_right() * cell_w).round() };
-        let left = gutter_w + margin_l;
+        let left = mark_w + gutter_w + margin_l;
         // `WRAP off` reserves a bottom strip (single pane) for the horizontal scrollbar, mirroring the
         // vertical strip's `sb_w`. Zero while wrapping, so the layout is unchanged there.
         let hb_h = if !multi && !self.editor.wrap() { 12.0_f32 } else { 0.0 };
@@ -9692,6 +9720,19 @@ impl GuiApp {
                     egui::FontId::monospace(self.font_size),
                     color,
                 );
+            }
+        }
+        // Bookmark glyphs: a filled dot in the reserved left strip, on each bookmarked line's first
+        // visual row. A shape (not a font glyph) so it renders regardless of font coverage/theme.
+        if mark_w > 0.0 {
+            let painter = ui.painter();
+            let color = egui::Color32::from_rgb(216, 118, 42); // bookmark orange, reads in light + dark
+            let s = self.render_scale; // mark_rows y is in canvas pixels → back to points
+            let cx = resp.rect.min.x - left + mark_w * 0.5; // centre of the far-left strip
+            let r = (self.font_size * 0.24).max(2.0);
+            for &y in &self.mark_rows {
+                let cy = resp.rect.min.y + y / s + self.line_height * 0.5;
+                painter.circle_filled(egui::pos2(cx, cy), r, color);
             }
         }
 

@@ -2425,6 +2425,24 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetHexView(want))?;
                 Ok(Flow::Next)
             }
+            // Bookmarks. MARKSET/MARKCLEAR/MARKCLEARALL/MARKTOGGLE act at the caret; MARKNEXT/MARKPREV
+            // move the caret to the next/previous bookmark (circular). Set/clear are trappable (already
+            // set / nothing there); toggle never errors. The host op returns the status string.
+            "MARKSET" | "MARKCLEAR" | "MARKCLEARALL" | "MARKTOGGLE" | "MARKNEXT" | "MARKPREV" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable(format!("{base} takes no argument")));
+                }
+                let op = match base {
+                    "MARKSET" => EditorOp::MarkSet,
+                    "MARKCLEAR" => EditorOp::MarkClear,
+                    "MARKCLEARALL" => EditorOp::MarkClearAll,
+                    "MARKTOGGLE" => EditorOp::MarkToggle,
+                    "MARKNEXT" => EditorOp::MarkNext,
+                    _ => EditorOp::MarkPrev,
+                };
+                self.host_op(op)?;
+                Ok(Flow::Next)
+            }
             "HLAUTO" => {
                 let a = args.trim();
                 let on = match a.to_ascii_lowercase().as_str() {
@@ -5011,6 +5029,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.
     "DELSEL", "RW", "RL", "RS", "RP", "RE",
+    // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate it.
+    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",

@@ -350,6 +350,12 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("JMP"): jump to a character offset — absolute or `+n`/`-n` relative.
 / #cmd("MD") / #cmd("MU"): scroll the view down / up one line without moving the caret.
 
+== Bookmarks
+
+/ #cmd("MARKSET") / #cmd("MARKCLEAR") / #cmd("MARKTOGGLE"): set / clear / toggle a bookmark at the caret. #cmd("MARKCLEARALL"): remove every bookmark in the document.
+/ #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping around the ends. #sv("MARKS") is the count; #sv("MARK") is `1` when the caret sits on one.
+Bookmarks are per-document, marked by a dot in the left gutter, and saved in the file's hidden `.xymeta` sidecar — a mark whose text has moved is relocated to the nearby text (a status note says so).
+
 == Selecting and defining blocks
 
 / #cmd("DF"): start (or close) a defined selection. #cmd("DFA"): select the whole document. #cmd("DM"): extend it to the caret. #cmd("DZ"): close it.
@@ -799,6 +805,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
   #emph[In print.] `MDA` styling isn't only on-screen: a #emph[Markdown/GFM] document carries it into the #cmd("PV") preview and #cmd("TOPDF") export — every layer (bold / italic / underline / reverse / foreground / background) is woven into the generated Typst so it renders in the PDF, even the attributes Markdown itself can't express. It applies to prose text; styling that falls inside Markdown syntax (a code span, a link's target) is left to render plainly. #emph[Authored-Typst] documents (#cmd("DOCTYPE") `typst`) style themselves in Typst markup, so `MDA` there stays a screen-only overlay.
 / #cmd("MDAS"): open a colour #underline[picker] for the selection's #cmd("MDA") block colour — bare picks the foreground, `MDAS/B` the background. On accept it runs `MDA`/`MDA/B <r g b>`. In the GUI: #emph[Settings ▸ Appearance ▸ Colors ▸ Block colour].
+/ #cmd("MARKSET") / #cmd("MARKCLEAR"): set / clear a bookmark at the caret (`MARKCLEAR` where there is none is a trappable error). #cmd("MARKTOGGLE"): set one if absent, clear it if present. #cmd("MARKCLEARALL"): remove every bookmark in the document.
+/ #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping at the ends, and scroll it into view. A bookmark whose text has moved (the file changed since it was saved) is relocated to the nearby text, noted in the status line. Bookmarks are per-document, persist in the hidden `.xymeta` sidecar, and show as a dot in the left gutter. See #sv("MARKS") / #sv("MARK").
 / #cmd("MENU"): keyboard control of the menu bar. Bare `MENU` toggles it — opens the first menu for arrow-key navigation (Left/Right between menus, Up/Down through items, Enter to open a submenu or run an item, Esc to back out) or closes it if open. `MENU "f"` opens a specific menu by its #underline[accelerator] letter (the underlined letter in each label; e.g. `f` = File). While a menu is open, typing an item's accelerator letter jumps to and runs it. The bar takes mouse and keyboard interchangeably — a menu opened with the mouse is immediately arrow-navigable, and vice versa. Bind it to a key (e.g. `nn=MENU` or `nn=MENU "f"`) for mouse-free menus. GUI only.
 / #cmd("MERGE", "ME"): insert a file's contents at the caret.
 / #cmd("MSG"): show a message box — a bare `MSG` is modal and pauses the script; `MSG /T:<seconds>` is a non-blocking toast.
@@ -1241,6 +1249,7 @@ Every special variable in one list, for quick lookup.
 / #sv("CARETMOTION"): the Left/Right caret-motion order — `logical` or `visual` (set with `CARETMOTION`).
 / #sv("WRAP"): `1` if long lines wrap to the window, `0` if they run past the edge with a horizontal scrollbar (set with `WRAP`).
 / #sv("HEX"): `1` if the active document is shown as a hex + text grid, `0` for the normal text view (set with `HEX on|off`).
+/ #sv("MARKS"): the number of bookmarks in the active document. #sv("MARK"): `1` when the caret sits on a bookmark, else `0` (set with `MARKSET` / `MARKCLEAR`).
 / #sv("WRAPHANG"): the hanging indent (in spaces) for wrapped continuation rows, `0` for flush (set with `WRAPHANG`).
 / #sv("ULSPACES"): `1` if `MDA` underlines paint through inter-word spaces, `0` if they break at spaces (set with `ULSPACES`).
 / #sv("UNTITLEDTAB"): `1` if the blank Untitled tab is auto-closed when a document is opened (set with `UNTITLEDTAB`).
@@ -1251,6 +1260,7 @@ Every special variable in one list, for quick lookup.
 / #sv("CARETP"): the primary caret's index in the document-order caret list, so `$CP == $MCP[$CARETP]`.
 / #sv("MCP"): array of every caret's character offset, in document order (the mirror of #sv("CP")). Loop it with `FOR p IN $MCP`; the count is `LEN($MCP)` (or #sv("CARETS")). The classic caret specials (#sv("CP")/#sv("WD")/#sv("LI")/…) read the primary caret.
 / #sv("MSE") / #sv("MSL") / #sv("MDF") / #sv("MDS") / #sv("MDN") / #sv("MCS") / #sv("MCH") / #sv("MWD") / #sv("MLI") / #sv("MLN"): the `$M…` mirror family — one 0-based array element per caret, in document order, mirroring the classic caret specials #sv("SE") / #sv("SL") / #sv("DF") / #sv("DS") / #sv("DN") / #sv("CS") / #sv("CH") / #sv("WD") / #sv("LI") / #sv("LN") respectively (selected text, chars selected, has-selection 1/0, selection start / end offset, caret-on-selection 1/0, char to the right, word under caret, line text, 1-based line number). Every mirror has `LEN == ` #sv("CARETS") and `$X == $MX[$CARETP]`; a bare caret reports `""` / `0` for its selection but a valid position, char, word, and line.
+/ #sv("MARK"): `1` when the caret is on a bookmark, else `0`. #sv("MARKS"): the number of bookmarks in the document.
 / #sv("CRCOLOR"): caret color.
 / #sv("CMCRCOLOR"): command-line caret color.
 / #sv("CRSHAPE"): caret shape.

@@ -72,6 +72,8 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "THS", "TVS", "TW", "TUS", "TRV", "TZ", "FS",
     // Defined-text selection (DF model).
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DB", "DE",
+    // Bookmarks (`MARK*`): set / clear / clear-all / toggle at the caret; next / prev navigate.
+    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV",
     // Define a unit (word / line / sentence / paragraph) at the cursor; the `+`
     // forms include the trailing separator.
     "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",

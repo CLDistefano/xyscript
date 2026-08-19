@@ -579,6 +579,15 @@ pub enum EditorOp {
     /// Show the active document as a hex + text grid (`HEX on|off`; bare `HEX` toggles). A canvas
     /// view mode; the bytes are unchanged. `None` toggles. Off by default. Read back via `$HEX`.
     SetHexView(Option<bool>),
+    /// Bookmarks (`MARK*`): set / clear / clear-all / toggle a bookmark at the caret, or move the
+    /// caret to the next / previous one (circular). Persisted per-document in the `.xymeta` sidecar;
+    /// `$MARKS` counts them and `$MARK` reports whether the caret is on one.
+    MarkSet,
+    MarkClear,
+    MarkClearAll,
+    MarkToggle,
+    MarkNext,
+    MarkPrev,
     /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
     /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
     /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.

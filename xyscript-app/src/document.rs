@@ -189,6 +189,73 @@ pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
 /// is a runaway backstop, oldest dropped past it).
 const CARET_RING_CAP: usize = 128;
 
+/// Bytes of surrounding text kept on each side of a bookmark for content-based relocation. Small
+/// enough to keep the sidecar compact, large enough to be distinctive within a document.
+const MARK_CTX: usize = 48;
+
+/// A saved caret location — a bookmark (`MARKSET`). Persisted per-document in the `.xymeta`
+/// sidecar's `[marks]` section and restored on reopen. `off` is a raw rope-byte offset (like `$CP`)
+/// that rides edits in-session (a live anchor); `ctx`/`split` let a mark be RELOCATED by content when
+/// the file changed on disk between sessions (see [`Document::reconcile_marks`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bookmark {
+    /// Rope-byte offset of the bookmarked point. Shifts with edits so it stays on its text.
+    pub off: usize,
+    /// Raw bytes of a window straddling the point (up to [`MARK_CTX`] each side), for relocation.
+    /// Empty only for a mark with no surrounding text (an empty buffer).
+    pub ctx: Vec<u8>,
+    /// How many bytes of `ctx` precede the point (relocated point = match start + `split`).
+    pub split: usize,
+    /// Session-only: set when load-time reconciliation had to RELOCATE this mark (the text moved),
+    /// so the next `MARKNEXT`/`MARKPREV` that lands on it can report the move. Not persisted.
+    pub moved: bool,
+}
+
+/// The outcome of a `MARKNEXT`/`MARKPREV` jump: where the caret landed, whether that bookmark had
+/// been relocated (so the caller can say so), and its 1-based index / total (for the status line).
+pub struct MarkNav {
+    pub off: usize,
+    pub moved: bool,
+    pub index: usize,
+    pub total: usize,
+}
+
+/// Find `ctx` in `text` so the resulting point (`match_start + split`) lands within `[lo, hi]`,
+/// choosing the occurrence whose point is NEAREST `orig`. Raw-byte search (encoding-agnostic); the
+/// scan is bounded to the vicinity so it stays cheap. `None` if the context can't be placed in range.
+fn find_ctx_near(
+    text: &[u8],
+    ctx: &[u8],
+    split: usize,
+    lo: usize,
+    hi: usize,
+    orig: usize,
+) -> Option<usize> {
+    if ctx.is_empty() || ctx.len() > text.len() {
+        return None;
+    }
+    // A match starting in this window can put its point anywhere in [lo, hi].
+    let scan_lo = lo.saturating_sub(split);
+    let scan_hi = (hi + (ctx.len() - split)).min(text.len());
+    let mut best: Option<usize> = None;
+    let mut best_dist = usize::MAX;
+    let mut i = scan_lo;
+    while i + ctx.len() <= scan_hi {
+        if &text[i..i + ctx.len()] == ctx {
+            let point = i + split;
+            if (lo..=hi).contains(&point) {
+                let dist = point.abs_diff(orig);
+                if dist < best_dist {
+                    best_dist = dist;
+                    best = Some(point);
+                }
+            }
+        }
+        i += 1;
+    }
+    best
+}
+
 /// A text document: a buffer, undo/redo history, and file identity.
 #[derive(Debug)]
 pub struct Document {
@@ -246,6 +313,10 @@ pub struct Document {
     mda_type_fg: Option<(u8, u8, u8)>,
     mda_type_bg: Option<(u8, u8, u8)>,
     mda_type_attr: Option<u8>,
+    /// Bookmarks (`MARKSET`) for THIS document, in rope-byte offsets, sorted by offset. Ride edits
+    /// like the colour spans (via `adjust_color_spans`), persisted to the `.xymeta` sidecar's
+    /// `[marks]` section, and relocated by content on reopen. See [`Bookmark`].
+    marks: Vec<Bookmark>,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -336,6 +407,7 @@ impl Clone for Document {
             color_spans: self.color_spans.clone(),
             bg_spans: self.bg_spans.clone(),
             attr_spans: self.attr_spans.clone(),
+            marks: self.marks.clone(),
             styling_dirty: self.styling_dirty,
             mda_type_fg: self.mda_type_fg,
             mda_type_bg: self.mda_type_bg,
@@ -373,6 +445,7 @@ impl Default for Document {
             color_spans: Vec::new(),
             bg_spans: Vec::new(),
             attr_spans: Vec::new(),
+            marks: Vec::new(),
             styling_dirty: false,
             mda_type_fg: None,
             mda_type_bg: None,
@@ -1017,6 +1090,24 @@ impl Document {
         Self::shift_spans(&mut self.color_spans, at, removed, inserted);
         Self::shift_spans(&mut self.bg_spans, at, removed, inserted);
         Self::shift_spans(&mut self.attr_spans, at, removed, inserted);
+        Self::shift_marks(&mut self.marks, at, removed, inserted);
+    }
+
+    /// Edit-follow the bookmark points (live anchors), so a mark stays on its text as you type/delete.
+    /// Left gravity at the edit point: a mark exactly at an insertion stays put (the new text lands
+    /// after it); a mark the edit DELETES over collapses to the edit start. Mirrors [`shift_spans`],
+    /// but a point is never dropped (a bookmark has no width to be emptied).
+    fn shift_marks(list: &mut [Bookmark], at: usize, removed: usize, inserted: usize) {
+        for m in list.iter_mut() {
+            let x = m.off;
+            m.off = if x <= at {
+                x
+            } else if x >= at + removed {
+                x - removed + inserted
+            } else {
+                at // inside a deletion → collapse to the edit start
+            };
+        }
     }
 
     /// Edit-follow one span list. Per-edge "gravity" so text typed AT a boundary isn't swept into the
@@ -1130,6 +1221,171 @@ impl Document {
         self.gen = self.gen.wrapping_add(1);
     }
 
+    // ---- bookmarks (`MARK*`) -----------------------------------------------
+
+    /// Capture the raw-byte context window straddling `off`, returning `(ctx, split)` where `split`
+    /// is how many bytes precede the point. Encoding-agnostic (works on the raw rope bytes).
+    fn capture_ctx(&self, off: usize) -> (Vec<u8>, usize) {
+        let len = self.buffer.len();
+        let off = off.min(len);
+        let start = off.saturating_sub(MARK_CTX);
+        let end = (off + MARK_CTX).min(len);
+        (self.buffer.slice_bytes(start, end), off - start)
+    }
+
+    /// The document's bookmarks (sorted by offset), for the gutter glyph and tests.
+    pub fn marks(&self) -> &[Bookmark] {
+        &self.marks
+    }
+
+    /// Number of bookmarks (`$MARKS`).
+    pub fn mark_count(&self) -> usize {
+        self.marks.len()
+    }
+
+    /// Whether the caret sits exactly on a bookmark (`$MARK`).
+    pub fn mark_at_cursor(&self) -> bool {
+        let off = self.buffer.cursor();
+        self.marks.iter().any(|m| m.off == off)
+    }
+
+    /// `MARKSET`: set a bookmark at the caret. Returns `false` (no change) if one is already there.
+    pub fn mark_set(&mut self) -> bool {
+        let off = self.buffer.cursor();
+        if self.marks.iter().any(|m| m.off == off) {
+            return false;
+        }
+        let (ctx, split) = self.capture_ctx(off);
+        self.marks.push(Bookmark { off, ctx, split, moved: false });
+        self.marks.sort_by_key(|m| m.off);
+        self.styling_dirty = true; // metadata change → persist on save, count for the save prompt
+        true
+    }
+
+    /// `MARKCLEAR`: remove the bookmark at the caret. Returns `false` if there was none.
+    pub fn mark_clear(&mut self) -> bool {
+        let off = self.buffer.cursor();
+        let before = self.marks.len();
+        self.marks.retain(|m| m.off != off);
+        let removed = self.marks.len() != before;
+        if removed {
+            self.styling_dirty = true;
+        }
+        removed
+    }
+
+    /// `MARKTOGGLE`: clear the bookmark at the caret if present, else set one. Returns the new state
+    /// (`true` = a bookmark is now set here).
+    pub fn mark_toggle(&mut self) -> bool {
+        if self.mark_clear() {
+            false
+        } else {
+            self.mark_set();
+            true
+        }
+    }
+
+    /// `MARKCLEARALL`: drop every bookmark. Returns how many were cleared.
+    pub fn mark_clear_all(&mut self) -> usize {
+        let n = self.marks.len();
+        if n > 0 {
+            self.marks.clear();
+            self.styling_dirty = true;
+        }
+        n
+    }
+
+    /// `MARKNEXT`: move the caret to the next bookmark after it (wrapping). `None` if there are none.
+    pub fn mark_next(&mut self) -> Option<MarkNav> {
+        self.mark_jump(true)
+    }
+
+    /// `MARKPREV`: move the caret to the previous bookmark before it (wrapping). `None` if none.
+    pub fn mark_prev(&mut self) -> Option<MarkNav> {
+        self.mark_jump(false)
+    }
+
+    fn mark_jump(&mut self, forward: bool) -> Option<MarkNav> {
+        if self.marks.is_empty() {
+            return None;
+        }
+        let cur = self.buffer.cursor();
+        // Live anchors keep offsets correct in-session, so no reconcile is needed here — the `moved`
+        // flags were set at load time. Pick the target by offset, circularly.
+        let target = if forward {
+            self.marks.iter().position(|m| m.off > cur).or(Some(0))
+        } else {
+            self.marks.iter().rposition(|m| m.off < cur).or(Some(self.marks.len() - 1))
+        }?;
+        let bm = &mut self.marks[target];
+        let off = bm.off;
+        let moved = std::mem::take(&mut bm.moved); // report once, then clear
+        self.set_caret(off, None);
+        Some(MarkNav { off, moved, index: target + 1, total: self.marks.len() })
+    }
+
+    /// Restore bookmarks read from the sidecar, then reconcile them against the CURRENT text: a mark
+    /// whose stored context no longer sits at its offset is relocated by content (within its vicinity),
+    /// flagging `moved`. Marks that can't be placed keep their clamped offset. De-duplicated by offset.
+    pub fn set_marks_restored(&mut self, marks: Vec<Bookmark>) {
+        self.marks = marks;
+        self.reconcile_marks();
+        // Restored marks match what was last SAVED, so this is not an unsaved change.
+    }
+
+    /// Verify each mark still sits on its captured context; relocate the ones that don't (see
+    /// [`find_ctx_near`]). Clamps offsets, sorts, de-duplicates. Returns how many were relocated.
+    fn reconcile_marks(&mut self) -> usize {
+        if self.marks.is_empty() {
+            return 0;
+        }
+        let len = self.buffer.len();
+        let text = self.buffer.slice_bytes(0, len);
+        self.marks.sort_by_key(|m| m.off);
+        let bounds: Vec<usize> = self.marks.iter().map(|m| m.off.min(len)).collect();
+        let mut moved = 0;
+        for i in 0..self.marks.len() {
+            let (off, split, ctx_len) = {
+                let m = &self.marks[i];
+                (m.off, m.split, m.ctx.len())
+            };
+            if ctx_len == 0 {
+                continue;
+            }
+            let start = off.saturating_sub(split);
+            let ok = start + ctx_len <= len && text[start..start + ctx_len] == self.marks[i].ctx[..];
+            if ok {
+                continue;
+            }
+            let lo = if i > 0 { bounds[i - 1] } else { 0 };
+            let hi = if i + 1 < bounds.len() { bounds[i + 1] } else { len };
+            if let Some(new_off) = find_ctx_near(&text, &self.marks[i].ctx, split, lo, hi, off) {
+                self.marks[i].off = new_off;
+                self.marks[i].moved = true;
+                moved += 1;
+            }
+        }
+        for m in &mut self.marks {
+            m.off = m.off.min(len);
+        }
+        self.marks.sort_by_key(|m| m.off);
+        self.marks.dedup_by_key(|m| m.off);
+        moved
+    }
+
+    /// Bookmarks with FRESH context captured from the current buffer, for persisting to the sidecar
+    /// (`(off, split, ctx)`). Recomputed at save time so the stored anchor matches the saved bytes,
+    /// even after a session of edits shifted the live offsets.
+    pub fn marks_for_persist(&self) -> Vec<(usize, usize, Vec<u8>)> {
+        self.marks
+            .iter()
+            .map(|m| {
+                let (ctx, split) = self.capture_ctx(m.off);
+                (m.off, split, ctx)
+            })
+            .collect()
+    }
+
     /// Replace the document's content from freshly-read file **bytes**, adopting
     /// `path`. The bytes are stored **verbatim** (never transformed) — the
     /// byte-exact-round-trip guarantee. The encoding view is chosen by a
@@ -1147,6 +1403,7 @@ impl Document {
         self.color_spans.clear();
         self.bg_spans.clear();
         self.attr_spans.clear();
+        self.marks.clear(); // old content's bookmarks; restored from the sidecar right after
         self.styling_dirty = false; // a freshly-loaded doc matches disk (restore-from-sidecar won't set it)
         self.undo.clear();
         self.redo.clear();

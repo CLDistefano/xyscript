@@ -25,7 +25,7 @@ pub use xyscript_xpl::LintFixChoices;
 pub use xyscript_xpl::CmlinePlacement;
 pub use xyscript_xpl::PathPlace;
 
-use crate::document::Document;
+use crate::document::{Bookmark, Document};
 use crate::encoding::Encoding;
 use crate::text::{Buffer, Pattern};
 
@@ -202,9 +202,10 @@ fn xymeta_write(
     fg: &[ColorSpan],
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
+    marks: &[(usize, usize, Vec<u8>)],
 ) {
     let Some(scp) = xymeta_path(target) else { return };
-    if fg.is_empty() && bg.is_empty() && attrs.is_empty() {
+    if fg.is_empty() && bg.is_empty() && attrs.is_empty() && marks.is_empty() {
         // Nothing to persist — drop any stale sidecar so a doc whose styling was cleared doesn't
         // reopen still wearing it.
         let _ = std::fs::remove_file(&scp);
@@ -229,6 +230,15 @@ fn xymeta_write(
             s.push_str(&format!("at {a} {b} {bits}\n"));
         }
     }
+    if !marks.is_empty() {
+        // `m <off> <split> <ctx-hex>` — the context is hex so it survives line-trim and can't collide
+        // with the field separators, whatever raw bytes it holds (any encoding).
+        s.push_str("[marks]\n");
+        for (off, split, ctx) in marks {
+            let hex: String = ctx.iter().map(|b| format!("{b:02x}")).collect();
+            s.push_str(&format!("m {off} {split} {hex}\n"));
+        }
+    }
     // Remove first: on Windows you can't truncate-create over a HIDDEN file (access denied), and
     // this also clears the attribute so the fresh write starts clean — then re-hide it.
     let _ = std::fs::remove_file(&scp);
@@ -237,13 +247,21 @@ fn xymeta_write(
     }
 }
 
-/// Read the sidecar next to `target`, returning its `(fg, bg, attrs)` spans ONLY if the guard matches
-/// `bytes` exactly (same length and hash). Any mismatch, missing file, unknown version, or parse slip
-/// yields `None` — the document then simply opens without stored styling.
-fn xymeta_read(
-    target: &Path,
-    bytes: &[u8],
-) -> Option<(Vec<ColorSpan>, Vec<ColorSpan>, Vec<(usize, usize, u8)>)> {
+/// A parsed `.xymeta` sidecar. The colour/attribute spans are only trustworthy when `guard_ok` (the
+/// file's bytes still match), but `marks` are ALWAYS returned: a bookmark carries its own text anchor,
+/// so it can be relocated against changed bytes (see [`Document::set_marks_restored`]).
+struct XymetaRestore {
+    guard_ok: bool,
+    fg: Vec<ColorSpan>,
+    bg: Vec<ColorSpan>,
+    attrs: Vec<(usize, usize, u8)>,
+    marks: Vec<Bookmark>,
+}
+
+/// Read the sidecar next to `target`. Returns `None` only when there's nothing usable (no file, wrong
+/// version). Otherwise every section is parsed; `guard_ok` tells the caller whether the byte-guard
+/// still matches (so it can trust `fg`/`bg`/`attrs`), while `marks` are returned regardless.
+fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<XymetaRestore> {
     let scp = xymeta_path(target)?;
     let text = std::fs::read_to_string(&scp).ok()?;
     let mut lines = text.lines();
@@ -255,6 +273,7 @@ fn xymeta_read(
     let mut section = "";
     let (mut fg, mut bg): (Vec<ColorSpan>, Vec<ColorSpan>) = (Vec::new(), Vec::new());
     let mut attrs: Vec<(usize, usize, u8)> = Vec::new();
+    let mut marks: Vec<Bookmark> = Vec::new();
     for line in lines {
         let line = line.trim();
         if line.is_empty() {
@@ -264,6 +283,7 @@ fn xymeta_read(
             section = match sec {
                 "colors" => "colors",
                 "attrs" => "attrs",
+                "marks" => "marks",
                 _ => "", // unknown section: skip its lines
             };
             continue;
@@ -291,11 +311,40 @@ fn xymeta_read(
                     attrs.push(sp);
                 }
             }
+            "marks" => {
+                if let Some(bm) = parse_xymeta_mark(line) {
+                    marks.push(bm);
+                }
+            }
             _ => {}
         }
     }
-    // Guard: if the bytes changed under the sidecar, its offsets are meaningless — ignore it.
-    (len_ok && hash_ok).then_some((fg, bg, attrs))
+    Some(XymetaRestore { guard_ok: len_ok && hash_ok, fg, bg, attrs, marks })
+}
+
+/// Parse one `[marks]` line: `m <off> <split> <ctx-hex>`. The context hex may be empty (a mark with
+/// no surrounding text). Any malformed field drops just that line.
+fn parse_xymeta_mark(line: &str) -> Option<Bookmark> {
+    let rest = line.strip_prefix("m ")?;
+    let mut it = rest.splitn(3, ' ');
+    let off: usize = it.next()?.trim().parse().ok()?;
+    let split: usize = it.next()?.trim().parse().ok()?;
+    let hex = it.next().unwrap_or("").trim();
+    if hex.len() % 2 != 0 {
+        return None;
+    }
+    let ctx: Option<Vec<u8>> =
+        (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok()).collect();
+    Some(Bookmark { off, ctx: ctx?, split, moved: false })
+}
+
+/// Apply a parsed sidecar to a freshly-loaded document: colour/attribute spans only when the guard
+/// still holds, but bookmarks always (they relocate themselves against the current text).
+fn apply_xymeta_restore(doc: &mut Document, r: XymetaRestore) {
+    if r.guard_ok {
+        doc.set_color_spans_raw(r.fg, r.bg, r.attrs);
+    }
+    doc.set_marks_restored(r.marks);
 }
 
 /// Human-readable names for an `MDA` attribute bitset (e.g. "bold underline"), for status messages.
@@ -6183,11 +6232,18 @@ impl AppHost {
                 let len = doc.buffer().len();
                 let (fg, bg, attrs) = parse_session_spans(&spans_field, len);
                 doc.set_color_spans_raw(fg, bg, attrs);
-            } else if !self.virtual_fs {
+            }
+            // Bookmarks aren't carried in the session manifest, so restore them from the sidecar (for
+            // ANY session version). For older sessions without live spans, also take the sidecar's
+            // colours (guard-gated). `set_marks_restored` relocates the marks against the current text.
+            if !self.virtual_fs {
                 if let Some(p) = doc.path().map(|p| p.to_path_buf()) {
                     let bytes = doc.save_bytes();
-                    if let Some((fg, bg, attrs)) = xymeta_read(&p, &bytes) {
-                        doc.set_color_spans_raw(fg, bg, attrs);
+                    if let Some(r) = xymeta_read(&p, &bytes) {
+                        if !has_spans && r.guard_ok {
+                            doc.set_color_spans_raw(r.fg, r.bg, r.attrs);
+                        }
+                        doc.set_marks_restored(r.marks);
                     }
                 }
             }
@@ -6359,9 +6415,9 @@ impl AppHost {
             // `load` consumes the bytes; applied after). Ignored on a guard mismatch / no sidecar.
             let restore = (!self.virtual_fs).then(|| xymeta_read(&target, &bytes)).flatten();
             doc.load(bytes, target.clone());
-            if let Some((fg, bg, attrs)) = restore {
-                doc.set_color_spans_raw(fg, bg, attrs);
-            }
+            if let Some(r) = restore {
+                apply_xymeta_restore(&mut doc, r);
+                }
             doc.set_read_only(read_only);
             let name = doc.file_name().unwrap_or_else(|| key.clone());
             if read_only {
@@ -6580,9 +6636,9 @@ impl AppHost {
             let mut doc = Document::new();
             let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
-            if let Some((fg, bg, attrs)) = restore {
-                doc.set_color_spans_raw(fg, bg, attrs);
-            }
+            if let Some(r) = restore {
+                apply_xymeta_restore(&mut doc, r);
+                }
             if self.new_window {
                 self.add_or_reuse(doc);
             } else {
@@ -6860,9 +6916,9 @@ impl AppHost {
             let mut doc = Document::new();
             let restore = (!self.virtual_fs).then(|| xymeta_read(&entry.path, &bytes)).flatten();
             doc.load(bytes, entry.path.clone());
-            if let Some((fg, bg, attrs)) = restore {
-                doc.set_color_spans_raw(fg, bg, attrs);
-            }
+            if let Some(r) = restore {
+                apply_xymeta_restore(&mut doc, r);
+                }
             doc.share_grammars(self.highlight_grammars.clone());
             // `DIRWNW on` (default) opens a new tab; `off` reuses the ACTIVE one. Unsaved work is
             // never discarded to do so — a modified buffer is left alone and the file opens beside
@@ -7926,7 +7982,20 @@ impl AppHost {
         }
         let target = self.resolve_path(path);
         let (fg, bg) = doc.color_spans_raw();
-        xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw());
+        xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist());
+    }
+
+    /// Build the status line for a `MARKNEXT`/`MARKPREV` jump and request the target be scrolled into
+    /// view. `None` (no bookmarks) is a trappable error.
+    fn mark_nav_status(&mut self, nav: Option<crate::MarkNav>) -> VmResult<Value> {
+        match nav {
+            Some(nav) => {
+                self.reveal_center = true; // scroll the target to mid-screen, like a search landing
+                let moved = if nav.moved { " — moved" } else { "" };
+                Ok(Value::str(format!("bookmark {}/{}{moved}", nav.index, nav.total)))
+            }
+            None => Err(XplError::trappable("no bookmarks")),
+        }
     }
 }
 
@@ -9519,8 +9588,8 @@ impl Host for AppHost {
                 let bytes = self.read_doc_bytes(&key)?;
                 let restore = (!self.virtual_fs).then(|| xymeta_read(&path, &bytes)).flatten();
                 self.file_doc_mut().load(bytes, path.clone());
-                if let Some((fg, bg, attrs)) = restore {
-                    self.file_doc_mut().set_color_spans_raw(fg, bg, attrs);
+                if let Some(r) = restore {
+                    apply_xymeta_restore(self.file_doc_mut(), r);
                 }
                 let name = path
                     .file_name()
@@ -10258,6 +10327,45 @@ impl Host for AppHost {
                 let on = want.unwrap_or_else(|| !self.docs[self.active].hex_view());
                 self.docs[self.active].set_hex_view(on);
                 return Ok(Value::str(if on { "hex view on" } else { "hex view off" }.to_string()));
+            }
+            EditorOp::MarkSet => {
+                if self.active().mark_set() {
+                    let n = self.active().mark_count();
+                    return Ok(Value::str(format!("bookmark set ({n} total)")));
+                }
+                return Err(XplError::trappable("bookmark already set here"));
+            }
+            EditorOp::MarkClear => {
+                if self.active().mark_clear() {
+                    let n = self.active().mark_count();
+                    return Ok(Value::str(format!("bookmark cleared ({n} left)")));
+                }
+                return Err(XplError::trappable("no bookmark here"));
+            }
+            EditorOp::MarkClearAll => {
+                let n = self.active().mark_clear_all();
+                return Ok(Value::str(match n {
+                    0 => "no bookmarks to clear".to_string(),
+                    1 => "1 bookmark cleared".to_string(),
+                    _ => format!("{n} bookmarks cleared"),
+                }));
+            }
+            EditorOp::MarkToggle => {
+                let now = self.active().mark_toggle();
+                let n = self.active().mark_count();
+                return Ok(Value::str(if now {
+                    format!("bookmark set ({n} total)")
+                } else {
+                    format!("bookmark cleared ({n} left)")
+                }));
+            }
+            EditorOp::MarkNext => {
+                let nav = self.active().mark_next();
+                return self.mark_nav_status(nav);
+            }
+            EditorOp::MarkPrev => {
+                let nav = self.active().mark_prev();
+                return self.mark_nav_status(nav);
             }
             // HEX-view editing (byte-granular; the read-only gate above lets these through in hex view).
             EditorOp::HexSetNibble { hi, val } => {
@@ -11562,6 +11670,8 @@ impl Host for AppHost {
             }
             "WRAP" => Some(Value::Int(if self.wrap { 1 } else { 0 })),
             "HEX" => Some(Value::Int(if self.active_doc().hex_view() { 1 } else { 0 })),
+            "MARKS" => Some(Value::Int(self.active_doc().mark_count() as i64)),
+            "MARK" => Some(Value::Int(if self.active_doc().mark_at_cursor() { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),
