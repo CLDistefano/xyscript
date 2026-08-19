@@ -887,7 +887,7 @@ encoding is preserved intact through an edit-and-save, never silently dropped.]
 == The hex view
 
 When you need to look at — or edit — a file *as raw bytes*, turn on the hex view with #raw("HEX on")
-(bare #raw("HEX") also turns it on; #raw("HEX off") returns to the text view, or use *Document ▸ Hex
+(bare #raw("HEX") toggles it; #raw("HEX off") returns to the text view, or use *Document ▸ Hex
 view*). It is a per-document mode: each tab remembers its own setting, and #raw("$HEX") reports it. The
 canvas becomes the familiar hex-dump grid — an 8-digit offset gutter, sixteen bytes per row as hex pairs
 (grouped 8 + 8), then a text column showing each byte through the current encoding

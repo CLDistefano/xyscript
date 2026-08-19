@@ -576,9 +576,9 @@ pub enum EditorOp {
     /// Turn syntax highlighting on/off for the active document (`HIGHLIGHT
     /// on|off`). Off by default (a quiet screen).
     SetHighlight(bool),
-    /// Show the active document as a hex + text grid (`HEX on|off`). A canvas view mode; the bytes
-    /// are unchanged. Off by default. Read back via `$HEX`.
-    SetHexView(bool),
+    /// Show the active document as a hex + text grid (`HEX on|off`; bare `HEX` toggles). A canvas
+    /// view mode; the bytes are unchanged. `None` toggles. Off by default. Read back via `$HEX`.
+    SetHexView(Option<bool>),
     /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
     /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
     /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.

@@ -4795,9 +4795,15 @@ mod tests {
         assert_eq!(out(&e).as_deref(), Some("1"));
         e.run_command("HEX off");
         assert!(!e.hex_view());
-        // Bare HEX = on.
+        // Bare HEX = toggle: off → on → off.
         e.run_command("HEX");
         assert!(e.hex_view());
+        e.run_command("PR $HEX");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        e.run_command("HEX");
+        assert!(!e.hex_view());
+        e.run_command("PR $HEX");
+        assert_eq!(out(&e).as_deref(), Some("0"));
     }
 
     #[test]

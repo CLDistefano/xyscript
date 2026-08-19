@@ -10252,8 +10252,10 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(msg));
             }
-            EditorOp::SetHexView(on) => {
+            EditorOp::SetHexView(want) => {
                 // A per-document canvas view mode (hex + text grid); the bytes are untouched.
+                // `None` toggles the active document's current state (bare `HEX`).
+                let on = want.unwrap_or_else(|| !self.docs[self.active].hex_view());
                 self.docs[self.active].set_hex_view(on);
                 return Ok(Value::str(if on { "hex view on" } else { "hex view off" }.to_string()));
             }

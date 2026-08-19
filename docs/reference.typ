@@ -500,7 +500,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 == Syntax highlighting
 
 / #cmd("HIGHLIGHT") / #cmd("HLAUTO"): turn highlighting on/off / auto-enable it for recognized files.
-/ #cmd("HEX"): `HEX on|off` — show and edit the active document as a hex + text grid (for binary files). A per-document view mode; navigate by byte (arrows ±1, ↑/↓ one row) and edit in place: type hex pairs, `Tab` to the text column to type characters, `Insert`/`Delete`/`Backspace` add and remove bytes, and copy/cut/paste bytes. #sv("HEX") reads it.
+/ #cmd("HEX"): `HEX on|off` (bare `HEX` toggles) — show and edit the active document as a hex + text grid (for binary files). A per-document view mode; navigate by byte (arrows ±1, ↑/↓ one row) and edit in place: type hex pairs, `Tab` to the text column to type characters, `Insert`/`Delete`/`Backspace` add and remove bytes, and copy/cut/paste bytes. #sv("HEX") reads it.
 / #cmd("HLLANG") / #cmd("HLRULE"): declare a regex-grammar highlighter and its rules.
 / #cmd("HLCOLOR", "HLCOLORS") / #cmd("HLKINDS") / #cmd("HLRESET"): a token kind's color / list the kinds / restore the default theme.
 

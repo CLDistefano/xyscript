@@ -2415,12 +2415,14 @@ impl Vm<'_, '_> {
             // the bytes are unchanged. `$HEX` reads it.
             "HEX" => {
                 let a = args.trim();
-                let on = match a.to_ascii_lowercase().as_str() {
-                    "on" | "1" | "true" | "yes" | "" => true,
-                    "off" | "0" | "false" | "no" => false,
+                // Bare `HEX` toggles; `HEX on|off` sets explicitly.
+                let want = match a.to_ascii_lowercase().as_str() {
+                    "" => None, // toggle
+                    "on" | "1" | "true" | "yes" => Some(true),
+                    "off" | "0" | "false" | "no" => Some(false),
                     _ => return Err(XplError::trappable(format!("HEX: expected on|off, got {a:?}"))),
                 };
-                self.host_op(EditorOp::SetHexView(on))?;
+                self.host_op(EditorOp::SetHexView(want))?;
                 Ok(Flow::Next)
             }
             "HLAUTO" => {
