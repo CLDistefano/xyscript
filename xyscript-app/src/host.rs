@@ -8463,8 +8463,13 @@ impl Host for AppHost {
             EditorOp::MoveToSelectionEdge { end } => {
                 match self.active().buffer().selection_span() {
                     Some((s, e)) if s < e => {
-                        // Collapse to the requested edge (anchor cleared → no selection).
-                        self.active().set_caret(if end { e } else { s }, None);
+                        // Move to the requested edge with the SAME motion semantics as `JMP` (a plain,
+                        // non-extending move): a DEFINED block (`DF`/`DW`/…) is preserved — the caret
+                        // decouples and roams to the edge — while a transient Shift/mouse selection
+                        // collapses, identical to `JMP $DS` / `JMP $DN`. The old `set_caret(_, None)`
+                        // force-cleared even a defined block (and reset the defining/goal state).
+                        let target = if end { e } else { s };
+                        self.active().move_carets(|bb| bb.move_to_offset(target, false));
                     }
                     _ => return Err(XplError::trappable("no text is selected")),
                 }

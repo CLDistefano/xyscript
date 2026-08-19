@@ -2780,8 +2780,9 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::Move { motion, extend })?;
                 Ok(Flow::Next)
             }
-            // `DB`/`DE` — move the cursor to the start/end of the selection (collapsing it).
-            // Trappable "no text is selected" (sets `$ERROR`) when there's no selection.
+            // `DB`/`DE` — move the cursor to the start/end of the selection, exactly like
+            // `JMP $DS`/`JMP $DN`: a DEFINED block is kept (caret roams to the edge), a transient
+            // selection collapses. Trappable "no text is selected" (sets `$ERROR`) when none.
             "DB" | "DE" => {
                 self.host_op(EditorOp::MoveToSelectionEdge { end: base == "DE" })?;
                 Ok(Flow::Next)
@@ -5000,9 +5001,10 @@ fn hsl_to_rgb(h: u8, s: u8, l: u8) -> (u8, u8, u8) {
 /// same-line `LL/LR`, line up/down `UP/DOWN/LU/LD`) are intentionally EXCLUDED so the caret can
 /// still be moved while editing a command in the cmline.
 const FOCUS_DOC_VERBS: &[&str] = &[
-    // Motions — big jumps only: word / sentence / paragraph / line-to-line / page / screen / file.
+    // Motions — big jumps only: word / sentence / paragraph / line-to-line / page / screen / file,
+    // plus the selection-edge jumps `DB`/`DE` (they behave like `JMP $DS`/`JMP $DN`).
     "NW", "PW", "NS", "PS", "NP", "PP", "NL", "PL", "PD", "PU", "HM", "BS", "TF", "BF", "TOP",
-    "BOTTOM", "JMP",
+    "BOTTOM", "JMP", "DB", "DE",
     // Define group (full): toggle / modify / close / all / cancel + word·line·sentence·paragraph.
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.

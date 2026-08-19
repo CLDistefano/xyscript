@@ -11097,6 +11097,34 @@ mod tests {
     }
 
     #[test]
+    fn db_de_keep_a_defined_block() {
+        // A DEFINED block (DW/DF/…) must survive DB/DE — the caret roams to the edge but the block
+        // stays defined, exactly like `JMP $DS`/`JMP $DN`. (Transient Shift selections still collapse;
+        // that path is covered by `db_de_move_cursor_to_selection_edges`.)
+        let mut e = Editor::new(typing_keymap());
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        e.run_command(r#"insert "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW"); // define (select) "hello" = bytes 0..5, a DEFINED block
+        e.run_command("PR $DF");
+        assert_eq!(out(&e).as_deref(), Some("1"));
+        // DB → caret to the start; the block is PRESERVED (no error, still defined).
+        e.run_command("DB");
+        e.run_command("PR $ERROR");
+        assert_eq!(out(&e).as_deref(), Some("0"));
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("0"), "DB lands the caret at the block start");
+        e.run_command("PR $DF");
+        assert_eq!(out(&e).as_deref(), Some("1"), "the defined block survives DB");
+        // DE → caret to the end; still preserved.
+        e.run_command("DE");
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("5"), "DE lands the caret at the block end");
+        e.run_command("PR $DF");
+        assert_eq!(out(&e).as_deref(), Some("1"), "the defined block survives DE");
+    }
+
+    #[test]
     fn sel_special_holds_last_selection_across_clear_and_tabs() {
         let mut e = Editor::new(typing_keymap());
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
