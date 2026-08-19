@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Селекция   # Selection
 menu.search.emphasize.word = Дума или израз…   # Word or phrase…
 menu.search.emphasize.regex = Регулярен израз…   # Regular expression…
 menu.search.emphasize.clear = Изчистване   # Clear
+menu.search.bookmarks = Отметки   # Bookmarks
+menu.search.bookmarks.toggle = Отметка   # Bookmark
+menu.search.bookmarks.next = Следваща отметка   # Next bookmark
+menu.search.bookmarks.prev = Предишна отметка   # Previous bookmark
+menu.search.bookmarks.list = Към отметка…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Изчисти всички отметки   # Clear all bookmarks
+menu.search.bookmarks.gutter = Знаци в полето   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Открояване на синтаксиса   # Highlighting

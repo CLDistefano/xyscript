@@ -78,6 +78,13 @@ menu.search.emphasize.selection = Виділене   # Selection
 menu.search.emphasize.word = Слово або фразу…   # Word or phrase…
 menu.search.emphasize.regex = Регулярний вираз…   # Regular expression…
 menu.search.emphasize.clear = Очистити   # Clear
+menu.search.bookmarks = Закладки   # Bookmarks
+menu.search.bookmarks.toggle = Закладка   # Bookmark
+menu.search.bookmarks.next = Наступна закладка   # Next bookmark
+menu.search.bookmarks.prev = Попередня закладка   # Previous bookmark
+menu.search.bookmarks.list = Перейти до закладки…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Очистити всі закладки   # Clear all bookmarks
+menu.search.bookmarks.gutter = Позначки на полях   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Підсвічування   # Highlighting

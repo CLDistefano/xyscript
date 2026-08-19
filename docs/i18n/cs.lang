@@ -78,6 +78,13 @@ menu.search.emphasize.selection = Výběr   # Selection
 menu.search.emphasize.word = Slovo nebo fráze…   # Word or phrase…
 menu.search.emphasize.regex = Regulární výraz…   # Regular expression…
 menu.search.emphasize.clear = Vymazat   # Clear
+menu.search.bookmarks = Záložky   # Bookmarks
+menu.search.bookmarks.toggle = Záložka   # Bookmark
+menu.search.bookmarks.next = Další záložka   # Next bookmark
+menu.search.bookmarks.prev = Předchozí záložka   # Previous bookmark
+menu.search.bookmarks.list = Přejít na záložku…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Smazat všechny záložky   # Clear all bookmarks
+menu.search.bookmarks.gutter = Značky na okraji   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Zvýrazňování   # Highlighting

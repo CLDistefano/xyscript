@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Markering   # Selection
 menu.search.emphasize.word = Ord eller fras…   # Word or phrase…
 menu.search.emphasize.regex = Reguljärt uttryck…   # Regular expression…
 menu.search.emphasize.clear = Rensa   # Clear
+menu.search.bookmarks = Bokmärken   # Bookmarks
+menu.search.bookmarks.toggle = Bokmärke   # Bookmark
+menu.search.bookmarks.next = Nästa bokmärke   # Next bookmark
+menu.search.bookmarks.prev = Föregående bokmärke   # Previous bookmark
+menu.search.bookmarks.list = Gå till bokmärke…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Rensa alla bokmärken   # Clear all bookmarks
+menu.search.bookmarks.gutter = Marginalmarkeringar   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Färgmarkering   # Highlighting

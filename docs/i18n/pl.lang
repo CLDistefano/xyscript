@@ -78,6 +78,13 @@ menu.search.emphasize.selection = Zaznaczenie   # Selection
 menu.search.emphasize.word = Słowo lub fraza…   # Word or phrase…
 menu.search.emphasize.regex = Wyrażenie regularne…   # Regular expression…
 menu.search.emphasize.clear = Wyczyść   # Clear
+menu.search.bookmarks = Zakładki   # Bookmarks
+menu.search.bookmarks.toggle = Zakładka   # Bookmark
+menu.search.bookmarks.next = Następna zakładka   # Next bookmark
+menu.search.bookmarks.prev = Poprzednia zakładka   # Previous bookmark
+menu.search.bookmarks.list = Przejdź do zakładki…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Usuń wszystkie zakładki   # Clear all bookmarks
+menu.search.bookmarks.gutter = Znaczniki na marginesie   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Podświetlanie   # Highlighting

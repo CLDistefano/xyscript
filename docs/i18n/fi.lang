@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Valinta   # Selection
 menu.search.emphasize.word = Sana tai lause…   # Word or phrase…
 menu.search.emphasize.regex = Säännöllinen lauseke…   # Regular expression…
 menu.search.emphasize.clear = Tyhjennä   # Clear
+menu.search.bookmarks = Kirjanmerkit   # Bookmarks
+menu.search.bookmarks.toggle = Kirjanmerkki   # Bookmark
+menu.search.bookmarks.next = Seuraava kirjanmerkki   # Next bookmark
+menu.search.bookmarks.prev = Edellinen kirjanmerkki   # Previous bookmark
+menu.search.bookmarks.list = Siirry kirjanmerkkiin…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Poista kaikki kirjanmerkit   # Clear all bookmarks
+menu.search.bookmarks.gutter = Reunusmerkit   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Syntaksin korostus   # Highlighting

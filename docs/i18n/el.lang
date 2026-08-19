@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Επιλογή   # Selection
 menu.search.emphasize.word = Λέξη ή φράση…   # Word or phrase…
 menu.search.emphasize.regex = Κανονική έκφραση…   # Regular expression…
 menu.search.emphasize.clear = Εκκαθάριση   # Clear
+menu.search.bookmarks = Σελιδοδείκτες   # Bookmarks
+menu.search.bookmarks.toggle = Σελιδοδείκτης   # Bookmark
+menu.search.bookmarks.next = Επόμενος σελιδοδείκτης   # Next bookmark
+menu.search.bookmarks.prev = Προηγούμενος σελιδοδείκτης   # Previous bookmark
+menu.search.bookmarks.list = Μετάβαση σε σελιδοδείκτη…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Διαγραφή όλων των σελιδοδεικτών   # Clear all bookmarks
+menu.search.bookmarks.gutter = Σημάδια περιθωρίου   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Επισήμανση σύνταξης   # Highlighting

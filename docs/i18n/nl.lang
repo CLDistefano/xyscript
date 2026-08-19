@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Selectie   # Selection
 menu.search.emphasize.word = Woord of woordgroep…   # Word or phrase…
 menu.search.emphasize.regex = Reguliere expressie…   # Regular expression…
 menu.search.emphasize.clear = Wissen   # Clear
+menu.search.bookmarks = Bladwijzers   # Bookmarks
+menu.search.bookmarks.toggle = Bladwijzer   # Bookmark
+menu.search.bookmarks.next = Volgende bladwijzer   # Next bookmark
+menu.search.bookmarks.prev = Vorige bladwijzer   # Previous bookmark
+menu.search.bookmarks.list = Ga naar bladwijzer…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Alle bladwijzers wissen   # Clear all bookmarks
+menu.search.bookmarks.gutter = Kantlijnmarkeringen   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Syntaxismarkering   # Highlighting

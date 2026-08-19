@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Selezione   # Selection
 menu.search.emphasize.word = Parola o frase…   # Word or phrase…
 menu.search.emphasize.regex = Espressione regolare…   # Regular expression…
 menu.search.emphasize.clear = Cancella   # Clear
+menu.search.bookmarks = Segnalibri   # Bookmarks
+menu.search.bookmarks.toggle = Segnalibro   # Bookmark
+menu.search.bookmarks.next = Segnalibro successivo   # Next bookmark
+menu.search.bookmarks.prev = Segnalibro precedente   # Previous bookmark
+menu.search.bookmarks.list = Vai al segnalibro…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Cancella tutti i segnalibri   # Clear all bookmarks
+menu.search.bookmarks.gutter = Segni nel margine   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Evidenziazione della sintassi   # Highlighting

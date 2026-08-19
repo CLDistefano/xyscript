@@ -78,6 +78,13 @@ menu.search.emphasize.selection = Selecția   # Selection
 menu.search.emphasize.word = Cuvânt sau frază…   # Word or phrase…
 menu.search.emphasize.regex = Expresie regulată…   # Regular expression…
 menu.search.emphasize.clear = Șterge   # Clear
+menu.search.bookmarks = Marcaje   # Bookmarks
+menu.search.bookmarks.toggle = Marcaj   # Bookmark
+menu.search.bookmarks.next = Marcajul următor   # Next bookmark
+menu.search.bookmarks.prev = Marcajul anterior   # Previous bookmark
+menu.search.bookmarks.list = Salt la marcaj…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Șterge toate marcajele   # Clear all bookmarks
+menu.search.bookmarks.gutter = Marcaje în margine   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Evidențiere sintaxă   # Highlighting

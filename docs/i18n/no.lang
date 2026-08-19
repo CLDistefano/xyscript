@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Merket område   # Selection
 menu.search.emphasize.word = Ord eller frase…   # Word or phrase…
 menu.search.emphasize.regex = Regulært uttrykk…   # Regular expression…
 menu.search.emphasize.clear = Fjern   # Clear
+menu.search.bookmarks = Bokmerker   # Bookmarks
+menu.search.bookmarks.toggle = Bokmerke   # Bookmark
+menu.search.bookmarks.next = Neste bokmerke   # Next bookmark
+menu.search.bookmarks.prev = Forrige bokmerke   # Previous bookmark
+menu.search.bookmarks.list = Gå til bokmerke…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Fjern alle bokmerker   # Clear all bookmarks
+menu.search.bookmarks.gutter = Margmerker   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Utheving   # Highlighting

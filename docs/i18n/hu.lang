@@ -74,6 +74,13 @@ menu.search.emphasize.selection = Kijelölés   # Selection
 menu.search.emphasize.word = Szó vagy kifejezés…   # Word or phrase…
 menu.search.emphasize.regex = Reguláris kifejezés…   # Regular expression…
 menu.search.emphasize.clear = Törlés   # Clear
+menu.search.bookmarks = Könyvjelzők   # Bookmarks
+menu.search.bookmarks.toggle = Könyvjelző   # Bookmark
+menu.search.bookmarks.next = Következő könyvjelző   # Next bookmark
+menu.search.bookmarks.prev = Előző könyvjelző   # Previous bookmark
+menu.search.bookmarks.list = Ugrás könyvjelzőre…   # Go to bookmark…
+menu.search.bookmarks.clear_all = Összes könyvjelző törlése   # Clear all bookmarks
+menu.search.bookmarks.gutter = Margójelölők   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = Kiemelés   # Highlighting
