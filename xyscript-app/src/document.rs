@@ -720,6 +720,26 @@ impl Document {
         self.read_only = true; // the user can't type into it (we appended programmatically)
     }
 
+    /// Append streamed CONSOLE output at the tail, keeping the buffer EDITABLE. Unlike [`append_log`]
+    /// this does NOT record an undo unit (so Ctrl+Z only unwinds the user's own edits, never streamed
+    /// output) and does NOT lock the buffer read-only. The caret tail-follows only when it was already
+    /// at the very end with no selection — so streaming never yanks a caret or clears a selection while
+    /// the user reads or edits scrollback above. `truncate_log_front` still bounds the scrollback.
+    pub fn append_console(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let end = self.buffer.len();
+        let follow = self.buffer.cursor() == end && !self.buffer.has_selection();
+        self.buffer.append_str(text); // tail insert, no caret/selection touch, not recorded
+        if follow {
+            let new_end = self.buffer.len();
+            self.buffer.set_caret(new_end, None); // ride the tail
+        }
+        self.mark_saved(); // a console isn't a document to save
+        self.gen = next_content_gen(); // the raw append is outside the rope-rev the GUI keys on
+    }
+
     /// Cap a log buffer to roughly its last `max_bytes`, dropping the oldest content from the
     /// front (so a flood like `dir /s C:\` can't grow it without bound). Cuts on a line boundary
     /// when possible, else a UTF-8 char boundary; no-op when already within the cap.
@@ -3927,6 +3947,32 @@ mod tests {
         assert!(text.ends_with("line 999\n")); // newest kept
         assert!(!text.contains("line 0\n")); // oldest dropped
         assert!(text.starts_with("line ")); // cut on a line boundary (no partial first line)
+    }
+
+    #[test]
+    fn append_console_editable_non_recording_tail_follow() {
+        let mut d = Document::new();
+        d.append_console("aaa\n"); // empty → the caret (at end) rides the new output
+        assert!(!d.read_only(), "console append keeps the buffer editable");
+        assert_eq!(d.buffer().cursor(), d.buffer().len(), "tail-follows when the caret was at the end");
+
+        // A caret parked in scrollback is left alone while output streams.
+        d.set_caret(1, None);
+        d.append_console("bbb\n");
+        assert_eq!(d.buffer().cursor(), 1, "a caret above the tail is not yanked");
+
+        // A selection survives a streamed append (no follow, no clear).
+        d.set_caret(2, Some(0)); // select 0..2
+        let sel = d.selection_range();
+        d.append_console("ccc\n");
+        assert_eq!(d.selection_range(), sel, "selection preserved across streamed output");
+
+        // Streamed output is NOT recorded: a user edit + undo leaves the output intact.
+        let out = d.buffer().text();
+        d.set_caret(0, None);
+        d.insert("Z");
+        d.undo();
+        assert_eq!(d.buffer().text(), out, "undo removes the user edit, not the streamed output");
     }
 
     #[test]

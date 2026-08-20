@@ -4010,12 +4010,11 @@ impl AppHost {
 
     fn append_shell_output_text(&mut self, text: &str) {
         let idx = self.shell_output_doc_index();
-        self.docs[idx].append_log(text);
+        // Editable, non-recording append: the tab stays a normal document (copy/paste/edit), the caret
+        // tail-follows only when it was already at the end, and streamed output never lands on the undo
+        // stack. `append_console` handles the tail-follow, so no explicit caret move here.
+        self.docs[idx].append_console(text);
         self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP); // bound the scrollback
-        // Land the caret at the END of the output: the view follows the caret, so it rests on the
-        // newest text as the job streams — a tail-follow console rather than a pinned-at-top log.
-        let end = self.docs[idx].buffer().len();
-        self.docs[idx].set_caret(end, None);
     }
 
     /// Put a `CHECK` report into a dedicated read-only `*Language Check*` tab (replacing any prior
@@ -5389,8 +5388,11 @@ impl AppHost {
     pub fn request_lint(&mut self, doc: usize, lo: usize, hi: usize) {
         #[cfg(feature = "lint")]
         {
-            if !self.lint_active() || self.docs.get(doc).map_or(true, |d| d.read_only()) {
-                return; // read-only = a scratch/results/log tab; don't underline it
+            if !self.lint_active()
+                || self.docs.get(doc).map_or(true, |d| d.read_only())
+                || self.docs.get(doc).and_then(|d| d.label()) == Some(SHELL_OUTPUT_NAME)
+            {
+                return; // read-only tab, or the (now-editable) shell console — don't underline output
             }
             let rev = self.docs[doc].buffer().revision();
             if self.lint_done.get(&doc) == Some(&(rev, lo, hi)) {

@@ -1300,6 +1300,15 @@ impl Buffer {
     /// persistent selection**, where the selection is *kept*: the text is inserted
     /// at the caret and the block's offsets ride along so the same characters stay
     /// selected (PS-2 "don't-replace").
+    /// Append `s` (encoded in this buffer's charset) at the very END of the rope, WITHOUT touching the
+    /// caret or selection. For streamed Console output: the Document layer decides whether the caret
+    /// tail-follows, so a user selecting/editing scrollback isn't disturbed while a job streams.
+    pub fn append_str(&mut self, s: &str) {
+        let bytes = self.enc.encode(s);
+        let end = self.rope.len();
+        self.replace_range_bytes(end, 0, &bytes);
+    }
+
     pub fn insert(&mut self, s: &str) {
         let keep = self.persistent && self.has_selection();
         if keep && self.sel_head.is_none() {

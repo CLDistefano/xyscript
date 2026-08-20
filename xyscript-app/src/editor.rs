@@ -9626,7 +9626,7 @@ mod tests {
         // ...and was appended to a new *Shell Output* tab (header + output), not the active doc.
         let tabs = e.tabs();
         let shell = tabs.iter().find(|t| t.name == "*Shell Output*").expect("Shell Output tab");
-        assert!(shell.read_only); // it's a locked log
+        assert!(!shell.read_only, "the console tab is now editable, not a locked log");
         // Switch to it and check its contents carry the command header + output.
         let i = tabs.iter().position(|t| t.name == "*Shell Output*").unwrap();
         e.set_active_buffer(i);
@@ -9634,6 +9634,14 @@ mod tests {
         assert!(text.contains("echo hi"));
         assert!(text.contains("hi"));
         assert!(text.contains("(exit 0)"));
+        // Editable: the user can type into it, and streamed output does NOT sit on the undo stack, so
+        // Ctrl+Z unwinds only the user's own edit (leaving the streamed output intact).
+        let before = e.document().text();
+        e.run_command("TF");
+        e.run_command(r#"insert "X""#);
+        assert_eq!(e.document().text(), format!("X{before}"));
+        e.run_command("UNDO");
+        assert_eq!(e.document().text(), before, "undo removes the user edit, keeps streamed output");
     }
 
     #[test]
