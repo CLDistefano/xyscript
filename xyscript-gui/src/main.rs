@@ -388,30 +388,6 @@ fn pick_filter_view(items: &[String], filter: &str) -> Vec<(usize, String)> {
         .collect()
 }
 
-fn abbreviate_cwd(path: &str) -> String {
-    use std::path::{Component, Path, MAIN_SEPARATOR};
-    const MAX: usize = 45;
-    if path.chars().count() <= MAX {
-        return path.to_string();
-    }
-    let mut prefix = String::new();
-    let mut names: Vec<String> = Vec::new();
-    for c in Path::new(path).components() {
-        match c {
-            Component::Prefix(p) => prefix.push_str(&p.as_os_str().to_string_lossy()),
-            Component::RootDir => prefix.push(MAIN_SEPARATOR),
-            Component::Normal(n) => names.push(n.to_string_lossy().into_owned()),
-            Component::ParentDir => names.push("..".to_string()),
-            Component::CurDir => {}
-        }
-    }
-    if names.len() <= 2 {
-        return path.to_string(); // nothing in the middle to elide
-    }
-    let tail = names[names.len() - 2..].join(&MAIN_SEPARATOR.to_string());
-    format!("{prefix}…{MAIN_SEPARATOR}{tail}")
-}
-
 /// Truncate `path` to at most `max` characters for the `$CWD` display (`PATHLEN`). Keeps the drive
 /// (first 2 chars) and a `...` marker, then FILLS the remaining width with the END of the path — so
 /// the final subdir is always visible and the whole `PATHLEN` budget is used (the user's choice).
@@ -2105,6 +2081,10 @@ struct GuiApp {
     /// mid-screen (instead of the minimal edge scroll used for ordinary caret motion). Set from the
     /// host's `take_reveal_center` each frame, consumed by the follow logic.
     center_caret: bool,
+    /// Console scroll-lock: whether the Console's tail was visible at the end of the last frame. New
+    /// output auto-scrolls to the tail only when this is true, so scrolling UP to read back pauses the
+    /// follow (and scrolling back to the bottom resumes it) — standard terminal behavior.
+    console_at_bottom: bool,
     /// The spelling correction choices for the word under the last right-click (drives the spell
     /// context menu), or `None` if the menu isn't open. Rendered as a manual popup (egui's
     /// `context_menu` auto-open was unreliable on the drag-sensed canvas).
@@ -2262,12 +2242,6 @@ struct GuiApp {
     // (`editor.cmline_open()` is the focus state); there is no separate egui widget,
     // which is what keeps Enter from leaking a newline into the document.
     status: String,
-    // Interactive shell pane (`SH`): the input line, a small command history, and a one-shot focus
-    // flag so the input grabs focus when the pane first opens (without stealing it every frame).
-    shell_input: String,
-    shell_history: Vec<String>,
-    shell_hist_pos: Option<usize>,
-    shell_pane_was_visible: bool,
     /// Wall-clock of the last autosave pass (drives the `AUTOSAVE` interval timer).
     last_autosave: std::time::Instant,
     /// Wall-clock of the last `SESSION` snapshot (drives the crash-resilience interval timer).
@@ -2391,6 +2365,7 @@ impl GuiApp {
             lint_rr: 0,
             lint_focus_doc: None,
             center_caret: false,
+            console_at_bottom: true, // follow the tail until the user scrolls up
             spell_menu: None,
             spell_menu_pos: None,
             spell_menu_frames: 0,
@@ -2451,10 +2426,6 @@ impl GuiApp {
             last_text: String::new(),
             last_change_time: f64::MIN,
             status: startup_status,
-            shell_input: String::new(),
-            shell_history: Vec::new(),
-            shell_hist_pos: None,
-            shell_pane_was_visible: false,
             last_autosave: std::time::Instant::now(),
             last_session_snapshot: std::time::Instant::now(),
             last_session_signature: String::new(),
@@ -3657,6 +3628,15 @@ impl GuiApp {
         let scale = self.render_scale;
         let lh_px = self.line_height * scale;
         let visible_rows = ((h as f32 / lh_px).floor() as usize).max(1);
+        // Auto-scroll the Console to the tail when new output or a fresh prompt just arrived. A
+        // foreground command's output appends BELOW the (consumed) prompt, so without this it streams
+        // off the bottom of the window; re-arming `follow` each dirty frame keeps the tail — and the
+        // next prompt — in view. Drain the flag regardless so it can't go stale; only follow when the
+        // Console is the active tab (its caret sits at the tail, so `follow` reveals it).
+        let console_dirty = self.editor.take_console_dirty();
+        if console_dirty && self.editor.console_is_active() && self.console_at_bottom {
+            self.pane_view.follow = true;
+        }
         // Capture `follow` up front: the vertical-follow block below CONSUMES it (sets it false), but the
         // horizontal caret-follow (for `WRAP off`, further down) needs the same signal.
         let following = self.pane_view.follow;
@@ -4461,6 +4441,13 @@ impl GuiApp {
         // revision (no edit happens during a redraw, so it still matches what it was computed against).
         let rev = self.editor.doc_revision();
         self.editor.host_mut().set_visual_line_span(vline_span, rev);
+        // Console scroll-lock bookkeeping: remember whether the tail is visible now (the last logical
+        // line sits within the window), so the NEXT dirty frame only auto-follows when we were at the
+        // bottom. A small overshoot from wrapping just errs toward following, which is the safe side.
+        if self.editor.console_is_active() {
+            let total = self.editor.doc(self.editor.active_index()).line_count();
+            self.console_at_bottom = self.pane_view.scroll_line + visible_rows >= total.saturating_sub(1);
+        }
         canvas
     }
 
@@ -6572,7 +6559,6 @@ impl GuiApp {
         let para_on = ed.visible_returns();
         let ws_on = ed.visible_whitespace();
         let lnum_on = ed.line_numbers();
-        let shell_on = ed.shell_pane_visible();
         let shellout_on = ed.shell_output_visible();
         let menubar_on = ed.menu_bar_shown();
         let titlebar_on = ed.show_titlebar();
@@ -6746,8 +6732,8 @@ impl GuiApp {
                 m_item(self.tr("menu.view.wrap_hang", "Wrap hang ({n})…").replace("{n}", &wrap_hang.to_string()), format!("BC WRAPHANG {wrap_hang} ;CMLINE")),
                 MenuNode::Sep,
                 m_act(format!("{}{}", tick(preview_on), self.tr("menu.view.preview_pane", "Preview pane")), TogglePreview),
-                m_tog(self.tr("menu.view.shell_pane", "Shell pane"), shell_on, "SH"),
-                m_tog(self.tr("menu.view.shell_output", "Shell output tab"), shellout_on, "SW"),
+                m_item(self.tr("menu.view.console", "Console"), "SH"),
+                m_tog(self.tr("menu.view.console_tab", "Show Console tab"), shellout_on, "SW"),
                 MenuNode::Sep,
                 m_sub(self.tr("menu.view.split", "Split panes"), vec![
                     m_item(self.tr("menu.view.split.side_by_side", "Split side by side"), "TVS"),
@@ -8582,7 +8568,7 @@ impl GuiApp {
         //     indices = real buffer order).
         let tabs = self.editor.tabs();
         let shell_visible = self.editor.shell_output_visible();
-        let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Shell Output*";
+        let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Console*";
         let visible_tabs = tabs.iter().filter(|t| !is_hidden(t)).count();
         // The tab strip's on-screen rect (set below when it's shown), so the mouse-wheel handler can
         // tell when the pointer is over the *scrollable* strip and NOT also scroll the canvas.
@@ -8885,111 +8871,6 @@ impl GuiApp {
             }
         }
         } // Writer's View: end of the hidden status + bottom-command-line block
-
-        // Interactive shell pane (`SH`/`SHELL`): a resizable bottom pane (≤10 lines) with scrollback
-        // + a command input line. Enter runs the command into the pane; Shift+Enter pipes its output
-        // into the active document on completion. Sits above the status/cmdline rows.
-        let shell_open = self.editor.shell_pane_visible();
-        if shell_open {
-            let font = self.editor.editor_font();
-            let row_h = font * 1.5;
-            // One-shot: grab focus when the pane first opens (don't steal it every frame).
-            let focus_on_open = !self.shell_pane_was_visible;
-            let mut submit: Option<bool> = None; // Some(to_document)
-            let mut recall: i32 = 0; // -1 older, +1 newer (history)
-            let mut close = false; // Esc in the input closes the pane (like `SH` off)
-            egui::Panel::bottom("shell_pane")
-                .resizable(true)
-                .default_size(row_h * 5.0)
-                .max_size(row_h * 10.0)
-                .show_inside(ui, |ui| {
-                    let prompt = format!("{}>", abbreviate_cwd(&self.editor.cwd()));
-                    // Input row pinned to the TOP of the pane; scrollback fills the space below it.
-                    egui::Panel::top("shell_input").show_inside(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&prompt).monospace().size(font));
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut self.shell_input)
-                                    .desired_width(f32::INFINITY)
-                                    .font(egui::FontId::monospace(font))
-                                    .hint_text("Enter → pane · Shift+Enter → document"),
-                            );
-                            if focus_on_open {
-                                resp.request_focus();
-                            }
-                            // A single-line TextEdit SURRENDERS focus the instant Enter is pressed,
-                            // so the submit must be detected on `lost_focus()` (not `has_focus()`);
-                            // history (↑/↓) is read while it still has focus.
-                            if resp.has_focus() || resp.lost_focus() {
-                                let (enter, shift, up, down, esc) = ui.input(|i| {
-                                    (
-                                        i.key_pressed(egui::Key::Enter),
-                                        i.modifiers.shift,
-                                        i.key_pressed(egui::Key::ArrowUp),
-                                        i.key_pressed(egui::Key::ArrowDown),
-                                        i.key_pressed(egui::Key::Escape),
-                                    )
-                                });
-                                if esc {
-                                    close = true; // close the pane (like `SH` toggled off)
-                                } else if enter {
-                                    submit = Some(shift);
-                                    resp.request_focus(); // re-grab (Enter surrendered it)
-                                } else if resp.has_focus() && up {
-                                    recall = -1;
-                                } else if resp.has_focus() && down {
-                                    recall = 1;
-                                }
-                            }
-                        });
-                    });
-                    // Scrollback — read-only, monospace, newest at the bottom (auto-sticks there).
-                    egui::ScrollArea::vertical().auto_shrink(false).stick_to_bottom(true).show(
-                        ui,
-                        |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(self.editor.shell_pane_output())
-                                        .monospace()
-                                        .size(font),
-                                )
-                                .wrap(),
-                            );
-                        },
-                    );
-                });
-            // Esc in the input closes the pane (the `SH` toggle off); focus returns to the document.
-            if close {
-                self.editor.run_command("SH off");
-                ctx.request_repaint();
-            }
-            // History recall (↑/↓), applied outside the panel borrow.
-            if recall != 0 && !self.shell_history.is_empty() {
-                let last = self.shell_history.len() - 1;
-                let pos = match (self.shell_hist_pos, recall) {
-                    (None, -1) => Some(last),
-                    (Some(p), -1) => Some(p.saturating_sub(1)),
-                    (Some(p), 1) if p < last => Some(p + 1),
-                    (Some(_), 1) => None, // past the newest → blank line
-                    _ => None,
-                };
-                self.shell_hist_pos = pos;
-                self.shell_input = pos.map(|p| self.shell_history[p].clone()).unwrap_or_default();
-                ctx.request_repaint();
-            }
-            if let Some(to_doc) = submit {
-                let cmd = std::mem::take(&mut self.shell_input);
-                if !cmd.trim().is_empty() {
-                    self.editor.shell_pane_run(&cmd, to_doc);
-                    if self.shell_history.last().map(String::as_str) != Some(cmd.as_str()) {
-                        self.shell_history.push(cmd);
-                    }
-                    self.shell_hist_pos = None;
-                }
-                ctx.request_repaint();
-            }
-        }
-        self.shell_pane_was_visible = shell_open;
 
         // Pop-up command line (`$GC`, SGC/CGC/TGC): a prominent box mirroring the same native
         // CMline, shown *in addition* to the inline line while focused. Clicking it places the

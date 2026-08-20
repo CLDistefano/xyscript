@@ -322,6 +322,12 @@ pub enum EditorOp {
     /// Request the GUI's non-modal Find/Replace dialog (`FIND`). The GUI drains it and opens the
     /// dialog; headless hosts just record the request (it does nothing without a GUI).
     OpenFind,
+    /// `SH`/`SHELL` — open + focus the Console tab (creating it and writing a prompt if needed), and
+    /// show it in the strip. `show: false` (`SH off`) hides the Console tab instead.
+    OpenConsole { show: bool },
+    /// `SHPROMPT [<template>]` — set the Console prompt template (`$`-expanded; `None` restores the
+    /// default `$CWD> `). `$SHPROMPT` reads it; persisted by SaveCfg.
+    SetConsolePrompt(Option<String>),
     /// Request the GUI's GREP dialog (bare `GREP` with no pattern). The GUI drains it and opens the
     /// dialog; headless hosts just record it.
     OpenGrepDialog,
@@ -1083,9 +1089,6 @@ pub enum ViewFlag {
     /// The `*Shell Output*` tab's visibility in the tab strip (`SW`/`SHELLWIN`; `$SW`; default on).
     /// Turning it off hides the tab but keeps the buffer streaming; `X/BG` follows this state.
     ShellWindow,
-    /// The interactive shell pane at the bottom of the editor (`SH`/`SHELL`; `$SH`; default off) —
-    /// a command line + scrollback. Enter runs into the pane; Shift+Enter pipes output to the doc.
-    ShellPane,
     /// The live PDF preview pane on the right (`PREVIEW`/`PV`; `$PV`; default off) — a debounced
     /// raster of the active document (rendered per its `DOCTYPE`: Typst or GFM).
     Preview,

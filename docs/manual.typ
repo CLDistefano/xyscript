@@ -232,8 +232,8 @@ From top to bottom you will find:
 - the *command line* and *status line* across the bottom.
 
 Several optional elements appear when you turn them on, each from the *View* menu and each with a
-command: a *preview pane* beside the editor (#raw("PV")), an interactive *shell pane* (#raw("SH")) and
-the *Shell Output* tab (#raw("SW")), *line numbers* (#raw("SLN")), visible *paragraph marks*
+command: a *preview pane* beside the editor (#raw("PV")), the interactive *Console* tab
+(#raw("SH")/#raw("SW")), *line numbers* (#raw("SLN")), visible *paragraph marks*
 (#raw("SVR")) and *whitespace* (#raw("SWS")), and the menu bar itself (#raw("SMB")). A separate movable
 *directory window* opens with #raw("DIR/W").
 
@@ -540,7 +540,7 @@ case-insensitively, so #raw("CAT") and #raw("cAt") light up too, while the _cat_
 is left alone. Need more reach than a plain word? #raw("EMPH/R <regex>") emphasizes everything a regular
 expression matches — #raw("EMPH/R \\d+") lights up every run of digits — and a malformed pattern is
 reported rather than quietly matching nothing. It is a standing highlight, not an edit,
-so it works even where you cannot type: a read-only tab, or the #raw("*Shell Output*") pane. Each tab
+so it works even where you cannot type: a read-only tab, or the #raw("*Console*") pane. Each tab
 keeps its own emphasis, and a bare #raw("EMPH") clears the current tab's. You can also reach it from
 #raw("Search ▸ Emphasize"), where _Selection_ emphasizes the highlighted word in one click and the
 _Word or phrase…_ / _Regular expression…_ items stage the command for you to finish typing. The colors default to your
@@ -1239,13 +1239,22 @@ to the top of the history), #kbd("Shift+Enter") pulls it back to the command lin
 running, and #kbd("Del") removes it. #raw("CMH") stashes the current command-line text into the history
 *without* running it, so you can park a half-built command for later.
 
-== Shell-out and the working directory
+== The Console, shell-out, and the working directory
 
-XyScript can hand a line to the operating-system shell. #raw("X <command>") runs it and streams the
-output to the *Shell Output* tab; #raw("XY <command>") inserts the output at the cursor instead.
-Shell-out is *disabled by default* and must be enabled with #raw("TRUST 1"), so a stray command can't
+XyScript can hand a line to the operating-system shell. The friendliest way is the *Console*: #raw("SH")
+(or #raw("SHELL")) opens an editable REPL tab with a prompt. Type a command, press #kbd("Enter"), and it
+runs; the output streams in *above* the prompt while the prompt and whatever you are typing stay pinned
+at the bottom. The Console is an ordinary document — you can scroll back, select, copy, and search its
+output like any other text, and #kbd("Enter") up in the scrollback just inserts a newline (only
+#kbd("Enter") *at the prompt* submits). #raw("cd") is understood and changes #raw("$CWD"). The prompt
+itself is yours: #raw("SHPROMPT \"$CWD> \"") sets it (quote it to keep the trailing space; #raw("$CWD")
+and other #raw("$")-fields expand), and #raw("SaveCfg") remembers it.
+
+From a script it is often simpler to run a command directly: #raw("X <command>") runs it and streams the
+output to the Console; #raw("XY <command>") inserts the output at the cursor instead. Either way,
+shell-out is *disabled by default* and must be enabled with #raw("TRUST 1"), so a stray command can't
 reach the operating system by accident; #raw("$TR") reports whether it is on. Shell commands run in your
-working directory (#raw("$CWD"), set with #raw("CD")).
+working directory (#raw("$CWD"), set with #raw("CD")). #raw("SW") shows or hides the Console tab.
 
 Your working directory is shown on the status line by default; #raw("PAPLACE cmline") moves it to the
 front of the command line instead (#raw("PAPLACE status") puts it back). A long path is shortened to
@@ -1255,7 +1264,7 @@ settings persist in your config.
 
 #tip("Background jobs")[A long shell command or script can run in the background with the #raw("/BG")
 switch (#raw("X/BG …"), #raw("RUN/BG …")) so the editor stays responsive; its output streams to the
-*Shell Output* tab, and #raw("JOBS") lists what is running. A background job runs in its own process
+*Console* tab, and #raw("JOBS") lists what is running. A background job runs in its own process
 with its own state — it cannot see or change your live document. Each job's output begins with its
 command line, and the cursor rests at the top of that block, so the tab shows the newest job from its
 start rather than scrolling to the bottom.]
@@ -1934,7 +1943,7 @@ picker, #raw("UISCALE") zooms the whole interface, #raw("EDFONT +1") nudges the 
 
 The *View* menu's toggles each have a verb and a read-back, following a *Set* / *Clear* / *Toggle*
 pattern: paragraph marks (#raw("SVR") / #raw("CVR") / #raw("TVR")), whitespace (#raw("SWS") / …), line
-numbers (#raw("SLN") / …), plus the preview pane (#raw("PV")), the shell pane (#raw("SH")), and the menu
+numbers (#raw("SLN") / …), plus the preview pane (#raw("PV")), the Console (#raw("SH")), and the menu
 bar (#raw("SMB")).
 
 == Syntax highlighting
@@ -2346,7 +2355,7 @@ header block you can write #raw("Attach:") lines instead.
 
 Sending runs in the background, so the editor never freezes. When it finishes, #raw("$RC") is
 #raw("curl")'s exit code — #raw("0") means the server accepted the message — and any error appears in
-the #raw("*Shell Output*") tab.
+the #raw("*Console*") tab.
 
 == Receiving
 
@@ -2354,7 +2363,7 @@ Receiving is deliberately minimal and raw — three verbs, no decoding. All thre
 folder on #raw("IMAPURL") and authenticate with #raw("MAILUSER")/#raw("MAILPASS"):
 
 / #raw("LISTMAIL"): list the mailbox. Each message's number, date, sender, and subject appear in the
-  #raw("*Shell Output*") tab, so you can see what is there and pick numbers to act on. The numbers are
+  #raw("*Console*") tab, so you can see what is there and pick numbers to act on. The numbers are
   IMAP sequence numbers, #raw("1") being the oldest.
 / #raw("SAVEMAIL <range> [<path>]"): download the raw source of messages to disk, one file each, named
   #raw("MSG001.TXT"), #raw("MSG002.TXT"), … by message number, into #raw("<path>") (created if needed;
@@ -2371,7 +2380,7 @@ from one listing, delete the highest numbers first.]
 == When something goes wrong
 
 Turn on #raw("MAILDEBUG on") and repeat the command: #raw("curl") then runs verbosely and the full
-conversation with the server streams into #raw("*Shell Output*"), including the server's own final
+conversation with the server streams into #raw("*Console*"), including the server's own final
 word — usually enough to see whether a send was truly accepted or a login was refused. For
 #raw("LISTMAIL") specifically, #raw("MAILDEBUG") also switches the display from the tidy listing to the
 raw exchange. Turn it off again with #raw("MAILDEBUG off").

@@ -1328,11 +1328,6 @@ enum JobSink {
     /// A FOREGROUND Console REPL command (`console_submit`): streamed live into the Console above its
     /// prompt; on completion an `(exit N)` line lands and a fresh prompt is written for the next input.
     Console,
-    /// The interactive shell pane (`SH`) — streamed live into its scrollback.
-    ShellPane,
-    /// Pipe to a document (shell pane, Shift+Enter): accumulate, then insert the full output at
-    /// `at` (a rope offset in document `doc`, captured at launch) on completion, as one undo unit.
-    Document { doc: usize, at: usize },
     /// `LISTMAIL`: buffer the raw `curl -v` IMAP trace silently, then on completion parse it into a
     /// clean numbered Date/From/Subject listing written to *Shell Output*. (A custom IMAP FETCH only
     /// surfaces on curl's protocol stream, never stdout — so we must capture `-v` and reformat.)
@@ -2400,13 +2395,8 @@ pub struct AppHost {
     shell_focus_restore: bool,
     /// The separate `DIR/W` listing window's state (`None` = closed). A single reusable window.
     dir_window: Option<DirWindowState>,
-    /// The interactive shell pane (`SH`/`SHELL`; `$SH`; default off): whether it's shown, and its
-    /// scrollback text. Commands typed in it run via the job worker in `$CWD` (Enter → here;
-    /// Shift+Enter → piped to the active document on completion). `cd` is intercepted to persist cwd.
-    shell_pane_visible: bool,
     /// The live PDF preview pane on the right (`PREVIEW`/`PV`; `$PV`; default off). GUI-only state.
     preview_visible: bool,
-    shell_pane_output: String,
     /// Console REPL (unified successor to the SH pane + `*Shell Output*`): the prompt template
     /// (`SHPROMPT`; `$`-expanded like `$CWD> `), whether a prompt is currently displayed and awaiting
     /// input, and — while it is — the byte offset of the prompt's start and the prompt's byte length
@@ -2416,6 +2406,10 @@ pub struct AppHost {
     console_showing: bool,
     console_prompt_at: usize,
     console_prompt_len: usize,
+    /// Set whenever Console output or a new prompt is written; the GUI drains it each frame and, when
+    /// the Console is the active tab, scrolls to the tail so streamed output + the new prompt stay in
+    /// view (otherwise foreground output appends below the visible prompt and streams off-screen).
+    console_dirty: bool,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2671,7 +2665,7 @@ const DEFAULT_CLOSED: &str = "xyscript-reopen.xpl"; // SaveClosed default path (
 const REOPEN_CAP: usize = 50; // max entries kept in the reopen list
 const REOPEN_NAME_COL: usize = 30; // max width of the filename column in the REOPEN chooser
 const DEFAULT_KBD_DUMP: &str = "xyscript.kbd"; // SAVEKBD default path when none is given
-const SHELL_OUTPUT_NAME: &str = "*Shell Output*"; // the X/BG background-job output buffer
+const SHELL_OUTPUT_NAME: &str = "*Console*"; // the unified Console REPL + X/BG output buffer
 const SHELL_OUTPUT_CAP: usize = 512 * 1024; // scrollback cap (bytes) for *Shell Output*
 
 impl Default for AppHost {
@@ -2793,13 +2787,12 @@ impl AppHost {
             shell_output_visible: true, // the *Shell Output* tab shows by default
             shell_focus_restore: false,
             dir_window: None,
-            shell_pane_visible: false,
             preview_visible: false,
-            shell_pane_output: String::new(),
             console_prompt: "$CWD> ".to_string(),
             console_showing: false,
             console_prompt_at: 0,
             console_prompt_len: 0,
+            console_dirty: false,
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4052,6 +4045,18 @@ impl AppHost {
         }
         let cut = self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP);
         self.console_prompt_at = self.console_prompt_at.saturating_sub(cut);
+        self.console_dirty = true; // the GUI scrolls the Console to the tail
+    }
+
+    /// The GUI drains this each frame; `true` means Console output (or a new prompt) just arrived, so
+    /// scroll the Console tab to the tail. Paired with [`console_is_active`].
+    pub fn take_console_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.console_dirty)
+    }
+
+    /// Whether the Console tab is the active document (the GUI only auto-scrolls it when it's on top).
+    pub fn console_is_active(&self) -> bool {
+        self.docs.get(self.active).and_then(|d| d.label()) == Some(SHELL_OUTPUT_NAME)
     }
 
     /// Write a fresh prompt at the tail (on its own line) and mark the Console ready for input. Records
@@ -4069,6 +4074,7 @@ impl AppHost {
         self.console_prompt_at = at;
         self.console_prompt_len = prompt.len();
         self.console_showing = true;
+        self.console_dirty = true; // reveal the fresh prompt
     }
 
     /// Submit the current Console input (the text after the prompt). Returns `false` — so the GUI
@@ -4076,6 +4082,11 @@ impl AppHost {
     /// (typing at the prompt, not editing scrollback). On submit the input line is committed and run.
     pub fn console_submit(&mut self) -> bool {
         if !self.console_showing {
+            return false;
+        }
+        // Only when the Console is the ACTIVE tab — otherwise Enter in another document would submit
+        // the console's waiting input.
+        if self.docs.get(self.active).and_then(|d| d.label()) != Some(SHELL_OUTPUT_NAME) {
             return false;
         }
         let idx = self.shell_output_doc_index();
@@ -4226,13 +4237,6 @@ impl AppHost {
         }
     }
 
-    // ---- interactive shell pane (SH/SHELL) --------------------------------------------------
-
-    /// Whether the shell pane is shown (`SH`/`$SH`; the GUI renders the bottom pane while true).
-    pub fn shell_pane_visible(&self) -> bool {
-        self.shell_pane_visible
-    }
-
     /// Whether the live preview pane is shown (`PREVIEW`/`PV`/`$PV`; the GUI renders the right pane).
     pub fn preview_visible(&self) -> bool {
         self.preview_visible
@@ -4248,90 +4252,6 @@ impl AppHost {
     /// and kept separate because it answers a different question — the Save-As format default.
     pub fn active_render_is_typst(&self) -> bool {
         matches!(self.active_render_kind(), crate::document::RenderKind::Typst)
-    }
-
-    /// The shell pane's scrollback text (read by the GUI to render the pane).
-    pub fn shell_pane_output(&self) -> &str {
-        &self.shell_pane_output
-    }
-
-    /// Append to the shell pane's scrollback, bounding it (drops oldest text at a char boundary).
-    fn append_shell_pane(&mut self, text: &str) {
-        self.shell_pane_output.push_str(text);
-        if self.shell_pane_output.len() > SHELL_OUTPUT_CAP {
-            let mut cut = self.shell_pane_output.len() - SHELL_OUTPUT_CAP;
-            while cut < self.shell_pane_output.len() && !self.shell_pane_output.is_char_boundary(cut)
-            {
-                cut += 1;
-            }
-            self.shell_pane_output.drain(..cut);
-        }
-    }
-
-    /// Run one command typed in the shell pane. `to_document` (Shift+Enter) pipes the output into
-    /// the active document at the caret on completion; otherwise it streams into the pane. `cd` is
-    /// intercepted to update `$CWD` (no process spawned); other commands run via the job worker in
-    /// `$CWD` and are trust-gated like `X/BG`.
-    pub fn shell_pane_run(&mut self, cmd: &str, to_document: bool) {
-        let cmd = cmd.trim();
-        if cmd.is_empty() {
-            return;
-        }
-        self.append_shell_pane(&format!("{}> {cmd}\n", self.cwd.display()));
-
-        // `cd` is a shell builtin a child process can't make persist, so handle it here.
-        if let Some(arg) = parse_cd(cmd) {
-            match arg {
-                None => self.append_shell_pane(&format!("{}\n", self.cwd.display())),
-                Some(dir) => {
-                    let target = self.resolve_path(dir);
-                    let canon = lexical_abs(&self.cwd, &target);
-                    match canon.is_dir() {
-                        true => {
-                            self.cwd = canon;
-                            self.remember_current_drive();
-                            self.append_shell_pane(&format!("cwd: {}\n", self.cwd.display()));
-                        }
-                        false => self.append_shell_pane(&format!(
-                            "cd: not a directory: {}\n",
-                            target.display()
-                        )),
-                    }
-                }
-            }
-            return;
-        }
-
-        if !self.shell_trusted {
-            self.append_shell_pane("shell-out is disabled; enable it with TRUST 1\n");
-            return;
-        }
-
-        let id = self.next_job_id;
-        self.next_job_id += 1;
-        self.last_job_id = id;
-        let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
-        let child = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let mut command = shell_command(cmd);
-        command.current_dir(&self.cwd); // run in $CWD (unlike X/BG, which uses the process cwd)
-        spawn_shell_job(command, None, tx, std::sync::Arc::clone(&child));
-        let sink = if to_document {
-            self.append_shell_pane("(piping output to the document…)\n");
-            JobSink::Document { doc: self.active, at: self.docs[self.active].buffer().cursor() }
-        } else {
-            JobSink::ShellPane
-        };
-        self.jobs.push(Job {
-            id,
-            cmd: cmd.to_string(),
-            rx,
-            child,
-            output: String::new(),
-            return_var: None,
-            sink,
-            cleanup: None,
-            is_mail: false,
-        });
     }
 
     /// Append a job-launch header to the `*Shell Output*` buffer and, when `SW` is on, switch focus
@@ -4509,8 +4429,6 @@ impl AppHost {
                 match self.jobs[i].sink {
                     JobSink::ShellTab => self.append_shell_output_text(&batch),
                     JobSink::Console => self.console_emit(&batch),
-                    JobSink::ShellPane => self.append_shell_pane(&batch),
-                    JobSink::Document { .. } => {}
                     #[cfg(feature = "email")]
                     JobSink::MailHeaders | JobSink::MailSearchSave | JobSink::MailAction => {}
                 }
@@ -4543,20 +4461,6 @@ impl AppHost {
                         // Land the exit line above the (absent) prompt, then re-prompt for the next command.
                         self.console_emit(&format!("(exit {code})\n"));
                         self.console_write_prompt();
-                    }
-                    JobSink::ShellPane => {
-                        self.append_shell_pane(&format!("(exit {code})\n"));
-                    }
-                    JobSink::Document { doc, at } => {
-                        // Insert the full output at the launch caret, as one undo unit.
-                        if doc < self.docs.len() {
-                            let at = at.min(self.docs[doc].buffer().len());
-                            self.docs[doc].replace_span(at, at, &job.output);
-                        }
-                        let lines = job.output.lines().count();
-                        self.append_shell_pane(&format!(
-                            "(exit {code}; inserted {lines} line(s) into the document)\n"
-                        ));
                     }
                     #[cfg(feature = "email")]
                     JobSink::MailHeaders => {
@@ -8003,7 +7907,7 @@ impl AppHost {
         put(&mut s, "Line-number gutter — SLN on, CLN off", if self.line_numbers { "SLN" } else { "CLN" }.to_string());
         put(&mut s, "Pop-up command line — SGC on, CGC off", if self.gui_cmline { "SGC" } else { "CGC" }.to_string());
         put(&mut s, "Shell-output tab visibility — SW on/off", format!("SW {}", if self.shell_output_visible { "on" } else { "off" }));
-        put(&mut s, "Shell pane visibility — SH on/off", format!("SH {}", if self.shell_pane_visible { "on" } else { "off" }));
+        put(&mut s, "Console prompt template (SHPROMPT; $-expanded, e.g. $CWD> )", format!("SHPROMPT {}", self.console_prompt));
         put(&mut s, "Preview pane visibility — PV on/off", format!("PV {}", if self.preview_visible { "on" } else { "off" }));
         put(&mut s, "Persistent selection — SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
         put(&mut s, "OS window title bar — on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
@@ -9564,6 +9468,33 @@ impl Host for AppHost {
                 self.find_requested = true;
                 return Ok(Value::str(""));
             }
+            EditorOp::OpenConsole { show } => {
+                if show {
+                    let idx = self.shell_output_doc_index();
+                    self.shell_output_visible = true;
+                    if !self.console_showing {
+                        self.console_write_prompt();
+                    }
+                    // Land the caret at the prompt (the tail) so the user can type immediately, and
+                    // reveal it (a fresh SH shouldn't leave the view scrolled up in old output).
+                    let end = self.docs[idx].buffer().len();
+                    self.docs[idx].set_caret(end, None);
+                    self.console_dirty = true;
+                    self.active = idx;
+                    self.set_focus(Target::Document);
+                    return Ok(Value::str("console"));
+                }
+                // `SH off` — hide the Console tab (mirrors `SW off`), stepping focus away if it's active.
+                if self.shell_output_visible {
+                    self.shell_output_visible = false;
+                    self.focus_away_from_shell_output();
+                }
+                return Ok(Value::str("console hidden"));
+            }
+            EditorOp::SetConsolePrompt(tmpl) => {
+                self.set_console_prompt(tmpl.as_deref());
+                return Ok(Value::str(format!("SHPROMPT {}", self.console_prompt)));
+            }
             EditorOp::OpenGrepDialog => {
                 self.grep_dialog_requested = true;
                 return Ok(Value::str(""));
@@ -10576,7 +10507,6 @@ impl Host for AppHost {
                     ViewFlag::LineNumbers => &mut self.line_numbers,
                     ViewFlag::GuiCmline => &mut self.gui_cmline,
                     ViewFlag::ShellWindow => &mut self.shell_output_visible,
-                    ViewFlag::ShellPane => &mut self.shell_pane_visible,
                     ViewFlag::Preview => &mut self.preview_visible,
                 };
                 let prev = *slot;
@@ -10592,7 +10522,6 @@ impl Host for AppHost {
                     ViewFlag::LineNumbers => ("line numbers", *slot),
                     ViewFlag::GuiCmline => ("pop-up command line", *slot),
                     ViewFlag::ShellWindow => ("shell output", *slot),
-                    ViewFlag::ShellPane => ("shell pane", *slot),
                     ViewFlag::Preview => ("preview", *slot),
                 };
                 if flag == ViewFlag::ShellWindow {
@@ -11301,6 +11230,12 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("loaded {n} history command{}", if n == 1 { "" } else { "s" })));
             }
             EditorOp::Newline => {
+                // In the Console tab, Enter at the prompt SUBMITS the command (console_submit is a
+                // no-op — returns false — when the console isn't active, no prompt is showing, or the
+                // caret is up in scrollback, so a normal newline is inserted there instead).
+                if self.console_submit() {
+                    return Ok(Value::str(""));
+                }
                 if self.tab_indent {
                     self.active().insert_newline_autoindent();
                 } else {
@@ -11668,7 +11603,9 @@ impl Host for AppHost {
             "LNS" => Some(Value::Int(if self.line_numbers { 1 } else { 0 })),
             "GC" => Some(Value::Int(if self.gui_cmline { 1 } else { 0 })),
             "SW" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
-            "SH" => Some(Value::Int(if self.shell_pane_visible { 1 } else { 0 })),
+            // `$SH` now reports whether the Console tab is shown (the SH pane it once meant is gone).
+            "SH" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
+            "SHPROMPT" => Some(Value::str(self.console_prompt.clone())),
             "PV" => Some(Value::Int(if self.preview_visible { 1 } else { 0 })),
             "AR" => Some(Value::str(self.last_ar_path.clone().unwrap_or_default())), // last LoadAR path
             "HLAUTO" => Some(Value::Int(if self.hl_auto { 1 } else { 0 })),

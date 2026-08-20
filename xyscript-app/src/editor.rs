@@ -485,11 +485,6 @@ impl Editor {
     pub fn show_one_tab(&self) -> bool {
         self.host.show_one_tab()
     }
-    /// Interactive shell pane (`SH`): visibility, scrollback, and running a typed command (the GUI
-    /// drives these). `to_document` (Shift+Enter) pipes the output into the active doc on completion.
-    pub fn shell_pane_visible(&self) -> bool {
-        self.host.shell_pane_visible()
-    }
     /// Whether the live preview pane is shown (`PREVIEW`/`PV`).
     pub fn preview_visible(&self) -> bool {
         self.host.preview_visible()
@@ -502,12 +497,6 @@ impl Editor {
     pub fn active_render_is_typst(&self) -> bool {
         self.host.active_render_is_typst()
     }
-    pub fn shell_pane_output(&self) -> &str {
-        self.host.shell_pane_output()
-    }
-    pub fn shell_pane_run(&mut self, cmd: &str, to_document: bool) {
-        self.host.shell_pane_run(cmd, to_document);
-    }
     /// Write a fresh Console prompt (the GUI calls this when opening/focusing the Console tab).
     pub fn console_write_prompt(&mut self) {
         self.host.console_write_prompt();
@@ -516,6 +505,15 @@ impl Editor {
     /// submit (no prompt showing, or the caret is up in scrollback) so the GUI inserts a newline.
     pub fn console_submit(&mut self) -> bool {
         self.host.console_submit()
+    }
+    /// `true` (once) when Console output or a new prompt just arrived — the GUI scrolls the Console to
+    /// the tail. Only meaningful together with [`console_is_active`](Self::console_is_active).
+    pub fn take_console_dirty(&mut self) -> bool {
+        self.host.take_console_dirty()
+    }
+    /// Whether the Console tab is the active document.
+    pub fn console_is_active(&self) -> bool {
+        self.host.console_is_active()
     }
     /// Autosave interval in seconds (0 = off); the GUI reads it each frame to drive the timer.
     pub fn autosave_secs(&self) -> u64 {
@@ -9634,10 +9632,10 @@ mod tests {
         assert_eq!(e.output().last().map(String::as_str), Some("0"));
         // ...and was appended to a new *Shell Output* tab (header + output), not the active doc.
         let tabs = e.tabs();
-        let shell = tabs.iter().find(|t| t.name == "*Shell Output*").expect("Shell Output tab");
+        let shell = tabs.iter().find(|t| t.name == "*Console*").expect("Shell Output tab");
         assert!(!shell.read_only, "the console tab is now editable, not a locked log");
         // Switch to it and check its contents carry the command header + output.
-        let i = tabs.iter().position(|t| t.name == "*Shell Output*").unwrap();
+        let i = tabs.iter().position(|t| t.name == "*Console*").unwrap();
         e.set_active_buffer(i);
         let text = e.document().text();
         assert!(text.contains("echo hi"));
@@ -9659,7 +9657,7 @@ mod tests {
         e.run_command("TRUST 1");
         // The GUI wiring is 1b-ii; here drive the host REPL directly: write a prompt, type after it.
         e.console_write_prompt();
-        let i = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("console tab");
+        let i = e.tabs().iter().position(|t| t.name == "*Console*").expect("console tab");
         e.set_active_buffer(i);
         assert!(e.document().text().ends_with("> "), "a prompt is shown: {:?}", e.document().text());
         // Type a command at the prompt and submit it (Enter at the tail).
@@ -9697,7 +9695,7 @@ mod tests {
         assert_eq!(e.job_count(), 0, "background job did not finish in time");
         // The caret rests at the very end of the *Shell Output* buffer (the newest text), so the
         // view follows the tail rather than pinning to the top of the run.
-        let i = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("Shell Output tab");
+        let i = e.tabs().iter().position(|t| t.name == "*Console*").expect("Shell Output tab");
         e.set_active_buffer(i);
         let len = e.document().text().len();
         assert_eq!(e.document().cursor(), len, "caret should be at the end of the output");
@@ -9755,7 +9753,7 @@ mod tests {
         assert_eq!(e.job_count(), 0, "background job did not finish in time");
 
         // Focus the *Shell Output* tab.
-        let shell = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("shell tab");
+        let shell = e.tabs().iter().position(|t| t.name == "*Console*").expect("shell tab");
         e.set_active_buffer(shell);
         assert_eq!(e.active_index(), shell);
 
@@ -9765,11 +9763,11 @@ mod tests {
         e.run_command("PR $SW");
         assert_eq!(e.output().last().map(String::as_str), Some("0"));
         assert!(
-            e.tabs().iter().any(|t| t.name == "*Shell Output*"),
+            e.tabs().iter().any(|t| t.name == "*Console*"),
             "the shell buffer must survive being hidden"
         );
         assert_ne!(e.active_index(), shell, "focus should leave the hidden tab");
-        assert_ne!(e.tabs()[e.active_index()].name, "*Shell Output*");
+        assert_ne!(e.tabs()[e.active_index()].name, "*Console*");
     }
 
     #[test]
@@ -9780,7 +9778,7 @@ mod tests {
         e.run_command("TRUST 1");
         e.run_command("X/BG echo hi");
         assert_eq!(
-            e.tabs()[e.active_index()].name, "*Shell Output*",
+            e.tabs()[e.active_index()].name, "*Console*",
             "SW on → X/BG should focus the shell tab at launch"
         );
         drain_jobs(&mut e);
@@ -9791,11 +9789,11 @@ mod tests {
         e.run_command("TRUST 1");
         e.run_command("SW off");
         let before = e.active_index();
-        assert_ne!(e.tabs().get(before).map(|t| t.name.as_str()), Some("*Shell Output*"));
+        assert_ne!(e.tabs().get(before).map(|t| t.name.as_str()), Some("*Console*"));
         e.run_command("X/BG echo hi");
         assert_eq!(e.active_index(), before, "SW off → focus must stay on the document");
         assert!(
-            e.tabs().iter().any(|t| t.name == "*Shell Output*"),
+            e.tabs().iter().any(|t| t.name == "*Console*"),
             "the buffer is still created (hidden), so output is captured"
         );
         drain_jobs(&mut e);
@@ -9808,7 +9806,7 @@ mod tests {
         e.run_command("TRUST 1");
         e.run_command("X/BG echo hi"); // SW on (default) → focuses the shell tab at launch
         drain_jobs(&mut e);
-        let shell = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("shell tab");
+        let shell = e.tabs().iter().position(|t| t.name == "*Console*").expect("shell tab");
 
         // Case A: hide WHILE looking at the shell tab → SW on brings us back to it.
         e.set_active_buffer(shell);
@@ -9819,30 +9817,38 @@ mod tests {
         assert_eq!(e.active_index(), shell, "was focused when hidden → focus restored");
 
         // Case B: hide while on the DOCUMENT (not the shell tab) → SW on leaves focus put.
-        let doc = e.tabs().iter().position(|t| t.name != "*Shell Output*").expect("a document");
+        let doc = e.tabs().iter().position(|t| t.name != "*Console*").expect("a document");
         e.set_active_buffer(doc);
         e.run_command("SW off");
         assert_eq!(e.active_index(), doc, "focus already off the tab; stays put");
         e.run_command("SW on");
         assert_eq!(e.active_index(), doc, "wasn't focused when hidden → no switch on show");
-        assert_ne!(e.tabs()[e.active_index()].name, "*Shell Output*");
+        assert_ne!(e.tabs()[e.active_index()].name, "*Console*");
     }
 
     #[test]
-    fn shell_pane_toggles_reads_back_and_persists() {
+    fn sh_opens_the_console_and_shprompt_persists() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
+        // SH from the CMline opens + focuses the Console tab, landing the caret at its prompt (not
+        // back on the CMline) — SH is in FOCUS_DOC_VERBS.
+        e.host_mut().input_focus = Target::CmLine;
+        e.host_mut().target = Target::CmLine;
+        e.run_command("SH");
+        assert_eq!(e.host_mut().target, Target::Document, "SH leaves focus in the Console, not the CMline");
+        let active = e.tabs().get(e.active_index()).map(|t| t.name.clone());
+        assert_eq!(active.as_deref(), Some("*Console*"), "SH focuses the Console tab");
         e.run_command("PR $SH");
-        assert_eq!(e.output().last().map(String::as_str), Some("0")); // off by default
-        e.run_command("SH"); // toggle
-        e.run_command("PR $SH");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("1")); // Console shown
         e.run_command("SHELL off");
         e.run_command("PR $SH");
         assert_eq!(e.output().last().map(String::as_str), Some("0"));
-        e.run_command("SH on");
+        // SHPROMPT sets the prompt (trailing space preserved via quotes); $SHPROMPT reads it; SaveCfg keeps it.
+        e.run_command(r#"SHPROMPT "ready> ""#);
+        e.run_command("PR <$SHPROMPT>");
+        assert_eq!(e.output().last().map(String::as_str), Some("<ready> >"));
         e.run_command("SAVECFG cfg.xpl");
-        assert!(e.host_mut().files.get("cfg.xpl").cloned().unwrap().contains("SH on"));
+        assert!(e.host_mut().files.get("cfg.xpl").cloned().unwrap().contains("SHPROMPT ready> "));
     }
 
     #[test]
@@ -9877,49 +9883,40 @@ mod tests {
         assert!(!e.active_render_is_typst()); // override wins
     }
 
-    #[test]
-    fn shell_pane_runs_a_command_into_its_scrollback() {
-        let mut e = ed();
-        e.run_command("TRUST 1");
-        e.shell_pane_run("echo hi", false); // Enter → output in the pane
-        drain_jobs(&mut e);
-        let out = e.shell_pane_output();
-        assert!(out.contains("echo hi")); // the prompt echo
-        assert!(out.contains("(exit 0)")); // completion
+    /// Type a command at the Console prompt and submit it (the headless stand-in for the GUI's Enter).
+    fn console_run(e: &mut Editor, cmd: &str) {
+        if e.tabs().iter().all(|t| t.name != "*Console*") || e.special_str("SH") != "1" {
+            e.run_command("SH"); // ensure the Console is open + a prompt is showing + focused
+        } else {
+            let i = e.tabs().iter().position(|t| t.name == "*Console*").unwrap();
+            e.set_active_buffer(i);
+        }
+        e.run_command(&format!(r#"insert "{cmd}""#));
+        assert!(e.console_submit(), "submit at the prompt");
     }
 
     #[test]
-    fn shell_pane_refuses_to_run_without_trust() {
+    fn console_refuses_to_run_without_trust() {
         let mut e = ed();
-        e.shell_pane_run("echo hi", false);
-        assert!(e.shell_pane_output().contains("shell-out is disabled"));
-        assert_eq!(e.job_count(), 0); // nothing spawned
+        console_run(&mut e, "echo hi"); // no TRUST
+        assert_eq!(e.job_count(), 0, "nothing spawned without trust");
+        assert!(e.document().text().contains("shell-out is disabled"));
     }
 
     #[test]
-    fn shell_pane_cd_is_intercepted_and_persists_cwd() {
-        let base = std::env::temp_dir().join(format!("xyscript-sh-cd-{:p}", &"tag"));
+    fn console_cd_is_intercepted_and_persists_cwd() {
+        let base = std::env::temp_dir().join(format!("xyscript-console-cd-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("sub")).unwrap();
 
         let mut e = ed();
         e.run_command(&format!("CD {}", base.display()));
-        e.shell_pane_run("cd sub", false); // a builtin → intercepted, no process
+        console_run(&mut e, "cd sub"); // a builtin → intercepted, no process
         assert_eq!(e.job_count(), 0);
         e.run_command("PR $CWD");
-        assert!(e.output().last().unwrap().contains("sub")); // cwd followed the cd
+        assert!(e.output().last().unwrap().contains("sub"), "cwd followed the cd");
 
         std::fs::remove_dir_all(&base).unwrap();
-    }
-
-    #[test]
-    fn shell_pane_shift_enter_pipes_output_into_the_document() {
-        let mut e = ed();
-        e.run_command("TRUST 1");
-        e.shell_pane_run("echo piped", true); // Shift+Enter → into the active document
-        drain_jobs(&mut e);
-        assert!(e.document().text().contains("piped")); // inserted at the caret on completion
-        assert!(e.shell_pane_output().contains("inserted")); // pane notes the pipe, not the raw output
     }
 
     #[test]

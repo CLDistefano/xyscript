@@ -73,6 +73,13 @@ menu.search.emphasize.selection = [Šèĺèçţìòñ ····]   # Selection
 menu.search.emphasize.word = [Ŵòŕđ òŕ þĥŕàšè… ······]   # Word or phrase…
 menu.search.emphasize.regex = [Ŕèĝùĺàŕ èẋþŕèššìòñ… ········]   # Regular expression…
 menu.search.emphasize.clear = [Çĺèàŕ ··]   # Clear
+menu.search.bookmarks = [Ɓòòķɱàŕķš ····]   # Bookmarks
+menu.search.bookmarks.toggle = [Ɓòòķɱàŕķ ···]   # Bookmark
+menu.search.bookmarks.next = [Ñèẋţ ƀòòķɱàŕķ ·····]   # Next bookmark
+menu.search.bookmarks.prev = [Þŕèṽìòùš ƀòòķɱàŕķ ·······]   # Previous bookmark
+menu.search.bookmarks.list = [Ĝò ţò ƀòòķɱàŕķ… ······]   # Go to bookmark…
+menu.search.bookmarks.clear_all = [Çĺèàŕ àĺĺ ƀòòķɱàŕķš ········]   # Clear all bookmarks
+menu.search.bookmarks.gutter = [Ĝùţţèŕ ɱàŕķš ·····]   # Gutter marks
 
 # ---- menu.view ---------------------------------------------------
 menu.view.highlighting = [Ĥìĝĥĺìĝĥţìñĝ ·····]   # Highlighting
@@ -82,8 +89,8 @@ menu.view.line_numbers = [Ĺìñè ñùɱƀèŕš ·····]   # Line numbers
 menu.view.word_wrap = [Ŵòŕđ ŵŕàþ ····]   # Word wrap
 menu.view.wrap_hang = [Ŵŕàþ ĥàñĝ ({n})… ·····]   # Wrap hang ({n})…
 menu.view.preview_pane = [Þŕèṽìèŵ þàñè ·····]   # Preview pane
-menu.view.shell_pane = [Šĥèĺĺ þàñè ····]   # Shell pane
-menu.view.shell_output = [Šĥèĺĺ òùţþùţ ţàƀ ······]   # Shell output tab
+menu.view.console = [Çòñšòĺè ···]   # Console
+menu.view.console_tab = [Šĥòŵ Çòñšòĺè ţàƀ ······]   # Show Console tab
 menu.view.split = [Šþĺìţ þàñèš ····]   # Split panes
 menu.view.split.side_by_side = [Šþĺìţ šìđè ƀý šìđè ·······]   # Split side by side
 menu.view.split.top_bottom = [Šþĺìţ ţòþ àñđ ƀòţţòɱ ········]   # Split top and bottom

@@ -551,7 +551,7 @@ self-contained element to convert.
 
 / #cmd("X") / #cmd("XV") / #cmd("XY"): run a shell command / capturing its output to a variable / inserting its output at the caret.
 / #cmd("TRUST"): enable or disable shell-out. #cmd("JOBS") / #cmd("KILL") / #cmd("WAIT"): list background jobs / end one / wait for jobs (or a timed pause).
-/ #cmd("SH", "SHELL") / #cmd("SW", "SHELLWIN"): the interactive shell pane / the *Shell Output* tab.
+/ #cmd("SH", "SHELL"): open the Console — an editable REPL tab (type a command at the prompt, press Enter). #cmd("SHPROMPT"): its prompt template. #cmd("SW", "SHELLWIN"): show/hide the Console tab.
 
 == Keyboard files and binders
 
@@ -608,7 +608,7 @@ Send and receive mail by shelling out to `curl` (which must be on your `PATH`). 
 / #cmd("SENDMAIL"): send the active document (or, with `/F`, a file) as email — recipient and subject from arguments or a `To:`/`Subject:` header block atop the buffer.
 / #cmd("ATTACH") / #cmd("CLEARATTACH"): stage / clear files to attach to the next #cmd("SENDMAIL").
 / #cmd("IMAPURL") / #cmd("MAILBOX"): IMAP receive config — the server URL and the mailbox to read (default `INBOX`); auth reuses #cmd("MAILUSER")/#cmd("MAILPASS").
-/ #cmd("LISTMAIL"): list the mailbox (numbered Date/From/Subject) in *Shell Output*.
+/ #cmd("LISTMAIL"): list the mailbox (numbered Date/From/Subject) in *Console*.
 / #cmd("SAVEMAIL"): download raw messages by number (or `all`) to `MSG###.TXT` files.
 / #cmd("DELMAIL"): delete messages by number (or `all`).
 / #cmd("MAILDEBUG"): show the full curl / server dialogue for troubleshooting.
@@ -719,7 +719,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("END", "ER"): move to the end of the line (`ER` is the "Express Right" name).
 / #cmd("EDFAMILY") / #cmd("EDSTYLE") / #cmd("EDFONT", "EDFONTS"): the editor font's family / style / size (`EDFONT +n` adjusts; `…S` opens a picker).
-/ #cmd("EMPH"): `EMPH <word|phrase>` — highlight every whole-word occurrence of the word or phrase in the current tab (case-insensitive; a match inside a longer word is skipped), a persistent visual overlay that works even in read-only and `*Shell Output*` tabs. `EMPH/R <regex>` matches a regular expression instead (an invalid pattern is reported and leaves the emphasis unchanged). Bare `EMPH` clears it. Per-tab and session-only (each tab keeps its own emphasis).
+/ #cmd("EMPH"): `EMPH <word|phrase>` — highlight every whole-word occurrence of the word or phrase in the current tab (case-insensitive; a match inside a longer word is skipped), a persistent visual overlay that works even in read-only and `*Console*` tabs. `EMPH/R <regex>` matches a regular expression instead (an invalid pattern is reported and leaves the emphasis unchanged). Bare `EMPH` clears it. Per-tab and session-only (each tab keeps its own emphasis).
 / #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): the `EMPH` emphasis text / background color — `EMPHFGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `EMPHFGCOLOR default` clears it so the emphasis follows the selection colors (`SELFGCOLOR`/`SELBGCOLOR`). Read back via #sv("EMPHFGCOLOR") / #sv("EMPHBGCOLOR"); persist in the config.
 / #cmd("ENCODING"): set the file's text encoding view (re-decodes the same bytes). `ENCODING/C <name> [outfile]` *converts* instead — re-encodes the text to `<name>` (lossy → `?`), in place or to a new file.
 / #cmd("ENTER"): insert a newline in the document's line-ending style (bind it to the Enter key).
@@ -784,7 +784,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("LOADCFG"): run a saved config script. #cmd("LOADCM"): load a saved command-history list. #cmd("LOADCLOSED"): load a saved reopen list (recently-closed files). #cmd("LOADKBD"): load a keyboard map (a `.kbd` file annotated by #cmd("KBDDOC") loads fine — the key-name column is ignored). #cmd("LOADLIB"): load a `.lib` library (replacing the current one).
 / #cmd("LDTX"): load a text binder slot (`@slot`) — `LDTX <A-Z|0-9> [<source>]`, where the source is the current selection (no argument), a quoted literal (`LDTX A "some text"`, escapes processed, `$`/`@`/`&` kept verbatim), or a file path. #cmd("LDSC") / #cmd("LDPM") load a script binder slot (`&slot`) the same way. Save all text registers with #cmd("SAVELDTX").
 / #cmd("LISTLIB"): list the loaded library routines (name and description, in a two-column scrollable dialog; or into a `CAPTURE` variable). #cmd("LISTSPECIALS"): insert a `$NAME: |$NAME|` line for every special variable (a `PRINTEX`-able template).
-/ #cmd("LISTMAIL"): list the IMAP mailbox — fetch each message's Date/From/Subject into a numbered listing in the *Shell Output* tab, so you can see what's there and pick numbers for #cmd("SAVEMAIL")/#cmd("DELMAIL"). Message numbers are IMAP sequence numbers (1 = oldest). Needs #cmd("IMAPURL") and #cmd("MAILUSER")/#cmd("MAILPASS") (and #cmd("MAILBOX"), default `INBOX`). With #cmd("MAILDEBUG") on it streams the raw server exchange instead of the parsed listing. Runs as a background curl job; #sv("RC") (curl's exit code) and #sv("XO") are set on completion, so `WAIT` before reading them, or use `LISTMAIL/W` to run synchronously (blocks until done, so #sv("RC") is set on return).
+/ #cmd("LISTMAIL"): list the IMAP mailbox — fetch each message's Date/From/Subject into a numbered listing in the *Console* tab, so you can see what's there and pick numbers for #cmd("SAVEMAIL")/#cmd("DELMAIL"). Message numbers are IMAP sequence numbers (1 = oldest). Needs #cmd("IMAPURL") and #cmd("MAILUSER")/#cmd("MAILPASS") (and #cmd("MAILBOX"), default `INBOX`). With #cmd("MAILDEBUG") on it streams the raw server exchange instead of the parsed listing. Runs as a background curl job; #sv("RC") (curl's exit code) and #sv("XO") are set on completion, so `WAIT` before reading them, or use `LISTMAIL/W` to run synchronously (blocks until done, so #sv("RC") is set on return).
 / #cmd("SAVEVARS"): save every global variable and its value to a file (`SaveVars [path]`; bare → `xyscript-vars.txt`, resolved against `$CWD`). The file is `name⇥value-literal` lines — a data file, not a script. Under `CAPTURE` the text goes into the variable instead. #cmd("LOADVARS"): restore variables written by `SaveVars` (`LoadVars [path]`); each value is evaluated directly, so a `$` in a saved string stays literal. A missing file or a bad line sets `$ERROR`.
 / #cmd("LISTVARS"): list every global variable and its current value (`$name: value`, sorted) — into a `CAPTURE` variable if one is open, else inserted at the caret. #cmd("LISTVAR") is a synonym.
 / #cmd("LOCAL"): scope variables to the current routine.
@@ -796,7 +796,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("MAILPASS"): the mail account password / app-password (SMTP send and IMAP receive) — `MAILPASS <secret>`. Never persisted and never echoed: `$MAILPASS` reads `set` / `not set`. If unset, the `XYSCRIPT_MAILPASS` environment variable is used. Fed to curl through a config on stdin, so it never appears on the command line.
 / #cmd("MAILFROM"): the envelope / `From:` address for #cmd("SENDMAIL") — `MAILFROM <address>` (defaults to #cmd("MAILUSER"); bare reports it, `$MAILFROM` reads it). A display-name form (`MAILFROM "Jane Roe" <jane@x.org>`) is fine — the envelope uses the bare address inside `<…>`, which most servers require to equal the authenticated account. Session-only.
 / #cmd("MAILBOX"): the IMAP mailbox (folder) #cmd("LISTMAIL")/#cmd("SAVEMAIL")/#cmd("DELMAIL") operate on — `MAILBOX <name>` (default `INBOX`; bare reports it, `$MAILBOX` reads it). Session-only.
-/ #cmd("MAILDEBUG"): `MAILDEBUG on|off` (bare toggles) — run curl verbosely so the full SMTP / IMAP dialogue streams to the *Shell Output* tab, for diagnosing a send or receive problem. `$MAILDEBUG` reads the state.
+/ #cmd("MAILDEBUG"): `MAILDEBUG on|off` (bare toggles) — run curl verbosely so the full SMTP / IMAP dialogue streams to the *Console* tab, for diagnosing a send or receive problem. `$MAILDEBUG` reads the state.
 / #cmd("MD") / #cmd("MU"): scroll the view down / up one line without moving the caret.
 / #cmd("MDA"): #emph[mode attribute] — style the *selection* as a persistent text block (XyWrite "mode", reborn as a sidecar). Three independent layers, all edit-following and saved to the doc's hidden `.xymeta` sidecar (so they survive close-and-reopen):
   - #emph[Foreground colour] — `MDA <r g b>` (`/HSL`; a colour name also works); `MDA off` / bare `MDA` clears it.
@@ -878,7 +878,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SAVELDTX"): write every non-empty text register (`@A`..`@Z`/`@0`..`@9`, set by #cmd("LDTX")) as a runnable XPL program — one `LDTX <slot> "<literal>"` line per register, sorted and escaped. `SAVELDTX <file>` names the file (bare uses a default); `RUN`ning it restores the registers. Script binders (`&`, #cmd("LDSC")) are not included. Under `CAPTURE`, the program text goes into the variable instead of a file.
 / #cmd("SAVELDSC", "SAVELDPM"): the script-binder counterpart of #cmd("SAVELDTX") — write every non-empty script register (`&A`..`&Z`/`&0`..`&9`, set by #cmd("LDSC")/#cmd("LDPM")) as a runnable XPL program of `LDSC <slot> "<xpl>"` lines (sorted, escaped). `SAVELDSC <file>` names the file (bare uses a default); `RUN`ning it restores the registers. Text binders (`@`, #cmd("LDTX")) are not included. Under `CAPTURE`, the program text goes into the variable.
 / #cmd("SAVEMAIL"): download raw messages from the IMAP mailbox to disk — `SAVEMAIL <range> [<path>]`, one message per file named `MSG001.TXT`, `MSG002.TXT`, … by message number, into `<path>` (created if needed; default `$CWD`). `<range>` is a comma list of numbers and `first-last` spans (`1-3,6-8,10`), or `all` for the whole mailbox (counted first, then saved). No decoding — the exact RFC-822 source is written. Needs #cmd("IMAPURL") and #cmd("MAILUSER")/#cmd("MAILPASS"). Runs as a background curl job — `WAIT`, then #sv("RC") is curl's exit code (`0` = ok) and #sv("XO") its output. For `all`, use a *bare* `WAIT` (it spans both the count and download phases; `WAIT/J $LJ` would return after only the count). `SAVEMAIL/W` runs synchronously (blocks until the whole download finishes, both phases, so #sv("RC") is set on return); a server refusal shows as #sv("RC") `100`.
-/ #cmd("SENDMAIL"): send the active document as email via curl — `SENDMAIL [<to> ["subject"]]`. With no arguments, `To:`/`Cc:`/`Bcc:`/`Subject:`/`From:`/`Attach:` are read from a header block at the top of the buffer (up to the first blank line); the rest is the body. Any *other* valid header line you add (`Reply-To:`, `In-Reply-To:`, `X-…:`, …) is passed through into the message — except the structural MIME headers (`Content-Type`/`Content-Transfer-Encoding`/`MIME-Version`), which are computed and can't be overridden, while a `Date:`/`Message-ID:` you supply replaces the generated one. Addresses may be bare or the display-name form (`"Name" <addr>`). `SENDMAIL/F <file>` reads the message from a file instead of the active document (quote the path for spaces). Stage files with #cmd("ATTACH"). Needs #cmd("SMTPURL") and #cmd("MAILUSER")/#cmd("MAILPASS") (and usually #cmd("MAILFROM")). Runs as a background job; #sv("RC") is curl's exit code (0 = sent), streamed to *Shell Output*. Add `/W` (combinable with `/F`) to send synchronously — it blocks until curl finishes, so #sv("RC") is set on return.
+/ #cmd("SENDMAIL"): send the active document as email via curl — `SENDMAIL [<to> ["subject"]]`. With no arguments, `To:`/`Cc:`/`Bcc:`/`Subject:`/`From:`/`Attach:` are read from a header block at the top of the buffer (up to the first blank line); the rest is the body. Any *other* valid header line you add (`Reply-To:`, `In-Reply-To:`, `X-…:`, …) is passed through into the message — except the structural MIME headers (`Content-Type`/`Content-Transfer-Encoding`/`MIME-Version`), which are computed and can't be overridden, while a `Date:`/`Message-ID:` you supply replaces the generated one. Addresses may be bare or the display-name form (`"Name" <addr>`). `SENDMAIL/F <file>` reads the message from a file instead of the active document (quote the path for spaces). Stage files with #cmd("ATTACH"). Needs #cmd("SMTPURL") and #cmd("MAILUSER")/#cmd("MAILPASS") (and usually #cmd("MAILFROM")). Runs as a background job; #sv("RC") is curl's exit code (0 = sent), streamed to *Console*. Add `/W` (combinable with `/F`) to send synchronously — it blocks until curl finishes, so #sv("RC") is set on return.
 / #cmd("SMTPURL"): the SMTP submission URL for #cmd("SENDMAIL") — `smtps://host:465` (implicit TLS) or `smtp://host:587` (STARTTLS); set it with `SMTPURL <url>` (bare reports it, `$SMTPURL` reads it). Session-only.
 / #cmd("SE", "SEB", "SEA", "SEBA"): search (`B` = backward, `A` = case-sensitive) (`/W /T /A /B /R /S /X`); `/X` extends a selection to the match. `/n` (a number, e.g. `SE/3`) finds the n-th match from the cursor, and errors if there are fewer than `n`.
 / #cmd("SELFGCOLOR", "SELFGCOLORS") / #cmd("SELBGCOLOR", "SELBGCOLORS"): the selected-text color / its highlight (`/HSL`; `…S` opens a picker).
@@ -901,8 +901,9 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SGC", "CGC", "TGC"): the pop-up command line — on / off / toggle.
 / #cmd("SPS", "CPS", "TPS"): persistent selection — on / off / toggle.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
-/ #cmd("SH", "SHELL"): show/hide the interactive shell pane (needs `TRUST 1`).
-/ #cmd("SW", "SHELLWIN"): show/hide the *Shell Output* tab — `SW on|off`, bare toggles (see also `X/BG`). `/H` / `/V` instead show the *Shell Output* buffer in a new split pane (stacked / side-by-side); if it's already in a pane, focus moves there. `$SW` reads the tab visibility.
+/ #cmd("SH", "SHELL"): open + focus the *Console* — an editable REPL tab. Type a command at the prompt and press Enter to run it (needs `TRUST 1`); output streams in above the prompt, and the tab is a normal document you can edit, copy, and search. `cd` is intercepted to change `$CWD`. `SH off` hides the Console tab. `$SH` reads its visibility.
+/ #cmd("SHPROMPT"): `SHPROMPT [<template>]` — the Console's prompt string, `$`-expanded (default `$CWD> `). Quote it to keep a trailing space (`SHPROMPT "$CWD> "`); bare restores the default. `$SHPROMPT` reads it; saved by `SAVECFG`.
+/ #cmd("SW", "SHELLWIN"): show/hide the *Console* tab — `SW on|off`, bare toggles (see also `X/BG`, which streams into it). `/H` / `/V` instead show the Console in a new split pane (stacked / side-by-side); if it's already in a pane, focus moves there. `$SW` reads the tab visibility.
 
 == T
 
@@ -1149,7 +1150,7 @@ Each reads `1` when the feature is on, `0` when off.
 / #sv("VR") / #sv("WS") / #sv("LNS"): visible paragraph marks / visible whitespace / the line-number gutter.
 / #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
 / #sv("HLAUTO"): auto-highlighting when a file is opened.
-/ #sv("SH") / #sv("SW") / #sv("PV"): the shell pane / the *Shell Output* tab / the live preview pane.
+/ #sv("SH") / #sv("SW") / #sv("PV"): the Console tab / the Console tab (synonym) / the live preview pane visibility. #sv("SHPROMPT"): the Console prompt template.
 
 == Coding aids
 
@@ -1364,10 +1365,11 @@ Every special variable in one list, for quick lookup.
 / #sv("SELBGCOLOR"): selection highlight color.
 / #sv("SELFGCOLOR"): selected-text color.
 / #sv("SEPCOLOR"): separator color.
-/ #sv("SH"): shell pane visible.
+/ #sv("SH"): Console tab visible (once the interactive shell pane; now a synonym for `$SW`).
+/ #sv("SHPROMPT"): the Console prompt template (`SHPROMPT`).
 / #sv("SL"): selected character count.
 / #sv("SMTPURL"): SMTP submission URL for sending.
-/ #sv("SW"): *Shell Output* tab visible.
+/ #sv("SW"): *Console* tab visible.
 / #sv("TABACTIVE"): active-tab color.
 / #sv("TABHOVER"): hover-tab color.
 / #sv("TABINACTIVE"): inactive-tab color.

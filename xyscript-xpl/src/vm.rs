@@ -2945,20 +2945,33 @@ impl Vm<'_, '_> {
             }
             // Show/hide the interactive shell pane at the bottom of the editor (`SH`/`SHELL`). No
             // arg toggles; `on`/`off` set it. Read back via `$SH`.
+            // `SH`/`SHELL` — open + focus the Console REPL tab (bare or `on`); `off` hides it.
             "SH" | "SHELL" => {
                 let a = args.trim();
-                let kind = if a.is_empty() {
-                    ViewToggle::Toggle
-                } else if a.eq_ignore_ascii_case("on") {
-                    ViewToggle::On
+                let show = if a.is_empty() || a.eq_ignore_ascii_case("on") {
+                    true
                 } else if a.eq_ignore_ascii_case("off") {
-                    ViewToggle::Off
+                    false
                 } else {
                     return Err(XplError::trappable(format!(
-                        "{base}: expected on|off (or no argument to toggle), got `{a}`"
+                        "{base}: expected on|off (or no argument to open), got `{a}`"
                     )));
                 };
-                self.host_op(EditorOp::SetView { flag: ViewFlag::ShellPane, kind })?;
+                self.host_op(EditorOp::OpenConsole { show })?;
+                Ok(Flow::Next)
+            }
+            // `SHPROMPT [<template>]` — the Console prompt (`$`-expanded); bare restores the default.
+            // Quote the template to keep a trailing space (`SHPROMPT "$CWD> "`), which most prompts want.
+            "SHPROMPT" => {
+                let a = args.trim();
+                let tmpl = if a.is_empty() {
+                    None
+                } else if a.len() >= 2 && a.starts_with('"') && a.ends_with('"') {
+                    Some(a[1..a.len() - 1].to_string())
+                } else {
+                    Some(a.to_string())
+                };
+                self.host_op(EditorOp::SetConsolePrompt(tmpl))?;
                 Ok(Flow::Next)
             }
             "PV" | "PREVIEW" => {
@@ -5087,6 +5100,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",
+    // `SH`/`SHELL` open the Console tab — land the caret at its prompt, not back on the CMline.
+    "SH", "SHELL",
 ];
 
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if
