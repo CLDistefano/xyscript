@@ -1619,6 +1619,13 @@ impl Buffer {
         self.enc.decode(&self.rope.slice_to_vec(at, end)).chars().next()
     }
 
+    /// Whether the character starting at byte `at` is a WORD character (letter / digit / `_`), the
+    /// same class the word motions use. Live spell-check reads it to tell an edit that EXTENDS a word
+    /// (a word char typed against a flagged word) from one that merely abuts it (a space / punctuation).
+    pub fn is_word_byte(&self, at: usize) -> bool {
+        self.char_at(at).is_some_and(is_word)
+    }
+
     /// `NW` — to the start of the next word (skip the current word's tail, then the
     /// following non-word run). A "word" char is alphanumeric or `_`.
     pub fn move_next_word(&mut self, extend: bool) {

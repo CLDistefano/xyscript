@@ -1153,10 +1153,22 @@ impl Document {
             return;
         }
         let end_of_edit = at + removed;
+        // A word char typed AGAINST a flagged word EXTENDS it, but the mark (end has left gravity)
+        // wouldn't grow — so it would keep underlining just the old prefix ("recei" of "receipt") until
+        // the async re-check lands (slow on big files, hence the partial-underline-while-typing report).
+        // Detect that and DROP the mark instead: `head_word` = the first inserted byte is a word char
+        // (an append at a mark's END); `tail_word` = the last inserted byte is one (a prepend at a
+        // mark's START). A boundary edit with a NON-word char (space/punctuation) leaves the word intact,
+        // so its squiggle stays — no flicker when you finish a misspelling and press space.
+        let head_word = inserted > 0 && self.buffer.is_word_byte(at);
+        let tail_word = inserted > 0 && self.buffer.is_word_byte(at + inserted - 1);
         self.lints.retain_mut(|m| {
             if m.end <= at {
-                true // entirely before the edit — unaffected
+                !(m.end == at && head_word) // append of a word char at its end → extended → drop
             } else if m.start >= end_of_edit {
+                if m.start == end_of_edit && tail_word {
+                    return false; // prepend of a word char at its start → extended → drop
+                }
                 m.start = m.start - removed + inserted; // entirely after — slide along
                 m.end = m.end - removed + inserted;
                 true
@@ -3142,6 +3154,34 @@ mod tests {
             vec![(8, 11)],
             "the edited word's mark is dropped, the later one survives unmoved"
         );
+    }
+
+    /// Typing a letter onto the END of a flagged word EXTENDS it, but the mark's end has left gravity
+    /// so it wouldn't grow — it would keep underlining just the old prefix ("recei" of "receipt") until
+    /// the async re-check lands (slow on big files → the partial-underline-while-typing report). The
+    /// extending edit must DROP the mark; a space/punctuation at the boundary must NOT.
+    #[test]
+    fn lint_mark_dropped_when_a_word_char_extends_the_flagged_word() {
+        let mut d = Document::from_str("aaa recei");
+        d.set_lints(vec![mark(4, 9)]); // "recei"
+        d.replace_span(9, 9, "pt"); // → "aaa receipt"
+        assert!(d.lints().is_empty(), "a word-char append extends the word → drop the stale mark");
+
+        // A NON-word char at the boundary (finishing the misspelling with a space) keeps it flagged.
+        let mut d2 = Document::from_str("aaa recei");
+        d2.set_lints(vec![mark(4, 9)]);
+        d2.replace_span(9, 9, " "); // → "aaa recei "
+        assert_eq!(
+            d2.lints().iter().map(|m| (m.start, m.end)).collect::<Vec<_>>(),
+            vec![(4, 9)],
+            "a space after the word is not an extension → keep the squiggle (no flicker)"
+        );
+
+        // A word char PREPENDED onto a flagged word's start also extends it → drop.
+        let mut d3 = Document::from_str("aaa eipt");
+        d3.set_lints(vec![mark(4, 8)]); // "eipt"
+        d3.replace_span(4, 4, "rec"); // → "aaa receipt"
+        assert!(d3.lints().is_empty(), "a word-char prepend extends the word → drop the stale mark");
     }
 
     fn entry(name: &str, is_dir: bool) -> DirEntry {
