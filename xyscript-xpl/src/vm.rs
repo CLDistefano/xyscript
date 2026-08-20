@@ -1693,7 +1693,14 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::Delete(DeleteKind::Word))?;
                 Ok(Flow::Next)
             }
+            // `RL` — delete the current VISUAL (wrapped) line, for XyWrite compatibility. `RLL`
+            // ("rubout line logical") deletes the whole LOGICAL line (the pre-XyWrite `RL` behavior).
+            // Without a GUI to shape the layout (headless / `WRAP off`), `RL` falls back to `RLL`.
             "RL" => {
+                self.host_op(EditorOp::Delete(DeleteKind::VisualLine))?;
+                Ok(Flow::Next)
+            }
+            "RLL" => {
                 self.host_op(EditorOp::Delete(DeleteKind::Line))?;
                 Ok(Flow::Next)
             }
@@ -5074,7 +5081,7 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     // Define group (full): toggle / modify / close / all / cancel + word·line·sentence·paragraph.
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.
-    "DELSEL", "RW", "RL", "RS", "RP", "RE",
+    "DELSEL", "RW", "RL", "RLL", "RS", "RP", "RE",
     // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its

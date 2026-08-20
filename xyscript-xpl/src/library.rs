@@ -81,7 +81,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Persistent selection.
     "SPS", "CPS", "TPS",
     // Deletion buffer, strict delete, case; char + whole-unit deletes.
-    "RD", "UD", "DN", "LC", "UC", "CC", "BD", "RC", "RW", "RL", "RS", "RP", "RE",
+    "RD", "UD", "DN", "LC", "UC", "CC", "BD", "RC", "RW", "RL", "RLL", "RS", "RP", "RE",
     // In-document copy / move selection.
     "CP", "MV",
     // Clipboard ($CB): cut/copy/paste + set/append/prepend.

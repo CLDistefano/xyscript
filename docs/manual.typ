@@ -555,7 +555,7 @@ XyScript keeps two independent stashes: the system *clipboard* (Cut / Copy / Pas
 
 / #raw("RD"): delete the selection into the deletion buffer; #raw("UD") pastes it back (an "undo delete" / move idiom)
 / #raw("BD") / #raw("RC"): rub out the character *before* / *after* the cursor (Backspace / Delete)
-/ #raw("RW") / #raw("RL") / #raw("RS") / #raw("RP"): clear the word / line / sentence / paragraph at the cursor
+/ #raw("RW") / #raw("RL") / #raw("RLL") / #raw("RS") / #raw("RP"): clear the word / the current on-screen (visual) line / the whole logical line / sentence / paragraph at the cursor. As in XyWrite, #raw("RL") deletes the wrapped line you see; #raw("RLL") ("rubout line logical") deletes the entire logical line. With #raw("WRAP off") the two are the same.
 
 #tip("Two stashes, not one")[The deletion buffer (read as #raw("$XB")) and the system clipboard (read
 as #raw("$CB")) are separate. #raw("RD") then #raw("UD") moves text without disturbing whatever you have

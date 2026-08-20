@@ -11275,6 +11275,47 @@ mod tests {
     }
 
     #[test]
+    fn rl_visual_line_delete_and_rll_logical() {
+        use crate::Document;
+        // RLL / RL with no shaped span both delete the whole LOGICAL line (+ its break).
+        let mut d = Document::from_str("alpha\nbravo\ncharlie");
+        d.set_caret(8, None); // inside "bravo" (line 2)
+        d.delete_visual_line(None); // no GUI span → logical line
+        assert_eq!(d.buffer().text(), "alpha\ncharlie");
+
+        // With a shaped visual-row span that CONTAINS the caret, RL deletes exactly that span (a
+        // wrapped row is a slice of one logical line — here pretend "abcdefghij" wraps at 5).
+        let mut d2 = Document::from_str("abcdefghij");
+        d2.set_caret(2, None);
+        d2.delete_visual_line(Some((0, 5)));
+        assert_eq!(d2.buffer().text(), "fghij", "deleted just the visual row");
+
+        // A span that does NOT contain the caret is stale — ignored, falls back to the logical line.
+        let mut d3 = Document::from_str("abcdefghij");
+        d3.set_caret(8, None);
+        d3.delete_visual_line(Some((0, 5))); // caret 8 ∉ [0,5) → whole logical line
+        assert_eq!(d3.buffer().text(), "");
+    }
+
+    #[test]
+    fn rl_verb_uses_the_hosts_visual_line_span_with_revision_guard() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command(r#"insert "abcdefghij""#);
+        e.run_command("JMP 2"); // caret at 2 (a move — doesn't change the revision)
+        // The GUI publishes a shaped visual row [0,5) at the current revision.
+        let rev = e.doc_revision();
+        e.host_mut().set_visual_line_span(Some((0, 5)), rev);
+        e.run_command("RL");
+        assert_eq!(e.document().text(), "fghij", "RL used the GUI's visual-line span");
+
+        // A span stamped with a STALE revision (an edit happened since) is ignored → logical fallback.
+        e.run_command(r#"insert "PQRST""#); // an edit → bumps the revision, so `rev` is now stale
+        e.host_mut().set_visual_line_span(Some((0, 3)), rev); // old rev — no longer current
+        e.run_command("RL");
+        assert_eq!(e.document().text(), "", "stale span ignored; RL deleted the logical line");
+    }
+
+    #[test]
     fn sel_special_holds_last_selection_across_clear_and_tabs() {
         let mut e = Editor::new(typing_keymap());
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);

@@ -3819,6 +3819,26 @@ impl GuiApp {
             (x + self.wi_offset_at_y(y), y)
         });
 
+        // Shape the caret's VISUAL (wrapped) line for `RL` (delete visual line): the rope-byte range
+        // `[start of the caret's row, start of the next row)`. Only under `WRAP` — with wrap off a
+        // visual line IS the logical line, so `RL` falls back to that. Last visual row → to EOF (so it
+        // takes the whole row + its break). Published to the host below (revision-stamped there).
+        let vline_span: Option<(usize, usize)> = if self.editor.wrap() {
+            cursor.and_then(|c| buffer.cursor_position(&c)).and_then(|(_x, cy)| {
+                let lh_px = self.line_height * self.render_scale;
+                let row_start =
+                    buffer.hit(0.0, cy + 0.5 * lh_px).map(|cur| self.win_rope_at(&win, cur))?;
+                let next = buffer.hit(0.0, cy + 1.5 * lh_px).map(|cur| self.win_rope_at(&win, cur));
+                let end = match next {
+                    Some(n) if n > row_start => n, // start of the next visual row
+                    _ => self.editor.doc(self.editor.active_index()).len(), // last row → EOF
+                };
+                (end > row_start).then_some((row_start, end))
+            })
+        } else {
+            None
+        };
+
         // Publish the caret's VISUAL position (wrap-aware screen coords, in cells) for `$CX`/`$CY`.
         // Pixels → cells: cosmic geometry is at device resolution, so divide by the device line
         // height and the monospace cell width. Row is relative to the viewport top (canvas y=0).
@@ -4437,6 +4457,10 @@ impl GuiApp {
         // frame (see `win_buffer`). `win_sigs` already parallels `buffer.lines` (shaping didn't change
         // the line set), so the pair stays consistent.
         self.win_buffer = Some(buffer);
+        // Publish the caret's visual-line span (shaped above) for `RL`, stamped with the current
+        // revision (no edit happens during a redraw, so it still matches what it was computed against).
+        let rev = self.editor.doc_revision();
+        self.editor.host_mut().set_visual_line_span(vline_span, rev);
         canvas
     }
 

@@ -880,8 +880,11 @@ pub enum DeleteKind {
     ToEol,
     /// `RW` — the whole word at the cursor.
     Word,
-    /// `RL` — the whole line at the cursor (including its break).
+    /// `RLL` — the whole LOGICAL line at the cursor (including its break).
     Line,
+    /// `RL` — the whole VISUAL (wrapped, on-screen) line at the cursor, for XyWrite compatibility.
+    /// Needs the GUI's shaped layout; without it (headless / `WRAP off`) it falls back to `Line`.
+    VisualLine,
     /// `RS` — the whole sentence at the cursor.
     Sentence,
     /// `RP` — the whole paragraph at the cursor.

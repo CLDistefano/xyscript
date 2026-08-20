@@ -2391,6 +2391,21 @@ impl Document {
         }
     }
 
+    /// `RL` — delete the current VISUAL (wrapped, on-screen) line. `span` is the caret row's byte range
+    /// computed by the GUI from the shaped layout (`[row start, next row start)` in rope offsets). When
+    /// it's absent or doesn't actually contain the caret — headless, `WRAP off`, or a stale span from a
+    /// caret move since the last frame — fall back to deleting the whole LOGICAL line (`RLL`), which is
+    /// the visual line whenever nothing wraps. Recorded.
+    pub fn delete_visual_line(&mut self, span: Option<(usize, usize)>) {
+        let cur = self.buffer.cursor();
+        match span {
+            Some((s, e)) if e > s && s <= cur && cur <= e => {
+                self.replace_span(s, e, "");
+            }
+            _ => self.delete_line(),
+        }
+    }
+
     /// `RS` — delete the whole sentence at the cursor (+ trailing space). Recorded.
     pub fn delete_sentence(&mut self) {
         let cursor = self.buffer.cursor();

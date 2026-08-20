@@ -2169,6 +2169,11 @@ pub struct AppHost {
     /// Viewport hint from the GUI: (top visible line, visible row count). Drives the
     /// viewport motions (`PD`/`PU`/`HM`/`BS`); `(0, 1)` until the GUI sets it.
     viewport: (usize, usize),
+    /// The caret's VISUAL (wrapped) line as a rope-byte range, shaped by the GUI each frame — used by
+    /// `RL` (delete visual line). `None` headless / `WRAP off` / caret off-window. Stamped with the
+    /// document revision it was computed at (`visual_line_rev`) so an edit since then invalidates it.
+    visual_line_span: Option<(usize, usize)>,
+    visual_line_rev: u64,
     /// Virtual filesystem overlay consulted by `read_file` before the real disk —
     /// lets the closed loop be tested headlessly. Empty in the live app.
     pub files: HashMap<String, String>,
@@ -2695,6 +2700,8 @@ impl AppHost {
             change_count: 0,
             verify: None,
             viewport: (0, 1),
+            visual_line_span: None,
+            visual_line_rev: 0,
             files: HashMap::new(),
             virtual_fs: false,
             cwd: std::env::current_dir().unwrap_or_default(),
@@ -5922,6 +5929,13 @@ impl AppHost {
         self.viewport = (top_line, rows.max(1));
     }
 
+    /// The GUI publishes the caret's shaped VISUAL-line byte range here each frame (see
+    /// [`Self::visual_line_span`]), stamped with the revision it was computed at. `RL` reads it.
+    pub fn set_visual_line_span(&mut self, span: Option<(usize, usize)>, rev: u64) {
+        self.visual_line_span = span;
+        self.visual_line_rev = rev;
+    }
+
     /// Move the active caret by `delta` logical lines (column-preserving). The GUI
     /// uses this for page motion so it can scroll the view by the same amount.
     pub fn move_active_by_lines(&mut self, delta: i32, extend: bool) {
@@ -8243,6 +8257,16 @@ impl Host for AppHost {
             EditorOp::Delete(DeleteKind::ToEol) => self.active().delete_to_eol(),
             EditorOp::Delete(DeleteKind::Word) => self.active().delete_word(),
             EditorOp::Delete(DeleteKind::Line) => self.active().delete_line(),
+            EditorOp::Delete(DeleteKind::VisualLine) => {
+                // Use the GUI-shaped visual-line span only if it's for the CURRENT text (revision
+                // matches — no edit since it was computed); otherwise `delete_visual_line` sees `None`
+                // and falls back to the logical line. The caret-containment check lives there too.
+                let span = (self.visual_line_rev == self.active_doc().revision())
+                    .then_some(self.visual_line_span)
+                    .flatten();
+                self.active().delete_visual_line(span);
+                self.visual_line_span = None; // consumed; the GUI recomputes it next frame
+            }
             EditorOp::Delete(DeleteKind::Sentence) => self.active().delete_sentence(),
             EditorOp::Delete(DeleteKind::Paragraph) => self.active().delete_paragraph(),
             EditorOp::Move { motion, extend } if self.active_doc().hex_view() => {

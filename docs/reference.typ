@@ -375,7 +375,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 == Deleting text
 
 / #cmd("BD") / #cmd("RC"): delete the character before / after the caret.
-/ #cmd("RE") / #cmd("RL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete to end-of-line / the whole line / word / sentence / paragraph.
+/ #cmd("RE") / #cmd("RL") / #cmd("RLL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete to end-of-line / the current visual (wrapped) line / the whole logical line / word / sentence / paragraph.
 / #cmd("DELSEL", "DN"): delete the selection.
 
 == Changing case and sorting
@@ -858,7 +858,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("RC"): delete the character after the caret (forward delete).
 / #cmd("RD"): delete the selection into the deletion buffer; #cmd("UD") pastes it back.
-/ #cmd("RE") / #cmd("RL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete from the caret to end-of-line / the line / the word / the sentence / the paragraph.
+/ #cmd("RE") / #cmd("RL") / #cmd("RLL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete from the caret to end-of-line / the current VISUAL (wrapped) line / the whole LOGICAL line / the word / the sentence / the paragraph. `RL` deletes the on-screen row for XyWrite compatibility; with `WRAP off` (or headless) it deletes the logical line, the same as `RLL` ("rubout line logical").
 / #cmd("READ"): open an existing file in a read-only tab (unlock it with `RO`); a missing file is an error. Always opens a fresh copy — no "already open?" prompt — so you can hold several read-only views of one file. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/HEX` opens it in the #cmd("HEX") view.
 / #cmd("READKEY", "RK"): pause for a single keystroke into a variable — `READKEY <var> [message]`. With a `message` (a quoted string; `\n` for line breaks), it pops a modal box showing the message while it waits (handy for a keypress menu: `READKEY k "Pick:\nA\nB\nC"` then `SWITCH UPPER($k)`). A bare modifier press (Shift / Ctrl / Alt / …) is ignored — it waits for a real key. That key's scancode lands in #sv("SC"), and #sv("SCC") holds the *computed* scancode (the scancode plus the bit value of any held modifier keys), so a script can tell a plain key from its Shift / Ctrl / Alt-modified form (e.g. `SWITCH $SCC` or `KEY($SCC)`). With `/D` (`READKEY/D <var>`) the variable instead gets a readable *description* of the key — the held modifiers (named and bit-valued exactly as the loaded KBD file defines them — the built-in default uses `CTRL` / `ALT` / `SHIFT` / `CAPS`, and any user-defined modifier such as `HOTKEY` is recognised) joined with `+` to the key label, e.g. `CTRL+Y`, `SHIFT+F3`, `HOTKEY+A`, `Enter`, `A` — handy for showing the user which key they pressed.
 / #cmd("REC", "RECALL"): revert the document to its last saved state.
