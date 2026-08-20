@@ -1821,6 +1821,17 @@ Keys are the classic scan codes 1–104. Comments are *whole-line only* — a li
 character is a #raw(";"). There are no inline comments, because a #raw(";") after the #raw("=") is part
 of the assignment: it chains commands, as below.
 
+Because each #raw(";")-separated part of a chain is parsed as a command, a literal *character* you
+want to type after a command must be *quoted*. The lone-character shortcut — where a bare character
+types itself (see _What a key can do_, next) — applies only when the *whole* binding is that one
+character; inside a chain it no longer does. So to auto-replace the word behind the cursor and then
+type a comma, quote the comma:
+
+#ex("51=AR;\",\"")
+
+A bare #raw("51=AR;,") would instead try to run #raw(",") as a command — and fail with _unknown
+command_.
+
 == What a key can do
 
 The right-hand side of an assignment is just XPL. A few forms:
