@@ -740,13 +740,34 @@ impl Document {
         self.gen = next_content_gen(); // the raw append is outside the rope-rev the GUI keys on
     }
 
+    /// Splice streamed CONSOLE output in at byte `at` (typically the start of the prompt line), so the
+    /// prompt + the user's in-progress input — which sit AFTER `at` — ride DOWN intact and stay pinned
+    /// at the bottom. Editable and NON-recording (like [`append_console`]); the caret and any selection
+    /// shift right by the inserted length when they're at or after `at`. Returns the bytes inserted so
+    /// the host can advance its prompt anchor.
+    pub fn splice_console(&mut self, at: usize, text: &str) -> usize {
+        if text.is_empty() {
+            return 0;
+        }
+        let n = self.buffer.insert_str_at(at, text);
+        let shift = |x: usize| if x >= at { x + n } else { x };
+        let cursor = shift(self.buffer.cursor());
+        let anchor = self.buffer.anchor().map(shift);
+        self.buffer.set_caret(cursor, anchor);
+        self.mark_saved();
+        self.gen = next_content_gen();
+        n
+    }
+
     /// Cap a log buffer to roughly its last `max_bytes`, dropping the oldest content from the
     /// front (so a flood like `dir /s C:\` can't grow it without bound). Cuts on a line boundary
-    /// when possible, else a UTF-8 char boundary; no-op when already within the cap.
-    pub fn truncate_log_front(&mut self, max_bytes: usize) {
+    /// when possible, else a UTF-8 char boundary; no-op when already within the cap. Returns the
+    /// number of bytes trimmed off the front (`0` when within the cap), so a caller tracking an
+    /// absolute offset (the Console's prompt anchor) can slide it left to match.
+    pub fn truncate_log_front(&mut self, max_bytes: usize) -> usize {
         let len = self.buffer.len();
         if len <= max_bytes {
-            return;
+            return 0;
         }
         let mut cut = len - max_bytes;
         // Snap forward to just past the next newline (drop whole lines); if none nearby, snap to
@@ -769,6 +790,7 @@ impl Document {
         self.coalescing = false;
         self.saved_len = Some(0);
         self.gen = next_content_gen(); // force the GUI to re-render the trimmed content
+        cut
     }
 
     pub fn line_ending(&self) -> LineEnding {

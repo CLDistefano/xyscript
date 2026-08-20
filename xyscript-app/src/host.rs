@@ -1325,6 +1325,9 @@ pub enum Target {
 enum JobSink {
     /// The `*Shell Output*` tab (the `X/BG` default) — streamed live.
     ShellTab,
+    /// A FOREGROUND Console REPL command (`console_submit`): streamed live into the Console above its
+    /// prompt; on completion an `(exit N)` line lands and a fresh prompt is written for the next input.
+    Console,
     /// The interactive shell pane (`SH`) — streamed live into its scrollback.
     ShellPane,
     /// Pipe to a document (shell pane, Shift+Enter): accumulate, then insert the full output at
@@ -2404,6 +2407,15 @@ pub struct AppHost {
     /// The live PDF preview pane on the right (`PREVIEW`/`PV`; `$PV`; default off). GUI-only state.
     preview_visible: bool,
     shell_pane_output: String,
+    /// Console REPL (unified successor to the SH pane + `*Shell Output*`): the prompt template
+    /// (`SHPROMPT`; `$`-expanded like `$CWD> `), whether a prompt is currently displayed and awaiting
+    /// input, and — while it is — the byte offset of the prompt's start and the prompt's byte length
+    /// (so the input is `[prompt_at + prompt_len .. end]`). Streamed output splices in ABOVE
+    /// `console_prompt_at`, keeping the prompt + input pinned at the bottom.
+    console_prompt: String,
+    console_showing: bool,
+    console_prompt_at: usize,
+    console_prompt_len: usize,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2784,6 +2796,10 @@ impl AppHost {
             shell_pane_visible: false,
             preview_visible: false,
             shell_pane_output: String::new(),
+            console_prompt: "$CWD> ".to_string(),
+            console_showing: false,
+            console_prompt_at: 0,
+            console_prompt_len: 0,
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4008,13 +4024,132 @@ impl AppHost {
         }
     }
 
+    /// `X/BG` / background-job output → the Console. A thin wrapper over [`console_emit`] so background
+    /// output splices in above a waiting prompt just like a foreground command's does.
     fn append_shell_output_text(&mut self, text: &str) {
+        self.console_emit(text);
+    }
+
+    /// The prompt string with its `$`-fields expanded (currently `$CWD`). Written at the tail by
+    /// [`console_write_prompt`]; the rest of the template is emitted verbatim.
+    fn expand_prompt(&self) -> String {
+        self.console_prompt.replace("$CWD", &self.cwd.display().to_string())
+    }
+
+    /// Emit CONSOLE output. While a prompt is displayed the text splices in ABOVE it (so the prompt +
+    /// the user's in-progress input stay pinned at the bottom); otherwise it appends at the tail. The
+    /// scrollback stays bounded, and the prompt anchor slides left with any front-trim.
+    fn console_emit(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         let idx = self.shell_output_doc_index();
-        // Editable, non-recording append: the tab stays a normal document (copy/paste/edit), the caret
-        // tail-follows only when it was already at the end, and streamed output never lands on the undo
-        // stack. `append_console` handles the tail-follow, so no explicit caret move here.
-        self.docs[idx].append_console(text);
-        self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP); // bound the scrollback
+        if self.console_showing {
+            let n = self.docs[idx].splice_console(self.console_prompt_at, text);
+            self.console_prompt_at += n;
+        } else {
+            self.docs[idx].append_console(text);
+        }
+        let cut = self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP);
+        self.console_prompt_at = self.console_prompt_at.saturating_sub(cut);
+    }
+
+    /// Write a fresh prompt at the tail (on its own line) and mark the Console ready for input. Records
+    /// the prompt's start offset + length so [`console_submit`] can extract the command that follows.
+    pub fn console_write_prompt(&mut self) {
+        let idx = self.shell_output_doc_index();
+        let end = self.docs[idx].buffer().len();
+        // Start the prompt on a fresh line unless we're already at the start of one.
+        if end > 0 && self.docs[idx].buffer().slice_bytes(end - 1, end) != b"\n" {
+            self.docs[idx].append_console("\n");
+        }
+        let prompt = self.expand_prompt();
+        let at = self.docs[idx].buffer().len();
+        self.docs[idx].append_console(&prompt);
+        self.console_prompt_at = at;
+        self.console_prompt_len = prompt.len();
+        self.console_showing = true;
+    }
+
+    /// Submit the current Console input (the text after the prompt). Returns `false` — so the GUI
+    /// inserts a normal newline instead — unless a prompt is showing AND the caret is at the very end
+    /// (typing at the prompt, not editing scrollback). On submit the input line is committed and run.
+    pub fn console_submit(&mut self) -> bool {
+        if !self.console_showing {
+            return false;
+        }
+        let idx = self.shell_output_doc_index();
+        let end = self.docs[idx].buffer().len();
+        if self.docs[idx].buffer().cursor() != end {
+            return false; // editing scrollback, not entering a command
+        }
+        let input_at = (self.console_prompt_at + self.console_prompt_len).min(end);
+        let cmd = String::from_utf8_lossy(&self.docs[idx].buffer().slice_bytes(input_at, end))
+            .into_owned();
+        self.console_showing = false; // consume the prompt; the command line stays as echoed text
+        self.docs[idx].append_console("\n"); // output starts on a fresh line below the command
+        self.console_run_command(cmd.trim());
+        true
+    }
+
+    /// Run one Console command: `cd` updates `$CWD` in place (then re-prompts), an untrusted shell-out
+    /// is refused, otherwise the command spawns via the job worker in `$CWD` and streams back through
+    /// [`JobSink::Console`] (which re-prompts on completion). Reuses the SH-pane semantics.
+    fn console_run_command(&mut self, cmd: &str) {
+        if cmd.is_empty() {
+            self.console_write_prompt();
+            return;
+        }
+        if let Some(arg) = parse_cd(cmd) {
+            match arg {
+                None => self.console_emit(&format!("{}\n", self.cwd.display())),
+                Some(dir) => {
+                    let target = self.resolve_path(dir);
+                    let canon = lexical_abs(&self.cwd, &target);
+                    if canon.is_dir() {
+                        self.cwd = canon;
+                        self.remember_current_drive();
+                    } else {
+                        self.console_emit(&format!("cd: not a directory: {}\n", target.display()));
+                    }
+                }
+            }
+            self.console_write_prompt();
+            return;
+        }
+        if !self.shell_trusted {
+            self.console_emit("shell-out is disabled; enable it with TRUST 1\n");
+            self.console_write_prompt();
+            return;
+        }
+        let id = self.next_job_id;
+        self.next_job_id += 1;
+        self.last_job_id = id;
+        let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
+        let child = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let mut command = shell_command(cmd);
+        command.current_dir(&self.cwd); // run in $CWD
+        spawn_shell_job(command, None, tx, std::sync::Arc::clone(&child));
+        self.jobs.push(Job {
+            id,
+            cmd: cmd.to_string(),
+            rx,
+            child,
+            output: String::new(),
+            return_var: None,
+            sink: JobSink::Console,
+            cleanup: None,
+            is_mail: false,
+        });
+    }
+
+    /// The prompt template (`SHPROMPT`; `$SHPROMPT`; SaveCfg). `None` on the setter restores the default.
+    pub fn console_prompt(&self) -> &str {
+        &self.console_prompt
+    }
+
+    pub fn set_console_prompt(&mut self, tmpl: Option<&str>) {
+        self.console_prompt = tmpl.map(str::to_string).unwrap_or_else(|| "$CWD> ".to_string());
     }
 
     /// Put a `CHECK` report into a dedicated read-only `*Language Check*` tab (replacing any prior
@@ -4373,6 +4508,7 @@ impl AppHost {
                 // Stream live to its sink (a Document-sink job buffers silently → inserted on done).
                 match self.jobs[i].sink {
                     JobSink::ShellTab => self.append_shell_output_text(&batch),
+                    JobSink::Console => self.console_emit(&batch),
                     JobSink::ShellPane => self.append_shell_pane(&batch),
                     JobSink::Document { .. } => {}
                     #[cfg(feature = "email")]
@@ -4402,6 +4538,11 @@ impl AppHost {
                 match job.sink {
                     JobSink::ShellTab => {
                         self.append_shell_output_text(&format!("(exit {code})\n\n"));
+                    }
+                    JobSink::Console => {
+                        // Land the exit line above the (absent) prompt, then re-prompt for the next command.
+                        self.console_emit(&format!("(exit {code})\n"));
+                        self.console_write_prompt();
                     }
                     JobSink::ShellPane => {
                         self.append_shell_pane(&format!("(exit {code})\n"));

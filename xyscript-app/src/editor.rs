@@ -508,6 +508,15 @@ impl Editor {
     pub fn shell_pane_run(&mut self, cmd: &str, to_document: bool) {
         self.host.shell_pane_run(cmd, to_document);
     }
+    /// Write a fresh Console prompt (the GUI calls this when opening/focusing the Console tab).
+    pub fn console_write_prompt(&mut self) {
+        self.host.console_write_prompt();
+    }
+    /// Submit the current Console input line (Enter at the tail). Returns `false` when it's not a
+    /// submit (no prompt showing, or the caret is up in scrollback) so the GUI inserts a newline.
+    pub fn console_submit(&mut self) -> bool {
+        self.host.console_submit()
+    }
     /// Autosave interval in seconds (0 = off); the GUI reads it each frame to drive the timer.
     pub fn autosave_secs(&self) -> u64 {
         self.host.autosave_secs()
@@ -9642,6 +9651,36 @@ mod tests {
         assert_eq!(e.document().text(), format!("X{before}"));
         e.run_command("UNDO");
         assert_eq!(e.document().text(), before, "undo removes the user edit, keeps streamed output");
+    }
+
+    #[test]
+    fn console_repl_submits_input_runs_and_reprompts() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("TRUST 1");
+        // The GUI wiring is 1b-ii; here drive the host REPL directly: write a prompt, type after it.
+        e.console_write_prompt();
+        let i = e.tabs().iter().position(|t| t.name == "*Shell Output*").expect("console tab");
+        e.set_active_buffer(i);
+        assert!(e.document().text().ends_with("> "), "a prompt is shown: {:?}", e.document().text());
+        // Type a command at the prompt and submit it (Enter at the tail).
+        e.run_command(r#"insert "echo hi""#);
+        assert!(e.console_submit(), "caret at the tail with a prompt showing → submit");
+        // Poll until the foreground console job finishes.
+        let mut waited = 0;
+        while e.job_count() > 0 && waited < 400 {
+            let _ = e.poll_jobs();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            waited += 1;
+        }
+        assert_eq!(e.job_count(), 0, "console job did not finish in time");
+        let text = e.document().text();
+        assert!(text.contains("echo hi"), "command echoed: {text:?}");
+        assert!(text.contains("hi\n") || text.contains("hi\r"), "command output present: {text:?}");
+        assert!(text.contains("(exit 0)"), "exit line present: {text:?}");
+        assert!(text.ends_with("> "), "a fresh prompt follows for the next command: {text:?}");
+        // Enter with the caret UP in scrollback is not a submit (the GUI inserts a newline instead).
+        e.run_command("TF");
+        assert!(!e.console_submit(), "editing scrollback is not a submit");
     }
 
     #[test]

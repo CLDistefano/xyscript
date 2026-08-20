@@ -1304,9 +1304,18 @@ impl Buffer {
     /// caret or selection. For streamed Console output: the Document layer decides whether the caret
     /// tail-follows, so a user selecting/editing scrollback isn't disturbed while a job streams.
     pub fn append_str(&mut self, s: &str) {
+        self.insert_str_at(self.rope.len(), s);
+    }
+
+    /// Insert `s` (encoded) at byte `at` WITHOUT touching the caret/selection and WITHOUT recording an
+    /// undo unit. Returns the number of bytes inserted. Used by the Console to splice streamed output
+    /// in ABOVE the prompt line (so the prompt + the user's input stay pinned at the bottom); the
+    /// Document layer shifts the caret/prompt anchor by the returned length.
+    pub fn insert_str_at(&mut self, at: usize, s: &str) -> usize {
         let bytes = self.enc.encode(s);
-        let end = self.rope.len();
-        self.replace_range_bytes(end, 0, &bytes);
+        let n = bytes.len();
+        self.replace_range_bytes(at.min(self.rope.len()), 0, &bytes);
+        n
     }
 
     pub fn insert(&mut self, s: &str) {
