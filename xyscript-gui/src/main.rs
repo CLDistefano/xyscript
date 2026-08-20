@@ -3819,33 +3819,6 @@ impl GuiApp {
             (x + self.wi_offset_at_y(y), y)
         });
 
-        // WRAP on: cosmic can leave the caret in a run of TRAILING WHITESPACE that hangs one step past
-        // the wrap width — where it draws off the right edge, or (deeper in) can't be positioned at all
-        // (`cursor_position` → None) and simply vanishes. Keep it on screen: if it's positioned but past
-        // the edge, hold it AT the right edge on its own row (so it advances to the margin and rides down
-        // as the spaces wrap); if it couldn't be positioned, pin it to the end of the caret line's last
-        // visible row. Only the drawn position changes; the real caret offset (hit-test/selection/`$CX`)
-        // is untouched.
-        if self.editor.wrap() && !self.editor.cmline_open() {
-            let right = (w as f32 - (self.font_size * self.render_scale * 0.6)).max(0.0);
-            match caret_px {
-                Some((cx, cy)) if cx > right => caret_px = Some((right, cy)),
-                None => {
-                    if let Some(cline) = cursor.map(|c| c.line) {
-                        if let Some((x, y)) = buffer
-                            .layout_runs()
-                            .filter(|r| r.line_i == cline)
-                            .last()
-                            .map(|r| (r.line_w.min(right).max(0.0), r.line_top))
-                        {
-                            caret_px = Some((x + self.wi_offset_at_y(y), y));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
         // Publish the caret's VISUAL position (wrap-aware screen coords, in cells) for `$CX`/`$CY`.
         // Pixels → cells: cosmic geometry is at device resolution, so divide by the device line
         // height and the monospace cell width. Row is relative to the viewport top (canvas y=0).
