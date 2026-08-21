@@ -31,7 +31,7 @@ pub use env::SPECIAL_NAMES;
 pub use expr::{eval, parse as parse_expr, EvalContext, Expr, ExprError, FUNCTION_NAMES};
 pub use library::{BUILTIN_VERBS, CONTROL_KEYWORDS};
 pub use host::{
-    parse_mda_attr, ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE, BinderSource, CaretShape, CaseKind,
+    parse_mda_attr, ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE, BinderSource, CalcContext, CaretShape, CaseKind,
     ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly, DirOpts, DirOrder,
     DocTypeReq, EditorOp, HelpResponse, Host, LintFixChoices, LockKey, Motion, PathPlace, PersistKind,
     PvMarginSide, SearchSpec, SortSpec, StubHost, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,

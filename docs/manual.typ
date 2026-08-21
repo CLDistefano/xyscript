@@ -487,6 +487,34 @@ file keeps its own.
 tap the key for the next label, type the item, press #kbd("Enter"), tap again. The relative forms reset
 nothing by hand when an item moves, is removed, or repeats.]
 
+== Calculating
+
+The #raw("CALC") command is a calculator built into the editor. It speaks the same expression language
+as #raw("$(…)") and #raw("IF") — arithmetic, parentheses, the built-in functions, exact big integers —
+so anything you can write in a script, you can add up here.
+
+Give it an expression and it reports the answer on the status line and copies it to the clipboard, ready
+to paste wherever you need it:
+
+#ex("CALC (1920 * 1080) / 2     # -> 1036800  (copied)
+CALC 2^64                 # -> 18446744073709551616")
+
+With *no* argument, #raw("CALC") works on the document itself. Put the cursor on a line that is an
+expression and run #raw("CALC"): it evaluates the line and writes the answer on a fresh line just below
+it. (This mode leaves the clipboard alone — the result is right there in the text.)
+
+#ex("17 * 34
+        # <- cursor here, run CALC, and the next line appears:
+578")
+
+Select several lines first and #raw("CALC") totals them: it evaluates each selected line, adds the
+results (blank lines are skipped), and writes the *sum* on a new line below the selection — a quick way
+to add up a column of figures. Run #raw("CALC") from the command line with nothing selected and it simply
+reminds you to put the cursor on a line first.
+
+The last result is always available as #raw("$CALC"), and every answer honours your #raw("DECIMALS")
+setting, so #raw("DECIMALS 2") rounds the display to two places.
+
 == Coding aids
 
 Writing code — or any structured, indented text — is smoother with a handful of optional helpers. Each

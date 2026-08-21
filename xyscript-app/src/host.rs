@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
-    BinderSource, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
+    BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
     HelpResponse, Host, LockKey, Motion, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
@@ -2455,6 +2455,8 @@ pub struct AppHost {
     /// prompt input. Session-only — never persisted.
     console_history: Vec<String>,
     console_hist_pos: Option<usize>,
+    /// The last `CALC` result string, read back as `$CALC`. Session-only.
+    last_calc: String,
     /// Streaming ANSI-SGR parser for Console output: escapes are stripped and turned into MDA colour /
     /// attribute spans. Reset between commands (and before our own `(exit N)`/`^C`) so leftover colour
     /// never bleeds across.
@@ -2849,6 +2851,7 @@ impl AppHost {
             console_input_at: 0,
             console_history: Vec::new(),
             console_hist_pos: None,
+            last_calc: String::new(),
             console_ansi: crate::ansi::AnsiState::new(),
             ansi_color: true,
             auto_replace: std::collections::HashMap::new(),
@@ -11841,6 +11844,7 @@ impl Host for AppHost {
             "SH" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
             "SHPROMPT" => Some(Value::str(self.console_prompt.clone())),
             "ANSICOLOR" => Some(Value::Int(if self.ansi_color { 1 } else { 0 })),
+            "CALC" => Some(Value::str(self.last_calc.clone())), // last CALC result
             "PV" => Some(Value::Int(if self.preview_visible { 1 } else { 0 })),
             "AR" => Some(Value::str(self.last_ar_path.clone().unwrap_or_default())), // last LoadAR path
             "HLAUTO" => Some(Value::Int(if self.hl_auto { 1 } else { 0 })),
@@ -12511,6 +12515,51 @@ impl Host for AppHost {
 
     fn bookmark_list(&self) -> Vec<(usize, String)> {
         self.active_doc().mark_previews()
+    }
+
+    fn calc_context(&self) -> CalcContext {
+        let b = self.active_doc().buffer();
+        // A selection always wins — it can outlive a focus flip to the command
+        // line (persistent selection), and `CALC` typed on the cmline should
+        // still sum the lines the user has highlighted in the text.
+        if let Some((s, e)) = b.selection_span().filter(|&(s, e)| e > s) {
+            // Whole logical lines spanned by the selection (the last line is the
+            // one containing the byte just before the selection end).
+            let first = b.line_of(s);
+            let last = b.line_of(e.saturating_sub(1)).max(first);
+            let lines = (first..=last).map(|l| b.line_text(l)).collect();
+            return CalcContext::Lines(lines);
+        }
+        // No selection: on the command line there is no text line to evaluate.
+        if matches!(self.input_focus, Target::CmLine) {
+            return CalcContext::CmLine;
+        }
+        CalcContext::Line(b.line_text(b.line_of(b.cursor())))
+    }
+
+    fn calc_insert_result(&mut self, text: &str) {
+        let le = self.active_doc().line_ending().as_str().to_string();
+        // The result goes on a fresh line below the current line — or below the
+        // last selected line when a selection drove the evaluation.
+        let content_end = {
+            let b = self.active_doc().buffer();
+            let target = match b.selection_span().filter(|&(s, e)| e > s) {
+                Some((_, e)) => b.line_of(e.saturating_sub(1)),
+                None => b.line_of(b.cursor()),
+            };
+            b.line_byte_range(target).1
+        };
+        self.active().set_caret(content_end, None);
+        self.active().insert(&format!("{le}{text}"));
+    }
+
+    fn calc_set_clipboard(&mut self, text: &str) {
+        // Mirrors a COPY: the GUI's `sync_clipboard_out` pushes `$CB` to the OS.
+        self.set_clipboard(text.to_string());
+    }
+
+    fn set_last_calc(&mut self, text: &str) {
+        self.last_calc = text.to_string();
     }
 
     fn jump_to_offset(&mut self, offset: usize) -> VmResult<()> {

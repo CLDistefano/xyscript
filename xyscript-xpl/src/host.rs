@@ -1485,6 +1485,16 @@ pub struct LintFixChoices {
     pub is_spelling: bool,
 }
 
+/// What a no-argument `CALC` operates on, from the host's view of the active document.
+pub enum CalcContext {
+    /// The command line is focused — there's no document line to evaluate; `CALC` shows guidance.
+    CmLine,
+    /// No selection: evaluate this (the caret's line) and insert the result on a new line below it.
+    Line(String),
+    /// A selection: evaluate each line, sum the results, insert the total on a new line below it.
+    Lines(Vec<String>),
+}
+
 /// The seam to the editor / OS / keyboard layer / clock.
 pub trait Host {
     /// `LOADKBD <path>` — hand off to the transactional keymap loader.
@@ -1674,6 +1684,20 @@ pub trait Host {
     fn bookmark_list(&self) -> Vec<(usize, String)> {
         Vec::new()
     }
+
+    /// What a no-argument `CALC` should work with (see [`CalcContext`]): the command line is focused
+    /// (show guidance), a single caret line to evaluate, or a multi-line selection to sum. Default:
+    /// the command line (nothing to evaluate).
+    fn calc_context(&self) -> CalcContext {
+        CalcContext::CmLine
+    }
+    /// Insert `text` on a NEW line immediately below the current line (no selection) or below the whole
+    /// selection — where `CALC` puts its result. Recorded (undoable). Default: no-op.
+    fn calc_insert_result(&mut self, _text: &str) {}
+    /// Copy `text` to the clipboard (`CALC <expr>`), the same clipboard `COPY` uses. Default: no-op.
+    fn calc_set_clipboard(&mut self, _text: &str) {}
+    /// Remember the last `CALC` result string (read back as `$CALC`). Default: no-op.
+    fn set_last_calc(&mut self, _text: &str) {}
     /// Move the active document's caret to byte `offset` and scroll it into view. Used by the
     /// `MARKLIST` chooser on resume. Default: unavailable.
     fn jump_to_offset(&mut self, _offset: usize) -> VmResult<()> {

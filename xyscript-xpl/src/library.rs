@@ -92,7 +92,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Interactive change-verify.
     "CV", "CVA",
     // Counts (B8): word / character count of the selection or whole document.
-    "WORDCOUNT", "CHARCOUNT",
+    "WORDCOUNT", "CHARCOUNT", "CALC",
     // Seed the random generator for the `RANDOM(min, max)` function.
     "SRANDOM",
     // Sort (B11): reorder the selected lines.

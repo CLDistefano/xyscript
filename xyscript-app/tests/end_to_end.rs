@@ -11,6 +11,12 @@ use xyscript_kbd::{load, Disposition, LoadOutcome};
 const INTERNAL_KBD: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../xyscript-kbd/kbd/xyscript-internal.kbd"));
 
+/// Normalize CRLF → LF so document assertions are line-ending-agnostic (new docs
+/// default to the OS line ending, which is CRLF on the Windows CI host).
+fn nl(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
 fn sample_editor() -> (Editor, u32) {
     let km = match load(INTERNAL_KBD, Some(120)) {
         LoadOutcome::Installed(km) => km,
@@ -992,4 +998,85 @@ fn loadkbd_command_cell_reloads_the_layout() {
     // After the swap, key 16 now inserts "Z" — proving the layout changed live.
     editor.feed_key(KeyEvent::down(16));
     assert_eq!(editor.document().text(), "Z");
+}
+
+// ---- CALC calculator command -------------------------------------------------
+
+#[test]
+fn calc_expr_arg_reports_and_copies() {
+    // Mode 1: `CALC expr` evaluates the argument, reports on the status line, copies
+    // the result to the clipboard ($CB), and records it in $CALC. The document is
+    // untouched.
+    let (mut e, _c) = sample_editor();
+    e.run_command("INSERT \"keep me\"");
+    e.run_command("CALC 6 * 7");
+    assert_eq!(e.document().text(), "keep me", "Mode 1 must not edit the document");
+    assert_eq!(e.special_str("CB"), "42", "result is copied to the clipboard");
+    assert_eq!(e.special_str("CALC"), "42", "$CALC reads back the last result");
+    assert!(e.last_error().is_none());
+}
+
+#[test]
+fn calc_no_arg_on_a_line_appends_result_below() {
+    // Mode 2: `CALC` with the caret on a text line evaluates the line and drops the
+    // result on a fresh line right below it. Mode 2 does NOT touch the clipboard.
+    let (mut e, _c) = sample_editor();
+    e.run_command("CLIP untouched"); // seed $CB so we can prove Mode 2 leaves it alone
+    e.run_command("INSERT \"3 + 4 * 2\""); // caret rests at end of the only line
+    e.run_command("CALC");
+    assert_eq!(nl(&e.document().text()), "3 + 4 * 2\n11");
+    assert_eq!(e.special_str("CALC"), "11");
+    assert_eq!(e.special_str("CB"), "untouched", "Mode 2 must not copy to the clipboard");
+    assert!(e.last_error().is_none());
+}
+
+#[test]
+fn calc_no_arg_over_a_selection_sums_the_lines() {
+    // Mode 3: with lines selected, evaluate each and put the SUM on a new line just
+    // below the selection. Blank lines are skipped.
+    let (mut e, _c) = sample_editor();
+    e.run_command("INSERT \"10\"; ENTER; INSERT \"20\"; ENTER; INSERT \"12\""); // three numeric lines
+    e.run_command("DFA"); // select the whole document
+    e.run_command("CALC");
+    assert_eq!(nl(&e.document().text()), "10\n20\n12\n42");
+    assert_eq!(e.special_str("CALC"), "42");
+    assert!(e.last_error().is_none());
+}
+
+#[test]
+fn calc_sum_evaluates_each_line_as_an_expression() {
+    // Mode 3 sums the *evaluated* value of every selected line, not the raw text.
+    let (mut e, _c) = sample_editor();
+    // a blank line in the middle is skipped
+    e.run_command("INSERT \"2 * 3\"; ENTER; INSERT \"4 + 1\"; ENTER; ENTER; INSERT \"10 / 2\"");
+    e.run_command("DFA");
+    e.run_command("CALC");
+    // 6 + 5 + 5 = 16
+    assert!(nl(&e.document().text()).ends_with("\n16"), "got {:?}", e.document().text());
+    assert!(e.last_error().is_none());
+}
+
+#[test]
+fn calc_bad_expression_trips_an_error_and_leaves_the_doc_alone() {
+    let (mut e, _c) = sample_editor();
+    e.run_command("INSERT \"not math here\"");
+    e.run_command("CALC");
+    assert_eq!(e.document().text(), "not math here", "a failed CALC makes no edit");
+    assert!(e.status_message().map(|s| s.starts_with("CALC:")).unwrap_or(false));
+}
+
+#[test]
+fn calc_on_the_command_line_with_no_selection_prompts() {
+    // `CALC` typed on the command line (focus there, nothing selected) can't guess a
+    // line to evaluate — it emits guidance instead of editing the document.
+    let (mut e, _c) = sample_editor();
+    e.run_command("INSERT \"123\"");
+    e.run_command("BC CALC"); // put "CALC" on the cmline and focus it
+    e.submit_cmdline(); // run it as a genuine command-line submission
+    assert_eq!(nl(&e.document().text()), "123", "guidance path must not edit the document");
+    assert!(
+        e.status_message().map(|s| s.contains("put the cursor on a line")).unwrap_or(false),
+        "expected guidance, got {:?}",
+        e.status_message()
+    );
 }

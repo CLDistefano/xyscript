@@ -405,6 +405,10 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 
 / #cmd("WORDCOUNT") / #cmd("CHARCOUNT"): count words / characters in the selection or document.
 
+== Calculating
+
+/ #cmd("CALC"): a calculator. `CALC <expr>` reports the value and copies it; bare `CALC` evaluates the current line (or sums selected lines) into the document. #sv("CALC") reads back the last result.
+
 == Files
 
 / #cmd("NEW", "NE"): a new empty (or named) buffer. #cmd("OPEN", "CA", "ED", "EDIT"): open a file. #cmd("READ"): open read-only. #cmd("BEDIT"): edit invisibly (for scripts). #cmd("BCLOSE"): close that invisible buffer.
@@ -652,6 +656,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("CL", "LEFT", "PC") / #cmd("CR", "RIGHT", "NC"): move one character left / right (gliding over a Windows CRLF line ending as a single step).
 / #cmd("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"): nine per-document counters. `Cn <seed>` sets the type, start value, and an optional text decorator (`C1 "1. "`, `C2 "(A) "`, `C3 ivr`, `C4 Ir`) and prints nothing; a bare `Cn` puts the value with its decorator and advances; `Cn +n` / `Cn -[n]` / `Cn =` put a value n greater / n less (`-` ≡ `-1`) / the same as the last one. Types: number (`1`), letter (`a`/`A`, running `a…z, aa, ab…`), and Roman numeral (numerals + a trailing `r`/`R` marker — `ir`→i, `Ir`→I, `ivr`→iv). Counters are session-only. Peek the next value (no decorator, no advance) with `$C1`..`$C9`. #ex("C1 \"1. \" ; C1 ; PR $C1", "2")
+/ #cmd("CALC"): a calculator, using the same expression language as `$(…)` and `IF`. `CALC <expr>` evaluates the expression, shows the result on the status line, and copies it to the clipboard. A bare `CALC` (no argument) works on the document instead: with the caret on a line of text it evaluates that line and writes the result on a new line just below it (this mode does #emph[not] touch the clipboard); with lines selected it evaluates each line, sums the results (blank lines are skipped), and writes the total on a new line below the selection; on the command line with nothing selected it prompts you to put the caret on a line first. #sv("CALC") reads back the last result. Results honour the current #cmd("DECIMALS") setting. #ex("CALC 2^10 ; PR $CALC", "1024")
 / #cmd("CALL"): call a `SUB` or library routine, with arguments. The `CALL` is optional — a routine can be invoked by name like any command (`myroutine $a`).
 / #cmd("CANCEL"): cancel and close the command line.
 / #cmd("CAPTURE", "ENDCAPTURE", "EC"): redirect a command's output into a variable — `CAPTURE <var> <command>`, or a block ending in `ENDCAPTURE`/`EC`.
@@ -1241,6 +1246,7 @@ Every special variable in one list, for quick lookup.
 / #sv("BALPAIRSCOLOR"): matched-bracket highlight color (empty = follows the selection color).
 / #sv("BGCOLOR"): editor background color.
 / #sv("C1") / #sv("C2") / #sv("C3") / #sv("C4") / #sv("C5") / #sv("C6") / #sv("C7") / #sv("C8") / #sv("C9"): the counters' current values (what a bare `Cn` would put next), without the decorator.
+/ #sv("CALC"): the last `CALC` result (empty until `CALC` has run this session).
 / #sv("CAPSLOCK"): Caps Lock state.
 / #sv("CB"): clipboard contents.
 / #sv("CC"): replacements made by the last `CH`.

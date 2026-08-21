@@ -25,7 +25,7 @@ use crate::env::{is_special_name, Env};
 use crate::error::{VmResult, XplError};
 use crate::expr::{self, EvalContext, Expr};
 use crate::host::{
-    BinderSource, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
+    BinderSource, CalcContext, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
     DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, Motion, PersistKind, PvMarginSide,
     SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
 };
@@ -1033,6 +1033,26 @@ impl Vm<'_, '_> {
             }
             Err(fatal) => Err(fatal),
         }
+    }
+
+    /// `CALC`: parse + evaluate an expression STRING against the current scope. Returns the value or a
+    /// short error message (parse or eval failure) to show on the status line — never halts the script.
+    fn calc_eval(&self, src: &str) -> Result<Value, String> {
+        let src = src.trim();
+        if src.is_empty() {
+            return Err("empty expression".to_string());
+        }
+        let expr = crate::expr::parse(src).map_err(|e| e.msg)?;
+        let frame = self.frames.last().expect("a frame is always present");
+        let ctx = Ctx { env: self.ctx.env, host: &*self.ctx.host, args: &frame.args, rv: &self.rv };
+        crate::expr::eval(&expr, &ctx).map_err(|e| e.msg)
+    }
+
+    /// The `DECIMALS` setting for formatting a `CALC` result (via the expression context).
+    fn calc_decimals(&self) -> Option<u8> {
+        let frame = self.frames.last().expect("a frame is always present");
+        let ctx = Ctx { env: self.ctx.env, host: &*self.ctx.host, args: &frame.args, rv: &self.rv };
+        ctx.float_decimals()
     }
 
     /// Substitute `$`-variables in raw verb-argument text.
@@ -2992,6 +3012,78 @@ impl Vm<'_, '_> {
             // `CLS` / `CLEAR` — clear the Console scrollback.
             "CLS" | "CLEAR" => {
                 self.host_op(EditorOp::ConsoleClear)?;
+                Ok(Flow::Next)
+            }
+            // `CALC` — a calculator over the `$(…)` expression engine. With an argument, evaluate it
+            // (result → status line + clipboard). With none, act on the document: evaluate the caret's
+            // line and insert the result below it, or (with a selection) sum the selected lines and
+            // insert the total below. `$CALC` reads back the last result.
+            "CALC" => {
+                let dp = self.calc_decimals();
+                let arg = args.trim().to_string();
+                if !arg.is_empty() {
+                    match self.calc_eval(&arg) {
+                        Ok(v) => {
+                            let s = v.to_str_dp(dp);
+                            self.ctx.host.calc_set_clipboard(&s);
+                            self.ctx.host.set_last_calc(&s);
+                            *self.ctx.status = Some(format!("= {s}  (copied)"));
+                        }
+                        Err(e) => {
+                            self.ctx.env.error = true;
+                            *self.ctx.status = Some(format!("CALC: {e}"));
+                        }
+                    }
+                    return Ok(Flow::Next);
+                }
+                match self.ctx.host.calc_context() {
+                    CalcContext::CmLine => {
+                        *self.ctx.status =
+                            Some("CALC: put the cursor on a line to evaluate".to_string());
+                    }
+                    CalcContext::Line(line) => match self.calc_eval(&line) {
+                        Ok(v) => {
+                            let s = v.to_str_dp(dp);
+                            self.ctx.host.calc_insert_result(&s);
+                            self.ctx.host.set_last_calc(&s);
+                            *self.ctx.status = Some(format!("= {s}"));
+                        }
+                        Err(e) => {
+                            self.ctx.env.error = true;
+                            *self.ctx.status = Some(format!("CALC: {e}"));
+                        }
+                    },
+                    CalcContext::Lines(lines) => {
+                        let mut sum = crate::value::Number::Int(0);
+                        let mut err: Option<String> = None;
+                        for (i, line) in lines.iter().enumerate() {
+                            if line.trim().is_empty() {
+                                continue; // blank lines are skipped
+                            }
+                            match self.calc_eval(line).and_then(|v| {
+                                v.to_number().map_err(|_| "not a number".to_string())
+                            }) {
+                                Ok(n) => sum = crate::value::Number::add(&sum, &n),
+                                Err(e) => {
+                                    err = Some(format!("line {}: {e}", i + 1));
+                                    break;
+                                }
+                            }
+                        }
+                        match err {
+                            Some(m) => {
+                                self.ctx.env.error = true;
+                                *self.ctx.status = Some(format!("CALC: {m}"));
+                            }
+                            None => {
+                                let s = crate::value::Value::from_number(sum).to_str_dp(dp);
+                                self.ctx.host.calc_insert_result(&s);
+                                self.ctx.host.set_last_calc(&s);
+                                *self.ctx.status = Some(format!("total = {s}"));
+                            }
+                        }
+                    }
+                }
                 Ok(Flow::Next)
             }
             "PV" | "PREVIEW" => {
