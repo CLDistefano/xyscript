@@ -787,6 +787,13 @@ enum JobMsg {
     Done(i64),
 }
 
+/// A message for an interactive Console child's stdin pump: a line to write (newline appended by the
+/// pump), or `Eof` to close stdin (Ctrl+Z / Ctrl+D). The sender lives on the host (`console_stdin`).
+enum ConsoleStdin {
+    Line(String),
+    Eof,
+}
+
 /// Launch `cmd` as a streaming background job: a worker thread spawns the shell child with
 /// piped stdout+stderr, streams each line over `tx` as it arrives (a second thread drains
 /// stderr so a full pipe can't deadlock), then sends `Done(code)`. The live `Child` is parked
@@ -1217,6 +1224,7 @@ fn rfc5322_utc(secs: u64) -> String {
 fn spawn_shell_job(
     mut command: std::process::Command,
     stdin_data: Option<String>,
+    stdin_rx: Option<std::sync::mpsc::Receiver<ConsoleStdin>>,
     tx: std::sync::mpsc::SyncSender<JobMsg>,
     child_slot: std::sync::Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) {
@@ -1224,7 +1232,7 @@ fn spawn_shell_job(
     use std::process::Stdio;
     std::thread::spawn(move || {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
-        if stdin_data.is_some() {
+        if stdin_data.is_some() || stdin_rx.is_some() {
             command.stdin(Stdio::piped());
         }
         let mut child = match command.spawn() {
@@ -1243,6 +1251,31 @@ fn spawn_shell_job(
                 use std::io::Write;
                 let _ = si.write_all(data.as_bytes());
                 // `si` dropped here → child sees EOF on stdin.
+            }
+        }
+        // Interactive stdin (Console REPL): a pump thread owns the child's stdin and writes each line
+        // the editor sends (`console_submit` while the command runs), closing it on EOF — an explicit
+        // `Eof` (Ctrl+Z/Ctrl+D) or the sender being dropped when the job ends. Lines already exclude
+        // the newline; the pump appends one. Runs off-thread so a full stdin pipe never blocks the UI.
+        if let Some(rx) = stdin_rx {
+            if let Some(mut si) = child.stdin.take() {
+                std::thread::spawn(move || {
+                    use std::io::Write;
+                    for msg in rx {
+                        match msg {
+                            ConsoleStdin::Line(line) => {
+                                if si.write_all(line.as_bytes()).is_err()
+                                    || si.write_all(b"\n").is_err()
+                                {
+                                    break;
+                                }
+                                let _ = si.flush();
+                            }
+                            ConsoleStdin::Eof => break, // drop `si` below → EOF
+                        }
+                    }
+                    // `si` dropped here → the child sees EOF on stdin.
+                });
             }
         }
         let stdout = child.stdout.take();
@@ -2410,6 +2443,13 @@ pub struct AppHost {
     /// the Console is the active tab, scrolls to the tail so streamed output + the new prompt stay in
     /// view (otherwise foreground output appends below the visible prompt and streams off-screen).
     console_dirty: bool,
+    /// Interactive stdin: while a foreground Console command is running, the sender for its stdin pump
+    /// (`None` when nothing is running). Enter sends the current input line here; Ctrl+Z/Ctrl+D sends
+    /// `Eof`. `console_input_at` is the byte offset where the user's current input begins — the end of
+    /// the last streamed output / echo — so the line sent is `[console_input_at .. end]` (never the
+    /// child's own prompt text, which sits before it).
+    console_stdin: Option<std::sync::mpsc::Sender<ConsoleStdin>>,
+    console_input_at: usize,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2793,6 +2833,8 @@ impl AppHost {
             console_prompt_at: 0,
             console_prompt_len: 0,
             console_dirty: false,
+            console_stdin: None,
+            console_input_at: 0,
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4045,6 +4087,10 @@ impl AppHost {
         }
         let cut = self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP);
         self.console_prompt_at = self.console_prompt_at.saturating_sub(cut);
+        // The user's interactive-stdin input begins after the freshest output (so a child's own prompt,
+        // e.g. "Name? ", is never captured as part of the typed line). Only consulted while a command
+        // is running (`console_stdin` is Some, hence no prompt showing → output appended at the tail).
+        self.console_input_at = self.docs[idx].buffer().len();
         self.console_dirty = true; // the GUI scrolls the Console to the tail
     }
 
@@ -4077,29 +4123,83 @@ impl AppHost {
         self.console_dirty = true; // reveal the fresh prompt
     }
 
-    /// Submit the current Console input (the text after the prompt). Returns `false` — so the GUI
-    /// inserts a normal newline instead — unless a prompt is showing AND the caret is at the very end
-    /// (typing at the prompt, not editing scrollback). On submit the input line is committed and run.
+    /// Handle Enter in the Console. Returns `false` — so the GUI inserts a normal newline — unless the
+    /// Console is the active tab AND the caret is at the very end (typing at the tail, not editing
+    /// scrollback). Then: with a prompt showing, the input line is committed and RUN; while a command
+    /// is RUNNING with interactive stdin open, the line is SENT to the child's stdin instead.
     pub fn console_submit(&mut self) -> bool {
-        if !self.console_showing {
-            return false;
-        }
-        // Only when the Console is the ACTIVE tab — otherwise Enter in another document would submit
-        // the console's waiting input.
         if self.docs.get(self.active).and_then(|d| d.label()) != Some(SHELL_OUTPUT_NAME) {
-            return false;
+            return false; // Enter in another document must not touch the Console's input
         }
         let idx = self.shell_output_doc_index();
         let end = self.docs[idx].buffer().len();
         if self.docs[idx].buffer().cursor() != end {
-            return false; // editing scrollback, not entering a command
+            return false; // editing scrollback, not entering input
         }
-        let input_at = (self.console_prompt_at + self.console_prompt_len).min(end);
-        let cmd = String::from_utf8_lossy(&self.docs[idx].buffer().slice_bytes(input_at, end))
+        if self.console_showing {
+            let input_at = (self.console_prompt_at + self.console_prompt_len).min(end);
+            let cmd = String::from_utf8_lossy(&self.docs[idx].buffer().slice_bytes(input_at, end))
+                .into_owned();
+            self.console_showing = false; // consume the prompt; the command line stays as echoed text
+            self.docs[idx].append_console("\n"); // output starts on a fresh line below the command
+            self.console_input_at = self.docs[idx].buffer().len();
+            self.console_run_command(cmd.trim());
+            true
+        } else if let Some(tx) = self.console_stdin.clone() {
+            // A command is running — feed the typed line to its stdin (never the child's own prompt
+            // text, which sits before `console_input_at`).
+            let line = String::from_utf8_lossy(
+                &self.docs[idx].buffer().slice_bytes(self.console_input_at.min(end), end),
+            )
             .into_owned();
-        self.console_showing = false; // consume the prompt; the command line stays as echoed text
-        self.docs[idx].append_console("\n"); // output starts on a fresh line below the command
-        self.console_run_command(cmd.trim());
+            self.docs[idx].append_console("\n"); // echo the newline
+            self.console_input_at = self.docs[idx].buffer().len();
+            let _ = tx.send(ConsoleStdin::Line(line));
+            self.console_dirty = true;
+            true
+        } else {
+            false // no prompt and nothing running → let the GUI insert a newline
+        }
+    }
+
+    /// Ctrl+Z / Ctrl+D in the running Console: close the child's stdin (EOF), so filters like `sort`
+    /// finish. Returns whether there was an interactive command to signal.
+    pub fn console_stdin_eof(&mut self) -> bool {
+        if let Some(tx) = self.console_stdin.take() {
+            let _ = tx.send(ConsoleStdin::Eof);
+            let idx = self.shell_output_doc_index();
+            self.docs[idx].append_console("\n"); // the child's post-EOF output starts fresh
+            self.console_input_at = self.docs[idx].buffer().len();
+            self.console_dirty = true;
+            return true;
+        }
+        false
+    }
+
+    /// Whether a foreground Console command with interactive stdin is currently running (the GUI gates
+    /// its Ctrl+Z/Ctrl+D EOF interception on this, and routes Enter to stdin). False once stdin is
+    /// closed (post-EOF) even though the command may still be finishing — see [`console_command_running`].
+    pub fn console_job_running(&self) -> bool {
+        self.console_stdin.is_some()
+    }
+
+    /// Whether a foreground Console command is running (a `JobSink::Console` job is in flight), stdin
+    /// open or not. The GUI gates Ctrl+C (interrupt) on this so you can break out even after EOF.
+    pub fn console_command_running(&self) -> bool {
+        self.jobs.iter().any(|j| matches!(j.sink, JobSink::Console))
+    }
+
+    /// Ctrl+C in the running Console: interrupt (kill) the foreground command, like a terminal SIGINT.
+    /// The job's completion then clears stdin, prints the exit line, and re-prompts. Returns whether
+    /// there was a command to interrupt.
+    pub fn console_interrupt(&mut self) -> bool {
+        let Some(id) = self.jobs.iter().find(|j| matches!(j.sink, JobSink::Console)).map(|j| j.id)
+        else {
+            return false;
+        };
+        self.console_stdin = None; // stop feeding stdin; the pump thread ends
+        self.console_emit("^C\n"); // show the interrupt in the transcript
+        self.kill_job(id); // the killed child's pipes close → Done handler re-prompts
         true
     }
 
@@ -4140,7 +4240,11 @@ impl AppHost {
         let child = std::sync::Arc::new(std::sync::Mutex::new(None));
         let mut command = shell_command(cmd);
         command.current_dir(&self.cwd); // run in $CWD
-        spawn_shell_job(command, None, tx, std::sync::Arc::clone(&child));
+        // Interactive stdin: keep the child's stdin open, fed by Enter (line) / Ctrl+Z-D (EOF). The
+        // sender lives here until the job ends (dropping it, or an explicit EOF, closes the pipe).
+        let (stdin_tx, stdin_rx) = std::sync::mpsc::channel();
+        self.console_stdin = Some(stdin_tx);
+        spawn_shell_job(command, None, Some(stdin_rx), tx, std::sync::Arc::clone(&child));
         self.jobs.push(Job {
             id,
             cmd: cmd.to_string(),
@@ -4458,7 +4562,9 @@ impl AppHost {
                         self.append_shell_output_text(&format!("(exit {code})\n\n"));
                     }
                     JobSink::Console => {
-                        // Land the exit line above the (absent) prompt, then re-prompt for the next command.
+                        // The command is done: drop the stdin sender (the pump thread ends), then land
+                        // the exit line and re-prompt for the next command.
+                        self.console_stdin = None;
                         self.console_emit(&format!("(exit {code})\n"));
                         self.console_write_prompt();
                     }
@@ -4645,7 +4751,7 @@ impl AppHost {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW — no console flash from the GUI
         }
-        spawn_shell_job(command, Some(cfg), tx, std::sync::Arc::clone(&child));
+        spawn_shell_job(command, Some(cfg), None, tx, std::sync::Arc::clone(&child));
         self.jobs.push(Job {
             id,
             cmd: format!("curl → send mail ({} recipient(s))", recipients.len()),
@@ -4727,7 +4833,7 @@ impl AppHost {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000);
         }
-        spawn_shell_job(command, Some(cfg), tx, std::sync::Arc::clone(&child));
+        spawn_shell_job(command, Some(cfg), None, tx, std::sync::Arc::clone(&child));
         self.jobs.push(Job {
             id,
             cmd: cmd_label,
@@ -10219,7 +10325,7 @@ impl Host for AppHost {
                 self.last_job_id = id; // `$LJ` — so a script can `WAIT/J $LJ` on it
                 let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
                 let child = std::sync::Arc::new(std::sync::Mutex::new(None));
-                spawn_shell_job(shell_command(&cmd), None, tx, std::sync::Arc::clone(&child));
+                spawn_shell_job(shell_command(&cmd), None, None, tx, std::sync::Arc::clone(&child));
                 self.jobs.push(Job { id, cmd: cmd.clone(), rx, child, output: String::new(), return_var, sink: JobSink::ShellTab, cleanup: None, is_mail: false });
                 // Stream into the *Shell Output* tab under a header, live as the job runs. With SW
                 // on, switch to that tab so the output is visible; with SW off it streams hidden.
@@ -10247,7 +10353,7 @@ impl Host for AppHost {
                 let child = std::sync::Arc::new(std::sync::Mutex::new(None));
                 let mut command = std::process::Command::new(&exe);
                 command.arg("--run").arg(&abs).args(&args).current_dir(&self.cwd);
-                spawn_shell_job(command, None, tx, std::sync::Arc::clone(&child));
+                spawn_shell_job(command, None, None, tx, std::sync::Arc::clone(&child));
                 let exe_name = exe
                     .file_name()
                     .map(|f| f.to_string_lossy().into_owned())
@@ -10287,7 +10393,7 @@ impl Host for AppHost {
                 let child = std::sync::Arc::new(std::sync::Mutex::new(None));
                 let mut command = std::process::Command::new(&exe);
                 command.arg("--run").arg("-").current_dir(&self.cwd);
-                spawn_shell_job(command, Some(code), tx, std::sync::Arc::clone(&child));
+                spawn_shell_job(command, Some(code), None, tx, std::sync::Arc::clone(&child));
                 let exe_name = exe
                     .file_name()
                     .map(|f| f.to_string_lossy().into_owned())

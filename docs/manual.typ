@@ -1250,6 +1250,14 @@ output like any other text, and #kbd("Enter") up in the scrollback just inserts 
 itself is yours: #raw("SHPROMPT \"$CWD> \"") sets it (quote it to keep the trailing space; #raw("$CWD")
 and other #raw("$")-fields expand), and #raw("SaveCfg") remembers it.
 
+A running command can also *read your input*. While a command is running, what you type at the tail and
+send with #kbd("Enter") goes to the command's standard input — so a program that asks a question
+(#raw("Name? ")) gets your answer on the same line, and a filter like #raw("sort") reads the lines you
+type. Signal end-of-input with #kbd("Ctrl+Z") (or #kbd("Ctrl+D")) and the command finishes and prints
+its result, and #kbd("Ctrl+C") interrupts a running command outright (like a terminal). (This is
+line-at-a-time input, not a full terminal: a password prompt is *not* hidden, and full-screen programs
+like an editor won't run in the Console — run those in a real terminal.)
+
 From a script it is often simpler to run a command directly: #raw("X <command>") runs it and streams the
 output to the Console; #raw("XY <command>") inserts the output at the cursor instead. Either way,
 shell-out is *disabled by default* and must be enabled with #raw("TRUST 1"), so a stray command can't

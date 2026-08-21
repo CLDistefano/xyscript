@@ -515,6 +515,23 @@ impl Editor {
     pub fn console_is_active(&self) -> bool {
         self.host.console_is_active()
     }
+    /// Whether a foreground Console command with interactive stdin is running (the GUI gates its
+    /// Ctrl+Z/Ctrl+D EOF interception on this).
+    pub fn console_job_running(&self) -> bool {
+        self.host.console_job_running()
+    }
+    /// Ctrl+Z / Ctrl+D in the running Console: close the child's stdin (EOF). Returns whether it did.
+    pub fn console_stdin_eof(&mut self) -> bool {
+        self.host.console_stdin_eof()
+    }
+    /// Whether a foreground Console command is running (the GUI gates Ctrl+C interrupt on this).
+    pub fn console_command_running(&self) -> bool {
+        self.host.console_command_running()
+    }
+    /// Ctrl+C in the running Console: interrupt (kill) the foreground command. Returns whether it did.
+    pub fn console_interrupt(&mut self) -> bool {
+        self.host.console_interrupt()
+    }
     /// Autosave interval in seconds (0 = off); the GUI reads it each frame to drive the timer.
     pub fn autosave_secs(&self) -> u64 {
         self.host.autosave_secs()
@@ -9901,6 +9918,55 @@ mod tests {
         console_run(&mut e, "echo hi"); // no TRUST
         assert_eq!(e.job_count(), 0, "nothing spawned without trust");
         assert!(e.document().text().contains("shell-out is disabled"));
+    }
+
+    #[test]
+    fn console_interactive_stdin_feeds_a_running_child() {
+        // `sort` reads stdin until EOF, then emits the lines sorted — a clean interactive-stdin test.
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        console_run(&mut e, "sort");
+        assert!(e.console_job_running(), "sort is running with its stdin open");
+        // Enter now feeds the child's stdin instead of starting a new command.
+        e.run_command(r#"insert "zebra""#);
+        assert!(e.console_submit(), "line sent to stdin");
+        e.run_command(r#"insert "apple""#);
+        assert!(e.console_submit());
+        // Ctrl+Z/Ctrl+D → EOF; sort now produces its sorted output.
+        assert!(e.console_stdin_eof(), "EOF closes the child's stdin");
+        let mut waited = 0;
+        while e.job_count() > 0 && waited < 1000 {
+            let _ = e.poll_jobs();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            waited += 1;
+        }
+        assert_eq!(e.job_count(), 0, "sort did not finish in time");
+        let text = e.document().text();
+        // The SORTED output (last occurrences) has apple before zebra, regardless of typed order.
+        let a = text.rfind("apple").expect("apple in output");
+        let z = text.rfind("zebra").expect("zebra in output");
+        assert!(a < z, "sorted output apple<zebra: {text:?}");
+    }
+
+    #[test]
+    fn console_ctrl_c_interrupts_a_running_command() {
+        // `sort` with no EOF hangs waiting for stdin — Ctrl+C (interrupt) must kill it and re-prompt.
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        console_run(&mut e, "sort");
+        assert!(e.console_command_running(), "sort is running");
+        assert!(e.console_interrupt(), "Ctrl+C interrupts the running command");
+        let mut waited = 0;
+        while e.job_count() > 0 && waited < 1000 {
+            let _ = e.poll_jobs();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            waited += 1;
+        }
+        assert_eq!(e.job_count(), 0, "the interrupted command finished");
+        assert!(!e.console_command_running());
+        let text = e.document().text();
+        assert!(text.contains("^C"), "the interrupt is shown in the transcript: {text:?}");
+        assert!(text.ends_with("> "), "a fresh prompt follows: {text:?}");
     }
 
     #[test]

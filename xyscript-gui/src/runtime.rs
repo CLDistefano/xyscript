@@ -2216,6 +2216,35 @@ impl ApplicationHandler for Handler {
                     }
                     return; // consumed: don't let it reach the keymap/egui
                 }
+                // Ctrl+Z / Ctrl+D in a RUNNING Console = end-of-input: close the child's stdin (EOF) so
+                // a filter like `sort` finishes. Gated on the Console being active AND a command running
+                // with interactive stdin, so Ctrl+Z stays Undo (etc.) everywhere else and even in the
+                // Console when nothing is running.
+                if key_event.state == ElementState::Pressed
+                    && self.mods.control_key()
+                    && matches!(
+                        key_event.physical_key,
+                        PhysicalKey::Code(KeyCode::KeyZ) | PhysicalKey::Code(KeyCode::KeyD)
+                    )
+                    && self.app.editor.console_is_active()
+                    && self.app.editor.console_job_running()
+                {
+                    self.app.editor.console_stdin_eof();
+                    self.request_redraw();
+                    return; // consumed
+                }
+                // Ctrl+C in a RUNNING Console = interrupt (kill) the command, like a terminal SIGINT.
+                // Gated the same way, so Ctrl+C stays Copy everywhere else (and in the idle Console).
+                if key_event.state == ElementState::Pressed
+                    && self.mods.control_key()
+                    && key_event.physical_key == PhysicalKey::Code(KeyCode::KeyC)
+                    && self.app.editor.console_is_active()
+                    && self.app.editor.console_command_running()
+                {
+                    self.app.editor.console_interrupt();
+                    self.request_redraw();
+                    return; // consumed
+                }
                 // In a directory listing, the express-find control keys (F3 = next match, Backspace
                 // = shorten the type-to-find query) must run AHEAD of the keymap — otherwise a bound
                 // command key eats them (e.g. `Backspace` = `BD`). `dir_express_control` consumes
