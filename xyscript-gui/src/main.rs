@@ -3634,6 +3634,14 @@ impl GuiApp {
         // next prompt — in view. Drain the flag regardless so it can't go stale; only follow when the
         // Console is the active tab (its caret sits at the tail, so `follow` reveals it).
         let console_dirty = self.editor.take_console_dirty();
+        // An explicit `SH`/`SHELL` open forces the view to the prompt even if the user had scrolled up
+        // to read old output (e.g. a long `X/BG` log) — scroll-lock is for passive streaming, not for a
+        // deliberate "take me to the prompt." Drain the flag unconditionally so it can't go stale.
+        let console_reveal_tail = self.editor.take_console_reveal_tail();
+        if console_reveal_tail && self.editor.console_is_active() {
+            self.console_at_bottom = true;
+            self.pane_view.follow = true;
+        }
         if console_dirty && self.editor.console_is_active() && self.console_at_bottom {
             self.pane_view.follow = true;
         }

@@ -2443,6 +2443,11 @@ pub struct AppHost {
     /// the Console is the active tab, scrolls to the tail so streamed output + the new prompt stay in
     /// view (otherwise foreground output appends below the visible prompt and streams off-screen).
     console_dirty: bool,
+    /// A deliberate "jump to the Console prompt" just happened (`SH`/`SHELL` opened or re-focused the
+    /// Console). Unlike `console_dirty`, this FORCES the view to the tail even if the user had scrolled
+    /// up to read old output (scroll-lock is bypassed for an explicit open) — the whole point of `SH`
+    /// is to land the user at the prompt. Drained by the GUI's `take_console_reveal_tail`.
+    console_reveal_tail: bool,
     /// Interactive stdin: while a foreground Console command is running, the sender for its stdin pump
     /// (`None` when nothing is running). Enter sends the current input line here; Ctrl+Z/Ctrl+D sends
     /// `Eof`. `console_input_at` is the byte offset where the user's current input begins — the end of
@@ -2847,6 +2852,7 @@ impl AppHost {
             console_prompt_at: 0,
             console_prompt_len: 0,
             console_dirty: false,
+            console_reveal_tail: false,
             console_stdin: None,
             console_input_at: 0,
             console_history: Vec::new(),
@@ -4151,6 +4157,13 @@ impl AppHost {
     /// scroll the Console tab to the tail. Paired with [`console_is_active`].
     pub fn take_console_dirty(&mut self) -> bool {
         std::mem::take(&mut self.console_dirty)
+    }
+
+    /// The GUI drains this each frame; `true` means `SH` just opened/focused the Console, so the view
+    /// must jump to the tail (the prompt) even if scroll-lock had paused following. See
+    /// [`console_reveal_tail`](Self::console_reveal_tail).
+    pub fn take_console_reveal_tail(&mut self) -> bool {
+        std::mem::take(&mut self.console_reveal_tail)
     }
 
     /// Whether the Console tab is the active document (the GUI only auto-scrolls it when it's on top).
@@ -9705,6 +9718,7 @@ impl Host for AppHost {
                     let end = self.docs[idx].buffer().len();
                     self.docs[idx].set_caret(end, None);
                     self.console_dirty = true;
+                    self.console_reveal_tail = true; // force the view to the prompt (bypass scroll-lock)
                     self.active = idx;
                     self.set_focus(Target::Document);
                     return Ok(Value::str("console"));

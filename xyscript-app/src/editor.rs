@@ -511,6 +511,11 @@ impl Editor {
     pub fn take_console_dirty(&mut self) -> bool {
         self.host.take_console_dirty()
     }
+    /// Whether `SH`/`SHELL` just opened the Console and the view must jump to the prompt (overriding
+    /// scroll-lock). One-shot; the GUI drains it each frame.
+    pub fn take_console_reveal_tail(&mut self) -> bool {
+        self.host.take_console_reveal_tail()
+    }
     /// Whether the Console tab is the active document.
     pub fn console_is_active(&self) -> bool {
         self.host.console_is_active()
@@ -9998,6 +10003,35 @@ mod tests {
         console_run(&mut e, "clear");
         assert!(!e.document().text().contains("two"), "clear at the prompt cleared it");
         assert_eq!(e.job_count(), 0, "clear spawned nothing");
+    }
+
+    #[test]
+    fn sh_lands_a_prompt_at_the_tail_after_xbg_output() {
+        // After a background job (X/BG) has streamed into the Console, opening it with SH must leave a
+        // fresh prompt at the very end of the buffer — the host invariant behind the "SH shows no prompt"
+        // report (the visible symptom was a GUI scroll-lock issue; this guards the buffer side).
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        e.run_command("X/BG echo hi"); // streams to the Console; no prompt opened yet
+        drain_jobs(&mut e);
+        e.run_command("SH");
+        let text = e.document().text();
+        assert!(text.ends_with("> "), "no prompt at the tail after X/BG + SH: {text:?}");
+    }
+
+    #[test]
+    fn sh_arms_the_reveal_tail_signal() {
+        // SH is a deliberate "take me to the prompt": it must force the view to the tail even if the
+        // user had scrolled up (scroll-lock). The host raises a one-shot reveal-tail flag the GUI drains
+        // to override the scroll-lock gate; without it, the prompt sits off-screen after a long X/BG log.
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        e.run_command("X/BG echo hi");
+        drain_jobs(&mut e);
+        assert!(!e.host_mut().take_console_reveal_tail(), "passive output must not arm reveal-tail");
+        e.run_command("SH");
+        assert!(e.host_mut().take_console_reveal_tail(), "SH must arm reveal-tail");
+        assert!(!e.host_mut().take_console_reveal_tail(), "reveal-tail is one-shot (drained)");
     }
 
     #[test]
