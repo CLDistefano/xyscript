@@ -759,6 +759,20 @@ impl Document {
         n
     }
 
+    /// Replace the Console's current input — everything from byte `at` (just after the prompt) to the
+    /// end — with `text`, non-recording, caret to the new end. Used by Shift+Up/Down history recall.
+    pub fn console_replace_input(&mut self, at: usize, text: &str) {
+        let end = self.buffer.len();
+        let at = at.min(end);
+        if end > at {
+            self.buffer.replace_range_bytes(at, end - at, &[]); // clear the old input
+        }
+        self.buffer.insert_str_at(at, text); // encode + insert the recalled command
+        let new_end = self.buffer.len();
+        self.buffer.set_caret(new_end, None);
+        self.gen = next_content_gen();
+    }
+
     /// Cap a log buffer to roughly its last `max_bytes`, dropping the oldest content from the
     /// front (so a flood like `dir /s C:\` can't grow it without bound). Cuts on a line boundary
     /// when possible, else a UTF-8 char boundary; no-op when already within the cap. Returns the

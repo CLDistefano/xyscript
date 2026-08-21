@@ -2245,6 +2245,26 @@ impl ApplicationHandler for Handler {
                     self.request_redraw();
                     return; // consumed
                 }
+                // Shift+Up / Shift+Down in the Console recall the session command history into the
+                // prompt. Consumed only when the Console handles it (a prompt is showing, the caret is
+                // on the input line, and there is somewhere to go); otherwise it falls through to the
+                // normal Shift+arrow (extend the selection).
+                if key_event.state == ElementState::Pressed
+                    && self.mods.shift_key()
+                    && !self.mods.control_key()
+                    && !self.mods.alt_key()
+                    && matches!(
+                        key_event.physical_key,
+                        PhysicalKey::Code(KeyCode::ArrowUp) | PhysicalKey::Code(KeyCode::ArrowDown)
+                    )
+                    && self.app.editor.console_is_active()
+                {
+                    let older = key_event.physical_key == PhysicalKey::Code(KeyCode::ArrowUp);
+                    if self.app.editor.console_history_recall(older) {
+                        self.request_redraw();
+                        return; // consumed
+                    }
+                }
                 // In a directory listing, the express-find control keys (F3 = next match, Backspace
                 // = shorten the type-to-find query) must run AHEAD of the keymap — otherwise a bound
                 // command key eats them (e.g. `Backspace` = `BD`). `dir_express_control` consumes

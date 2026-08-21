@@ -2450,6 +2450,11 @@ pub struct AppHost {
     /// child's own prompt text, which sits before it).
     console_stdin: Option<std::sync::mpsc::Sender<ConsoleStdin>>,
     console_input_at: usize,
+    /// Per-session Console command history (oldest first), and the current recall position
+    /// (`None` = not recalling / at the fresh input line). Shift+Up/Shift+Down walk it, replacing the
+    /// prompt input. Session-only — never persisted.
+    console_history: Vec<String>,
+    console_hist_pos: Option<usize>,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2835,6 +2840,8 @@ impl AppHost {
             console_dirty: false,
             console_stdin: None,
             console_input_at: 0,
+            console_history: Vec::new(),
+            console_hist_pos: None,
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4120,6 +4127,7 @@ impl AppHost {
         self.console_prompt_at = at;
         self.console_prompt_len = prompt.len();
         self.console_showing = true;
+        self.console_hist_pos = None; // a fresh prompt starts at the (empty) newest input
         self.console_dirty = true; // reveal the fresh prompt
     }
 
@@ -4140,10 +4148,16 @@ impl AppHost {
             let input_at = (self.console_prompt_at + self.console_prompt_len).min(end);
             let cmd = String::from_utf8_lossy(&self.docs[idx].buffer().slice_bytes(input_at, end))
                 .into_owned();
+            // Remember it in the session history (skip blanks and an immediate repeat of the last).
+            let trimmed = cmd.trim();
+            if !trimmed.is_empty() && self.console_history.last().map(String::as_str) != Some(trimmed) {
+                self.console_history.push(trimmed.to_string());
+            }
+            self.console_hist_pos = None;
             self.console_showing = false; // consume the prompt; the command line stays as echoed text
             self.docs[idx].append_console("\n"); // output starts on a fresh line below the command
             self.console_input_at = self.docs[idx].buffer().len();
-            self.console_run_command(cmd.trim());
+            self.console_run_command(trimmed);
             true
         } else if let Some(tx) = self.console_stdin.clone() {
             // A command is running — feed the typed line to its stdin (never the child's own prompt
@@ -4200,6 +4214,38 @@ impl AppHost {
         self.console_stdin = None; // stop feeding stdin; the pump thread ends
         self.console_emit("^C\n"); // show the interrupt in the transcript
         self.kill_job(id); // the killed child's pipes close → Done handler re-prompts
+        true
+    }
+
+    /// Shift+Up (`older`) / Shift+Down: recall the session command history into the prompt input,
+    /// replacing whatever is typed. Returns `false` — so the GUI keeps the normal Shift+arrow (extend
+    /// selection) — unless a prompt is showing on the active Console AND the caret is on the input line
+    /// AND there is somewhere to go (older with history; newer while already recalling).
+    pub fn console_history_recall(&mut self, older: bool) -> bool {
+        if !self.console_showing || self.console_history.is_empty() {
+            return false;
+        }
+        if self.docs.get(self.active).and_then(|d| d.label()) != Some(SHELL_OUTPUT_NAME) {
+            return false;
+        }
+        let idx = self.shell_output_doc_index();
+        let input_at =
+            (self.console_prompt_at + self.console_prompt_len).min(self.docs[idx].buffer().len());
+        if self.docs[idx].buffer().cursor() < input_at {
+            return false; // caret up in scrollback → leave Shift+arrow as select
+        }
+        let last = self.console_history.len() - 1;
+        let new_pos = match (self.console_hist_pos, older) {
+            (None, true) => Some(last),                   // start at the newest
+            (Some(p), true) => Some(p.saturating_sub(1)), // older
+            (Some(p), false) if p < last => Some(p + 1),  // newer
+            (Some(_), false) => None,                     // past the newest → a fresh, empty line
+            (None, false) => return false,                // not recalling; nothing newer
+        };
+        self.console_hist_pos = new_pos;
+        let text = new_pos.map(|p| self.console_history[p].clone()).unwrap_or_default();
+        self.docs[idx].console_replace_input(input_at, &text);
+        self.console_dirty = true;
         true
     }
 

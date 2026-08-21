@@ -532,6 +532,11 @@ impl Editor {
     pub fn console_interrupt(&mut self) -> bool {
         self.host.console_interrupt()
     }
+    /// Shift+Up (`older`=true) / Shift+Down: recall the session Console history into the prompt input.
+    /// Returns whether it handled the key (else the GUI does the normal Shift+arrow selection).
+    pub fn console_history_recall(&mut self, older: bool) -> bool {
+        self.host.console_history_recall(older)
+    }
     /// Autosave interval in seconds (0 = off); the GUI reads it each frame to drive the timer.
     pub fn autosave_secs(&self) -> u64 {
         self.host.autosave_secs()
@@ -9946,6 +9951,28 @@ mod tests {
         let a = text.rfind("apple").expect("apple in output");
         let z = text.rfind("zebra").expect("zebra in output");
         assert!(a < z, "sorted output apple<zebra: {text:?}");
+    }
+
+    #[test]
+    fn console_history_recall_walks_submitted_commands() {
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        console_run(&mut e, "echo a");
+        drain_jobs(&mut e); // completes → fresh prompt
+        console_run(&mut e, "echo b");
+        drain_jobs(&mut e);
+        // At the fresh prompt, Shift+Up recalls the newest command, then older.
+        assert!(e.console_history_recall(true), "recall newest");
+        assert!(e.document().text().ends_with("echo b"), "newest recalled: {:?}", e.document().text());
+        assert!(e.console_history_recall(true), "recall older");
+        assert!(e.document().text().ends_with("echo a"), "older recalled: {:?}", e.document().text());
+        // Shift+Down walks back toward the newest, then to a fresh empty line.
+        assert!(e.console_history_recall(false));
+        assert!(e.document().text().ends_with("echo b"));
+        assert!(e.console_history_recall(false));
+        assert!(e.document().text().ends_with("> "), "past newest → empty input: {:?}", e.document().text());
+        // Nothing newer than a fresh line → not handled (GUI keeps normal Shift+Down).
+        assert!(!e.console_history_recall(false));
     }
 
     #[test]

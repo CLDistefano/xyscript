@@ -1246,7 +1246,8 @@ XyScript can hand a line to the operating-system shell. The friendliest way is t
 runs; the output streams in *above* the prompt while the prompt and whatever you are typing stay pinned
 at the bottom. The Console is an ordinary document — you can scroll back, select, copy, and search its
 output like any other text, and #kbd("Enter") up in the scrollback just inserts a newline (only
-#kbd("Enter") *at the prompt* submits). #raw("cd") is understood and changes #raw("$CWD"). The prompt
+#kbd("Enter") *at the prompt* submits). #kbd("Shift+Up") and #kbd("Shift+Down") walk the commands you
+have run this session back into the prompt. #raw("cd") is understood and changes #raw("$CWD"). The prompt
 itself is yours: #raw("SHPROMPT \"$CWD> \"") sets it (quote it to keep the trailing space; #raw("$CWD")
 and other #raw("$")-fields expand), and #raw("SaveCfg") remembers it.
 
