@@ -551,7 +551,7 @@ self-contained element to convert.
 
 / #cmd("X") / #cmd("XV") / #cmd("XY"): run a shell command / capturing its output to a variable / inserting its output at the caret.
 / #cmd("TRUST"): enable or disable shell-out. #cmd("JOBS") / #cmd("KILL") / #cmd("WAIT"): list background jobs / end one / wait for jobs (or a timed pause).
-/ #cmd("SH", "SHELL"): open the Console — an editable REPL tab (type a command at the prompt, press Enter). #cmd("SHPROMPT"): its prompt template. #cmd("SW", "SHELLWIN"): show/hide the Console tab.
+/ #cmd("SH", "SHELL"): open the Console — an editable REPL tab (type a command at the prompt, press Enter). #cmd("SHPROMPT"): its prompt template. #cmd("ANSICOLOR"): colour output from ANSI codes. #cmd("SW", "SHELLWIN"): show/hide the Console tab.
 
 == Keyboard files and binders
 
@@ -903,6 +903,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
 / #cmd("SH", "SHELL"): open + focus the *Console* — an editable REPL tab. Type a command at the prompt and press Enter to run it (needs `TRUST 1`); output streams in above the prompt, and the tab is a normal document you can edit, copy, and search. `cd` is intercepted to change `$CWD`. `SH off` hides the Console tab. `$SH` reads its visibility.
 / #cmd("SHPROMPT"): `SHPROMPT [<template>]` — the Console's prompt string, `$`-expanded (default `$CWD> `). Quote it to keep a trailing space (`SHPROMPT "$CWD> "`); bare restores the default. `$SHPROMPT` reads it; saved by `SAVECFG`.
+/ #cmd("ANSICOLOR"): `ANSICOLOR on|off` (bare toggles) — whether Console output is coloured from its ANSI escape codes (on, default) or shown raw. `$ANSICOLOR` reads it; saved by `SAVECFG`.
 / #cmd("SW", "SHELLWIN"): show/hide the *Console* tab — `SW on|off`, bare toggles (see also `X/BG`, which streams into it). `/H` / `/V` instead show the Console in a new split pane (stacked / side-by-side); if it's already in a pane, focus moves there. `$SW` reads the tab visibility.
 
 == T
@@ -1367,6 +1368,7 @@ Every special variable in one list, for quick lookup.
 / #sv("SEPCOLOR"): separator color.
 / #sv("SH"): Console tab visible (once the interactive shell pane; now a synonym for `$SW`).
 / #sv("SHPROMPT"): the Console prompt template (`SHPROMPT`).
+/ #sv("ANSICOLOR"): `1` if Console output is ANSI-coloured, `0` if shown raw (`ANSICOLOR`).
 / #sv("SL"): selected character count.
 / #sv("SMTPURL"): SMTP submission URL for sending.
 / #sv("SW"): *Console* tab visible.

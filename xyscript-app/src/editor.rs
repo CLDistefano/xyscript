@@ -9981,6 +9981,30 @@ mod tests {
     }
 
     #[test]
+    fn ansicolor_toggles_persists_and_gates_colouring() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("ANSICOLOR"), "1"); // default on
+        e.run_command("ANSICOLOR off");
+        assert_eq!(e.special_str("ANSICOLOR"), "0");
+        // With it off, output keeps the raw escapes and gets no colour span.
+        e.console_write_prompt();
+        let i = e.tabs().iter().position(|t| t.name == "*Console*").unwrap();
+        e.set_active_buffer(i);
+        e.host_mut().console_emit_test("\x1b[31mERR\x1b[0m\n");
+        assert!(e.document().text().contains('\u{1b}'), "raw escapes kept when off");
+        assert!(e.host_mut().active_doc().color_spans_decoded().is_empty(), "no colour when off");
+        // Bare toggles back on; a bad value errors; SaveCfg carries the setting.
+        e.run_command("ANSICOLOR");
+        assert_eq!(e.special_str("ANSICOLOR"), "1");
+        e.run_command("ANSICOLOR maybe");
+        assert!(e.last_error().is_some(), "bad value errors");
+        e.run_command("ANSICOLOR off");
+        e.run_command("SAVECFG cfg.xpl");
+        assert!(e.host_mut().files.get("cfg.xpl").unwrap().contains("ANSICOLOR off"));
+    }
+
+    #[test]
     fn console_history_recall_walks_submitted_commands() {
         let mut e = ed();
         e.run_command("TRUST 1");

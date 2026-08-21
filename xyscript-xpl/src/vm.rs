@@ -2974,6 +2974,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetConsolePrompt(tmpl))?;
                 Ok(Flow::Next)
             }
+            // `ANSICOLOR on|off` (bare = toggle) — colour Console output from ANSI codes, or show them raw.
+            "ANSICOLOR" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "ANSICOLOR: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetAnsiColor(want))?;
+                Ok(Flow::Next)
+            }
             "PV" | "PREVIEW" => {
                 let a = args.trim();
                 let kind = if a.is_empty() {

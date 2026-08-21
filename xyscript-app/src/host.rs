@@ -2459,6 +2459,9 @@ pub struct AppHost {
     /// attribute spans. Reset between commands (and before our own `(exit N)`/`^C`) so leftover colour
     /// never bleeds across.
     console_ansi: crate::ansi::AnsiState,
+    /// Whether Console output is ANSI-coloured (`ANSICOLOR`; `$ANSICOLOR`; SaveCfg; default on). Off
+    /// leaves the raw escape codes in the text (for debugging / a plain transcript).
+    ansi_color: bool,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2847,6 +2850,7 @@ impl AppHost {
             console_history: Vec::new(),
             console_hist_pos: None,
             console_ansi: crate::ansi::AnsiState::new(),
+            ansi_color: true,
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4091,9 +4095,15 @@ impl AppHost {
             return;
         }
         let idx = self.shell_output_doc_index();
-        // Parse ANSI: each run is plain text (escapes stripped) + its style. Insert the text, then
-        // record the matching MDA colour/attribute span over the range it landed on.
-        for (run, style) in self.console_ansi.feed(text) {
+        // `ANSICOLOR off`: emit the raw text (escape codes and all), no parsing or colour.
+        let runs = if self.ansi_color {
+            self.console_ansi.feed(text)
+        } else {
+            vec![(text.to_string(), crate::ansi::Style::default())]
+        };
+        // Each run is plain text (escapes stripped) + its style. Insert the text, then record the
+        // matching MDA colour/attribute span over the range it landed on.
+        for (run, style) in runs {
             if run.is_empty() {
                 continue;
             }
@@ -8096,6 +8106,7 @@ impl AppHost {
         put(&mut s, "Pop-up command line — SGC on, CGC off", if self.gui_cmline { "SGC" } else { "CGC" }.to_string());
         put(&mut s, "Shell-output tab visibility — SW on/off", format!("SW {}", if self.shell_output_visible { "on" } else { "off" }));
         put(&mut s, "Console prompt template (SHPROMPT; $-expanded, e.g. $CWD> )", format!("SHPROMPT {}", self.console_prompt));
+        put(&mut s, "Colour Console output from ANSI codes — on | off", format!("ANSICOLOR {}", if self.ansi_color { "on" } else { "off" }));
         put(&mut s, "Preview pane visibility — PV on/off", format!("PV {}", if self.preview_visible { "on" } else { "off" }));
         put(&mut s, "Persistent selection — SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
         put(&mut s, "OS window title bar — on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
@@ -9682,6 +9693,14 @@ impl Host for AppHost {
             EditorOp::SetConsolePrompt(tmpl) => {
                 self.set_console_prompt(tmpl.as_deref());
                 return Ok(Value::str(format!("SHPROMPT {}", self.console_prompt)));
+            }
+            EditorOp::SetAnsiColor(opt) => {
+                self.ansi_color = opt.unwrap_or(!self.ansi_color);
+                self.console_ansi.reset(); // a mid-command flip shouldn't carry a partial escape
+                return Ok(Value::str(format!(
+                    "ANSICOLOR {}",
+                    if self.ansi_color { "on" } else { "off" }
+                )));
             }
             EditorOp::OpenGrepDialog => {
                 self.grep_dialog_requested = true;
@@ -11794,6 +11813,7 @@ impl Host for AppHost {
             // `$SH` now reports whether the Console tab is shown (the SH pane it once meant is gone).
             "SH" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
             "SHPROMPT" => Some(Value::str(self.console_prompt.clone())),
+            "ANSICOLOR" => Some(Value::Int(if self.ansi_color { 1 } else { 0 })),
             "PV" => Some(Value::Int(if self.preview_visible { 1 } else { 0 })),
             "AR" => Some(Value::str(self.last_ar_path.clone().unwrap_or_default())), // last LoadAR path
             "HLAUTO" => Some(Value::Int(if self.hl_auto { 1 } else { 0 })),

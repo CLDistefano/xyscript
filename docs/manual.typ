@@ -1254,7 +1254,8 @@ and other #raw("$")-fields expand), and #raw("SaveCfg") remembers it.
 Colour comes through too: if a command emits *ANSI colour codes* (for example #raw("grep --color=always")
 or #raw("git -c color.ui=always …")), the Console shows the colour rather than the raw escape codes —
 the codes are turned into the same per-range styling #raw("MDA") uses, so coloured output reads cleanly
-and can still be copied as plain text.
+and can still be copied as plain text. #raw("ANSICOLOR off") turns this off and leaves the raw codes in
+the text (bare #raw("ANSICOLOR") toggles; #raw("$ANSICOLOR") reads it; #raw("SaveCfg") remembers it).
 
 A running command can also *read your input*. While a command is running, what you type at the tail and
 send with #kbd("Enter") goes to the command's standard input — so a program that asks a question
