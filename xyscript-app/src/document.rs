@@ -750,6 +750,7 @@ impl Document {
             return 0;
         }
         let n = self.buffer.insert_str_at(at, text);
+        self.adjust_color_spans(at, 0, n); // keep ANSI colour spans aligned across the mid-buffer insert
         let shift = |x: usize| if x >= at { x + n } else { x };
         let cursor = shift(self.buffer.cursor());
         let anchor = self.buffer.anchor().map(shift);
@@ -796,6 +797,7 @@ impl Document {
         cut += snap;
         let saved = self.buffer.cursor();
         self.buffer.replace_range_bytes(0, cut, &[]);
+        self.adjust_color_spans(0, cut, 0); // slide ANSI colour spans left with the trimmed front
         // Shift the caret left with the dropped front so a pinned position (the start of a job's
         // output) tracks the content; clamp to 0 if that position was itself trimmed away.
         self.buffer.set_caret(saved.saturating_sub(cut).min(self.buffer.len()), None);

@@ -9954,6 +9954,33 @@ mod tests {
     }
 
     #[test]
+    fn console_ansi_output_becomes_mda_colour_spans() {
+        let mut e = ed();
+        e.console_write_prompt();
+        let i = e.tabs().iter().position(|t| t.name == "*Console*").unwrap();
+        e.set_active_buffer(i);
+        // A red "ERROR", then default " ok" — escapes must be stripped and a red fg span cover ERROR.
+        e.host_mut().console_emit_test("\x1b[31mERROR\x1b[0m ok\n");
+        let text = e.document().text();
+        assert!(text.contains("ERROR ok"), "text present: {text:?}");
+        assert!(!text.contains('\u{1b}'), "escapes stripped: {text:?}");
+        let start = text.find("ERROR").unwrap();
+        let fg = e.host_mut().active_doc().color_spans_decoded();
+        assert!(
+            fg.iter().any(|&(s, en, c)| s == start && en == start + 5 && c == (170, 0, 0)),
+            "red span over ERROR: {fg:?}"
+        );
+        // A split escape across two emits still colours correctly and shows no stray bytes.
+        e.host_mut().console_emit_test("\x1b[32mgr");
+        e.host_mut().console_emit_test("een\x1b[0m\n");
+        let text2 = e.document().text();
+        assert!(text2.contains("green") && !text2.contains('\u{1b}'), "green shown, escapes stripped: {text2:?}");
+        let fg2 = e.host_mut().active_doc().color_spans_decoded();
+        let g = text2.find("green").unwrap();
+        assert!(fg2.iter().any(|&(s, en, c)| s == g && en == g + 5 && c == (0, 170, 0)), "green: {fg2:?}");
+    }
+
+    #[test]
     fn console_history_recall_walks_submitted_commands() {
         let mut e = ed();
         e.run_command("TRUST 1");

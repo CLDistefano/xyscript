@@ -10,6 +10,7 @@
 //! resolve → dispatch XPL → mutate the buffer → render. Everything here is
 //! headless-testable; the live OS-hook + display is the thin shell in `main.rs`.
 
+pub mod ansi;
 pub mod boot;
 pub mod byte_rope;
 pub mod clock;

@@ -2455,6 +2455,10 @@ pub struct AppHost {
     /// prompt input. Session-only — never persisted.
     console_history: Vec<String>,
     console_hist_pos: Option<usize>,
+    /// Streaming ANSI-SGR parser for Console output: escapes are stripped and turned into MDA colour /
+    /// attribute spans. Reset between commands (and before our own `(exit N)`/`^C`) so leftover colour
+    /// never bleeds across.
+    console_ansi: crate::ansi::AnsiState,
     /// Auto-replace map (`AR`/`LoadAR`): `key word → replacement text`. `AR` replaces the word behind
     /// the caret when it matches a key (case-sensitive, exact). Loaded files merge into this.
     auto_replace: std::collections::HashMap<String, String>,
@@ -2842,6 +2846,7 @@ impl AppHost {
             console_input_at: 0,
             console_history: Vec::new(),
             console_hist_pos: None,
+            console_ansi: crate::ansi::AnsiState::new(),
             auto_replace: std::collections::HashMap::new(),
             last_ar_path: None,
             ar_pending_xpl: None,
@@ -4086,11 +4091,33 @@ impl AppHost {
             return;
         }
         let idx = self.shell_output_doc_index();
-        if self.console_showing {
-            let n = self.docs[idx].splice_console(self.console_prompt_at, text);
-            self.console_prompt_at += n;
-        } else {
-            self.docs[idx].append_console(text);
+        // Parse ANSI: each run is plain text (escapes stripped) + its style. Insert the text, then
+        // record the matching MDA colour/attribute span over the range it landed on.
+        for (run, style) in self.console_ansi.feed(text) {
+            if run.is_empty() {
+                continue;
+            }
+            let (start, end) = if self.console_showing {
+                let at = self.console_prompt_at;
+                let n = self.docs[idx].splice_console(at, &run); // shifts existing spans + the prompt
+                self.console_prompt_at += n;
+                (at, at + n)
+            } else {
+                let at = self.docs[idx].buffer().len();
+                self.docs[idx].append_console(&run);
+                (at, self.docs[idx].buffer().len())
+            };
+            if !style.is_default() && end > start {
+                if let Some(fg) = style.fg {
+                    self.docs[idx].set_color_span(start, end, Some(fg));
+                }
+                if let Some(bg) = style.bg {
+                    self.docs[idx].set_bg_color_span(start, end, Some(bg));
+                }
+                if style.attrs != 0 {
+                    self.docs[idx].set_attr_span(start, end, Some(style.attrs));
+                }
+            }
         }
         let cut = self.docs[idx].truncate_log_front(SHELL_OUTPUT_CAP);
         self.console_prompt_at = self.console_prompt_at.saturating_sub(cut);
@@ -4099,6 +4126,12 @@ impl AppHost {
         // is running (`console_stdin` is Some, hence no prompt showing → output appended at the tail).
         self.console_input_at = self.docs[idx].buffer().len();
         self.console_dirty = true; // the GUI scrolls the Console to the tail
+    }
+
+    /// Test hook: push raw output (including ANSI escapes) through the Console emit path.
+    #[cfg(test)]
+    pub fn console_emit_test(&mut self, text: &str) {
+        self.console_emit(text);
     }
 
     /// The GUI drains this each frame; `true` means Console output (or a new prompt) just arrived, so
@@ -4157,6 +4190,7 @@ impl AppHost {
             self.console_showing = false; // consume the prompt; the command line stays as echoed text
             self.docs[idx].append_console("\n"); // output starts on a fresh line below the command
             self.console_input_at = self.docs[idx].buffer().len();
+            self.console_ansi.reset(); // this command's output starts from the default style
             self.console_run_command(trimmed);
             true
         } else if let Some(tx) = self.console_stdin.clone() {
@@ -4212,6 +4246,7 @@ impl AppHost {
             return false;
         };
         self.console_stdin = None; // stop feeding stdin; the pump thread ends
+        self.console_ansi.reset(); // the interrupt line isn't tinted by the command's leftover colour
         self.console_emit("^C\n"); // show the interrupt in the transcript
         self.kill_job(id); // the killed child's pipes close → Done handler re-prompts
         true
@@ -4611,6 +4646,7 @@ impl AppHost {
                         // The command is done: drop the stdin sender (the pump thread ends), then land
                         // the exit line and re-prompt for the next command.
                         self.console_stdin = None;
+                        self.console_ansi.reset(); // don't let a command's trailing colour tint our lines
                         self.console_emit(&format!("(exit {code})\n"));
                         self.console_write_prompt();
                     }

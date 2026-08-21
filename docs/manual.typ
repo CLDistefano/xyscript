@@ -1251,6 +1251,11 @@ have run this session back into the prompt. #raw("cd") is understood and changes
 itself is yours: #raw("SHPROMPT \"$CWD> \"") sets it (quote it to keep the trailing space; #raw("$CWD")
 and other #raw("$")-fields expand), and #raw("SaveCfg") remembers it.
 
+Colour comes through too: if a command emits *ANSI colour codes* (for example #raw("grep --color=always")
+or #raw("git -c color.ui=always …")), the Console shows the colour rather than the raw escape codes —
+the codes are turned into the same per-range styling #raw("MDA") uses, so coloured output reads cleanly
+and can still be copied as plain text.
+
 A running command can also *read your input*. While a command is running, what you type at the tail and
 send with #kbd("Enter") goes to the command's standard input — so a program that asks a question
 (#raw("Name? ")) gets your answer on the same line, and a filter like #raw("sort") reads the lines you
