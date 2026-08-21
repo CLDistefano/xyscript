@@ -68,9 +68,9 @@
   audience includes anyone who is serious about writing. It's especially well-suited to writers who want
   fine-grained control over their working environment.
 
-  The user manual (`manual.pdf`) provides an introduction and guided tour. New users can get started
+  This user manual (`manual.pdf`) provides an introduction and guided tour. New users can get started
   quickly by using the menus and an array of familiar keyboard shortcuts for editing and file management
-  (see User Manual, § 13.1).
+  (see Key Bindings, § 13.1, below).
 
   The command reference (`reference.pdf`) is the unabridged guide to XyScript's feature set, organized
   alphabetically and by topic. Those features include:
@@ -87,25 +87,25 @@
   - Code writing aids including auto-indent, bracket-matching, auto-close brackets and quotes
   - Editable hex view for binary and other files
   - Highly configurable keyboard, including the ability to create non-standard modifier keys and add-on functionality such as dead accents
-  - Easy access to shell commands and a tight interface with the operating system (stdout to editor)
-  - A command line giving immediate access to all features and options
+  - Easy access to shell commands via a freely-editable Console tab, and tight integration with the underlying operating system (stdout to editor)
+  - A command line that gives immediate access to all features and options
 
-  A powerful scripting language---the XyScript Programming Language (XPL)---knits it together into a
-  cohesive, endlessly configurable writing environment.
+  A powerful scripting language---the XyScript Programming Language (XPL)---binds it all together to form a
+  cohesive, endlessly malleable writing environment.
 
   XyScript is modeled on the classic DOS word-processor XyWrite, which enjoyed wide popularity in the
-  newspaper and magazine industries in the 1980s and '90s. XyWrite's hallmark was its lean,
-  command-driven interface; it was well-known not only for its speed, customizability, and ability to
+  newspaper and magazine publishing industries in the 1980s and ’90s. XyWrite's hallmark was its lean,
+  command-driven interface; it was well-known not only for its speed and ability to
   automate repetitive tasks, but also for its potential to liberate the writer from the tyranny of menu
   and mouse by providing a minimalist environment that aids---or, at least, does not hinder---the
   creative process. XyScript pays homage to that tradition, and aspires to give it new vitality.
 
-  I created XyScript over a period of months using Claude Code (Opus 4.8); it remains a work in progress.
-  The source code is written in the Rust programming language. The creative process was (and is) a slow
+  I developed XyScript using Claude Code (Opus 4.8); it is still a work in progress.
+  The source code is written in the Rust programming language. The process of creation was (and will continue to be) a slow
   and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see
-  #link("https://xywrite.org/xywwweb") and #link("https://www.freelists.org/list/xywrite")). I had
+  #link("https://xywrite.org/xywwweb"), #link("https://xywrite.org/XySearch/XySearch.php"), and #link("https://www.freelists.org/list/xywrite")). I had
   invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated
-  users who remain devoted to XyWrite decades after its heyday. Ultimately, I intend to release XyScript
+  users who remain devoted to the program decades after its heyday. Ultimately, I intend to release XyScript
   as an open-source application, to be further developed, for non-commercial purposes, by anyone wishing
   to do so.
 
