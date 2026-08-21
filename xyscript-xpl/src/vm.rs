@@ -2989,6 +2989,11 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetAnsiColor(want))?;
                 Ok(Flow::Next)
             }
+            // `CLS` / `CLEAR` — clear the Console scrollback.
+            "CLS" | "CLEAR" => {
+                self.host_op(EditorOp::ConsoleClear)?;
+                Ok(Flow::Next)
+            }
             "PV" | "PREVIEW" => {
                 let a = args.trim();
                 let kind = if a.is_empty() {

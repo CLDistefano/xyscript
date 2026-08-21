@@ -9981,6 +9981,26 @@ mod tests {
     }
 
     #[test]
+    fn console_cls_clears_the_scrollback() {
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        console_run(&mut e, "echo one");
+        drain_jobs(&mut e);
+        assert!(e.document().text().contains("one"));
+        // The CLS verb clears the Console and leaves a fresh prompt.
+        e.run_command("CLS");
+        let text = e.document().text();
+        assert!(!text.contains("one"), "scrollback cleared: {text:?}");
+        assert!(text.ends_with("> "), "fresh prompt after clear: {text:?}");
+        // Typing `clear` at the prompt does the same, spawning no process.
+        console_run(&mut e, "echo two");
+        drain_jobs(&mut e);
+        console_run(&mut e, "clear");
+        assert!(!e.document().text().contains("two"), "clear at the prompt cleared it");
+        assert_eq!(e.job_count(), 0, "clear spawned nothing");
+    }
+
+    #[test]
     fn ansicolor_toggles_persists_and_gates_colouring() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

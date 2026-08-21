@@ -331,6 +331,8 @@ pub enum EditorOp {
     /// `ANSICOLOR on|off` (`None` toggles) — whether Console output is ANSI-coloured. `$ANSICOLOR`;
     /// SaveCfg; default on. Off leaves the raw escape codes in the text.
     SetAnsiColor(Option<bool>),
+    /// `CLS` / `CLEAR` — empty the Console scrollback and write a fresh prompt.
+    ConsoleClear,
     /// Request the GUI's GREP dialog (bare `GREP` with no pattern). The GUI drains it and opens the
     /// dialog; headless hosts just record it.
     OpenGrepDialog,

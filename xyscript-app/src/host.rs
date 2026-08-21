@@ -4174,6 +4174,23 @@ impl AppHost {
         self.console_dirty = true; // reveal the fresh prompt
     }
 
+    /// `CLS` / `CLEAR` — empty the Console scrollback and start fresh. A fresh prompt is written unless
+    /// a command is still running (its output keeps streaming into the cleared buffer). History is
+    /// kept (Shift+Up still recalls). Reuses the Console doc, so its tab/pane identity is unchanged.
+    pub fn console_clear(&mut self) {
+        let idx = self.shell_output_doc_index();
+        self.docs[idx].console_clear();
+        self.console_prompt_at = 0;
+        self.console_prompt_len = 0;
+        self.console_input_at = 0;
+        self.console_showing = false;
+        self.console_ansi.reset();
+        if !self.console_command_running() {
+            self.console_write_prompt();
+        }
+        self.console_dirty = true;
+    }
+
     /// Handle Enter in the Console. Returns `false` — so the GUI inserts a normal newline — unless the
     /// Console is the active tab AND the caret is at the very end (typing at the tail, not editing
     /// scrollback). Then: with a prompt showing, the input line is committed and RUN; while a command
@@ -4300,6 +4317,12 @@ impl AppHost {
     fn console_run_command(&mut self, cmd: &str) {
         if cmd.is_empty() {
             self.console_write_prompt();
+            return;
+        }
+        // `cls` / `clear` at the prompt clears the CONSOLE (not the OS screen, which a piped child
+        // couldn't do usefully anyway) — the same as the `CLS`/`CLEAR` verb.
+        if cmd.eq_ignore_ascii_case("cls") || cmd.eq_ignore_ascii_case("clear") {
+            self.console_clear();
             return;
         }
         if let Some(arg) = parse_cd(cmd) {
@@ -9701,6 +9724,10 @@ impl Host for AppHost {
                     "ANSICOLOR {}",
                     if self.ansi_color { "on" } else { "off" }
                 )));
+            }
+            EditorOp::ConsoleClear => {
+                self.console_clear();
+                return Ok(Value::str("console cleared"));
             }
             EditorOp::OpenGrepDialog => {
                 self.grep_dialog_requested = true;

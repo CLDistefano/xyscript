@@ -760,6 +760,23 @@ impl Document {
         n
     }
 
+    /// Clear the Console: empty the buffer and its colour/attribute spans, non-recording. Used by
+    /// `CLS` / `CLEAR`; the host then writes a fresh prompt.
+    pub fn console_clear(&mut self) {
+        let len = self.buffer.len();
+        if len > 0 {
+            self.buffer.replace_range_bytes(0, len, &[]);
+        }
+        self.color_spans.clear();
+        self.bg_spans.clear();
+        self.attr_spans.clear();
+        self.buffer.set_caret(0, None);
+        self.undo.clear();
+        self.redo.clear();
+        self.saved_len = Some(0);
+        self.gen = next_content_gen();
+    }
+
     /// Replace the Console's current input — everything from byte `at` (just after the prompt) to the
     /// end — with `text`, non-recording, caret to the new end. Used by Shift+Up/Down history recall.
     pub fn console_replace_input(&mut self, at: usize, text: &str) {

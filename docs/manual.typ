@@ -1269,7 +1269,8 @@ From a script it is often simpler to run a command directly: #raw("X <command>")
 output to the Console; #raw("XY <command>") inserts the output at the cursor instead. Either way,
 shell-out is *disabled by default* and must be enabled with #raw("TRUST 1"), so a stray command can't
 reach the operating system by accident; #raw("$TR") reports whether it is on. Shell commands run in your
-working directory (#raw("$CWD"), set with #raw("CD")). #raw("SW") shows or hides the Console tab.
+working directory (#raw("$CWD"), set with #raw("CD")). #raw("SW") shows or hides the Console tab, and
+#raw("CLS") (or #raw("CLEAR"), or just typing #raw("cls")/#raw("clear") at the prompt) clears it.
 
 Your working directory is shown on the status line by default; #raw("PAPLACE cmline") moves it to the
 front of the command line instead (#raw("PAPLACE status") puts it back). A long path is shortened to

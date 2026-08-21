@@ -145,7 +145,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // GUI view toggles (B15): menu bar / visible-¶ / visible-whitespace / line-number
     // gutter / pop-up command line, each S=on C=off T=toggle.
     "SMB", "CMB", "TMB", "SVR", "CVR", "TVR", "SWS", "CWS", "TWS", "SLN", "CLN", "TLN",
-    "SGC", "CGC", "TGC", "SW", "SHELLWIN", "SH", "SHELL", "SHPROMPT", "ANSICOLOR", "PV", "PREVIEW", "AR", "LOADAR", "SAVEAR", "CLEARAR",
+    "SGC", "CGC", "TGC", "SW", "SHELLWIN", "SH", "SHELL", "SHPROMPT", "ANSICOLOR", "CLS", "CLEAR", "PV", "PREVIEW", "AR", "LOADAR", "SAVEAR", "CLEARAR",
     // GUI sizing knobs (B16): UI zoom / chrome+editor font pt / line-spacing / margins,
     // plus reset.
     "UISCALE", "UIFONT", "EDFONT", "LEADING", "LSP", "OF", "OFL", "OFR", "UIRESET",
