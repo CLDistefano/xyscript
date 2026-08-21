@@ -1080,3 +1080,75 @@ fn calc_on_the_command_line_with_no_selection_prompts() {
         e.status_message()
     );
 }
+
+// ---- Cursor addition: CLRSUM / ADDSUM / PUTSUM + $RUNSUM -------------------------
+
+#[test]
+fn sum_clrsum_addsum_putsum_flow() {
+    // CLRSUM resets, ADDSUM adds the number under the caret, $RUNSUM reads the running total,
+    // and PUTSUM writes it into the document.
+    let (mut e, _c) = sample_editor();
+    e.run_command("CLRSUM");
+    assert_eq!(e.special_str("RUNSUM"), "0");
+    e.insert_literal("10"); // caret lands at the end of the number
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "10");
+    e.run_command("ENTER");
+    e.insert_literal("20");
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "30");
+    e.run_command("ENTER");
+    e.run_command("PUTSUM");
+    assert!(nl(&e.document().text()).ends_with("\n30"), "PUTSUM writes the total: {:?}", e.document().text());
+    assert!(e.last_error().is_none());
+    // CLRSUM starts over.
+    e.run_command("CLRSUM");
+    assert_eq!(e.special_str("RUNSUM"), "0");
+}
+
+#[test]
+fn sum_strips_currency_and_thousands_and_sums_floats() {
+    // A leading currency sign and thousands-separators are stripped; a leading `-` is kept; floats and
+    // integers mix. DECIMALS 2 keeps the float display exact.
+    let (mut e, _c) = sample_editor();
+    e.run_command("DECIMALS 2");
+    e.run_command("CLRSUM");
+    e.insert_literal("$1,234.56");
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "1234.56");
+    e.run_command("ENTER");
+    e.insert_literal("-42");
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "1192.56");
+    e.run_command("ENTER");
+    e.insert_literal("3,000");
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "4192.56");
+}
+
+#[test]
+fn sum_addsum_reads_the_number_the_caret_is_within() {
+    // The caret need only be ON the number (here in the middle of it), not at its start.
+    let (mut e, _c) = sample_editor();
+    e.run_command("CLRSUM");
+    e.insert_literal("500 apples");
+    e.run_command("TOP"); // caret to the "5"
+    e.run_command("RIGHT");
+    e.run_command("RIGHT"); // caret now between the second "0" and the space — still within "500"
+    e.run_command("ADDSUM");
+    assert_eq!(e.special_str("RUNSUM"), "500");
+}
+
+#[test]
+fn sum_addsum_errors_off_a_number_and_leaves_the_total() {
+    let (mut e, _c) = sample_editor();
+    e.run_command("CLRSUM");
+    e.insert_literal("hello");
+    e.run_command("ADDSUM");
+    assert!(
+        e.status_message().map(|s| s.starts_with("ADDSUM:")).unwrap_or(false),
+        "expected an ADDSUM error, got {:?}",
+        e.status_message()
+    );
+    assert_eq!(e.special_str("RUNSUM"), "0", "a failed ADDSUM leaves the total untouched");
+}

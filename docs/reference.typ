@@ -408,6 +408,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 == Calculating
 
 / #cmd("CALC"): a calculator. `CALC <expr>` reports the value and copies it; bare `CALC` evaluates the current line (or sums selected lines) into the document. #sv("CALC") reads back the last result.
+/ #cmd("CLRSUM") / #cmd("ADDSUM") / #cmd("PUTSUM"): cursor addition (XyWrite-style) — reset a running total / add the number under the caret to it / put the total at the caret. #sv("RUNSUM") reads the total.
 
 == Files
 
@@ -629,6 +630,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. If the buffer is showing in a split pane, that pane is undone too (its space goes back to the neighbor) — closing the file and its pane is a single operation. To un-split *without* closing the file, use #cmd("TUS").
 / #cmd("ABD"): delete the active document's file from disk and close it — `/V` confirms first.
 / #cmd("ADDLIB"): merge a `.lib` library into the loaded user library.
+/ #cmd("ADDSUM"): cursor addition — add the number the caret is on to the running total (#sv("RUNSUM")). The number token at (or just after) the caret on the current line is taken; a leading currency sign (`$`, `€`, `£`, `¥`, `₩`, `₹`) and thousands-separating commas are stripped, a leading `-` is kept, and integers and floats may be mixed. The status line shows what was added and the new total, both honouring #cmd("DECIMALS"). It is an error (no edit) if the caret is not on a number. Reset with #cmd("CLRSUM"); write the total with #cmd("PUTSUM"). #ex("CLRSUM ; INSERT \"1,024\" ; ADDSUM ; PR $RUNSUM", "1024")
 / #cmd("APPEND"): add the selection to the end of the clipboard.
 / #cmd("AR"): auto-replace — swap the word behind the caret for its loaded value (see `LoadAR`). The expansion MATCHES THE CASE you typed the key in, so one entry `equ=equilibrium` covers all three: `equ` → `equilibrium`, `Equ` → `Equilibrium`, `EQU` → `EQUILIBRIUM`. A key typed in lower case (or in a mixed pattern like `eQu`) reproduces the value exactly as written, so a deliberately-capitalized value such as `usa=United States of America` survives; and an exactly-matching key always wins over case-matching, so you can still define `equ` and `EQU` separately. If that value begins with `#`, the rest is run as XPL instead of inserted (and `AR` then stops the rest of its key's command chain — so `AR;" "` won't add the space); XPL values are never recased.
 / #cmd("ATTACH"): stage a file to send with the next #cmd("SENDMAIL") — `ATTACH <path>` (resolved against `$CWD`; a missing file errors and stages nothing). Bare `ATTACH` lists the staged files, `$ATTACH` reads them (comma-separated), and #cmd("CLEARATTACH") empties the list. The send consumes the list, so the next message starts clean. (In a compose header block you can add `Attach:` lines instead.)
@@ -677,6 +679,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("CLEARKBD"): reset the keyboard map to the built-in baseline.
 / #cmd("CLERR"): clear the `$ERROR` flag (and #cmd("SETERR") sets it).
 / #cmd("CLIP"): set the clipboard from a string argument.
+/ #cmd("CLRSUM"): cursor addition — (re)set the running total (#sv("RUNSUM")) to 0. The companion of #cmd("ADDSUM") (add the number under the caret) and #cmd("PUTSUM") (put the total). The total is session-only and global (one register), so start a fresh column with `CLRSUM`.
 / #cmd("CMH"): stash a command at the top of the history without running it — bare uses the command line, `CMH "command"` uses that string.
 / #cmd("CMBLANK"): whether the command line is blanked after a command runs from it — `CMBLANK on|off` (bare toggles). Off (the default) keeps the command on the line for re-running or editing (XyWrite-style); `on` clears it after each command (via Enter or `XC`). Read back via `$CMBLANK`; persists in the config.
 / #cmd("SHOWONETAB"): whether the tab strip shows when only one file is open — `SHOWONETAB on|off` (bare toggles). Off (the default) hides the strip for a lone document to keep it uncluttered; `on` always shows it. Read back via `$SHOWONETAB`; persists in the config.
@@ -847,6 +850,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("PATHLEN"): max width (characters) of the displayed `$CWD` path — `PATHLEN n` (bare reports it). A longer path keeps the drive and the trailing directories, eliding the middle with `...`. Read back via `$PATHLEN`; persists in the config.
 / #cmd("PICK", "CHOOSE"): pop a list chooser and put the picked item in a variable — `PICK <var> ["title"] <list-expr>` (the list is an expression yielding an array; `/I` returns the 1-based index instead of the item). Cancelling leaves the variable empty and sets `$ERROR`. Arrow/type-to-find to choose; Enter picks, Esc cancels.
 / #cmd("PR"): print to the status line / script output. #cmd("PUT"): the same, but insert the (substituted) text at the caret instead.
+/ #cmd("PUTSUM"): cursor addition — insert the running total (#sv("RUNSUM")) at the caret, formatted with #cmd("DECIMALS"). Recorded (undoable). Build the total with #cmd("CLRSUM") (reset) and #cmd("ADDSUM") (add the number under the caret), then `PUTSUM` drops it into the text.
 / #cmd("PREPEND"): add the selection to the start of the clipboard.
 / #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane on the right (no arg toggles; `on`/`off` set). A Markdown/GFM #emph[or authored-Typst] document's #cmd("MDA") styling shows in the preview just as it will in #cmd("TOPDF").
 / #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE"): the font for *Markdown* rendering — used by both the live Preview pane and the `TOPDF` export. `PVFAMILY <name>` sets the body typeface, `PVSIZE <n>` the body size in points, `PVCODE <name>` the monospace family for `code` spans and fenced blocks. Each takes `default` (or empty) to revert to Typst's built-in. Only installed fonts render (else Typst falls back). Authored-Typst documents style themselves and ignore these. Read back via `$PVFAMILY`/`$PVSIZE`/`$PVCODE`; persists in the config.
@@ -1378,6 +1382,7 @@ Every special variable in one list, for quick lookup.
 / #sv("ANSICOLOR"): `1` if Console output is ANSI-coloured, `0` if shown raw (`ANSICOLOR`).
 / #sv("SL"): selected character count.
 / #sv("SMTPURL"): SMTP submission URL for sending.
+/ #sv("RUNSUM"): the cursor-addition running total (`CLRSUM`/`ADDSUM`/`PUTSUM`), formatted with `DECIMALS`.
 / #sv("SW"): *Console* tab visible.
 / #sv("TABACTIVE"): active-tab color.
 / #sv("TABHOVER"): hover-tab color.

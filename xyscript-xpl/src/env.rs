@@ -79,7 +79,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "DA", "TM", "ET", "ETS",
     "YEAR", "MON", "MDAY", "HOUR", "MIN", "SEC", "MSEC", "WDAY", "YDAY",
     // shell
-    "RC", "LS", "TR", "XO", "JOBS", "LJ", "CALC",
+    "RC", "LS", "TR", "XO", "JOBS", "LJ", "CALC", "RUNSUM",
     // language checking (live-on flags + dialect + underline styles + spell engine/dicts/binary)
     "SPELLING", "GRAMMAR", "DIALECT", "SPELLSTYLE", "GRAMMARSTYLE", "SPELLENGINE", "SPELLDICT", "SPELLBIN",
     // UI localization: path of the loaded LANG catalog (empty = built-in English)

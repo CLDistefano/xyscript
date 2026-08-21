@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    HelpResponse, Host, LockKey, Motion, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    HelpResponse, Host, LockKey, Motion, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -82,6 +82,31 @@ fn drive_of(path: &Path) -> Option<char> {
     let b = s.as_bytes();
     (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
         .then(|| b[0].to_ascii_uppercase() as char)
+}
+
+/// The regex matching a numeric token for cursor addition (`ADDSUM`), built once. Accepts an optional
+/// leading sign, an optional currency symbol (either order), thousands-separated or plain digits, and an
+/// optional decimal part (or a bare `.5`). Currency/separators are stripped by [`clean_number`].
+fn number_token_regex() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r"[-+]?[$€£¥₩₹]?[-+]?(?:\d[\d,]*(?:\.\d+)?|\.\d+)")
+            .expect("number-token regex is valid")
+    })
+}
+
+/// Normalize a matched number token for parsing: drop currency symbols, spaces, and thousands-separator
+/// commas, keeping only the digits and one decimal point, with a leading `-` if the token was negative
+/// (a sign anywhere in the prefix before the first digit — `-$5` and `$-5` are both negative).
+fn clean_number(raw: &str) -> String {
+    let first_digit = raw.find(|c: char| c.is_ascii_digit() || c == '.').unwrap_or(raw.len());
+    let negative = raw[..first_digit].contains('-');
+    let mut out = String::new();
+    if negative {
+        out.push('-');
+    }
+    out.extend(raw.chars().filter(|&c| c.is_ascii_digit() || c == '.'));
+    out
 }
 
 /// A command that is EXACTLY a bare drive letter (`X:` — letter + colon, nothing after) → that
@@ -2462,6 +2487,9 @@ pub struct AppHost {
     console_hist_pos: Option<usize>,
     /// The last `CALC` result string, read back as `$CALC`. Session-only.
     last_calc: String,
+    /// The running total for cursor addition (`CLRSUM`/`ADDSUM`/`PUTSUM`), read back as `$SUM`. Kept as
+    /// a `Number` (full precision; formatted with `DECIMALS` on read/put). Session-only, global.
+    sum_total: Number,
     /// Streaming ANSI-SGR parser for Console output: escapes are stripped and turned into MDA colour /
     /// attribute spans. Reset between commands (and before our own `(exit N)`/`^C`) so leftover colour
     /// never bleeds across.
@@ -2858,6 +2886,7 @@ impl AppHost {
             console_history: Vec::new(),
             console_hist_pos: None,
             last_calc: String::new(),
+            sum_total: Number::Int(0),
             console_ansi: crate::ansi::AnsiState::new(),
             ansi_color: true,
             auto_replace: std::collections::HashMap::new(),
@@ -3450,6 +3479,26 @@ impl AppHost {
     /// The active document (read-only).
     pub fn active_doc(&self) -> &Document {
         &self.docs[self.active]
+    }
+
+    /// Cursor addition (`ADDSUM`): the cleaned numeric text of the number token at (or just after) the
+    /// caret on the current line — currency signs and thousands-separators stripped, a leading sign
+    /// kept — ready to parse as a `Number`. `Err` when the caret is not on a number.
+    fn number_under_cursor(&self) -> Result<String, String> {
+        let b = self.active_doc().buffer();
+        let cur = b.cursor();
+        let line = b.line_of(cur);
+        let (line_start, _line_end) = b.line_byte_range(line);
+        let text = b.line_text(line); // the line's content, without its trailing break
+        let col = cur.saturating_sub(line_start); // caret's byte offset within the line
+        // The number token the caret sits on: its span [s, e] contains the caret (end inclusive, so the
+        // caret just past the last digit still counts). Pick the first such token on the line.
+        let span = number_token_regex()
+            .find_iter(&text)
+            .map(|m| (m.start(), m.end()))
+            .find(|&(s, e)| col >= s && col <= e);
+        let (s, e) = span.ok_or_else(|| "no number under the cursor".to_string())?;
+        Ok(clean_number(&text[s..e]))
     }
 
     /// Active document's file name (or `None` if untitled).
@@ -11859,6 +11908,9 @@ impl Host for AppHost {
             "SHPROMPT" => Some(Value::str(self.console_prompt.clone())),
             "ANSICOLOR" => Some(Value::Int(if self.ansi_color { 1 } else { 0 })),
             "CALC" => Some(Value::str(self.last_calc.clone())), // last CALC result
+            "RUNSUM" => Some(Value::str(
+                Value::from_number(self.sum_total.clone()).to_str_dp(self.float_decimals),
+            )), // cursor-addition running total
             "PV" => Some(Value::Int(if self.preview_visible { 1 } else { 0 })),
             "AR" => Some(Value::str(self.last_ar_path.clone().unwrap_or_default())), // last LoadAR path
             "HLAUTO" => Some(Value::Int(if self.hl_auto { 1 } else { 0 })),
@@ -12574,6 +12626,28 @@ impl Host for AppHost {
 
     fn set_last_calc(&mut self, text: &str) {
         self.last_calc = text.to_string();
+    }
+
+    fn sum_clear(&mut self) {
+        self.sum_total = Number::Int(0);
+    }
+
+    fn sum_add_under_cursor(&mut self) -> Result<(String, String), String> {
+        let cleaned = self.number_under_cursor()?;
+        let addend = Value::str(cleaned.as_str())
+            .to_number()
+            .map_err(|_| format!("not a number: `{cleaned}`"))?;
+        self.sum_total = Number::add(&self.sum_total, &addend);
+        let dp = self.float_decimals;
+        let added = Value::from_number(addend).to_str_dp(dp);
+        let total = Value::from_number(self.sum_total.clone()).to_str_dp(dp);
+        Ok((added, total))
+    }
+
+    fn sum_put(&mut self) -> String {
+        let total = Value::from_number(self.sum_total.clone()).to_str_dp(self.float_decimals);
+        self.active().insert(&total);
+        total
     }
 
     fn jump_to_offset(&mut self, offset: usize) -> VmResult<()> {

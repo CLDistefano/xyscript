@@ -3086,6 +3086,31 @@ impl Vm<'_, '_> {
                 }
                 Ok(Flow::Next)
             }
+            "CLRSUM" => {
+                // Cursor addition: (re)set the running total to 0.
+                self.ctx.host.sum_clear();
+                *self.ctx.status = Some("running total cleared (sum = 0)".to_string());
+                Ok(Flow::Next)
+            }
+            "ADDSUM" => {
+                // Add the number under the caret to the running total.
+                match self.ctx.host.sum_add_under_cursor() {
+                    Ok((added, total)) => {
+                        *self.ctx.status = Some(format!("+ {added}  (sum = {total})"));
+                    }
+                    Err(e) => {
+                        self.ctx.env.error = true;
+                        *self.ctx.status = Some(format!("ADDSUM: {e}"));
+                    }
+                }
+                Ok(Flow::Next)
+            }
+            "PUTSUM" => {
+                // Put the running total at the caret.
+                let total = self.ctx.host.sum_put();
+                *self.ctx.status = Some(format!("sum = {total}"));
+                Ok(Flow::Next)
+            }
             "PV" | "PREVIEW" => {
                 let a = args.trim();
                 let kind = if a.is_empty() {
@@ -5214,6 +5239,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "RUN", "RUNCODE", "RUNHERE",
     // `SH`/`SHELL` open the Console tab — land the caret at its prompt, not back on the CMline.
     "SH", "SHELL",
+    // Cursor addition acts at the caret (read a number / insert the total) — keep focus in the text.
+    "ADDSUM", "PUTSUM",
 ];
 
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if

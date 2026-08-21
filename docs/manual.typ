@@ -515,6 +515,31 @@ reminds you to put the cursor on a line first.
 The last result is always available as #raw("$CALC"), and every answer honours your #raw("DECIMALS")
 setting, so #raw("DECIMALS 2") rounds the display to two places.
 
+=== Cursor addition
+
+When the figures are already sitting in the document — a column of prices, a list of amounts — you rarely
+want to retype them into an expression. #emph[Cursor addition] adds them in place, XyWrite-style, with a
+running total you build up number by number. Three commands drive it:
+
+/ #raw("CLRSUM"): reset the running total to zero — start of a fresh column.
+/ #raw("ADDSUM"): add the number the cursor is sitting on to the total.
+/ #raw("PUTSUM"): drop the running total into the text at the cursor.
+
+Put the cursor on a number and run #raw("ADDSUM"); move to the next and run it again; when you have gone
+down the column, position the cursor where the total belongs and run #raw("PUTSUM"). The status line shows
+each addition and the new subtotal as you go, and #raw("$RUNSUM") holds the total at any moment.
+
+#raw("ADDSUM") is forgiving about how the number is written: a leading currency sign and thousands-separating
+commas are stripped before it is read, a leading minus is kept, and integers and decimals mix freely — so
+#raw("$1,234.56"), #raw("-42"), and #raw("3000") all add cleanly. The cursor need only be #emph[on] the
+number (anywhere within it, or just past its last digit); if it is not on a number, #raw("ADDSUM") says so
+and leaves the total untouched. The total is formatted with your #raw("DECIMALS") setting, both on the
+status line and when #raw("PUTSUM") writes it, so #raw("DECIMALS 2") keeps currency to the penny.
+
+#tip("Add a column with two keys")[Bind #raw("ADDSUM") and #raw("PUTSUM") to keys (see *Key Bindings*):
+#raw("CLRSUM"), then tap the add key down the column, and tap the put key at the bottom. The running total
+is global, so one #raw("CLRSUM") starts each new column.]
+
 == Coding aids
 
 Writing code — or any structured, indented text — is smoother with a handful of optional helpers. Each

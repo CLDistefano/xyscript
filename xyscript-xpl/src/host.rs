@@ -1698,6 +1698,21 @@ pub trait Host {
     fn calc_set_clipboard(&mut self, _text: &str) {}
     /// Remember the last `CALC` result string (read back as `$CALC`). Default: no-op.
     fn set_last_calc(&mut self, _text: &str) {}
+
+    /// Cursor-addition (XyWrite-style): reset the running total (`$SUM`) to 0 (`CLRSUM`). Default: no-op.
+    fn sum_clear(&mut self) {}
+    /// Add the number under the caret to the running total (`ADDSUM`): the number token at (or just
+    /// after) the caret, with any leading currency sign and thousands-separators stripped. Returns
+    /// `(added, total)` — both display-formatted (honouring `DECIMALS`) — or an error string (no number
+    /// under the caret, or an unparseable token). Default: unavailable.
+    fn sum_add_under_cursor(&mut self) -> Result<(String, String), String> {
+        Err("cursor addition is unavailable".to_string())
+    }
+    /// Insert the running total at the caret (`PUTSUM`), recorded (undoable). Returns the inserted
+    /// (display-formatted) total. Default: no-op, empty string.
+    fn sum_put(&mut self) -> String {
+        String::new()
+    }
     /// Move the active document's caret to byte `offset` and scroll it into view. Used by the
     /// `MARKLIST` chooser on resume. Default: unavailable.
     fn jump_to_offset(&mut self, _offset: usize) -> VmResult<()> {
