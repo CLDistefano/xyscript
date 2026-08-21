@@ -56,6 +56,67 @@
 ]
 #pagebreak()
 
+// ---------------------------------------------------------------------------------------------------
+// Foreword (front matter — unnumbered so it does not renumber the chapters; by Carl L. Distefano).
+// The `#show link: underline` is scoped to this block so links elsewhere keep the manual's plain style.
+// ---------------------------------------------------------------------------------------------------
+#[
+  #show link: underline
+  #heading(numbering: none, outlined: true)[Foreword]
+
+  XyScript is a cross-platform, multilingual text editor with a host of powerful features. The intended
+  audience includes anyone who is serious about writing. It's especially well-suited to writers who want
+  fine-grained control over their working environment.
+
+  The user manual (`manual.pdf`) provides an introduction and guided tour. New users can get started
+  quickly by using the menus and an array of familiar keyboard shortcuts for editing and file management
+  (see User Manual, § 13.1).
+
+  The command reference (`reference.pdf`) is the unabridged guide to XyScript's feature set, organized
+  alphabetically and by topic. Those features include:
+
+  - Customizable user interface: fonts, colors, 18 included languages and a template for adding others
+  - Live preview and print-to-PDF for text, HTML, #link("https://github.github.com/gfm/", "Markdown"), and #link("https://typst.app", "Typst") files
+  - Built-in #link("https://writewithharper.com", "Harper") spelling and grammar checking for English, with optional support for multilingual spell-checking via #link("https://hunspell.github.io", "Hunspell")
+  - Multiple search facilities (Find, Grep, Bookmarks, word/phrase highlighting)
+  - Auto-replace for inserting boilerplate and correcting typos on the fly
+  - Built-in dark and light themes, plus an expandable collection of user-defined color schemes
+  - Writer's View for distraction-free editing
+  - Syntax highlighting, user-customizable and extensible
+  - Multi-cursor/multi-selection editing
+  - Code writing aids including auto-indent, bracket-matching, auto-close brackets and quotes
+  - Editable hex view for binary and other files
+  - Highly configurable keyboard, including the ability to create non-standard modifier keys and add-on functionality such as dead accents
+  - Easy access to shell commands and a tight interface with the operating system (stdout to editor)
+  - A command line giving immediate access to all features and options
+
+  A powerful scripting language---the XyScript Programming Language (XPL)---knits it together into a
+  cohesive, endlessly configurable writing environment.
+
+  XyScript is modeled on the classic DOS word-processor XyWrite, which enjoyed wide popularity in the
+  newspaper and magazine industries in the 1980s and '90s. XyWrite's hallmark was its lean,
+  command-driven interface; it was well-known not only for its speed, customizability, and ability to
+  automate repetitive tasks, but also for its potential to liberate the writer from the tyranny of menu
+  and mouse by providing a minimalist environment that aids---or, at least, does not hinder---the
+  creative process. XyScript pays homage to that tradition, and aspires to give it new vitality.
+
+  I created XyScript over a period of months using Claude Code (Opus 4.8); it remains a work in progress.
+  The source code is written in the Rust programming language. The creative process was (and is) a slow
+  and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see
+  #link("https://xywrite.org/xywwweb") and #link("https://www.freelists.org/list/xywrite")). I had
+  invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated
+  users who remain devoted to XyWrite decades after its heyday. Ultimately, I intend to release XyScript
+  as an open-source application, to be further developed, for non-commercial purposes, by anyone wishing
+  to do so.
+
+  #v(6pt)
+  Carl L. Distefano \
+  New York City \
+  21 August 2026
+]
+
+#pagebreak()
+
 // Table of contents
 #outline(title: "Contents", depth: 2, indent: auto)
 
