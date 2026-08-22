@@ -33,6 +33,21 @@ SELBGCOLOR 25 25 25
 # Selected-text colour — R G B, 0-255
 SELFGCOLOR 110 100 100
 
+# Highlight URLs and Ctrl+click to open them — on | off
+URLHIGHLIGHT on
+
+# URL highlight text colour — R G B, 0-255
+URLFGCOLOR 220 220 116
+
+# URL highlight background colour — R G B, 0-255
+URLBGCOLOR 15 15 15
+
+# Bookmark gutter dot colour — R G B, 0-255
+MARKFGCOLOR 207 179 129
+
+# Bookmark gutter background colour — R G B, 0-255
+MARKBGCOLOR 15 15 15
+
 # FIND highlight background colour — R G B, 0-255
 FINDBGCOLOR 56 96 21
 
