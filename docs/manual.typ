@@ -91,7 +91,7 @@
   - A command line that gives immediate access to all features and options
 
   A powerful scripting language---the XyScript Programming Language (XPL)---binds it all together to form a
-  cohesive, endlessly malleable writing environment.
+  cohesive, endlessly adaptable writing instrument.
 
   XyScript is modeled on the classic DOS word-processor XyWrite, which enjoyed wide popularity in the
   newspaper and magazine publishing industries in the 1980s and ’90s. XyWrite's hallmark was its lean,
@@ -100,12 +100,12 @@
   and mouse by providing a minimalist environment that aids---or, at least, does not hinder---the
   creative process. XyScript pays homage to that tradition, and aspires to give it new vitality.
 
-  I developed XyScript using Claude Code (Opus 4.8); it is still a work in progress.
+  I developed XyScript using Claude Code (Opus 4.8); it's still a work in progress.
   The source code is written in the Rust programming language. The process of creation was (and will continue to be) a slow
   and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see
   #link("https://xywrite.org/xywwweb"), #link("https://xywrite.org/XySearch/XySearch.php"), and #link("https://www.freelists.org/list/xywrite")). I had
   invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated
-  users who remain devoted to the program decades after its heyday. Ultimately, I intend to release XyScript
+  users who remain devoted to this program many years past its heyday. Ultimately, I intend to release XyScript
   as an open-source application, to be further developed, for non-commercial purposes, by anyone wishing
   to do so.
 
