@@ -266,6 +266,39 @@ impl Editor {
     pub fn mark_gutter(&self) -> bool {
         self.host.mark_gutter()
     }
+    /// Whether the bookmark-gutter strip is reserved even with no bookmarks (`MARKGUTTER persist`).
+    pub fn mark_gutter_persist(&self) -> bool {
+        self.host.mark_gutter_persist()
+    }
+    /// Whether URL highlighting + Ctrl+click-to-open is on (`URLHIGHLIGHT`).
+    pub fn url_highlight(&self) -> bool {
+        self.host.url_highlight()
+    }
+    /// The URL spans (rope offsets) in the active document, for highlighting + Ctrl+click hit-testing.
+    pub fn url_highlights(&self) -> Vec<(usize, usize)> {
+        self.host.url_highlights()
+    }
+    /// The EFFECTIVE URL-highlight text colour (`URLFGCOLOR`, default link blue).
+    pub fn url_fg_color(&self) -> (u8, u8, u8) {
+        self.host.url_fg_color()
+    }
+    /// The URL-highlight background colour (`None` = no band).
+    pub fn url_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.host.url_bg_color()
+    }
+    /// Open a URL in the OS default application (a Ctrl+click on a highlighted URL).
+    pub fn open_url(&mut self, url: &str) {
+        self.host.open_url(url)
+    }
+    /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`).
+    pub fn auto_reopen(&self) -> bool {
+        self.host.auto_reopen()
+    }
+    /// `AUTOREOPEN` poll: reload any open file whose on-disk copy changed (clean buffers only). Returns
+    /// status notes to surface. The GUI calls this on a throttled timer.
+    pub fn poll_external_changes(&mut self) -> Vec<String> {
+        self.host.poll_external_changes()
+    }
 
     /// The 0-based logical line of each bookmark in the active document, for the gutter glyphs.
     pub fn mark_lines(&self) -> Vec<usize> {
@@ -2472,6 +2505,99 @@ mod tests {
         assert_eq!(e.host().active_doc().file_name().as_deref(), Some("new.txt"));
     }
 
+    #[test]
+    fn rec_reverts_and_restores_the_caret() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut()
+            .files
+            .insert("f.txt".into(), "alpha\nbravo\ncharlie\ndelta\nepsilon\n".into());
+        e.run_command("OPEN f.txt");
+        e.run_command("BOTTOM"); // caret near the end, not at the top
+        let before = e.document().cursor();
+        assert!(before > 0, "caret should be well past the top");
+        // An unsaved edit, then REC discards it and reverts to disk.
+        e.insert_literal("XXX");
+        assert!(e.document().text().contains("XXX"));
+        e.run_command("REC");
+        assert_eq!(e.last_error(), None);
+        assert_eq!(e.document().text().replace("\r\n", "\n"), "alpha\nbravo\ncharlie\ndelta\nepsilon\n", "reverted to disk");
+        // The caret is restored (not reset to 0), clamped to the reverted length.
+        assert!(e.document().cursor() > 0, "REC must not jump the caret to the top");
+        assert!(e.document().cursor() <= e.document().len(), "caret clamped to the reverted length");
+    }
+
+    /// Give `path` a modification time strictly later than now, so the AUTOREOPEN poll reliably sees a
+    /// change regardless of filesystem mtime granularity.
+    #[cfg(test)]
+    fn bump_mtime(path: &std::path::Path) {
+        let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5)).unwrap();
+    }
+
+    #[test]
+    fn autoreopen_reloads_a_clean_file_changed_on_disk() {
+        let path = std::env::temp_dir().join(format!("xyscript-autoreopen-clean-{}.txt", std::process::id()));
+        std::fs::write(&path, b"one\ntwo\nthree\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(e.document().text().replace("\r\n", "\n"), "one\ntwo\nthree\n");
+        e.run_command("AUTOREOPEN on");
+        assert_eq!(e.special_str("AUTOREOPEN"), "1");
+        e.run_command("BOTTOM"); // caret past the top, to prove it's preserved across the auto-reload
+        let caret = e.document().cursor();
+        assert!(e.poll_external_changes().is_empty(), "first poll just baselines");
+        // Another program rewrites the file.
+        std::fs::write(&path, b"ONE\nTWO\nTHREE\n").unwrap();
+        bump_mtime(&path);
+        let notes = e.poll_external_changes();
+        assert!(!notes.is_empty(), "a changed clean file is reloaded");
+        assert_eq!(e.document().text().replace("\r\n", "\n"), "ONE\nTWO\nTHREE\n", "reloaded from disk");
+        assert!(e.document().cursor() > 0 && e.document().cursor() <= e.document().len(), "caret preserved");
+        let _ = caret;
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn autoreopen_keeps_unsaved_edits_on_external_change() {
+        let path = std::env::temp_dir().join(format!("xyscript-autoreopen-dirty-{}.txt", std::process::id()));
+        std::fs::write(&path, b"one\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        e.run_command("AUTOREOPEN on");
+        assert!(e.poll_external_changes().is_empty(), "baseline");
+        // Unsaved edit in the buffer.
+        e.run_command("BOTTOM");
+        e.insert_literal("MYEDIT");
+        // External change arrives.
+        std::fs::write(&path, b"external replacement\n").unwrap();
+        bump_mtime(&path);
+        let notes = e.poll_external_changes();
+        assert!(!notes.is_empty(), "the conflict is noted");
+        assert!(e.document().text().contains("MYEDIT"), "unsaved edits must NOT be clobbered");
+        assert!(!e.document().text().contains("external replacement"), "the disk copy did not overwrite");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn autoreopen_off_by_default_and_toggles() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("AUTOREOPEN"), "0"); // off by default
+        e.run_command("AUTOREOPEN on");
+        assert_eq!(e.special_str("AUTOREOPEN"), "1");
+        e.run_command("AUTOREOPEN"); // bare toggles
+        assert_eq!(e.special_str("AUTOREOPEN"), "0");
+        e.run_command("AUTOREOPEN maybe");
+        assert!(e.last_error().is_some(), "bad value errors");
+        // Independent of TRUST: turning AUTOREOPEN on does not require (or change) TRUST.
+        e.run_command("AUTOREOPEN on");
+        assert_eq!(e.special_str("TR"), "0", "AUTOREOPEN must not enable TRUST");
+        // SaveCfg carries it.
+        e.run_command("SAVECFG ar.cfg");
+        assert!(e.host_mut().files.get("ar.cfg").unwrap().contains("AUTOREOPEN on"));
+    }
+
     /// Session save+restore (Phase 1, shadow-backup model): a clean named file, a DIRTY named file,
     /// and an untitled buffer all come back — the dirty/untitled ones marked modified with their
     /// unsaved content, the clean one reopened from disk, and the active tab re-selected. Transient
@@ -4285,18 +4411,100 @@ mod tests {
     fn markgutter_toggles_reports_and_persists() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
-        assert_eq!(e.special_str("MARKGUTTER"), "1"); // default on
+        assert_eq!(e.special_str("MARKGUTTER"), "on"); // default
         e.run_command("MARKGUTTER off");
-        assert_eq!(e.special_str("MARKGUTTER"), "0");
-        e.run_command("MARKGUTTER"); // bare toggles → back on
-        assert_eq!(e.special_str("MARKGUTTER"), "1");
+        assert_eq!(e.special_str("MARKGUTTER"), "off");
+        e.run_command("MARKGUTTER"); // bare toggles off↔on → back on
+        assert_eq!(e.special_str("MARKGUTTER"), "on");
+        // The new `persist` mode reserves the strip even with no bookmarks.
+        e.run_command("MARKGUTTER persist");
+        assert_eq!(e.special_str("MARKGUTTER"), "persist");
+        assert!(e.host().mark_gutter(), "persist is enabled");
+        assert!(e.host().mark_gutter_persist(), "persist reserves the strip");
+        // A bare toggle from persist hides it.
+        e.run_command("MARKGUTTER");
+        assert_eq!(e.special_str("MARKGUTTER"), "off");
         e.run_command("MARKGUTTER maybe");
         assert!(e.last_error().is_some(), "bad value errors");
         // SaveCfg carries it.
-        e.run_command("MARKGUTTER off");
+        e.run_command("MARKGUTTER persist");
         e.run_command("SAVECFG mg.cfg");
         let cfg = e.host_mut().files.get("mg.cfg").unwrap().clone();
-        assert!(cfg.contains("MARKGUTTER off"), "config carries MARKGUTTER: {cfg}");
+        assert!(cfg.contains("MARKGUTTER persist"), "config carries MARKGUTTER: {cfg}");
+    }
+
+    #[test]
+    fn mark_gutter_colors_set_read_default_and_persist() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // Default: unset (empty read) → the GUI falls back to bookmark orange / transparent.
+        assert_eq!(e.special_str("MARKFGCOLOR"), "");
+        assert_eq!(e.special_str("MARKBGCOLOR"), "");
+        e.run_command("MARKFGCOLOR 10 20 30");
+        e.run_command("MARKBGCOLOR 200 200 200");
+        assert_eq!(e.special_str("MARKFGCOLOR"), "10 20 30");
+        assert_eq!(e.special_str("MARKBGCOLOR"), "200 200 200");
+        assert_eq!(e.host().mark_fg_color(), Some((10, 20, 30)));
+        assert_eq!(e.host().mark_bg_color(), Some((200, 200, 200)));
+        // SaveCfg carries both.
+        e.run_command("SAVECFG mc.cfg");
+        let cfg = e.host_mut().files.get("mc.cfg").unwrap().clone();
+        assert!(cfg.contains("MARKFGCOLOR 10 20 30"), "config carries MARKFGCOLOR: {cfg}");
+        assert!(cfg.contains("MARKBGCOLOR 200 200 200"), "config carries MARKBGCOLOR: {cfg}");
+        // `default` clears back to unset.
+        e.run_command("MARKFGCOLOR default");
+        e.run_command("MARKBGCOLOR");
+        assert_eq!(e.special_str("MARKFGCOLOR"), "");
+        assert_eq!(e.special_str("MARKBGCOLOR"), "");
+        assert_eq!(e.host().mark_fg_color(), None);
+    }
+
+    #[test]
+    fn urlhighlight_toggles_colors_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("URLHIGHLIGHT"), "0"); // off by default
+        e.run_command("URLHIGHLIGHT on");
+        assert_eq!(e.special_str("URLHIGHLIGHT"), "1");
+        e.run_command("URLHIGHLIGHT"); // bare toggles
+        assert_eq!(e.special_str("URLHIGHLIGHT"), "0");
+        e.run_command("URLHIGHLIGHT nope");
+        assert!(e.last_error().is_some(), "bad value errors");
+        // Colours: set / read / default; unset reads empty (GUI falls back to link blue / no band).
+        assert_eq!(e.special_str("URLFGCOLOR"), "");
+        assert_eq!(e.special_str("URLBGCOLOR"), "");
+        e.run_command("URLFGCOLOR 20 40 60");
+        e.run_command("URLBGCOLOR 240 240 200");
+        assert_eq!(e.special_str("URLFGCOLOR"), "20 40 60");
+        assert_eq!(e.host().url_fg_color(), (20, 40, 60)); // effective = the override
+        assert_eq!(e.host().url_bg_color(), Some((240, 240, 200)));
+        e.run_command("URLFGCOLOR default");
+        assert_eq!(e.special_str("URLFGCOLOR"), "");
+        assert_ne!(e.host().url_fg_color(), (20, 40, 60)); // back to the default link blue
+        // SaveCfg carries the toggle + the remaining colour.
+        e.run_command("URLHIGHLIGHT on");
+        e.run_command("SAVECFG url.cfg");
+        let cfg = e.host_mut().files.get("url.cfg").unwrap().clone();
+        assert!(cfg.contains("URLHIGHLIGHT on"), "config carries URLHIGHLIGHT: {cfg}");
+        assert!(cfg.contains("URLBGCOLOR 240 240 200"), "config carries URLBGCOLOR: {cfg}");
+    }
+
+    #[test]
+    fn urlhighlight_detects_urls_and_trims_trailing_punctuation() {
+        let mut e = ed();
+        // Off → no spans even with URLs present.
+        e.insert_literal("visit https://example.com/a, or www.rust-lang.org. Not bare.text here.");
+        assert!(e.url_highlights().is_empty(), "off by default");
+        e.run_command("URLHIGHLIGHT on");
+        let spans = e.url_highlights();
+        let ai = e.active_index();
+        let doc = e.doc(ai);
+        let urls: Vec<String> = spans
+            .iter()
+            .map(|&(s, en)| String::from_utf8_lossy(&doc.slice_bytes(s, en)).into_owned())
+            .collect();
+        // Trailing comma and period are trimmed; "text" (no scheme/www) is not a URL.
+        assert_eq!(urls, vec!["https://example.com/a".to_string(), "www.rust-lang.org".to_string()]);
     }
 
     #[test]

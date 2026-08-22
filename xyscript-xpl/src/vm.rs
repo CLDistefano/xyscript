@@ -26,7 +26,7 @@ use crate::error::{VmResult, XplError};
 use crate::expr::{self, EvalContext, Expr};
 use crate::host::{
     BinderSource, CalcContext, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
-    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, Motion, PersistKind, PvMarginSide,
+    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, PersistKind, PvMarginSide,
     SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
 };
 use crate::ir::{self, Instr};
@@ -3726,20 +3726,91 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetGotoOpen(want))?;
                 Ok(Flow::Next)
             }
-            // `MARKGUTTER on|off` (bare = toggle) — whether bookmarks show a dot in the left gutter.
-            // On by default. Persisted by SaveCfg. `$MARKGUTTER`.
-            "MARKGUTTER" => {
+            // `AUTOREOPEN on|off` (bare = toggle) — reload a file automatically when another program
+            // changes it on disk (clean buffers only; unsaved edits are kept). Off by default; NOT
+            // gated by TRUST (no external code runs). SaveCfg. `$AUTOREOPEN`.
+            "AUTOREOPEN" => {
                 let want = match args.trim().to_ascii_lowercase().as_str() {
                     "" => None,
                     "on" => Some(true),
                     "off" => Some(false),
                     other => {
                         return Err(XplError::trappable(format!(
-                            "MARKGUTTER: expected on or off, got {other:?}"
+                            "AUTOREOPEN: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetAutoReopen(want))?;
+                Ok(Flow::Next)
+            }
+            // `MARKGUTTER off|on|persist` (bare = toggle off↔on) — whether bookmarks show a dot in the
+            // left gutter, and whether the strip is reserved even without bookmarks (`persist`). `On` by
+            // default. Persisted by SaveCfg. `$MARKGUTTER`.
+            "MARKGUTTER" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(MarkGutterMode::On),
+                    "off" => Some(MarkGutterMode::Off),
+                    "persist" => Some(MarkGutterMode::Persist),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "MARKGUTTER: expected off, on, or persist, got {other:?}"
                         )))
                     }
                 };
                 self.host_op(EditorOp::SetMarkGutter(want))?;
+                Ok(Flow::Next)
+            }
+            // `MARKFGCOLOR`/`MARKBGCOLOR <r g b>` — the bookmark-gutter dot colour / strip background
+            // (`/HSL`); bare or `… default` clears it (dot → bookmark orange, strip → transparent).
+            // `MARKFGCOLORS`/`MARKBGCOLORS` open the picker. `$MARKFGCOLOR`/`$MARKBGCOLOR`.
+            "MARKFGCOLOR" | "MARKBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetMarkColor { fg: base == "MARKFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
+            "MARKFGCOLORS" | "MARKBGCOLORS" => {
+                self.host_op(EditorOp::OpenMarkColorPicker { fg: base == "MARKFGCOLORS" })?;
+                Ok(Flow::Next)
+            }
+            // `URLHIGHLIGHT on|off` (bare = toggle) — highlight URLs in the document (coloured by
+            // `URLFGCOLOR`/`URLBGCOLOR`) and make Ctrl+click open them. Off by default. SaveCfg.
+            "URLHIGHLIGHT" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "URLHIGHLIGHT: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetUrlHighlight(want))?;
+                Ok(Flow::Next)
+            }
+            // `URLFGCOLOR`/`URLBGCOLOR <r g b>` — the URL-highlight text colour / background (`/HSL`);
+            // bare or `… default` clears it (fg → link blue, bg → transparent). `URLFGCOLORS`/
+            // `URLBGCOLORS` open the picker. `$URLFGCOLOR`/`$URLBGCOLOR`.
+            "URLFGCOLOR" | "URLBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetUrlColor { fg: base == "URLFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
+            "URLFGCOLORS" | "URLBGCOLORS" => {
+                self.host_op(EditorOp::OpenUrlColorPicker { fg: base == "URLFGCOLORS" })?;
                 Ok(Flow::Next)
             }
             // `ULSPACES on|off` (bare = toggle) — whether an `MDA` UNDERLINE runs through the spaces
@@ -5296,7 +5367,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
-        | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR" => &["HSL"], // triple as H S L
+        | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
+        | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)

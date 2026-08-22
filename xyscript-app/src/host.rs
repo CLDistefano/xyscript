@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    HelpResponse, Host, LockKey, Motion, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    HelpResponse, Host, LockKey, MarkGutterMode, Motion, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -107,6 +107,15 @@ fn clean_number(raw: &str) -> String {
     }
     out.extend(raw.chars().filter(|&c| c.is_ascii_digit() || c == '.'));
     out
+}
+
+/// The `MARKGUTTER` word for a mode — the form used on the status line, `$MARKGUTTER`, and SaveCfg.
+fn mark_gutter_word(m: MarkGutterMode) -> &'static str {
+    match m {
+        MarkGutterMode::Off => "off",
+        MarkGutterMode::On => "on",
+        MarkGutterMode::Persist => "persist",
+    }
 }
 
 /// A command that is EXACTLY a bare drive letter (`X:` — letter + colon, nothing after) → that
@@ -1369,6 +1378,79 @@ fn open_in_os(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The default URL-highlight text colour (`URLFGCOLOR` unset) — a link blue that reads on light and
+/// dark backgrounds.
+const DEFAULT_URL_FG: (u8, u8, u8) = (74, 137, 232);
+
+/// The regex for `URLHIGHLIGHT` matches: an `http(s)`/`ftp` scheme, a bare `www.`, or a `mailto:`,
+/// then a run of non-whitespace (stopping at angle brackets and quotes). Trailing sentence punctuation
+/// is trimmed afterwards by [`trim_url_len`]. Case-insensitive on the scheme.
+const URL_PATTERN: &str = r#"(?i)(?:\b(?:https?|ftp)://|\bwww\.|\bmailto:)[^\s<>"'`]+"#;
+
+/// The trimmed BYTE length of a matched URL: drop trailing sentence punctuation and unbalanced closing
+/// brackets (so `(see http://x.org).` and `http://x.org, foo` don't swallow the punctuation, while a
+/// balanced `http://en.wikipedia.org/wiki/Foo_(bar)` keeps its `)`).
+fn trim_url_len(raw: &[u8]) -> usize {
+    let s = String::from_utf8_lossy(raw);
+    let mut end = s.len();
+    while let Some(last) = s[..end].chars().next_back() {
+        let cur = &s[..end];
+        let drop = match last {
+            '.' | ',' | ';' | ':' | '!' | '?' | '"' | '\'' | '»' | '”' | '’' => true,
+            ')' => cur.matches('(').count() < cur.matches(')').count(),
+            ']' => cur.matches('[').count() < cur.matches(']').count(),
+            '}' => cur.matches('{').count() < cur.matches('}').count(),
+            _ => false,
+        };
+        if drop {
+            end -= last.len_utf8();
+        } else {
+            break;
+        }
+    }
+    end
+}
+
+/// Normalize a highlighted URL for opening: pass web/ftp/mail schemes through, prepend `https://` to a
+/// bare `www.`, and reject anything else (so Ctrl+click never launches an unexpected scheme).
+fn normalize_url(url: &str) -> Option<String> {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("ftp://")
+        || lower.starts_with("mailto:")
+    {
+        Some(url.to_string())
+    } else if lower.starts_with("www.") {
+        Some(format!("https://{url}"))
+    } else {
+        None
+    }
+}
+
+/// Hand a URL to the OS default handler (Ctrl+click). Detached, like [`open_in_os`], but launched via
+/// `explorer` on Windows so a query string's `&` is safe (a `cmd /C start` would mis-parse it).
+fn open_url_os(url: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("explorer")
+            .arg(url)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn()?;
+    }
+    Ok(())
+}
+
 /// Where editor operations and inserted text are currently directed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -1592,6 +1674,10 @@ pub enum ColorTarget {
     BalPairs,
     PathFg,
     PathBg,
+    MarkFg,
+    MarkBg,
+    UrlFg,
+    UrlBg,
     EmphFg,
     EmphBg,
     MdaFg,
@@ -1626,6 +1712,10 @@ impl ColorTarget {
             ColorTarget::BalPairs => "Matched-bracket highlight colour".into(),
             ColorTarget::PathFg => "$CWD path text colour".into(),
             ColorTarget::PathBg => "$CWD path background colour".into(),
+            ColorTarget::MarkFg => "Bookmark gutter dot colour".into(),
+            ColorTarget::MarkBg => "Bookmark gutter background colour".into(),
+            ColorTarget::UrlFg => "URL highlight text colour".into(),
+            ColorTarget::UrlBg => "URL highlight background colour".into(),
             ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
             ColorTarget::EmphBg => "EMPH emphasis background colour".into(),
             ColorTarget::MdaFg => "Block colour — selection text".into(),
@@ -1659,6 +1749,10 @@ impl ColorTarget {
             ColorTarget::BalPairs => return format!("BALPAIRSCOLOR {r} {g} {b}"),
             ColorTarget::PathFg => "PAFGCOLOR",
             ColorTarget::PathBg => "PABGCOLOR",
+            ColorTarget::MarkFg => "MARKFGCOLOR",
+            ColorTarget::MarkBg => "MARKBGCOLOR",
+            ColorTarget::UrlFg => "URLFGCOLOR",
+            ColorTarget::UrlBg => "URLBGCOLOR",
             ColorTarget::EmphFg => "EMPHFGCOLOR",
             ColorTarget::EmphBg => "EMPHBGCOLOR",
             // MDA colours the SELECTION's persistent block: bare = foreground, `/B` = background.
@@ -2572,9 +2666,27 @@ pub struct AppHost {
     /// Whether opening an already-open file skips the "already open" prompt and switches to the
     /// existing tab. Off (default) prompts. (`GOTOOPEN`; `$GOTOOPEN`.)
     goto_open: bool,
-    /// Whether bookmarks show a dot in the left gutter. On (default). (`MARKGUTTER`; `$MARKGUTTER`;
-    /// SaveCfg.) A pure display toggle — bookmarks still work, just without the glyph.
-    mark_gutter: bool,
+    /// How the bookmark gutter is shown: `Off` (never), `On` (only when the doc has bookmarks; the
+    /// default), or `Persist` (always, giving a stable left margin). (`MARKGUTTER`; `$MARKGUTTER`;
+    /// SaveCfg.) A pure display setting — bookmarks still work regardless.
+    mark_gutter: MarkGutterMode,
+    /// Bookmark-gutter colours (`MARKFGCOLOR`/`MARKBGCOLOR`). `None` = default: the dot is bookmark
+    /// orange, the strip background is transparent. `$MARKFGCOLOR`/`$MARKBGCOLOR`; SaveCfg.
+    mark_fg_color: Option<(u8, u8, u8)>,
+    mark_bg_color: Option<(u8, u8, u8)>,
+    /// Whether URLs in the document are highlighted and Ctrl+click-to-open (`URLHIGHLIGHT`). Off by
+    /// default. `$URLHIGHLIGHT`; SaveCfg.
+    url_highlight: bool,
+    /// URL-highlight colours (`URLFGCOLOR`/`URLBGCOLOR`). `None` = default: link-blue text, transparent
+    /// background (no band). `$URLFGCOLOR`/`$URLBGCOLOR`; SaveCfg.
+    url_fg_color: Option<(u8, u8, u8)>,
+    url_bg_color: Option<(u8, u8, u8)>,
+    /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
+    /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
+    auto_reopen: bool,
+    /// Last-seen on-disk modification time per open file (keyed by the stable `DocId`), for
+    /// `AUTOREOPEN` change detection. Baselined on first poll and after each save/reload. Session-only.
+    disk_mtimes: HashMap<crate::panes::DocId, std::time::SystemTime>,
     /// Whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES`; `$ULSPACES`).
     /// On (default) = one continuous underline; off = broken at spaces/tabs (word glyphs only).
     ul_spaces: bool,
@@ -2985,7 +3097,14 @@ impl AppHost {
             wrap_hang: 0,
             untitled_auto_close: true,
             goto_open: false, // default: keep the "already open" prompt
-            mark_gutter: true, // default: show the bookmark dot in the gutter
+            mark_gutter: MarkGutterMode::On, // default: strip appears when the doc has bookmarks
+            mark_fg_color: None,
+            mark_bg_color: None,
+            url_highlight: false, // off by default
+            url_fg_color: None,
+            url_bg_color: None,
+            auto_reopen: false, // off by default
+            disk_mtimes: HashMap::new(),
             ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -3323,9 +3442,155 @@ impl AppHost {
     pub fn goto_open(&self) -> bool {
         self.goto_open
     }
-    /// Whether bookmarks show a dot in the left gutter (`MARKGUTTER`/`$MARKGUTTER`).
+    /// Whether the bookmark gutter is ENABLED — the strip is shown at all (`On` or `Persist`). Dots are
+    /// drawn on bookmarked lines when enabled. (`MARKGUTTER`/`$MARKGUTTER`.)
     pub fn mark_gutter(&self) -> bool {
-        self.mark_gutter
+        !matches!(self.mark_gutter, MarkGutterMode::Off)
+    }
+    /// Whether the bookmark-gutter strip is reserved even when the doc has NO bookmarks (`MARKGUTTER
+    /// persist`) — a stable left margin.
+    pub fn mark_gutter_persist(&self) -> bool {
+        matches!(self.mark_gutter, MarkGutterMode::Persist)
+    }
+    /// The bookmark-gutter dot / strip-background colours (`MARKFGCOLOR`/`MARKBGCOLOR`). `None` =
+    /// default (dot = bookmark orange, strip = transparent).
+    pub fn mark_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.mark_fg_color
+    }
+    pub fn mark_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.mark_bg_color
+    }
+    /// Whether URL highlighting + Ctrl+click-to-open is on (`URLHIGHLIGHT`/`$URLHIGHLIGHT`).
+    pub fn url_highlight(&self) -> bool {
+        self.url_highlight
+    }
+    /// The URL-highlight text colour, EFFECTIVE (the override, or the default link blue).
+    pub fn url_fg_color(&self) -> (u8, u8, u8) {
+        self.url_fg_color.unwrap_or(DEFAULT_URL_FG)
+    }
+    /// The URL-highlight text-colour override as set (`None` = the default link blue). For the picker
+    /// seed, config emit, and `$URLFGCOLOR`.
+    pub fn url_fg_override(&self) -> Option<(u8, u8, u8)> {
+        self.url_fg_color
+    }
+    /// The URL-highlight background colour (`None` = transparent — no band is drawn).
+    pub fn url_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.url_bg_color
+    }
+    /// The URL spans (rope offsets) in the active document, for highlighting and Ctrl+click hit-testing.
+    /// Empty when `URLHIGHLIGHT` is off. Trailing sentence punctuation is trimmed from each match.
+    pub fn url_highlights(&self) -> Vec<(usize, usize)> {
+        if !self.url_highlight {
+            return Vec::new();
+        }
+        let buffer = self.active_doc().buffer();
+        self.find_all(URL_PATTERN, false, false, true, false)
+            .into_iter()
+            .filter_map(|(s, e)| {
+                let raw = buffer.slice_bytes(s, e);
+                let trimmed = trim_url_len(&raw);
+                (trimmed > 0).then_some((s, s + trimmed))
+            })
+            .collect()
+    }
+    /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
+    pub fn auto_reopen(&self) -> bool {
+        self.auto_reopen
+    }
+
+    /// Record the current on-disk modification time of `docs[idx]`'s file as the baseline for
+    /// `AUTOREOPEN` change detection. No-op without a path, under `virtual_fs`, or if the stat fails.
+    fn refresh_disk_mtime(&mut self, idx: usize) {
+        if self.virtual_fs {
+            return;
+        }
+        let Some(id) = self.docs.get(idx).map(|d| d.id()) else {
+            return;
+        };
+        let Some(path) = self.docs[idx].path().map(|p| p.to_path_buf()) else {
+            return;
+        };
+        if let Ok(mtime) = std::fs::metadata(&path).and_then(|m| m.modified()) {
+            self.disk_mtimes.insert(id, mtime);
+        }
+    }
+
+    /// Reload `docs[idx]` from its file on disk, preserving the caret + viewport (like `REC`). Used by
+    /// `REC` and by `AUTOREOPEN`. Returns the file's display name. Refreshes the disk-mtime baseline.
+    fn reload_doc_from_disk(&mut self, idx: usize) -> VmResult<String> {
+        let path = match self.docs[idx].path() {
+            Some(p) => p.to_path_buf(),
+            None => return Err(XplError::trappable("REC: nothing to revert to (never saved)")),
+        };
+        let key = path.to_string_lossy().into_owned();
+        let bytes = self.read_doc_bytes(&key)?;
+        let restore = (!self.virtual_fs).then(|| xymeta_read(&path, &bytes)).flatten();
+        let old_caret = self.docs[idx].buffer().cursor();
+        self.docs[idx].load(bytes, path.clone());
+        if let Some(r) = restore {
+            apply_xymeta_restore(&mut self.docs[idx], r);
+        }
+        let len = self.docs[idx].buffer().len();
+        self.docs[idx].set_caret(old_caret.min(len), None);
+        self.refresh_disk_mtime(idx);
+        Ok(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(key))
+    }
+
+    /// `AUTOREOPEN` poll: for each open file whose on-disk copy changed since last seen, reload it if
+    /// the buffer is clean (caret/viewport preserved), or — if it has unsaved edits — leave it and note
+    /// the conflict. Returns status notes for the GUI. A no-op when off or under `virtual_fs`. The GUI
+    /// calls this on a throttled timer (see the AUTOSAVE cadence).
+    pub fn poll_external_changes(&mut self) -> Vec<String> {
+        if !self.auto_reopen || self.virtual_fs {
+            return Vec::new();
+        }
+        // Snapshot (index, id, path) first so the reload's `&mut self` doesn't clash with the scan.
+        let open: Vec<(usize, crate::panes::DocId, PathBuf)> = self
+            .docs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, d)| d.path().map(|p| (i, d.id(), p.to_path_buf())))
+            .collect();
+        let mut notes = Vec::new();
+        for (idx, id, path) in open {
+            let fs_mtime = match std::fs::metadata(&path).and_then(|m| m.modified()) {
+                Ok(t) => t,
+                Err(_) => continue, // deleted or unreadable — leave the buffer untouched
+            };
+            match self.disk_mtimes.get(&id).copied() {
+                None => {
+                    self.disk_mtimes.insert(id, fs_mtime); // first sight — baseline, don't reload
+                }
+                Some(prev) if fs_mtime <= prev => {} // unchanged
+                Some(_) => {
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                    if self.docs[idx].is_modified() {
+                        // Don't clobber unsaved edits — note it once and re-baseline.
+                        self.disk_mtimes.insert(id, fs_mtime);
+                        notes.push(format!("{name} changed on disk — your unsaved edits are kept (REC to discard them)"));
+                    } else if self.reload_doc_from_disk(idx).is_ok() {
+                        notes.push(format!("reloaded {name} (changed on disk)"));
+                    }
+                }
+            }
+        }
+        notes
+    }
+
+    /// Hand a URL to the OS default handler (Ctrl+click on a highlighted URL). Only web/mail schemes
+    /// are launched; a `www.` URL is opened as `https://`. Errors surface on the status line.
+    pub fn open_url(&mut self, url: &str) {
+        let launch = normalize_url(url);
+        match launch {
+            Some(u) => match open_url_os(&u) {
+                Ok(()) => self.last_status_line = format!("opening {u}"),
+                Err(e) => self.last_status_line = format!("open failed: {e}"),
+            },
+            None => self.last_status_line = format!("not an openable URL: {url}"),
+        }
     }
     /// Whether `MDA` underlines run through inter-word spaces (`ULSPACES`/`$ULSPACES`).
     pub fn ul_spaces(&self) -> bool {
@@ -8080,7 +8345,21 @@ impl AppHost {
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
         put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
         put(&mut s, "Opening an already-open file switches to its tab instead of prompting — on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
-        put(&mut s, "Show a dot in the left gutter on bookmarked lines — on | off", format!("MARKGUTTER {}", if self.mark_gutter { "on" } else { "off" }));
+        put(&mut s, "Bookmark gutter — off | on (when bookmarked) | persist (always)", format!("MARKGUTTER {}", mark_gutter_word(self.mark_gutter)));
+        if let Some((r, g, b)) = self.mark_fg_color {
+            put(&mut s, "Bookmark gutter dot colour — R G B, 0-255", format!("MARKFGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.mark_bg_color {
+            put(&mut s, "Bookmark gutter background colour — R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
+        }
+        put(&mut s, "Reload a file automatically when changed on disk — on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Highlight URLs and Ctrl+click to open them — on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
+        if let Some((r, g, b)) = self.url_fg_color {
+            put(&mut s, "URL highlight text colour — R G B, 0-255", format!("URLFGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.url_bg_color {
+            put(&mut s, "URL highlight background colour — R G B, 0-255", format!("URLBGCOLOR {r} {g} {b}"));
+        }
         put(&mut s, "Underline the spaces between words in MDA underline styling — on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -9587,6 +9866,11 @@ impl Host for AppHost {
                 self.sync_color_sidecar(self.file_doc(), &path.to_string_lossy(), &bytes);
                 self.file_doc_mut().set_path(path.clone());
                 self.file_doc_mut().mark_saved();
+                // Re-baseline the AUTOREOPEN mtime to OUR write, so the poll doesn't treat a save as an
+                // external change and needlessly reload. (No-op when blind / under virtual_fs.)
+                if self.blind.is_none() {
+                    self.refresh_disk_mtime(self.active);
+                }
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -9985,6 +10269,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("saved selection to {name}")));
             }
             EditorOp::Revert => {
+                // The common case reverts the visible document — reuse the shared reload path (which
+                // preserves the caret + viewport and re-baselines the AUTOREOPEN mtime). A blind edit
+                // (BEDIT) reverts its hidden buffer inline, since it isn't in `self.docs`.
+                if self.blind.is_none() {
+                    let name = self.reload_doc_from_disk(self.active)?;
+                    return Ok(Value::str(format!("reverted to {name}")));
+                }
                 let path = match self.file_doc().path() {
                     Some(p) => p.to_path_buf(),
                     None => {
@@ -9994,10 +10285,13 @@ impl Host for AppHost {
                 let key = path.to_string_lossy().into_owned();
                 let bytes = self.read_doc_bytes(&key)?;
                 let restore = (!self.virtual_fs).then(|| xymeta_read(&path, &bytes)).flatten();
+                let old_caret = self.file_doc().buffer().cursor();
                 self.file_doc_mut().load(bytes, path.clone());
                 if let Some(r) = restore {
                     apply_xymeta_restore(self.file_doc_mut(), r);
                 }
+                let len = self.file_doc().buffer().len();
+                self.file_doc_mut().set_caret(old_caret.min(len), None);
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -11354,12 +11648,67 @@ impl Host for AppHost {
                     if self.goto_open { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetAutoReopen(opt) => {
+                self.auto_reopen = opt.unwrap_or(!self.auto_reopen);
+                if !self.auto_reopen {
+                    self.disk_mtimes.clear(); // drop baselines so a later re-enable re-baselines cleanly
+                }
+                return Ok(Value::str(format!(
+                    "AUTOREOPEN {}",
+                    if self.auto_reopen { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetMarkGutter(opt) => {
-                self.mark_gutter = opt.unwrap_or(!self.mark_gutter);
+                // Bare (None) toggles off↔on; from `persist`, a bare toggle hides it (→ off).
+                self.mark_gutter = opt.unwrap_or(match self.mark_gutter {
+                    MarkGutterMode::Off => MarkGutterMode::On,
+                    MarkGutterMode::On | MarkGutterMode::Persist => MarkGutterMode::Off,
+                });
                 return Ok(Value::str(format!(
                     "MARKGUTTER {}",
-                    if self.mark_gutter { "on" } else { "off" }
+                    mark_gutter_word(self.mark_gutter)
                 )));
+            }
+            EditorOp::SetMarkColor { fg, color } => {
+                if fg {
+                    self.mark_fg_color = color;
+                } else {
+                    self.mark_bg_color = color;
+                }
+                let what = if fg { "dot" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("bookmark gutter {what} colour = {r} {g} {b}"),
+                    None => format!("bookmark gutter {what} colour = (default)"),
+                }));
+            }
+            EditorOp::OpenMarkColorPicker { fg } => {
+                self.color_picker_request =
+                    Some(if fg { ColorTarget::MarkFg } else { ColorTarget::MarkBg });
+                return Ok(Value::str(""));
+            }
+            EditorOp::SetUrlHighlight(opt) => {
+                self.url_highlight = opt.unwrap_or(!self.url_highlight);
+                return Ok(Value::str(format!(
+                    "URLHIGHLIGHT {}",
+                    if self.url_highlight { "on" } else { "off" }
+                )));
+            }
+            EditorOp::SetUrlColor { fg, color } => {
+                if fg {
+                    self.url_fg_color = color;
+                } else {
+                    self.url_bg_color = color;
+                }
+                let what = if fg { "text" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("URL highlight {what} colour = {r} {g} {b}"),
+                    None => format!("URL highlight {what} colour = (default)"),
+                }));
+            }
+            EditorOp::OpenUrlColorPicker { fg } => {
+                self.color_picker_request =
+                    Some(if fg { ColorTarget::UrlFg } else { ColorTarget::UrlBg });
+                return Ok(Value::str(""));
             }
             EditorOp::SetUlSpaces(opt) => {
                 self.ul_spaces = opt.unwrap_or(!self.ul_spaces);
@@ -12100,7 +12449,25 @@ impl Host for AppHost {
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),
-            "MARKGUTTER" => Some(Value::Int(if self.mark_gutter { 1 } else { 0 })),
+            "MARKGUTTER" => Some(Value::str(mark_gutter_word(self.mark_gutter))),
+            "MARKFGCOLOR" => Some(Value::str(match self.mark_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "MARKBGCOLOR" => Some(Value::str(match self.mark_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
+            "URLHIGHLIGHT" => Some(Value::Int(if self.url_highlight { 1 } else { 0 })),
+            "URLFGCOLOR" => Some(Value::str(match self.url_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "URLBGCOLOR" => Some(Value::str(match self.url_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
             "ULSPACES" => Some(Value::Int(if self.ul_spaces { 1 } else { 0 })),
             #[cfg(feature = "email")]
             "SMTPURL" => Some(Value::str(self.smtp_url.clone())),
@@ -12703,6 +13070,31 @@ impl Host for AppHost {
 #[cfg(test)]
 mod tests {
     use super::fenced_block_at;
+
+    #[test]
+    fn url_trim_drops_trailing_punctuation_but_keeps_balanced_parens() {
+        let len = |s: &str| super::trim_url_len(s.as_bytes());
+        assert_eq!(&"http://x.org."[..len("http://x.org.")], "http://x.org");
+        assert_eq!(&"http://x.org,"[..len("http://x.org,")], "http://x.org");
+        assert_eq!(&"http://x.org).."[..len("http://x.org)..")], "http://x.org");
+        // A balanced trailing paren is part of the URL (Wikipedia-style).
+        let wiki = "http://en.wikipedia.org/wiki/Rust_(programming_language)";
+        assert_eq!(&wiki[..len(wiki)], wiki);
+        // An unbalanced trailing paren is dropped (the URL was inside parentheses).
+        assert_eq!(&"http://x.org/a)"[..len("http://x.org/a)")], "http://x.org/a");
+    }
+
+    #[test]
+    fn url_normalize_gates_schemes_and_prepends_https_to_www() {
+        assert_eq!(super::normalize_url("https://x.org").as_deref(), Some("https://x.org"));
+        assert_eq!(super::normalize_url("HTTP://x.org").as_deref(), Some("HTTP://x.org"));
+        assert_eq!(super::normalize_url("mailto:a@b.com").as_deref(), Some("mailto:a@b.com"));
+        assert_eq!(super::normalize_url("www.x.org").as_deref(), Some("https://www.x.org"));
+        // Unknown / dangerous schemes are not openable.
+        assert_eq!(super::normalize_url("file:///etc/passwd"), None);
+        assert_eq!(super::normalize_url("javascript:alert(1)"), None);
+        assert_eq!(super::normalize_url("plain text"), None);
+    }
 
     #[test]
     fn cloud_guard_passes_a_normal_local_file() {

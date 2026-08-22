@@ -33,7 +33,7 @@ pub use library::{BUILTIN_VERBS, CONTROL_KEYWORDS};
 pub use host::{
     parse_mda_attr, ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE, BinderSource, CalcContext, CaretShape, CaseKind,
     ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly, DirOpts, DirOrder,
-    DocTypeReq, EditorOp, HelpResponse, Host, LintFixChoices, LockKey, Motion, PathPlace, PersistKind,
+    DocTypeReq, EditorOp, HelpResponse, Host, LintFixChoices, LockKey, MarkGutterMode, Motion, PathPlace, PersistKind,
     PvMarginSide, SearchSpec, SortSpec, StubHost, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
 };
 pub use library::{parse_lib, LibSource, Library, Routine};

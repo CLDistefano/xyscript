@@ -2053,6 +2053,11 @@ struct GuiApp {
     /// Cache key for `emph_highlights` = (active index, doc revision, phrase, is-regex). `None` = no
     /// emphasis. The regex flag is in the key so toggling `EMPH/R` on the same phrase re-searches.
     emph_key: Option<(usize, u64, String, bool)>,
+    /// `URLHIGHLIGHT` match spans (rope offsets) in the active doc — coloured with `URLFGCOLOR`/
+    /// `URLBGCOLOR` and hit-tested for Ctrl+click-to-open. Cached via `url_key`.
+    url_highlights: Vec<(usize, usize)>,
+    /// Cache key for `url_highlights` = (active index, doc revision). `None` = off / not yet computed.
+    url_key: Option<(usize, u64)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -2244,6 +2249,8 @@ struct GuiApp {
     status: String,
     /// Wall-clock of the last autosave pass (drives the `AUTOSAVE` interval timer).
     last_autosave: std::time::Instant,
+    /// Wall-clock of the last `AUTOREOPEN` external-change poll (throttles the file-change check).
+    last_reopen_check: std::time::Instant,
     /// Wall-clock of the last `SESSION` snapshot (drives the crash-resilience interval timer).
     last_session_snapshot: std::time::Instant,
     /// The session's structure fingerprint at the last snapshot — a change (tab open/close/switch,
@@ -2352,6 +2359,8 @@ impl GuiApp {
             find_highlights: Vec::new(),
             emph_highlights: Vec::new(),
             emph_key: None,
+            url_highlights: Vec::new(),
+            url_key: None,
             bal_last: None,
             wi_indent: Vec::new(),
             wi_rows: Vec::new(),
@@ -2427,6 +2436,7 @@ impl GuiApp {
             last_change_time: f64::MIN,
             status: startup_status,
             last_autosave: std::time::Instant::now(),
+            last_reopen_check: std::time::Instant::now(),
             last_session_snapshot: std::time::Instant::now(),
             last_session_signature: String::new(),
             history_dialog: None,
@@ -2756,6 +2766,7 @@ impl GuiApp {
     /// the window is only a few dozen `BufferLine`s, not the whole document.
     fn build_window_cosmic(&mut self, w: usize, h: usize, win: &DocWindow) -> Buffer {
         self.refresh_emph(); // keep the active tab's EMPH match set current before drawing
+        self.refresh_url(); // and the URLHIGHLIGHT match set
         let lo = win.start_decoded;
         let hi = win.start_decoded + win.decoded_len;
         let wt: Vec<Token> = self
@@ -2859,6 +2870,29 @@ impl GuiApp {
                 })
                 .collect()
         };
+        // URLHIGHLIGHT match text: every URL's glyph colour (`URLFGCOLOR`, default link blue). Same
+        // shape as `emph_spans`; painted under FIND so a live search still wins. `url_highlights` are
+        // ROPE offsets.
+        let url_spans: Vec<(usize, usize, CColor)> = if self.url_highlights.is_empty() {
+            Vec::new()
+        } else {
+            let doc = self.editor.doc(self.editor.active_index());
+            let (ur, ug, ub) = self.editor.url_fg_color();
+            let url_c = CColor::rgb(ur, ug, ub);
+            self.url_highlights
+                .iter()
+                .filter_map(|&(ms_rope, me_rope)| {
+                    let s = doc.decoded_offset(ms_rope).max(lo);
+                    let e = doc.decoded_offset(me_rope).min(hi);
+                    if s >= e {
+                        return None;
+                    }
+                    let sd = decoded_to_display(s - lo, &win.cr);
+                    let ed = decoded_to_display(e - lo, &win.cr);
+                    (sd < ed).then_some((sd, ed, url_c))
+                })
+                .collect()
+        };
         // FIND-highlight match text: the glyph colour of highlighted matches — `FINDFGCOLOR` for
         // ordinary hits, `SELFGCOLOR` for the current (Enter/F3 target). `find_highlights` are ROPE
         // offsets, so convert to decoded before rebasing to window-local display (like `manual`).
@@ -2943,6 +2977,9 @@ impl GuiApp {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &emph_spans {
+            colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
+        }
+        for &(s, e, cc) in &url_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &find_spans {
@@ -3394,6 +3431,31 @@ impl GuiApp {
                 if phrase.is_some() { self.editor.emph_highlights() } else { Vec::new() };
             self.emph_key = key;
         }
+    }
+
+    /// Refresh the `URLHIGHLIGHT` match set for the active document (cached on `url_key`, like
+    /// `refresh_emph`). Empty when highlighting is off. Suppressed while a GREP streams (same O(n²)
+    /// concern as EMPH).
+    fn refresh_url(&mut self) {
+        if !self.editor.url_highlight()
+            || (self.editor.grep_in_progress() && self.editor.active_is_grep_listing())
+        {
+            self.url_highlights.clear();
+            self.url_key = None;
+            return;
+        }
+        let key = Some((self.editor.active_index(), self.editor.doc_revision()));
+        if key != self.url_key {
+            self.url_highlights = self.editor.url_highlights();
+            self.url_key = key;
+        }
+    }
+
+    /// The URL text at rope offset `off`, if it falls within a highlighted URL span (for Ctrl+click).
+    fn url_at_offset(&self, off: usize) -> Option<String> {
+        let (s, e) = *self.url_highlights.iter().find(|&&(s, e)| off >= s && off < e)?;
+        let doc = self.editor.doc(self.editor.active_index());
+        Some(String::from_utf8_lossy(&doc.slice_bytes(s, e)).into_owned())
     }
 
     /// Convenience wrapper: FIND "highlight all" rects (the current match flagged).
@@ -3937,6 +3999,13 @@ impl GuiApp {
         } else {
             self.highlight_rects(&self.emph_highlights, None, &buffer, &win, w as i32, lh_px as i32)
         };
+        // URLHIGHLIGHT background band — only when `URLBGCOLOR` is set (otherwise URLs are just coloured
+        // text, no band). Same borrow window as `emph_rects`.
+        let mut url_rects = if self.url_highlights.is_empty() || self.editor.url_bg_color().is_none() {
+            Vec::new()
+        } else {
+            self.highlight_rects(&self.url_highlights, None, &buffer, &win, w as i32, lh_px as i32)
+        };
         // MD block-background rects (`MD/B` colour-on-selection). Persistent per-doc spans in ROPE
         // offsets — feed them one at a time through `highlight_rects` so each carries its own colour,
         // then tag every rect with that colour. Painted at the BOTTOM of the z-order (under EMPH/FIND/
@@ -4067,6 +4136,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut url_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
             for r in &mut sec_sel_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
@@ -4121,6 +4194,13 @@ impl GuiApp {
             let (ebr, ebg, ebb) = self.editor.emph_bg_color();
             for &(x0, y0, x1, y1, _) in &emph_rects {
                 fill_blend(&mut canvas, w, h, x0, y0, x1, y1, ebr, ebg, ebb, 1.0);
+            }
+        }
+        // URLHIGHLIGHT background band — an opaque `URLBGCOLOR` fill behind each URL (only present when
+        // that colour is set; see `url_rects`).
+        if let Some((ubr, ubg, ubb)) = self.editor.url_bg_color() {
+            for &(x0, y0, x1, y1, _) in &url_rects {
+                fill_blend(&mut canvas, w, h, x0, y0, x1, y1, ubr, ubg, ubb, 1.0);
             }
         }
         // Multi-caret secondary selections — an opaque SELBGCOLOR band behind the glyphs, matching the
@@ -6579,7 +6659,7 @@ impl GuiApp {
         let doctype = ed.special_str("DOCTYPE");
         let hex_on = ed.hex_view();
         let mark_here_on = ed.special_str("MARK") == "1"; // caret sits on a bookmark
-        let markgutter_on = ed.special_str("MARKGUTTER") == "1";
+        let markgutter_on = ed.special_str("MARKGUTTER") != "off"; // on or persist → shown
         let enc = ed.special_str("EN");
         let autosave = ed.special_str("AU");
         let tabw = ed.special_str("TB");
@@ -7496,6 +7576,14 @@ impl GuiApp {
             ColorTarget::PathBg => {
                 self.editor.host().path_bg_color().unwrap_or(self.editor.ui_bg_color())
             }
+            ColorTarget::MarkFg => {
+                self.editor.host().mark_fg_color().unwrap_or((216, 118, 42)) // bookmark orange
+            }
+            ColorTarget::MarkBg => {
+                self.editor.host().mark_bg_color().unwrap_or(self.editor.bg_color())
+            }
+            ColorTarget::UrlFg => self.editor.url_fg_color(), // effective (default link blue)
+            ColorTarget::UrlBg => self.editor.url_bg_color().unwrap_or(self.editor.bg_color()),
             // EMPH emphasis colours default to the selection colours when unset — seed with those.
             ColorTarget::EmphFg => self.editor.emph_fg_override().unwrap_or(self.editor.sel_fg_color()),
             ColorTarget::EmphBg => self.editor.emph_bg_override().unwrap_or(self.editor.sel_bg_color()),
@@ -7801,6 +7889,20 @@ impl GuiApp {
                     Err(e) => self.status = format!("autosave failed: {e}"),
                 }
                 self.last_autosave = std::time::Instant::now();
+            }
+            ctx.request_repaint_after(interval);
+        }
+
+        // Auto-reopen (`AUTOREOPEN on`): poll open files for external changes ~every second and reload
+        // the clean ones (caret/viewport preserved). `request_repaint_after` keeps the reactive loop
+        // waking while idle so a change lands even with the app unfocused. Independent of AUTOSAVE.
+        if self.editor.auto_reopen() {
+            let interval = std::time::Duration::from_secs(1);
+            if self.last_reopen_check.elapsed() >= interval {
+                for note in self.editor.poll_external_changes() {
+                    self.status = note; // last note wins on the status line
+                }
+                self.last_reopen_check = std::time::Instant::now();
             }
             ctx.request_repaint_after(interval);
         }
@@ -9296,9 +9398,13 @@ impl GuiApp {
         } else {
             0.0
         };
-        // A thin strip at the far left for bookmark glyphs — reserved only when the doc HAS bookmarks
-        // (single pane), so layout is unchanged otherwise. Sits left of the line-number gutter.
-        let mark_w = if !multi && self.editor.mark_gutter() && self.editor.has_marks() {
+        // A thin strip at the far left for bookmark glyphs — reserved when the doc HAS bookmarks (single
+        // pane), so layout is unchanged otherwise. With `MARKGUTTER persist` it is reserved always (even
+        // with no bookmarks), giving a stable left margin. Sits left of the line-number gutter.
+        let mark_w = if !multi
+            && ((self.editor.mark_gutter() && self.editor.has_marks())
+                || self.editor.mark_gutter_persist())
+        {
             (cell_w * 1.4).ceil()
         } else {
             0.0
@@ -9628,10 +9734,24 @@ impl GuiApp {
             }
         }
         // Bookmark glyphs: a filled dot in the reserved left strip, on each bookmarked line's first
-        // visual row. A shape (not a font glyph) so it renders regardless of font coverage/theme.
+        // visual row. A shape (not a font glyph) so it renders regardless of font coverage/theme. The
+        // dot colour is MARKFGCOLOR (default bookmark orange); with MARKBGCOLOR set, the whole strip is
+        // filled with that colour first (so the gutter can blend in or stand out).
         if mark_w > 0.0 {
             let painter = ui.painter();
-            let color = egui::Color32::from_rgb(216, 118, 42); // bookmark orange, reads in light + dark
+            if let Some((r, g, b)) = self.editor.host().mark_bg_color() {
+                let strip = egui::Rect::from_min_max(
+                    egui::pos2(resp.rect.min.x - left, resp.rect.min.y),
+                    egui::pos2(resp.rect.min.x - left + mark_w, resp.rect.max.y),
+                );
+                painter.rect_filled(strip, 0.0, egui::Color32::from_rgb(r, g, b));
+            }
+            let color = self
+                .editor
+                .host()
+                .mark_fg_color()
+                .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
+                .unwrap_or(egui::Color32::from_rgb(216, 118, 42)); // bookmark orange, reads in light + dark
             let s = self.render_scale; // mark_rows y is in canvas pixels → back to points
             let cx = resp.rect.min.x - left + mark_w * 0.5; // centre of the far-left strip
             let r = (self.font_size * 0.24).max(2.0);
@@ -9840,8 +9960,14 @@ impl GuiApp {
                     } else if click {
                         // Ctrl+click ADDS a caret (multi-caret); a plain click collapses the set
                         // back to one and places the caret there (the spec's "plain click resets").
+                        // Exception: with URLHIGHLIGHT on, a Ctrl+click that lands on a highlighted URL
+                        // opens it in the OS default app instead of adding a caret.
                         if ctx.input(|i| i.modifiers.ctrl) {
-                            self.editor.host_mut().add_active_caret(off);
+                            if let Some(url) = self.url_at_offset(off) {
+                                self.editor.open_url(&url);
+                            } else {
+                                self.editor.host_mut().add_active_caret(off);
+                            }
                         } else {
                             self.editor.host_mut().collapse_active_carets();
                             self.editor.host_mut().click_active_caret(off);

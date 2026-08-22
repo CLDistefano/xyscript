@@ -530,9 +530,31 @@ pub enum EditorOp {
     /// to the existing tab (`GOTOOPEN on|off`; `None` toggles). Off (default) keeps the prompt.
     /// `$GOTOOPEN`.
     SetGotoOpen(Option<bool>),
-    /// Whether bookmarks show a dot in the left gutter (`MARKGUTTER on|off`; `None` toggles). On by
+    /// Auto-reopen a file when it changes on disk (`AUTOREOPEN on|off`; `None` toggles). When on, an
+    /// open file that another program modifies is reloaded automatically (only when it has no unsaved
+    /// edits — otherwise the change is noted and your edits are kept). Off by default; independent of
+    /// `TRUST` (no external code runs — the editor only re-reads a file you already have open).
+    /// Persisted by SaveCfg. `$AUTOREOPEN`.
+    SetAutoReopen(Option<bool>),
+    /// How the bookmark gutter is shown (`MARKGUTTER off|on|persist`; `None` toggles off↔on). `On` by
     /// default. Persisted by SaveCfg. `$MARKGUTTER`.
-    SetMarkGutter(Option<bool>),
+    SetMarkGutter(Option<MarkGutterMode>),
+    /// Set the bookmark-gutter dot colour (`fg = true`, `MARKFGCOLOR`) or the gutter strip background
+    /// (`fg = false`, `MARKBGCOLOR`). `None` = default (fg = bookmark orange; bg = transparent). Read
+    /// back via `$MARKFGCOLOR`/`$MARKBGCOLOR`.
+    SetMarkColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for the bookmark-gutter dot (`MARKFGCOLORS`) or strip bg (`MARKBGCOLORS`).
+    OpenMarkColorPicker { fg: bool },
+    /// Turn URL highlighting on/off (`URLHIGHLIGHT on|off`; `None` toggles). When on, URLs in the
+    /// document are coloured (`URLFGCOLOR`/`URLBGCOLOR`) and Ctrl+click on one opens it in the OS
+    /// default application. Off by default. Persisted by SaveCfg. `$URLHIGHLIGHT`.
+    SetUrlHighlight(Option<bool>),
+    /// Set the URL-highlight text colour (`fg = true`, `URLFGCOLOR`) or background (`fg = false`,
+    /// `URLBGCOLOR`). `None` = default (fg = a link blue; bg = transparent, no band). Read back via
+    /// `$URLFGCOLOR`/`$URLBGCOLOR`.
+    SetUrlColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for the URL-highlight text (`URLFGCOLORS`) or background (`URLBGCOLORS`).
+    OpenUrlColorPicker { fg: bool },
     /// Toggle whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES on|off`;
     /// `None` toggles). On (default) draws one continuous underline; off breaks it at spaces/tabs so
     /// only word glyphs are underlined. `$ULSPACES`.
@@ -1105,6 +1127,17 @@ pub enum ViewToggle {
     On,
     Off,
     Toggle,
+}
+
+/// How the bookmark gutter is shown (`MARKGUTTER off|on|persist`). `On` reserves the left strip only
+/// when the document HAS bookmarks (so layout is unchanged otherwise); `Persist` reserves it always,
+/// bookmarks or not, giving a stable left margin; `Off` never shows it. Read back via `$MARKGUTTER`
+/// (`off`/`on`/`persist`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkGutterMode {
+    Off,
+    On,
+    Persist,
 }
 
 /// Which keyboard lock a [`EditorOp::SetLock`] targets. Read back via `$CAPSLOCK`/`$NUMLOCK`/

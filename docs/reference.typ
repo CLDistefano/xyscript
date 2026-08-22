@@ -354,7 +354,7 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 
 / #cmd("MARKSET") / #cmd("MARKCLEAR") / #cmd("MARKTOGGLE"): set / clear / toggle a bookmark at the caret. #cmd("MARKCLEARALL"): remove every bookmark in the document.
 / #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping around the ends. #cmd("MARKLIST"): a chooser of every bookmark (line number + text) — pick one to jump to it. #sv("MARKS") is the count; #sv("MARK") is `1` when the caret sits on one.
-/ #cmd("MARKGUTTER"): show or hide the left-gutter bookmark dot — `MARKGUTTER on|off` (bare toggles). On by default; saved by `SAVECFG`. Read back with #sv("MARKGUTTER").
+/ #cmd("MARKGUTTER"): control the left-gutter bookmark strip — `MARKGUTTER off | on | persist` (bare toggles off↔on). `on` (default) shows the strip only when the document has bookmarks; `persist` reserves it always. #cmd("MARKFGCOLOR") / #cmd("MARKBGCOLOR") (pickers #cmd("MARKFGCOLORS") / #cmd("MARKBGCOLORS")) set the dot colour / strip background so the gutter can blend in or stand out. All saved by `SAVECFG`.
 Bookmarks are per-document, marked by a dot in the left gutter, and saved in the file's hidden `.xymeta` sidecar — a mark whose text has moved is relocated to the nearby text (a status note says so).
 
 == Selecting and defining blocks
@@ -415,7 +415,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 / #cmd("NEW", "NE"): a new empty (or named) buffer. #cmd("OPEN", "CA", "ED", "EDIT"): open a file. #cmd("READ"): open read-only. #cmd("BEDIT"): edit invisibly (for scripts). #cmd("BCLOSE"): close that invisible buffer.
 / #cmd("SAVE", "SA") / #cmd("SAAS", "SAVEAS") / #cmd("SAD"): save / save-as-and-adopt / save just the selection.
 / #cmd("ST") / #cmd("SF") / #cmd("SL"): save then close the tab / save and close all / save every modified buffer.
-/ #cmd("REC", "RECALL"): revert to the last saved state. #cmd("RO"): the read-only lock. #cmd("AUTOSAVE"): the autosave interval.
+/ #cmd("REC", "RECALL"): revert to the last saved state. #cmd("RO"): the read-only lock. #cmd("AUTOSAVE"): the autosave interval. #cmd("AUTOREOPEN"): auto-reload a file changed on disk.
 / #cmd("AB") / #cmd("ABD"): close the buffer / delete its file and close. #cmd("QUIT", "QQ"): quit the program.
 / #cmd("DEL") / #cmd("ERNV"): delete a file with / without confirmation. #cmd("RENAME", "REN"): rename or move a file. #cmd("WRITEFILE", "WF"): write content to a file.
 / #cmd("REOPEN") / #cmd("CLEARCLOSED"): reopen recently-closed files (a picker, or `REOPEN <n>` for the first n) / empty the list.
@@ -493,6 +493,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("SELFGCOLOR", "SELFGCOLORS") / #cmd("SELBGCOLOR", "SELBGCOLORS"): the selected text's color / highlight.
 / #cmd("FINDFGCOLOR", "FINDFGCOLORS") / #cmd("FINDBGCOLOR", "FINDBGCOLORS"): the FIND "highlight all" color / background.
 / #cmd("EMPH") / #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): emphasize a word/phrase in the current tab / its text color / its background.
+/ #cmd("URLHIGHLIGHT") / #cmd("URLFGCOLOR", "URLFGCOLORS") / #cmd("URLBGCOLOR", "URLBGCOLORS"): highlight URLs (Ctrl+click opens them) / their text color / their background.
 / #cmd("MDA") / #cmd("MDAS"): style the selection as a persistent text block — foreground colour, background colour (`/B`), or an attribute (`BO`/`IT`/`BI`/`UL`/`BU`/`RV`, `NM` to clear) — saved with the file; `MDAS` opens a colour picker.
 / #cmd("ULSPACES"): whether an `MDA` underline runs through the spaces between words (`on`, default) or breaks at them (`off`).
 / #cmd("CRCOLOR", "CRCOLORS") / #cmd("CRSHAPE") / #cmd("CMCRCOLOR", "CMCRCOLORS") / #cmd("CMCRSHAPE"): the text / command-line caret color and shape.
@@ -636,6 +637,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("ATTACH"): stage a file to send with the next #cmd("SENDMAIL") — `ATTACH <path>` (resolved against `$CWD`; a missing file errors and stages nothing). Bare `ATTACH` lists the staged files, `$ATTACH` reads them (comma-separated), and #cmd("CLEARATTACH") empties the list. The send consumes the list, so the next message starts clean. (In a compose header block you can add `Attach:` lines instead.)
 / #cmd("AUTOCFG"): start (or, with `off`, stop) live self-updating config tracking.
 / #cmd("AUTOSAVE"): set the autosave interval in seconds (`off` or `0` disables it).
+/ #cmd("AUTOREOPEN"): reload an open file automatically when another program changes it on disk — `AUTOREOPEN on|off` (bare toggles). Off by default. When on, an open file whose on-disk copy changes is re-read (the caret and viewport are preserved, as with #cmd("REC")); a buffer with #emph[unsaved] edits is never overwritten — the change is noted on the status line and your edits are kept (use #cmd("REC") to discard them and take the disk copy). Checked about once a second. This is #emph[independent of] #cmd("TRUST"): no external program is run, so it works whether or not shell-out is enabled. Read back via #sv("AUTOREOPEN"); persists in the config.
 
 == B
 
@@ -690,6 +692,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("ULSPACES"): whether an `MDA` #underline[underline] paints through the spaces between words — `ULSPACES on|off` (bare toggles). `on` (the default) draws one continuous line, matching how a selection underlines; `off` breaks the line at spaces and tabs, so only word glyphs are underlined. Applies to both selection styling and the `MDA UL`/`BU` typing mode — and governs the underline in the `PV` preview and `TOPDF` output the same way, so print matches the screen. Read back via `$ULSPACES`; persists in the config.
 / #cmd("UNTITLEDTAB"): whether the blank *Untitled* scratch tab is closed when you open a document — `UNTITLEDTAB on|off` (bare toggles). On (the default) closes it and prunes any leftover empty untitled tab, so a scratch never lingers beside real files; the Untitled tab reappears when the last document is closed. `off` keeps the Untitled tab as its own tab. Read back via `$UNTITLEDTAB`; persists in the config.
 / #cmd("GOTOOPEN"): whether opening a file that is already open switches to its tab instead of asking — `GOTOOPEN on|off` (bare toggles). Off (the default) shows the "already open" prompt (*(Y)es (N)o (G)o (R)ead*); `on` skips the prompt and goes straight to the existing tab (the prompt's *(G)o*). Affects `OPEN` only — `READ` always opens a fresh read-only view. Read back via `$GOTOOPEN`; persists in the config.
+/ #cmd("URLHIGHLIGHT"): highlight URLs in the document and make them clickable — `URLHIGHLIGHT on|off` (bare toggles). Off by default. When on, every `http(s)`/`ftp`/`mailto:` URL and bare `www.` address is coloured (see #cmd("URLFGCOLOR")/#cmd("URLBGCOLOR")), and *Ctrl+click* on one opens it in the OS default application (a `www.` link opens as `https://`; only web and mail schemes are launched). Trailing sentence punctuation is not part of the link (`(see http://x.org).` highlights just the URL). A visual overlay, so it works in read-only tabs too. Read back via #sv("URLHIGHLIGHT"); persists in the config. (Ctrl+click otherwise adds a multi-caret — the URL only wins when the click lands on a highlighted one.)
+/ #cmd("URLFGCOLOR") / #cmd("URLBGCOLOR"): the URL-highlight text colour / background colour — `URLFGCOLOR <r g b>` (0–255; `/HSL` reads the triple as H S L). Bare, or `… default`, clears it: the text reverts to a built-in link blue and the background to transparent (no band — just coloured text). #cmd("URLFGCOLORS") / #cmd("URLBGCOLORS") open the colour picker. Read back with #sv("URLFGCOLOR") / #sv("URLBGCOLOR"); persisted by `SAVECFG`.
 / #cmd("CMLINE"): move focus to the command line (synonym #cmd("GH")).
 / #cmd("CMPLACE"): where the command line is drawn — `CMPLACE top|bottom|hidden` (bare reports it). `hidden` keeps it out of the way until you focus it. Read back via `$CMPLACE`; persists in the config.
 / #cmd("CONTINUE"): skip to the next iteration of the loop.
@@ -817,7 +821,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("MARKSET") / #cmd("MARKCLEAR"): set / clear a bookmark at the caret (`MARKCLEAR` where there is none is a trappable error). #cmd("MARKTOGGLE"): set one if absent, clear it if present. #cmd("MARKCLEARALL"): remove every bookmark in the document.
 / #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping at the ends, and scroll it into view. A bookmark whose text has moved (the file changed since it was saved) is relocated to the nearby text, noted in the status line. Bookmarks are per-document, persist in the hidden `.xymeta` sidecar, and show as a dot in the left gutter. See #sv("MARKS") / #sv("MARK").
 / #cmd("MARKLIST"): open a modal chooser of the document's bookmarks — each row is the line number and its text — and jump the caret to the one you pick (centered). Bind it to a key for a quick "go to bookmark" menu. A no-op note when there are none.
-/ #cmd("MARKGUTTER"): whether bookmarks show a dot in the left gutter — `MARKGUTTER on|off`, bare toggles. On by default; a pure display switch (bookmarks still work when off). Persisted by `SAVECFG`; read back with #sv("MARKGUTTER").
+/ #cmd("MARKGUTTER"): how the left-gutter bookmark strip is shown — `MARKGUTTER off | on | persist` (bare toggles off↔on). `off` never shows it; `on` (the default) reserves the strip only when the document has bookmarks, so layout is otherwise unchanged; `persist` reserves it always (bookmarks or not), giving a stable left margin. A pure display switch — bookmarks still work when off. Persisted by `SAVECFG`; read back with #sv("MARKGUTTER") (`off`/`on`/`persist`).
+/ #cmd("MARKFGCOLOR") / #cmd("MARKBGCOLOR"): the bookmark-gutter dot colour / strip-background colour — `MARKFGCOLOR <r g b>` (0–255; `/HSL` reads the triple as H S L). Bare, or `… default`, clears it: the dot reverts to bookmark orange and the strip to transparent. #cmd("MARKFGCOLORS") / #cmd("MARKBGCOLORS") open the colour picker. Together with `MARKGUTTER persist`, these let the gutter blend into the page or stand out as a coloured margin. Read back with #sv("MARKFGCOLOR") / #sv("MARKBGCOLOR"); persisted by `SAVECFG`.
 / #cmd("MENU"): keyboard control of the menu bar. Bare `MENU` toggles it — opens the first menu for arrow-key navigation (Left/Right between menus, Up/Down through items, Enter to open a submenu or run an item, Esc to back out) or closes it if open. `MENU "f"` opens a specific menu by its #underline[accelerator] letter (the underlined letter in each label; e.g. `f` = File). While a menu is open, typing an item's accelerator letter jumps to and runs it. The bar takes mouse and keyboard interchangeably — a menu opened with the mouse is immediately arrow-navigable, and vice versa. Bind it to a key (e.g. `nn=MENU` or `nn=MENU "f"`) for mouse-free menus. GUI only.
 / #cmd("MERGE", "ME"): insert a file's contents at the caret.
 / #cmd("MSG"): show a message box — a bare `MSG` is modal and pauses the script; `MSG /T:<seconds>` is a non-blocking toast.
@@ -870,7 +875,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("RE") / #cmd("RL") / #cmd("RLL") / #cmd("RW") / #cmd("RS") / #cmd("RP"): delete from the caret to end-of-line / the current VISUAL (wrapped) line / the whole LOGICAL line / the word / the sentence / the paragraph. `RL` deletes the on-screen row for XyWrite compatibility; with `WRAP off` (or headless) it deletes the logical line, the same as `RLL` ("rubout line logical").
 / #cmd("READ"): open an existing file in a read-only tab (unlock it with `RO`); a missing file is an error. Always opens a fresh copy — no "already open?" prompt — so you can hold several read-only views of one file. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/HEX` opens it in the #cmd("HEX") view.
 / #cmd("READKEY", "RK"): pause for a single keystroke into a variable — `READKEY <var> [message]`. With a `message` (a quoted string; `\n` for line breaks), it pops a modal box showing the message while it waits (handy for a keypress menu: `READKEY k "Pick:\nA\nB\nC"` then `SWITCH UPPER($k)`). A bare modifier press (Shift / Ctrl / Alt / …) is ignored — it waits for a real key. That key's scancode lands in #sv("SC"), and #sv("SCC") holds the *computed* scancode (the scancode plus the bit value of any held modifier keys), so a script can tell a plain key from its Shift / Ctrl / Alt-modified form (e.g. `SWITCH $SCC` or `KEY($SCC)`). With `/D` (`READKEY/D <var>`) the variable instead gets a readable *description* of the key — the held modifiers (named and bit-valued exactly as the loaded KBD file defines them — the built-in default uses `CTRL` / `ALT` / `SHIFT` / `CAPS`, and any user-defined modifier such as `HOTKEY` is recognised) joined with `+` to the key label, e.g. `CTRL+Y`, `SHIFT+F3`, `HOTKEY+A`, `Enter`, `A` — handy for showing the user which key they pressed.
-/ #cmd("REC", "RECALL"): revert the document to its last saved state.
+/ #cmd("REC", "RECALL"): revert the document to its last saved state, discarding unsaved changes. The caret is kept where it was (clamped to the reverted length) rather than jumping to the top, and the viewport stays put — so a revert doesn't lose your place.
 / #cmd("REOPEN"): choose a recently-closed file from a list to reopen, restoring the caret to where it was (in the GUI: #emph[File ▸ Reopen closed…]). `REOPEN <n>` skips the picker and reopens the first `n` closed files straight away (`REOPEN 1` = the most recent; `n` is clamped to the list length, and the most-recent of the batch ends up active). (The list is `SaveCfg`-persisted; see `SaveClosed`/`LoadClosed`.) #cmd("CLEARCLOSED"): empty the recently-closed list.
 / #cmd("RELOADLIB"): re-run the recorded library-load sequence. #cmd("UNLOADLIB"): drop all user-library routines.
 / #cmd("SAVELIB"): write all currently-loaded *user* library routines to one `.lib` file (`SUB…ENDSUB` per routine, `# DOC:` lines preserved), reloadable with #cmd("LOADLIB") or #cmd("ADDLIB"). `SaveLib [path]`; bare → `xyscript.lib` (resolved against `$CWD`). Under `CAPTURE` the text goes into the variable instead.
@@ -1184,6 +1189,8 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 / #sv("SELFGCOLOR") / #sv("SELBGCOLOR"): the selected text's color and its highlight.
 / #sv("FINDFGCOLOR") / #sv("FINDBGCOLOR"): the FIND "highlight all" matched-text color and its highlight background.
 / #sv("EMPHFGCOLOR") / #sv("EMPHBGCOLOR"): the effective `EMPH` emphasis text / background color (the override if set, else the selection color).
+/ #sv("URLHIGHLIGHT"): `1` if URL highlighting + Ctrl+click-to-open is on, `0` if off (set with `URLHIGHLIGHT`).
+/ #sv("URLFGCOLOR") / #sv("URLBGCOLOR"): the URL-highlight text / background color as `r g b` (empty = default: a link blue / transparent). Set with `URLFGCOLOR` / `URLBGCOLOR`.
 / #sv("SPELLCOLOR") / #sv("GRAMMARCOLOR"): the underline colors for live language-check spelling / grammar issues.
 / #sv("CRCOLOR") / #sv("CRSHAPE"): the caret's color and shape (bar / block / underline).
 / #sv("TABACTIVE") / #sv("TABHOVER") / #sv("TABINACTIVE"): the tab-strip colors (empty when at the theme default).
@@ -1246,6 +1253,7 @@ Every special variable in one list, for quick lookup.
 / #sv("AR"): path of the last `LoadAR` file.
 / #sv("ATTACH"): files staged for the next `SENDMAIL`.
 / #sv("AU"): autosave interval (seconds; 0 = off).
+/ #sv("AUTOREOPEN"): `1` if files auto-reopen when changed on disk, `0` if off (set with `AUTOREOPEN`).
 / #sv("BALPAIRS"): matched-bracket highlighting on.
 / #sv("BALPAIRSCOLOR"): matched-bracket highlight color (empty = follows the selection color).
 / #sv("BGCOLOR"): editor background color.
@@ -1266,7 +1274,8 @@ Every special variable in one list, for quick lookup.
 / #sv("WRAP"): `1` if long lines wrap to the window, `0` if they run past the edge with a horizontal scrollbar (set with `WRAP`).
 / #sv("HEX"): `1` if the active document is shown as a hex + text grid, `0` for the normal text view (set with `HEX on|off`).
 / #sv("MARKS"): the number of bookmarks in the active document. #sv("MARK"): `1` when the caret sits on a bookmark, else `0` (set with `MARKSET` / `MARKCLEAR`).
-/ #sv("MARKGUTTER"): `1` if the bookmark gutter dot is shown, `0` if hidden (set with `MARKGUTTER`).
+/ #sv("MARKGUTTER"): the bookmark-gutter mode — `off`, `on`, or `persist` (set with `MARKGUTTER`).
+/ #sv("MARKFGCOLOR") / #sv("MARKBGCOLOR"): the bookmark-gutter dot colour / strip-background colour as `r g b` (empty = default: bookmark orange / transparent). Set with `MARKFGCOLOR` / `MARKBGCOLOR`.
 / #sv("WRAPHANG"): the hanging indent (in spaces) for wrapped continuation rows, `0` for flush (set with `WRAPHANG`).
 / #sv("ULSPACES"): `1` if `MDA` underlines paint through inter-word spaces, `0` if they break at spaces (set with `ULSPACES`).
 / #sv("UNTITLEDTAB"): `1` if the blank Untitled tab is auto-closed when a document is opened (set with `UNTITLEDTAB`).
@@ -1277,7 +1286,7 @@ Every special variable in one list, for quick lookup.
 / #sv("CARETP"): the primary caret's index in the document-order caret list, so `$CP == $MCP[$CARETP]`.
 / #sv("MCP"): array of every caret's character offset, in document order (the mirror of #sv("CP")). Loop it with `FOR p IN $MCP`; the count is `LEN($MCP)` (or #sv("CARETS")). The classic caret specials (#sv("CP")/#sv("WD")/#sv("LI")/…) read the primary caret.
 / #sv("MSE") / #sv("MSL") / #sv("MDF") / #sv("MDS") / #sv("MDN") / #sv("MCS") / #sv("MCH") / #sv("MWD") / #sv("MLI") / #sv("MLN"): the `$M…` mirror family — one 0-based array element per caret, in document order, mirroring the classic caret specials #sv("SE") / #sv("SL") / #sv("DF") / #sv("DS") / #sv("DN") / #sv("CS") / #sv("CH") / #sv("WD") / #sv("LI") / #sv("LN") respectively (selected text, chars selected, has-selection 1/0, selection start / end offset, caret-on-selection 1/0, char to the right, word under caret, line text, 1-based line number). Every mirror has `LEN == ` #sv("CARETS") and `$X == $MX[$CARETP]`; a bare caret reports `""` / `0` for its selection but a valid position, char, word, and line.
-/ #sv("MARK"): `1` when the caret is on a bookmark, else `0`. #sv("MARKS"): the number of bookmarks in the document. #sv("MARKGUTTER"): `1` if the gutter dot is shown.
+/ #sv("MARK"): `1` when the caret is on a bookmark, else `0`. #sv("MARKS"): the number of bookmarks in the document. #sv("MARKGUTTER"): the gutter mode (`off`/`on`/`persist`).
 / #sv("CRCOLOR"): caret color.
 / #sv("CMCRCOLOR"): command-line caret color.
 / #sv("CRSHAPE"): caret shape.

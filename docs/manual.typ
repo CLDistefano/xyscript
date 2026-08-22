@@ -72,8 +72,8 @@
   quickly by using the menus and an array of familiar keyboard shortcuts for editing and file management
   (see Key Bindings, § 13.1, below).
 
-  The command reference (`reference.pdf`) is the unabridged guide to XyScript's feature set, organized
-  alphabetically and by topic. Those features include:
+  The command reference (`reference.pdf`) is the unabridged guide to XyScript's feature set and inner workings, organized
+  alphabetically and by topic. The features include:
 
   - Customizable user interface: fonts, colors, 18 included languages and a template for adding others
   - Live preview and print-to-PDF for text, HTML, #link("https://github.github.com/gfm/", "Markdown"), and #link("https://typst.app", "Typst") files
@@ -112,7 +112,7 @@
   #v(6pt)
   Carl L. Distefano \
   New York City \
-  21 August 2026
+  22 August 2026
 ]
 
 #pagebreak()
@@ -451,9 +451,19 @@ When you have several, #raw("MARKLIST") opens a chooser — one row per bookmark
 number and the text there — and jumps to whichever you pick. It is the quickest way back to a spot
 you can recognise but can't remember the order of; bind it to a key for a pop-up "go to bookmark" menu.
 
-The dot in the margin is optional: #raw("MARKGUTTER off") hides it (the bookmarks still work — you
-just navigate them with the commands above), and #raw("MARKGUTTER on") brings it back; bare
-#raw("MARKGUTTER") toggles. The setting is saved with #raw("SAVECFG").
+The margin strip has three modes, set with #raw("MARKGUTTER"). #raw("MARKGUTTER off") hides it
+entirely (the bookmarks still work — you just navigate them with the commands above); #raw("MARKGUTTER
+on"), the default, shows the strip only while the file has bookmarks, so an unbookmarked file's layout
+is unchanged; and #raw("MARKGUTTER persist") keeps the strip reserved at all times, bookmarks or not,
+for a stable left margin. Bare #raw("MARKGUTTER") toggles off and on.
+
+Two colour settings let the gutter blend into the page or stand out. #raw("MARKFGCOLOR") sets the dot
+colour and #raw("MARKBGCOLOR") the strip's background — each takes an #raw("r g b") triple (0–255), or
+#raw("default") to restore the built-in bookmark orange and a transparent strip; add #raw("/HSL") to
+give the triple as hue-saturation-lightness. #raw("MARKFGCOLORS") and #raw("MARKBGCOLORS") open a
+colour picker instead. Paired with #raw("MARKGUTTER persist") and a background colour, the gutter
+becomes a tidy coloured margin down the left of the page. All of these settings are saved with
+#raw("SAVECFG").
 
 All of this is on the menu too, under *Search ▸ Bookmarks*: toggle a bookmark here, jump to the next
 or previous one, open the chooser, clear them all, or turn the gutter dot on and off.
@@ -661,6 +671,22 @@ _Word or phrase…_ / _Regular expression…_ items stage the command for you to
 selection colors; #raw("EMPHFGCOLOR") and #raw("EMPHBGCOLOR") (or their #raw("EMPHFGCOLORS") /
 #raw("EMPHBGCOLORS") pickers) give the emphasis a look of its own, and #raw("… default") hands it back to
 the selection colors. Read the effective colors as #raw("$EMPHFGCOLOR") / #raw("$EMPHBGCOLOR").
+
+*Links.* #raw("URLHIGHLIGHT on") finds every web address in the document — #raw("http://") and
+#raw("https://"), #raw("ftp://"), a bare #raw("www.") host, or a #raw("mailto:") address — and paints it
+so it stands out, and #kbd("Ctrl")+click on a highlighted URL opens it in your default browser or mail
+program (a #raw("www.") link opens as #raw("https://"); only web and mail addresses are ever launched).
+Trailing sentence punctuation is left out of the link, so #raw("(see https://example.org).") highlights
+just the address. Like emphasis it is a standing overlay, not an edit, so it works in read-only tabs too;
+a bare #raw("URLHIGHLIGHT") toggles it, and it is off until you turn it on. The look is yours to set:
+#raw("URLFGCOLOR") colors the link text (a link blue by default) and #raw("URLBGCOLOR") gives it a
+background band (none by default) — each takes an #raw("r g b") triple or #raw("/HSL"), with
+#raw("URLFGCOLORS") / #raw("URLBGCOLORS") opening a picker and #raw("default") restoring the built-ins.
+The setting and colors are saved with #raw("SaveCfg").
+
+#tip("Ctrl+click does two jobs")[With #raw("URLHIGHLIGHT on"), a #kbd("Ctrl")+click that lands on a
+highlighted URL opens it; a #kbd("Ctrl")+click anywhere else still adds a multi-caret (see *Working with
+Multiple Carets*). The link only wins when you click on one.]
 
 == Deleting
 
@@ -940,7 +966,7 @@ you can keep several views of the same file open at once.
 / #raw("SAD"): save the current *selection* to a separate file. If the target already exists you are asked before overwriting; #raw("SAD/NV") overwrites without asking.
 / #raw("ST"): "store" — save the file and close its tab in one step (the XyWrite habit). #raw("ST report.md") saves to (and names) a given path — the way to store an untitled document; if that path already exists you are asked before overwriting, and #raw("ST/NV report.md") overwrites without asking. A bare #raw("ST") on a never-saved document has no name to save to, so the tab is left open rather than discarded.
 / #raw("SL"): save every open document at once.
-/ #raw("REC"): revert the document to its last saved state (#raw("RECALL") is the long form), discarding changes since the last save.
+/ #raw("REC"): revert the document to its last saved state (#raw("RECALL") is the long form), discarding changes since the last save. The cursor and the viewport are kept where they were, so a revert drops you back in place instead of at the top of the file.
 
 #tip("Two ways to read your file's identity")[#raw("$FI") is the active document's file name and
 #raw("$FP") its full path — handy when a script needs to act on the file it is editing, for example
@@ -1069,6 +1095,15 @@ a file with a different one.
 writes the active document quietly after a brief idle period so you can't lose more than a few seconds
 of work; #raw("AUTOSAVE <seconds>") sets the interval (or #raw("AUTOSAVE off")), and #raw("$AU") reads
 it.
+
+#raw("AUTOREOPEN on") keeps the editor in step with the outside world: when another program changes a
+file you have open, XyScript notices (it checks about once a second) and re-reads it for you, keeping the
+cursor and viewport where they were — the same in-place reload as #raw("REC"). A buffer with #emph[unsaved]
+edits is never overwritten: the change is noted on the status line and your edits are kept, so you decide
+whether to #raw("REC") to the disk copy or #raw("SAVE") over it. It is off until you turn it on, and — unlike
+shell-out — it is #emph[not] gated by #raw("TRUST"), because auto-reopening runs no external program; it
+only re-reads a file you already opened. #raw("$AUTOREOPEN") reads the state, and the setting is saved
+with #raw("SaveCfg").
 
 // ===================================================================================================
 = Find and Replace
