@@ -299,6 +299,10 @@ impl Editor {
     pub fn poll_external_changes(&mut self) -> Vec<String> {
         self.host.poll_external_changes()
     }
+    /// Move the active document's caret to 1-based `line` (the `--goto` CLI flag / `DUPVIEW/W`).
+    pub fn goto_line(&mut self, one_based: usize) {
+        self.host.goto_line(one_based)
+    }
 
     /// The 0-based logical line of each bookmark in the active document, for the gutter glyphs.
     pub fn mark_lines(&self) -> Vec<usize> {
@@ -2577,6 +2581,68 @@ mod tests {
         assert!(e.document().text().contains("MYEDIT"), "unsaved edits must NOT be clobbered");
         assert!(!e.document().text().contains("external replacement"), "the disk copy did not overwrite");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dupview_opens_a_second_in_process_view_at_the_caret() {
+        let path = std::env::temp_dir().join(format!("xyscript-dupview-{}.txt", std::process::id()));
+        std::fs::write(&path, b"one\ntwo\nthree\nfour\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        e.run_command("BOTTOM");
+        let caret = e.document().cursor();
+        assert!(caret > 0);
+        let before = e.tabs().len();
+        e.run_command("DUPVIEW");
+        assert_eq!(e.last_error(), None);
+        assert_eq!(e.tabs().len(), before + 1, "a second tab opened");
+        // The new active view is the SAME file, positioned at the SAME caret.
+        assert_eq!(e.active_path().unwrap(), path);
+        assert_eq!(e.document().cursor(), caret, "second view lands at the source caret");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dupview_errors_on_an_unsaved_buffer() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.insert_literal("scratch content, never saved");
+        let before = e.tabs().len();
+        e.run_command("DUPVIEW");
+        // The error is reported on the status line and no second view opens.
+        assert!(
+            e.status_message().map(|s| s.starts_with("DUPVIEW:")).unwrap_or(false),
+            "expected a DUPVIEW error, got {:?}",
+            e.status_message()
+        );
+        assert_eq!(e.tabs().len(), before, "no second view on error");
+    }
+
+    #[test]
+    fn dupview_window_is_a_noop_under_virtual_fs() {
+        // /W spawns a real process; under virtual_fs it just no-ops (no spawn, no error) so the rest of
+        // the flow is testable without launching a window.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("f.txt".into(), "x\ny\n".into());
+        e.run_command("OPEN f.txt");
+        e.run_command("DUPVIEW/W");
+        assert_eq!(e.last_error(), None);
+    }
+
+    #[test]
+    fn goto_line_positions_the_caret_clamped() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.insert_literal("line one\nline two\nline three");
+        e.goto_line(1);
+        assert_eq!(e.document().cursor(), 0, "line 1 → offset 0");
+        e.goto_line(2);
+        let l2 = e.document().cursor();
+        assert!(l2 > 0, "line 2 is past the start");
+        e.goto_line(999); // clamps to the last line's start
+        let last = e.document().cursor();
+        assert!(last >= l2 && last <= e.document().len());
     }
 
     #[test]

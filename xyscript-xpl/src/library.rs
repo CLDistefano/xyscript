@@ -132,7 +132,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "BK",
     // Save/file lifecycle (B18): save-as, save-selection, revert, read-only, close-tab,
     // save-all, save+close-all.
-    "ST", "SAAS", "SAVEAS", "SAD", "REC", "RECALL", "RO", "AB", "ABD", "SL", "SF", "SAVECFG", "LOADCFG",
+    "ST", "SAAS", "SAVEAS", "SAD", "REC", "RECALL", "DUPVIEW", "RO", "AB", "ABD", "SL", "SF", "SAVECFG", "LOADCFG",
     "AUTOCFG", "AUTOSAVE",
     // Lock keys: set/clear/toggle Caps / Num / Scroll.
     "SCL", "CCL", "TCL", "SNL", "CNL", "TNL", "SSL", "CSL", "TSL",

@@ -400,6 +400,12 @@ pub enum EditorOp {
     /// Revert the active document to its last saved state by re-reading its file
     /// (`REC`/`RECALL`). Errors if the document was never saved (no path).
     Revert,
+    /// Open a second view of the current file (`DUPVIEW`), positioned at the current line. `window =
+    /// false` opens it as a fresh in-process tab (a distinct buffer of the same path); `window = true`
+    /// (`DUPVIEW/W`) launches it in a separate free-standing window (a second editor instance). Both
+    /// stay in step on save via `AUTOREOPEN`. Errors if the file was never saved. Not TRUST-gated (it
+    /// only re-opens a file you already have open, running our own editor for the `/W` window).
+    DupView { window: bool },
     /// Lock/unlock the active document against edits (`RO`). Read back via `$RO`. When
     /// locked, buffer-content edits are rejected (the cmline is never locked).
     SetReadOnly(ViewToggle),

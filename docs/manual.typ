@@ -959,6 +959,17 @@ the open copy (#raw("$GOTOOPEN") reads the state, #raw("SaveCfg") remembers it; 
 prompt). #raw("READ") skips that question a different way and always opens a fresh read-only copy, so
 you can keep several views of the same file open at once.
 
+*Two views of one file.* When you want to see two parts of a long file at once — reference the top while
+editing the bottom, say — #raw("DUPVIEW") opens a *second view* of the current file, positioned at the
+line you are on. A bare #raw("DUPVIEW") opens it as another tab (a separate view with its own cursor and
+scroll position); pair it with #raw("NEW/H") or #raw("NEW/V") to sit the two side by side. #raw("DUPVIEW/W")
+instead opens the second view in its own *free-standing window* you can drag anywhere — onto a second
+monitor, tiled however you like — the way #raw("DIR/W") floats a directory browser. With
+#raw("AUTOREOPEN on"), saving in either view updates the other, so the two windows stay in step. (The
+on-disk copy is opened, so #raw("SAVE") first if you want unsaved edits carried into the new view; and
+the file must have been saved at least once. The #raw("/W") window is a second copy of XyScript itself —
+so, like a new instance you launch by hand, it is not gated by #raw("TRUST").)
+
 == Saving
 
 / #raw("SAVE"): write the active document back to its file. A new, never-saved document has no name yet, so XyScript asks for one — that is *Save As*.

@@ -1913,6 +1913,14 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetReadOnly(kind))?;
                 Ok(Flow::Next)
             }
+            // `DUPVIEW` — open a second view of the current file at the current line. `/W` opens it in a
+            // separate free-standing window (a second editor instance); bare opens an in-process tab.
+            // Both sync on save via AUTOREOPEN. Not TRUST-gated.
+            "DUPVIEW" => {
+                let window = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+                self.host_op(EditorOp::DupView { window })?;
+                Ok(Flow::Next)
+            }
             // Lock keys — Set/Clear/Toggle: Caps (`SCL`/`CCL`/`TCL`), Num (`SNL`/`CNL`/`TNL`),
             // Scroll (`SSL`/`CSL`/`TSL`). S=on, C=off, T=toggle. Windows-only effect; read via
             // `$CAPSLOCK`/`$NUMLOCK`/`$SCROLLLOCK`.
@@ -5312,6 +5320,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "SH", "SHELL",
     // Cursor addition acts at the caret (read a number / insert the total) — keep focus in the text.
     "ADDSUM", "PUTSUM",
+    // A second view opens a document tab — land focus in the text, like OPEN.
+    "DUPVIEW",
 ];
 
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if
@@ -5357,6 +5367,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         // `/NV` — open again in a new tab without the "already open?" prompt.
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V", "HEX"],
+        "DUPVIEW" => &["W"], // `/W` — a second view in a free-standing window
         "SW" | "SHELLWIN" => &["H", "V"], // `/H` `/V` — show *Shell Output* in a split pane
 
         "CD" => &["D"], // `/D` (change-drive) — accepted, harmless (cwd is in-process)

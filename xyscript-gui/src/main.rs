@@ -10519,12 +10519,18 @@ fn main() {
     // open ALONGSIDE the restored set (Notepad++-style) and land active.
     app.restore_session_if_enabled();
     let mut files: Vec<String> = Vec::new();
+    let mut goto_line: Option<usize> = None;
     let mut it = cli_args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             // Value-taking switches: skip the switch AND its following value.
             "-s" | "--startup" | "-run" | "--run" => {
                 it.next();
+            }
+            // `--goto <line>` — 1-based line to land on after opening the file(s). Used by `DUPVIEW/W`
+            // so the new window opens at the source view's line.
+            "--goto" | "-goto" => {
+                goto_line = it.next().and_then(|v| v.parse::<usize>().ok());
             }
             // Any other switch (e.g. `--render-only`, or an unknown `-x`): skip just it.
             _ if a.starts_with('-') => {}
@@ -10534,6 +10540,10 @@ fn main() {
     }
     if !files.is_empty() {
         app.open_startup_files(&files);
+    }
+    if let Some(line) = goto_line {
+        app.editor.goto_line(line);
+        app.pane_view.follow = true; // reveal the line
     }
     runtime::run(app);
 }

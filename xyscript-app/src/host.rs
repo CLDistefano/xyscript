@@ -3498,6 +3498,37 @@ impl AppHost {
         self.auto_reopen
     }
 
+    /// Launch a second editor window (a fresh instance) on `path`, positioned at 1-based `line`
+    /// (`DUPVIEW/W`). Runs OUR OWN executable — so it is NOT shell-out and needs no `TRUST`; the new
+    /// instance runs its normal `startup.xpl` (persistent config), opens the file positionally, and
+    /// jumps to the line via `--goto`. Detached; the editor never waits on it.
+    fn spawn_second_window(&mut self, path: &Path, line: usize) -> VmResult<Value> {
+        if self.virtual_fs {
+            return Ok(Value::str("(virtual-fs: window not launched)"));
+        }
+        let exe = std::env::current_exe().map_err(|e| {
+            XplError::trappable(format!("DUPVIEW: cannot find the editor executable: {e}"))
+        })?;
+        std::process::Command::new(&exe)
+            .arg(path)
+            .arg("--goto")
+            .arg(line.to_string())
+            .current_dir(&self.cwd)
+            .spawn()
+            .map_err(|e| XplError::trappable(format!("DUPVIEW: cannot open a new window: {e}")))?;
+        Ok(Value::str(""))
+    }
+
+    /// Move the active document's caret to the start of 1-based `line` (clamped). Used by the `--goto`
+    /// CLI flag (`DUPVIEW/W`'s new window lands at the source view's line).
+    pub fn goto_line(&mut self, one_based: usize) {
+        let doc = self.active();
+        let total = doc.buffer().line_count();
+        let l = one_based.saturating_sub(1).min(total.saturating_sub(1));
+        let off = doc.buffer().line_byte_range(l).0;
+        doc.set_caret(off, None);
+    }
+
     /// Record the current on-disk modification time of `docs[idx]`'s file as the baseline for
     /// `AUTOREOPEN` change detection. No-op without a path, under `virtual_fs`, or if the stat fails.
     fn refresh_disk_mtime(&mut self, idx: usize) {
@@ -10297,6 +10328,35 @@ impl Host for AppHost {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or(key);
                 return Ok(Value::str(format!("reverted to {name}")));
+            }
+            EditorOp::DupView { window } => {
+                // A second view needs a file on disk to point at (both the in-process tab and the new
+                // window open it by path). The on-disk content is used, so unsaved edits in this buffer
+                // aren't reflected until you SAVE (then AUTOREOPEN can sync the views).
+                let path = match self.file_doc().path() {
+                    Some(p) => p.to_path_buf(),
+                    None => {
+                        return Err(XplError::trappable(
+                            "DUPVIEW: save the file first — there is no file on disk to open a second view of",
+                        ))
+                    }
+                };
+                let caret = self.file_doc().buffer().cursor();
+                let line = self.file_doc().buffer().line_of(caret) + 1; // 1-based, for the window's --goto
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                if window {
+                    self.spawn_second_window(&path, line)?;
+                    return Ok(Value::str(format!("opened a new window on {name} (line {line})")));
+                }
+                // In-process: open a fresh, distinct buffer of the same file (force = no "already open"
+                // prompt), then land the caret where it was.
+                self.open_doc(&path.to_string_lossy(), false, false)?;
+                let len = self.active().buffer().len();
+                self.active().set_caret(caret.min(len), None);
+                return Ok(Value::str(format!("second view of {name}")));
             }
             EditorOp::SetReadOnly(kind) => {
                 let doc = &mut self.docs[self.active];
