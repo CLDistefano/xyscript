@@ -1019,6 +1019,11 @@ impl Editor {
     pub fn last_search(&self) -> String {
         self.host.last_search()
     }
+    /// Commit a search string + options as the "last search" without searching (the FIND dialog does
+    /// this on close so F3 continues its field). See [`AppHost::commit_last_search`].
+    pub fn commit_last_search(&mut self, find: &str, case: bool, whole: bool, regex: bool) {
+        self.host.commit_last_search(find, case, whole, regex)
+    }
     /// Whether shell-out is enabled (`TRUST 1`) — the Run-command dialog gates Run on this.
     pub fn trusted(&self) -> bool {
         self.host.special("TR").map(|v| v.to_str() == "1").unwrap_or(false)
@@ -7131,6 +7136,21 @@ mod tests {
         e.run_command("TF");
         assert!(e.search_spec("$x", None, false, false, false, false, false, false, false).is_ok());
         assert_eq!(e.selection_text(), "$x");
+    }
+
+    #[test]
+    fn commit_last_search_makes_bare_se_repeat_the_field() {
+        // The FIND dialog commits its field on close; a later bare SE/F3 must then repeat THAT term
+        // (with its options), not whatever was searched before.
+        let mut e = ed();
+        e.insert_str("alpha BETA alpha beta");
+        e.run_command("TOP");
+        e.commit_last_search("beta", true, false, false); // case-sensitive
+        e.run_command("SE"); // bare = repeat the committed search
+        assert_eq!(e.selection_text(), "beta"); // the lowercase one (case-sensitive skips "BETA")
+        // Empty field commit is a no-op — the committed term stands.
+        e.commit_last_search("", false, false, false);
+        assert_eq!(e.last_search(), "beta");
     }
 
     #[test]

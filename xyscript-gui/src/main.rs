@@ -5991,6 +5991,13 @@ impl GuiApp {
     /// Clear all FIND state (dialog + live highlight-all) — the runtime calls this when the window is
     /// closed (Esc / Close button / the window's ×).
     fn close_find_state(&mut self) {
+        // Commit the field as the "last search" so a later F3 (dialog closed) continues it — even if the
+        // last thing in the dialog was only a live type-to-find (which never touches the engine's search
+        // state). A no-op for an empty field.
+        if let Some(d) = self.find_dialog.as_ref() {
+            let (find, case, whole, regex) = (d.find.clone(), d.case, d.whole_word, d.regex);
+            self.editor.commit_last_search(&find, case, whole, regex);
+        }
         self.find_dialog = None;
         self.find_refocus = false;
         self.find_highlights.clear();
@@ -6115,7 +6122,40 @@ impl GuiApp {
     /// `SE`/`SEB` repeats the last search with its options (case/whole/regex) via the host's
     /// `last_spec`. Status/feedback surface as usual; the match scrolls into view.
     fn find_again(&mut self, backward: bool) {
-        self.editor.run_command(if backward { "SEB" } else { "SE" });
+        // With the FIND dialog open, F3 / Shift+F3 search the CURRENT field text + options — identical
+        // to Enter / Find Prev — rather than the engine's `last_search`, which the live type-to-find
+        // never updates (so a bare `SE` here would search a STALE string that differs from the field).
+        // With the dialog closed, F3 is the standalone "repeat the last committed search".
+        if self.find_dialog.is_some() {
+            self.find_step(backward);
+        } else {
+            self.editor.run_command(if backward { "SEB" } else { "SE" });
+            self.pane_view.follow = true;
+        }
+    }
+
+    /// One search step for the FIND dialog: the CURRENT field text + options, `backward` or forward,
+    /// honouring "Wrap around" (retry a not-found search from the far end). Shared by the dialog's
+    /// Find Next / Find Prev / Enter AND by F3 / Shift+F3, so F3 always matches Enter. No-op if the
+    /// dialog is closed or the field is empty.
+    fn find_step(&mut self, backward: bool) {
+        let Some((find, case, whole, regex, scope, wrap)) = self
+            .find_dialog
+            .as_ref()
+            .map(|d| (d.find.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.wrap))
+        else {
+            return;
+        };
+        if find.is_empty() {
+            return;
+        }
+        let r = self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, false);
+        let r = if r.is_err() && wrap {
+            self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, true)
+        } else {
+            r
+        };
+        self.note(r);
         self.pane_view.follow = true;
     }
 
@@ -6334,8 +6374,9 @@ impl GuiApp {
         // Remember the options so reopening the dialog restores them.
         self.find_opts = (case, whole, regex, scope, keep_case, from_top, wrap);
         if !find.is_empty() && (do_find_next || do_find_prev || do_replace || do_replace_all) {
-            let r = if do_replace_all {
-                self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case, false)
+            if do_replace_all {
+                let r = self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case, false);
+                self.note(r);
             } else {
                 // Single replace: overwrite the selected match (if any) first, then find next.
                 // `replace_selection` OVERWRITES the span as one undo unit, ignoring persistent-
@@ -6350,18 +6391,9 @@ impl GuiApp {
                     };
                     self.editor.replace_selection(&repl);
                 }
-                // Find Next / Find Prev / the find-after-replace. `Wrap around`: if the search hits the
-                // end (not found), retry from the far end (top for forward, bottom for backward) so it
-                // loops to the first/last match instead of stopping.
-                let backward = do_find_prev;
-                let r = self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, false);
-                if r.is_err() && wrap {
-                    self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, true)
-                } else {
-                    r
-                }
-            };
-            self.note(r);
+                // Find Next / Find Prev / find-after-replace — the SAME shared step F3/Shift+F3 use.
+                self.find_step(do_find_prev);
+            }
             self.pane_view.follow = true;
             outcome.main_redraw = true;
         }

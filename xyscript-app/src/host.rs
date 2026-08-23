@@ -3726,6 +3726,31 @@ impl AppHost {
         self.last_search.clone()
     }
 
+    /// Commit a search string + its options as the "last search" WITHOUT performing a search, so a
+    /// later bare `SE`/`SEB` (F3) repeats it. The FIND dialog calls this when it closes, so F3 continues
+    /// the field's search even if the last action there was only a live type-to-find (which never
+    /// touches the engine's search state). A no-op for an empty string.
+    pub fn commit_last_search(&mut self, find: &str, case: bool, whole: bool, regex: bool) {
+        if find.is_empty() {
+            return;
+        }
+        self.last_search = find.to_string();
+        self.last_spec = Some(SearchSpec {
+            find: find.to_string(),
+            replace: None,
+            backward: false,
+            case_sensitive: case,
+            whole_word: whole,
+            from_top: false,
+            scope: false,
+            regex,
+            keep_case: false,
+            extend: false,
+            verify: false,
+            count: None,
+        });
+    }
+
     /// The active document's selected text (empty if nothing is selected). Used to seed the Find
     /// dialog from the current selection.
     pub fn active_selection_text(&self) -> String {
