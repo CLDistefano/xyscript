@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\uk.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 4 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -274,6 +274,8 @@ dialog.find.case = З урахуванням регістру   # Case sensitive
 dialog.find.whole_word = Слово цілком   # Whole word
 dialog.find.regex = Регулярний вираз   # Regular expression
 dialog.find.in_selection = У виділеному   # In selection
+dialog.find.from_top =    # From top of file
+dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
 dialog.find.keep_case = Зберігати регістр у заміні   # Keep case in replacement
 dialog.find.keep_case_hint = Замінити / Замінити все: приводити кожну заміну до регістру тексту, який вона замінює (малі / З великої / ВЕЛИКІ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Знайти далі (F3)   # Find next (F3)

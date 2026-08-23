@@ -635,6 +635,22 @@ fn type_to_find_target(grew: bool, matches: &[(usize, usize)], caret: usize) -> 
     }
 }
 
+/// Where the FIND dialog's live landing jumps the caret. With `from_top` the search BEGINS at the top,
+/// so the target is always the first match in the document; otherwise it is caret-relative (see
+/// [`type_to_find_target`]).
+fn find_landing_target(
+    from_top: bool,
+    grew: bool,
+    matches: &[(usize, usize)],
+    caret: usize,
+) -> Option<usize> {
+    if from_top {
+        matches.first().map(|(s, _)| *s)
+    } else {
+        type_to_find_target(grew, matches, caret)
+    }
+}
+
 /// Shrink `[start, end)` to exclude leading/trailing ASCII whitespace in `doc`'s CURRENT text,
 /// clamping stale offsets to the buffer length. Returns an empty span (`start == end`) when the range
 /// held only whitespace. A lint underline is drawn over the returned span, so a mark that a pending
@@ -1508,6 +1524,19 @@ mod menu_tests {
     }
 
     #[test]
+    fn find_landing_from_top_targets_the_first_match_else_caret_relative() {
+        let matches = [(10usize, 12usize), (50, 52), (300, 302)];
+        // From top ON: always the first match, regardless of caret or grow/shrink.
+        assert_eq!(super::find_landing_target(true, true, &matches, 999), Some(10));
+        assert_eq!(super::find_landing_target(true, false, &matches, 100), Some(10));
+        // From top OFF: caret-relative (delegates to type_to_find_target).
+        assert_eq!(super::find_landing_target(false, true, &matches, 11), Some(50));
+        assert_eq!(super::find_landing_target(false, true, &matches, 0), Some(10));
+        // No matches → nothing either way.
+        assert_eq!(super::find_landing_target(true, true, &[], 0), None);
+    }
+
+    #[test]
     fn clip_ws_span_trims_whitespace_edges() {
         // The draw-time whitespace clip that keeps a stale/misaligned lint mark from underlining a
         // just-typed space or newline (the <space>/<enter> flash).
@@ -1756,6 +1785,10 @@ struct FindDialog {
     /// `/K` — recase each replacement to match the case of the text it replaces (Replace / Replace
     /// all only). See `xyscript_app::host::recase_to_match`.
     keep_case: bool,
+    /// "From top of file": when on, a search BEGINS at the top — the live type-to-find lands on the
+    /// first match in the document (as you type, or when you tick the box) instead of the first match
+    /// at/after the caret. `Find Next` still advances forward from there, so it's a starting-point mode.
+    from_top: bool,
     /// One-shot: focus the Find field on the next frame (set on open via "Find…").
     focus_find: bool,
     /// One-shot: focus the Replace field on the next frame (set on open via "Replace…").
@@ -1763,6 +1796,8 @@ struct FindDialog {
     /// The Find text from the previous frame, to detect widening (backspace) vs. narrowing so
     /// type-to-find can jump to the right match (see `type_to_find_target`).
     prev_find: String,
+    /// The `from_top` state from the previous frame, so ticking the box re-triggers the landing jump.
+    prev_from_top: bool,
 }
 
 /// The non-modal Run-command dialog (Tools ▸ Shell command…). A thin renderer over the shell verbs:
@@ -2135,7 +2170,7 @@ struct GuiApp {
     /// an OS window move (`window.drag_window`).
     start_window_drag: bool,
     /// Last-used Find dialog options, remembered across opens: (case, whole word, regex, in selection).
-    find_opts: (bool, bool, bool, bool, bool),
+    find_opts: (bool, bool, bool, bool, bool, bool),
     /// The open colour-picker dialog: its target + the colour currently chosen in it (`None` =
     /// closed). On OK the matching `*COLOR`/`HLCOLOR` setter is run.
     color_picker: Option<(ColorTarget, egui::Color32)>,
@@ -2393,7 +2428,7 @@ impl GuiApp {
             pending_dialog: None,
             save_as_for_quit: false,
             start_window_drag: false,
-            find_opts: (false, false, false, false, false),
+            find_opts: (false, false, false, false, false, false),
             color_picker: None,
             message_box: None,
             capture_keymap: Some(capture_keymap),
@@ -5921,7 +5956,7 @@ impl GuiApp {
         } else {
             self.editor.last_search()
         };
-        let (case, whole_word, regex, in_selection, keep_case) = self.find_opts;
+        let (case, whole_word, regex, in_selection, keep_case, from_top) = self.find_opts;
         self.find_dialog = Some(FindDialog {
             find: seed.clone(),
             replace: String::new(),
@@ -5930,9 +5965,11 @@ impl GuiApp {
             regex,
             in_selection,
             keep_case,
+            from_top,
             focus_find: !replace,
             focus_replace: replace,
             prev_find: seed,
+            prev_from_top: from_top, // no landing jump merely from reopening
         });
     }
 
@@ -6178,6 +6215,8 @@ impl GuiApp {
         let l_whole = self.tr("dialog.find.whole_word", "Whole word");
         let l_regex = self.tr("dialog.find.regex", "Regular expression");
         let l_in_sel = self.tr("dialog.find.in_selection", "In selection");
+        let l_from_top = self.tr("dialog.find.from_top", "From top of file");
+        let l_from_top_hint = self.tr("dialog.find.from_top_hint", "Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.");
         let l_keep = self.tr("dialog.find.keep_case", "Keep case in replacement");
         let l_keep_hint = self.tr("dialog.find.keep_case_hint", "Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).");
         let l_next = self.tr("dialog.find.find_next", "Find next (F3)");
@@ -6245,6 +6284,7 @@ impl GuiApp {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.case, &l_case);
                     ui.checkbox(&mut d.whole_word, &l_whole);
+                    ui.checkbox(&mut d.from_top, &l_from_top).on_hover_text(&l_from_top_hint);
                 });
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.regex, &l_regex);
@@ -6276,12 +6316,12 @@ impl GuiApp {
             });
 
         // Apply (now `self.editor` is borrowable; the `d` borrow ended at its last use above).
-        let (find, replace, case, whole, regex, scope, keep_case) = {
+        let (find, replace, case, whole, regex, scope, keep_case, from_top) = {
             let d = self.find_dialog.as_ref().unwrap();
-            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.keep_case)
+            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.keep_case, d.from_top)
         };
         // Remember the options so reopening the dialog restores them.
-        self.find_opts = (case, whole, regex, scope, keep_case);
+        self.find_opts = (case, whole, regex, scope, keep_case, from_top);
         if !find.is_empty() && (do_find_next || do_find_prev || do_replace || do_replace_all) {
             let r = if do_find_prev {
                 self.editor.search_spec(&find, None, true, case, whole, regex, scope, false)
@@ -6330,24 +6370,30 @@ impl GuiApp {
             }
         }
 
-        // Live type-to-find: whenever the Find TEXT changes, jump the caret to a match and centre it
-        // (without Enter/F3). Growing the term advances to the next match ahead of the caret (scroll
-        // down); a backspace jumps to the FIRST match in the document (scroll back). The centering is
+        // Live type-to-find: whenever the Find TEXT changes — or the "From top" box is ticked — jump the
+        // caret to a match and centre it (without Enter/F3). With "From top" ON the target is the FIRST
+        // match in the document (the search begins at the top); otherwise growing the term advances to
+        // the next match ahead of the caret (a backspace jumps to the first match). The centering is
         // one-shot (`center_caret`), so an on-screen target isn't scrolled.
-        let (prev_find, grew) = {
+        let (prev_find, grew, prev_from_top) = {
             let d = self.find_dialog.as_ref().unwrap();
-            (d.prev_find.clone(), find.chars().count() >= d.prev_find.chars().count())
+            (d.prev_find.clone(), find.chars().count() >= d.prev_find.chars().count(), d.prev_from_top)
         };
-        if !find.is_empty() && find != prev_find {
+        if !find.is_empty() && (find != prev_find || from_top != prev_from_top) {
             let caret = self.editor.doc(self.editor.active_index()).cursor();
-            if let Some(pos) = type_to_find_target(grew, &self.find_highlights, caret) {
+            let target = find_landing_target(from_top, grew, &self.find_highlights, caret);
+            if let Some(pos) = target {
                 self.editor.host_mut().set_active_caret(pos, None);
                 self.pane_view.follow = true;
                 self.center_caret = true; // centre the target if it's off-screen
                 outcome.main_redraw = true;
             }
         }
-        self.find_dialog.as_mut().unwrap().prev_find = find.clone();
+        {
+            let d = self.find_dialog.as_mut().unwrap();
+            d.prev_find = find.clone();
+            d.prev_from_top = from_top;
+        }
         outcome
     }
 

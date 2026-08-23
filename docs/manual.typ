@@ -1191,6 +1191,11 @@ Every match is highlighted, and each letter you add jumps to the next match ahea
 scrolling it to mid-screen if it was off-screen. Press #kbd("Backspace") and it jumps back to the
 *first* match of the now-shorter text, so widening the search returns you to the top.
 
+By default the search begins at the cursor. Tick *From top of file* to begin at the top instead: the
+moment you tick it (or type with it ticked) the cursor lands on the *first* match in the document, and
+*Find Next* then walks forward from there as usual. It is a starting-point choice, not a permanent
+restart — so you can start at the top and still step through every match.
+
 == Worked examples
 
 *Step through every TODO.* Land on the first, then repeat the search to walk forward; the cursor stops

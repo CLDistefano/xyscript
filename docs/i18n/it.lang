@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\it.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 4 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -270,6 +270,8 @@ dialog.find.case = Maiuscole/minuscole   # Case sensitive
 dialog.find.whole_word = Parola intera   # Whole word
 dialog.find.regex = Espressione regolare   # Regular expression
 dialog.find.in_selection = Nella selezione   # In selection
+dialog.find.from_top =    # From top of file
+dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
 dialog.find.keep_case = Mantieni maiuscole/minuscole nella sostituzione   # Keep case in replacement
 dialog.find.keep_case_hint = Sostituisci / Sostituisci tutto: adatta le maiuscole/minuscole di ogni sostituzione al testo sostituito (minuscolo / Iniziale maiuscola / MAIUSCOLO).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Successivo (F3)   # Find next (F3)
