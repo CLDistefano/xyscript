@@ -2684,6 +2684,8 @@ pub struct AppHost {
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
+    /// Dim the window slightly when it loses focus (`DIMONBLUR`). Off by default. `$DIMONBLUR`; SaveCfg.
+    dim_on_blur: bool,
     /// Last-seen on-disk modification time per open file (keyed by the stable `DocId`), for
     /// `AUTOREOPEN` change detection. Baselined on first poll and after each save/reload. Session-only.
     disk_mtimes: HashMap<crate::panes::DocId, std::time::SystemTime>,
@@ -3105,6 +3107,7 @@ impl AppHost {
             url_bg_color: None,
             auto_reopen: false, // off by default
             disk_mtimes: HashMap::new(),
+            dim_on_blur: false, // off by default
             ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -3496,6 +3499,11 @@ impl AppHost {
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
+    }
+
+    /// Whether the window dims when it loses focus (`DIMONBLUR`/`$DIMONBLUR`).
+    pub fn dim_on_blur(&self) -> bool {
+        self.dim_on_blur
     }
 
     /// Launch a second editor window (a fresh instance) on `path`, positioned at 1-based `line`
@@ -8430,6 +8438,7 @@ impl AppHost {
             put(&mut s, "Bookmark gutter background colour — R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
         }
         put(&mut s, "Reload a file automatically when changed on disk — on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Dim the window when it loses focus — on | off", format!("DIMONBLUR {}", if self.dim_on_blur { "on" } else { "off" }));
         put(&mut s, "Highlight URLs and Ctrl+click to open them — on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
         if let Some((r, g, b)) = self.url_fg_color {
             put(&mut s, "URL highlight text colour — R G B, 0-255", format!("URLFGCOLOR {r} {g} {b}"));
@@ -11764,6 +11773,13 @@ impl Host for AppHost {
                     if self.auto_reopen { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetDimOnBlur(opt) => {
+                self.dim_on_blur = opt.unwrap_or(!self.dim_on_blur);
+                return Ok(Value::str(format!(
+                    "DIMONBLUR {}",
+                    if self.dim_on_blur { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetMarkGutter(opt) => {
                 // Bare (None) toggles off↔on; from `persist`, a bare toggle hides it (→ off).
                 self.mark_gutter = opt.unwrap_or(match self.mark_gutter {
@@ -12565,6 +12581,7 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
+            "DIMONBLUR" => Some(Value::Int(if self.dim_on_blur { 1 } else { 0 })),
             "URLHIGHLIGHT" => Some(Value::Int(if self.url_highlight { 1 } else { 0 })),
             "URLFGCOLOR" => Some(Value::str(match self.url_fg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),

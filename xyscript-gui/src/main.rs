@@ -2285,6 +2285,10 @@ struct GuiApp {
     // (`editor.cmline_open()` is the focus state); there is no separate egui widget,
     // which is what keeps Enter from leaking a newline into the document.
     status: String,
+    /// Whether ANY XyScript window (main / TXT / DIR-W / Find) currently holds OS focus — the runtime
+    /// keeps this current from `Focused` events. `DIMONBLUR` dims the main window only when this is
+    /// false (the whole app is inactive), so focusing a child window doesn't dim the editor.
+    app_has_focus: bool,
     /// Wall-clock of the last autosave pass (drives the `AUTOSAVE` interval timer).
     last_autosave: std::time::Instant,
     /// Wall-clock of the last `AUTOREOPEN` external-change poll (throttles the file-change check).
@@ -2473,6 +2477,7 @@ impl GuiApp {
             last_text: String::new(),
             last_change_time: f64::MIN,
             status: startup_status,
+            app_has_focus: true, // assume focused at launch until a Focused event says otherwise
             last_autosave: std::time::Instant::now(),
             last_reopen_check: std::time::Instant::now(),
             last_session_snapshot: std::time::Instant::now(),
@@ -6121,6 +6126,12 @@ impl GuiApp {
     /// F3 / Shift+F3 — repeat the last search forward / backward (Find Next / Find Prev). A bare
     /// `SE`/`SEB` repeats the last search with its options (case/whole/regex) via the host's
     /// `last_spec`. Status/feedback surface as usual; the match scrolls into view.
+    /// The runtime calls this from `Focused` events: `true` iff SOME XyScript window holds OS focus.
+    /// Drives `DIMONBLUR` (dim the main window only when the whole app is inactive).
+    fn set_app_focus(&mut self, focused: bool) {
+        self.app_has_focus = focused;
+    }
+
     fn find_again(&mut self, backward: bool) {
         // With the FIND dialog open, F3 / Shift+F3 search the CURRENT field text + options — identical
         // to Enter / Find Prev — rather than the engine's `last_search`, which the live type-to-find
@@ -10472,6 +10483,19 @@ impl GuiApp {
 
         // Mirror an app-side clipboard change (copy/cut/CLIP/…) out to the OS.
         self.sync_clipboard_out();
+
+        // Dim-on-blur (`DIMONBLUR on`): when the WHOLE app is unfocused (no XyScript window active —
+        // `app_has_focus`, tracked by the runtime across the main + child windows, so switching to our
+        // own Find / DIR-W / TXT window does NOT dim), lay a faint translucent veil over everything so
+        // it reads as inactive — a cue otherwise missing with `TITLEBAR off`. Painted last, on a
+        // foreground layer above all content and chrome.
+        if self.editor.dim_on_blur() && !self.app_has_focus {
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("dim-on-blur"),
+            ));
+            painter.rect_filled(ctx.screen_rect(), 0.0, egui::Color32::from_black_alpha(48));
+        }
     }
 }
 

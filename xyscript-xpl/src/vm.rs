@@ -3734,6 +3734,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetGotoOpen(want))?;
                 Ok(Flow::Next)
             }
+            // `DIMONBLUR on|off` (bare = toggle) — dim the window slightly when it loses focus. Off by
+            // default. SaveCfg. `$DIMONBLUR`.
+            "DIMONBLUR" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "DIMONBLUR: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetDimOnBlur(want))?;
+                Ok(Flow::Next)
+            }
             // `AUTOREOPEN on|off` (bare = toggle) — reload a file automatically when another program
             // changes it on disk (clean buffers only; unsaved edits are kept). Off by default; NOT
             // gated by TRUST (no external code runs). SaveCfg. `$AUTOREOPEN`.

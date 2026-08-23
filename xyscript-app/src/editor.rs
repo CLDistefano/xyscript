@@ -294,6 +294,10 @@ impl Editor {
     pub fn auto_reopen(&self) -> bool {
         self.host.auto_reopen()
     }
+    /// Whether the window dims when it loses focus (`DIMONBLUR`).
+    pub fn dim_on_blur(&self) -> bool {
+        self.host.dim_on_blur()
+    }
     /// `AUTOREOPEN` poll: reload any open file whose on-disk copy changed (clean buffers only). Returns
     /// status notes to surface. The GUI calls this on a throttled timer.
     pub fn poll_external_changes(&mut self) -> Vec<String> {
@@ -2673,6 +2677,25 @@ mod tests {
         e.goto_line(999); // clamps to the last line's start
         let last = e.document().cursor();
         assert!(last >= l2 && last <= e.document().len());
+    }
+
+    #[test]
+    fn dimonblur_off_by_default_toggles_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("DIMONBLUR"), "0"); // off by default
+        assert!(!e.dim_on_blur());
+        e.run_command("DIMONBLUR on");
+        assert_eq!(e.special_str("DIMONBLUR"), "1");
+        assert!(e.dim_on_blur());
+        e.run_command("DIMONBLUR"); // bare toggles
+        assert_eq!(e.special_str("DIMONBLUR"), "0");
+        e.run_command("DIMONBLUR maybe");
+        assert!(e.last_error().is_some(), "bad value errors");
+        // SaveCfg carries it.
+        e.run_command("DIMONBLUR on");
+        e.run_command("SAVECFG dim.cfg");
+        assert!(e.host_mut().files.get("dim.cfg").unwrap().contains("DIMONBLUR on"));
     }
 
     #[test]

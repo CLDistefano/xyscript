@@ -542,6 +542,10 @@ pub enum EditorOp {
     /// `TRUST` (no external code runs — the editor only re-reads a file you already have open).
     /// Persisted by SaveCfg. `$AUTOREOPEN`.
     SetAutoReopen(Option<bool>),
+    /// Dim the window slightly when it loses focus (`DIMONBLUR on|off`; `None` toggles). A cue that the
+    /// window is inactive — useful with `TITLEBAR off`, where the frame gives none. Off by default.
+    /// Persisted by SaveCfg. `$DIMONBLUR`.
+    SetDimOnBlur(Option<bool>),
     /// How the bookmark gutter is shown (`MARKGUTTER off|on|persist`; `None` toggles off↔on). `On` by
     /// default. Persisted by SaveCfg. `$MARKGUTTER`.
     SetMarkGutter(Option<MarkGutterMode>),

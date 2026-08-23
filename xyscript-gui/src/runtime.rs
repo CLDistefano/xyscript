@@ -324,6 +324,10 @@ struct Handler {
     /// Whether the OS title bar is currently shown on the main window. Synced to `TITLEBAR`/
     /// `$TITLEBAR` each loop so a toggle applies live via `set_decorations`.
     decorations: bool,
+    /// Ids of OUR windows (main / TXT / DIR-W / Find) that currently hold OS focus. Non-empty ⇒ some
+    /// XyScript window is active, so `DIMONBLUR` should NOT dim the main window (only a switch to
+    /// ANOTHER app dims it). Updated on every `Focused` event.
+    focused_windows: HashSet<WindowId>,
 }
 
 impl Handler {
@@ -352,6 +356,7 @@ impl Handler {
             find_size: None,
             mods: winit::keyboard::ModifiersState::empty(),
             decorations: true,
+            focused_windows: HashSet::new(),
         }
     }
 
@@ -2156,6 +2161,32 @@ impl ApplicationHandler for Handler {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if self.window.is_none() {
             return;
+        }
+        // Track focus across ALL our windows (main / TXT / DIR-W / Find) so `DIMONBLUR` dims the main
+        // window only when the WHOLE app is unfocused — not when focus merely moved to one of our own
+        // child windows. Runs for every window before the per-window dispatch below (which still gets
+        // the event). Redraw the main window so its dim state updates; the RedrawRequested is processed
+        // after this and any paired Focused event, so a main→child switch never flashes the dim.
+        if let WindowEvent::Focused(f) = &event {
+            if *f {
+                self.focused_windows.insert(id);
+            } else {
+                self.focused_windows.remove(&id);
+            }
+            // Prune ids for windows that no longer exist: a child window closed WHILE focused may not
+            // emit `Focused(false)`, and a stale id would otherwise keep the app "focused" forever.
+            let valid: HashSet<WindowId> = [
+                self.window.as_ref().map(|w| w.id()),
+                self.txt.as_ref().map(|t| t.window.id()),
+                self.dir.as_ref().map(|d| d.window.id()),
+                self.find.as_ref().map(|f| f.window.id()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            self.focused_windows.retain(|id| valid.contains(id));
+            self.app.set_app_focus(!self.focused_windows.is_empty());
+            self.request_redraw();
         }
         // Events for the separate TXT window go to its own handler.
         if self.txt.as_ref().is_some_and(|t| t.window.id() == id) {

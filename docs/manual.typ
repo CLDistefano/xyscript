@@ -303,6 +303,12 @@ menu bar, tab strip, command line, and status line, leaving just the text. Press
 them all back. It is a passing mode, never saved, so you always start a session with your normal
 layout.
 
+#raw("DIMONBLUR on") dims the window slightly whenever you switch away to another application, so you can
+tell at a glance which window is active. (Switching to one of XyScript's own windows — the Find or
+#raw("DIR/W") window — does not dim the editor; only leaving the app does.) It is off by default, and is
+most useful alongside #raw("TITLEBAR off"), where the window otherwise looks identical whether or not it
+has focus. Read the state with #raw("$DIMONBLUR"); the setting is saved with #raw("SaveCfg").
+
 == The menu bar
 
 A one-line orientation to each of the eight menus. Every item simply runs an ordinary XyScript command —
