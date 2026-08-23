@@ -2289,6 +2289,10 @@ struct GuiApp {
     /// keeps this current from `Focused` events. `DIMONBLUR` dims the main window only when this is
     /// false (the whole app is inactive), so focusing a child window doesn't dim the editor.
     app_has_focus: bool,
+    /// When the app went unfocused (`None` while focused). `DIMONBLUR` waits a short grace period before
+    /// dimming, so a within-app focus hop (e.g. opening the Find window, which briefly leaves the main
+    /// unfocused before the Find window's focus registers) doesn't flash the dim on and off.
+    unfocused_since: Option<std::time::Instant>,
     /// Wall-clock of the last autosave pass (drives the `AUTOSAVE` interval timer).
     last_autosave: std::time::Instant,
     /// Wall-clock of the last `AUTOREOPEN` external-change poll (throttles the file-change check).
@@ -2478,6 +2482,7 @@ impl GuiApp {
             last_change_time: f64::MIN,
             status: startup_status,
             app_has_focus: true, // assume focused at launch until a Focused event says otherwise
+            unfocused_since: None,
             last_autosave: std::time::Instant::now(),
             last_reopen_check: std::time::Instant::now(),
             last_session_snapshot: std::time::Instant::now(),
@@ -6130,6 +6135,13 @@ impl GuiApp {
     /// Drives `DIMONBLUR` (dim the main window only when the whole app is inactive).
     fn set_app_focus(&mut self, focused: bool) {
         self.app_has_focus = focused;
+        // Stamp when we went unfocused (keep the earliest of a run); clear on regaining focus. The dim
+        // check below only fires after a grace period, so a brief within-app focus hop never dims.
+        if focused {
+            self.unfocused_since = None;
+        } else if self.unfocused_since.is_none() {
+            self.unfocused_since = Some(std::time::Instant::now());
+        }
     }
 
     fn find_again(&mut self, backward: bool) {
@@ -10490,11 +10502,21 @@ impl GuiApp {
         // it reads as inactive — a cue otherwise missing with `TITLEBAR off`. Painted last, on a
         // foreground layer above all content and chrome.
         if self.editor.dim_on_blur() && !self.app_has_focus {
-            let painter = ctx.layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                egui::Id::new("dim-on-blur"),
-            ));
-            painter.rect_filled(ctx.screen_rect(), 0.0, egui::Color32::from_black_alpha(48));
+            // Debounce: a within-app focus hop (opening the Find/DIR-W window) leaves the main briefly
+            // unfocused before the child's focus registers — wait a grace period so that never flashes.
+            const DIM_GRACE: std::time::Duration = std::time::Duration::from_millis(180);
+            match self.unfocused_since {
+                Some(t) if t.elapsed() >= DIM_GRACE => {
+                    let painter = ctx.layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        egui::Id::new("dim-on-blur"),
+                    ));
+                    painter.rect_filled(ctx.screen_rect(), 0.0, egui::Color32::from_black_alpha(48));
+                }
+                // Still within the grace window — repaint once it elapses so an idle unfocus still dims.
+                Some(_) => ctx.request_repaint_after(DIM_GRACE),
+                None => {}
+            }
         }
     }
 }
