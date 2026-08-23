@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\da.lang
-# Merged from en.lang by i18n-sync.py — 4 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -272,6 +272,8 @@ dialog.find.regex = Regulært udtryk   # Regular expression
 dialog.find.in_selection = I markering   # In selection
 dialog.find.from_top =    # From top of file
 dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap =    # Wrap around
+dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Bevar bogstavstørrelse ved erstatning   # Keep case in replacement
 dialog.find.keep_case_hint = Erstat / Erstat alle: tilpas bogstavstørrelsen for hver erstatning til den tekst, den erstatter (små / Stort forbogstav / STORE).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Find næste (F3)   # Find next (F3)

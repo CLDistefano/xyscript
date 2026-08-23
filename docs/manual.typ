@@ -1184,7 +1184,8 @@ replace it, skip it, replace it and all the rest, or stop — the on-screen prom
 
 If you prefer a dialog, *Search ▸ Find* (or #raw("FIND")) opens a non-modal Find / Replace window with
 fields and checkboxes for the same options; #kbd("F3") and #kbd("Shift+F3") repeat the last search
-forward and backward, whether or not the dialog is open.
+forward and backward, whether or not the dialog is open. Pressing #kbd("Enter") in the *Find* field steps
+to the next match — press it repeatedly to walk through them.
 
 As you type in the *Find* field the view follows along — no need to press #kbd("Enter") or #kbd("F3").
 Every match is highlighted, and each letter you add jumps to the next match ahead of the cursor,
@@ -1195,6 +1196,10 @@ By default the search begins at the cursor. Tick *From top of file* to begin at 
 moment you tick it (or type with it ticked) the cursor lands on the *first* match in the document, and
 *Find Next* then walks forward from there as usual. It is a starting-point choice, not a permanent
 restart — so you can start at the top and still step through every match.
+
+Tick *Wrap around* and *Find Next* past the last match loops back to the first (and *Find Prev* past the
+first loops back to the last), instead of stopping with "not found" at the end. (It applies to the
+dialog's Find buttons and #kbd("Enter"); the standalone #kbd("F3") repeat is unaffected.)
 
 == Worked examples
 

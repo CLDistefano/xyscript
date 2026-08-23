@@ -1097,6 +1097,7 @@ impl Editor {
     /// it through the same engine path as `SE`/`CH` — so the pattern/replacement are taken LITERALLY
     /// (no command parsing, no `$`-substitution, so `$`, `/`, spaces, quotes all work). `replace`
     /// = `Some(text)` does a replace-all; `None` is a plain find. Returns the status string.
+    #[allow(clippy::too_many_arguments)]
     pub fn search_spec(
         &mut self,
         find: &str,
@@ -1107,6 +1108,7 @@ impl Editor {
         regex: bool,
         scope: bool,
         keep_case: bool,
+        from_top: bool,
     ) -> Result<String, String> {
         let spec = xyscript_xpl::SearchSpec {
             find: find.to_string(),
@@ -1114,7 +1116,7 @@ impl Editor {
             backward,
             case_sensitive: case,
             whole_word,
-            from_top: false,
+            from_top,
             scope,
             regex,
             keep_case,
@@ -7127,8 +7129,30 @@ mod tests {
         e.run_command("SET x = 99");
         e.insert_str("price is $x dollars");
         e.run_command("TF");
-        assert!(e.search_spec("$x", None, false, false, false, false, false, false).is_ok());
+        assert!(e.search_spec("$x", None, false, false, false, false, false, false, false).is_ok());
         assert_eq!(e.selection_text(), "$x");
+    }
+
+    #[test]
+    fn search_spec_from_top_wraps_to_first_or_last_match() {
+        // The Find dialog's "Wrap around" retries a not-found search with from_top=true (top for
+        // forward, bottom for backward) so it loops to the first / last match.
+        let mut e = ed();
+        e.insert_str("foo bar foo bar foo"); // matches at 0, 8, 16
+        e.run_command("BOTTOM"); // caret past the last match
+        // Forward from the caret: nothing ahead → not found.
+        assert!(e.search_spec("foo", None, false, false, false, false, false, false, false).is_err());
+        // Forward from the top: wraps to the FIRST match.
+        assert!(e.search_spec("foo", None, false, false, false, false, false, false, true).is_ok());
+        assert_eq!(e.selection_text(), "foo");
+        assert!(e.document().cursor() <= 3, "landed on the first occurrence");
+        // Backward from the top of file: nothing before → not found.
+        e.run_command("TOP");
+        assert!(e.search_spec("foo", None, true, false, false, false, false, false, false).is_err());
+        // Backward from the bottom: wraps to the LAST match.
+        assert!(e.search_spec("foo", None, true, false, false, false, false, false, true).is_ok());
+        assert_eq!(e.selection_text(), "foo");
+        assert!(e.document().cursor() >= 16, "landed on the last occurrence");
     }
 
     #[test]
@@ -7137,7 +7161,7 @@ mod tests {
         e.insert_str("a-a-a");
         e.run_command("TF");
         assert!(e
-            .search_spec("a", Some("X".to_string()), false, false, false, false, false, false)
+            .search_spec("a", Some("X".to_string()), false, false, false, false, false, false, false)
             .is_ok());
         assert_eq!(e.document().text(), "X-X-X");
     }
@@ -7149,7 +7173,7 @@ mod tests {
         e.insert_str("cat CAT Cat cAt");
         e.run_command("TF");
         assert!(e
-            .search_spec("cat", Some("dog".to_string()), false, false, false, false, false, true)
+            .search_spec("cat", Some("dog".to_string()), false, false, false, false, false, true, false)
             .is_ok());
         assert_eq!(e.document().text(), "dog DOG Dog dog"); // mixed-case cAt → verbatim
     }
@@ -7172,7 +7196,7 @@ mod tests {
         let mut e = ed();
         e.insert_str("abc ABC abc ABC");
         e.run_command("TF");
-        assert!(e.search_spec("ABC", None, false, true, false, false, false, false).is_ok());
+        assert!(e.search_spec("ABC", None, false, true, false, false, false, false, false).is_ok());
         assert_eq!(e.selection_text(), "ABC");
         e.run_command("SE"); // bare repeat
         // If options were dropped, this case-insensitive repeat would match the lowercase "abc".

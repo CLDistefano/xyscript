@@ -1789,6 +1789,9 @@ struct FindDialog {
     /// first match in the document (as you type, or when you tick the box) instead of the first match
     /// at/after the caret. `Find Next` still advances forward from there, so it's a starting-point mode.
     from_top: bool,
+    /// "Wrap around": when on, a `Find Next` past the last match wraps to the first (and `Find Prev`
+    /// past the first wraps to the last), instead of stopping with "not found".
+    wrap: bool,
     /// One-shot: focus the Find field on the next frame (set on open via "Find…").
     focus_find: bool,
     /// One-shot: focus the Replace field on the next frame (set on open via "Replace…").
@@ -2170,7 +2173,7 @@ struct GuiApp {
     /// an OS window move (`window.drag_window`).
     start_window_drag: bool,
     /// Last-used Find dialog options, remembered across opens: (case, whole word, regex, in selection).
-    find_opts: (bool, bool, bool, bool, bool, bool),
+    find_opts: (bool, bool, bool, bool, bool, bool, bool),
     /// The open colour-picker dialog: its target + the colour currently chosen in it (`None` =
     /// closed). On OK the matching `*COLOR`/`HLCOLOR` setter is run.
     color_picker: Option<(ColorTarget, egui::Color32)>,
@@ -2428,7 +2431,7 @@ impl GuiApp {
             pending_dialog: None,
             save_as_for_quit: false,
             start_window_drag: false,
-            find_opts: (false, false, false, false, false, false),
+            find_opts: (false, false, false, false, false, false, false),
             color_picker: None,
             message_box: None,
             capture_keymap: Some(capture_keymap),
@@ -5956,7 +5959,7 @@ impl GuiApp {
         } else {
             self.editor.last_search()
         };
-        let (case, whole_word, regex, in_selection, keep_case, from_top) = self.find_opts;
+        let (case, whole_word, regex, in_selection, keep_case, from_top, wrap) = self.find_opts;
         self.find_dialog = Some(FindDialog {
             find: seed.clone(),
             replace: String::new(),
@@ -5966,6 +5969,7 @@ impl GuiApp {
             in_selection,
             keep_case,
             from_top,
+            wrap,
             focus_find: !replace,
             focus_replace: replace,
             prev_find: seed,
@@ -6217,6 +6221,8 @@ impl GuiApp {
         let l_in_sel = self.tr("dialog.find.in_selection", "In selection");
         let l_from_top = self.tr("dialog.find.from_top", "From top of file");
         let l_from_top_hint = self.tr("dialog.find.from_top_hint", "Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.");
+        let l_wrap = self.tr("dialog.find.wrap", "Wrap around");
+        let l_wrap_hint = self.tr("dialog.find.wrap_hint", "Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.");
         let l_keep = self.tr("dialog.find.keep_case", "Keep case in replacement");
         let l_keep_hint = self.tr("dialog.find.keep_case_hint", "Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).");
         let l_next = self.tr("dialog.find.find_next", "Find next (F3)");
@@ -6263,9 +6269,13 @@ impl GuiApp {
                             find_out.state.store(ui.ctx(), find_edit.id);
                             d.focus_find = false;
                         }
-                        // Enter in the Find field = Find Next.
+                        // Enter in the Find field = Find Next. A single-line TextEdit LOSES focus on
+                        // Enter, so re-request it — otherwise only the first Enter fires and pressing
+                        // Enter repeatedly (to walk through the matches) does nothing until you click
+                        // back into the field.
                         if find_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                             do_find_next = true;
+                            find_edit.request_focus();
                         }
                         ui.end_row();
                         ui.label(&l_replace_label);
@@ -6285,6 +6295,7 @@ impl GuiApp {
                     ui.checkbox(&mut d.case, &l_case);
                     ui.checkbox(&mut d.whole_word, &l_whole);
                     ui.checkbox(&mut d.from_top, &l_from_top).on_hover_text(&l_from_top_hint);
+                    ui.checkbox(&mut d.wrap, &l_wrap).on_hover_text(&l_wrap_hint);
                 });
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut d.regex, &l_regex);
@@ -6316,25 +6327,22 @@ impl GuiApp {
             });
 
         // Apply (now `self.editor` is borrowable; the `d` borrow ended at its last use above).
-        let (find, replace, case, whole, regex, scope, keep_case, from_top) = {
+        let (find, replace, case, whole, regex, scope, keep_case, from_top, wrap) = {
             let d = self.find_dialog.as_ref().unwrap();
-            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.keep_case, d.from_top)
+            (d.find.clone(), d.replace.clone(), d.case, d.whole_word, d.regex, d.in_selection, d.keep_case, d.from_top, d.wrap)
         };
         // Remember the options so reopening the dialog restores them.
-        self.find_opts = (case, whole, regex, scope, keep_case, from_top);
+        self.find_opts = (case, whole, regex, scope, keep_case, from_top, wrap);
         if !find.is_empty() && (do_find_next || do_find_prev || do_replace || do_replace_all) {
-            let r = if do_find_prev {
-                self.editor.search_spec(&find, None, true, case, whole, regex, scope, false)
-            } else if do_replace_all {
-                self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case)
-            } else if do_replace {
-                // Single replace: overwrite the selected match (if any), then find next.
+            let r = if do_replace_all {
+                self.editor.search_spec(&find, Some(replace), false, case, whole, regex, scope, keep_case, false)
+            } else {
+                // Single replace: overwrite the selected match (if any) first, then find next.
                 // `replace_selection` OVERWRITES the span as one undo unit, ignoring persistent-
                 // selection mode — under PS a plain insert keeps the block and edits at the caret,
-                // leaving the match behind (empty replacement then deleted nothing). `Keep case`
-                // recases the replacement to the match's case first (the engine's per-match rule
-                // can't reach this one-off overwrite).
-                if self.editor.has_selection() {
+                // leaving the match behind. `Keep case` recases the replacement to the match's case
+                // first (the engine's per-match rule can't reach this one-off overwrite).
+                if do_replace && self.editor.has_selection() {
                     let repl = if keep_case {
                         xyscript_app::host::recase_to_match(&self.editor.selection_text(), &replace)
                     } else {
@@ -6342,9 +6350,16 @@ impl GuiApp {
                     };
                     self.editor.replace_selection(&repl);
                 }
-                self.editor.search_spec(&find, None, false, case, whole, regex, scope, false)
-            } else {
-                self.editor.search_spec(&find, None, false, case, whole, regex, scope, false)
+                // Find Next / Find Prev / the find-after-replace. `Wrap around`: if the search hits the
+                // end (not found), retry from the far end (top for forward, bottom for backward) so it
+                // loops to the first/last match instead of stopping.
+                let backward = do_find_prev;
+                let r = self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, false);
+                if r.is_err() && wrap {
+                    self.editor.search_spec(&find, None, backward, case, whole, regex, scope, false, true)
+                } else {
+                    r
+                }
             };
             self.note(r);
             self.pane_view.follow = true;
