@@ -3509,12 +3509,23 @@ impl AppHost {
         let exe = std::env::current_exe().map_err(|e| {
             XplError::trappable(format!("DUPVIEW: cannot find the editor executable: {e}"))
         })?;
-        std::process::Command::new(&exe)
-            .arg(path)
+        // Absolute file path, so opening it doesn't depend on the child's working directory.
+        let abs = self.cwd.join(path); // `join` returns `path` unchanged when it's already absolute
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg(&abs)
             .arg("--goto")
             .arg(line.to_string())
-            .current_dir(&self.cwd)
-            .spawn()
+            // Restore the parent's $CWD in the new window (applied AFTER its startup.xpl runs).
+            .arg("--cwd")
+            .arg(&self.cwd);
+        // Boot the child in the EXE's directory — where `startup.xpl` and its RELATIVE config kit
+        // (`loadcfg cld.cfg`, `loadkbd CLD.kbd`, `loadlib …`) live — so they resolve exactly as on a
+        // normal launch. Launching in the editor's current $CWD instead made those relative loads miss
+        // whenever the user had `cd`'d away, so the window came up with default settings.
+        if let Some(dir) = exe.parent() {
+            cmd.current_dir(dir);
+        }
+        cmd.spawn()
             .map_err(|e| XplError::trappable(format!("DUPVIEW: cannot open a new window: {e}")))?;
         Ok(Value::str(""))
     }
@@ -7202,6 +7213,16 @@ impl AppHost {
     fn remember_current_drive(&mut self) {
         if let Some(d) = drive_of(&self.cwd) {
             self.drive_dirs.insert(d, self.cwd.clone());
+        }
+    }
+
+    /// Set the working directory (`$CWD`) directly, without the `CD` verb's prompts/status. Used by the
+    /// `--cwd` CLI flag so a `DUPVIEW/W` window, booted in the exe directory (for startup's relative
+    /// config loads), can restore the parent's `$CWD` afterward. Ignored if `dir` isn't a directory.
+    pub fn set_cwd(&mut self, dir: PathBuf) {
+        if dir.is_dir() {
+            self.cwd = dir;
+            self.remember_current_drive();
         }
     }
 

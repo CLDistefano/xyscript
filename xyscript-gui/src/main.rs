@@ -10520,6 +10520,7 @@ fn main() {
     app.restore_session_if_enabled();
     let mut files: Vec<String> = Vec::new();
     let mut goto_line: Option<usize> = None;
+    let mut cwd_override: Option<String> = None;
     let mut it = cli_args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -10531,6 +10532,12 @@ fn main() {
             // so the new window opens at the source view's line.
             "--goto" | "-goto" => {
                 goto_line = it.next().and_then(|v| v.parse::<usize>().ok());
+            }
+            // `--cwd <dir>` — set $CWD AFTER startup.xpl has run (so it overrides any startup `cd`).
+            // `DUPVIEW/W` uses it to restore the parent window's working directory, since the child is
+            // booted in the exe directory (so startup's relative config loads resolve).
+            "--cwd" | "-cwd" => {
+                cwd_override = it.next().cloned();
             }
             // Any other switch (e.g. `--render-only`, or an unknown `-x`): skip just it.
             _ if a.starts_with('-') => {}
@@ -10544,6 +10551,9 @@ fn main() {
     if let Some(line) = goto_line {
         app.editor.goto_line(line);
         app.pane_view.follow = true; // reveal the line
+    }
+    if let Some(dir) = cwd_override {
+        app.editor.set_cwd(std::path::PathBuf::from(dir));
     }
     runtime::run(app);
 }

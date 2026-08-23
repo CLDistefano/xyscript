@@ -466,6 +466,11 @@ impl Editor {
     pub fn cwd(&self) -> String {
         self.host.cwd_display()
     }
+    /// Set `$CWD` directly (the `--cwd` CLI flag; `DUPVIEW/W` restores the parent's working directory
+    /// after the child boots in the exe directory).
+    pub fn set_cwd(&mut self, dir: std::path::PathBuf) {
+        self.host.set_cwd(dir)
+    }
     /// Command-history recall (Up/Down on the CMline) + the `HISTORY` picker.
     pub fn history_prev(&mut self) {
         self.host.history_prev();
@@ -2628,6 +2633,24 @@ mod tests {
         e.run_command("OPEN f.txt");
         e.run_command("DUPVIEW/W");
         assert_eq!(e.last_error(), None);
+    }
+
+    #[test]
+    fn set_cwd_updates_dollar_cwd_and_ignores_a_bad_dir() {
+        let mut e = ed();
+        let dir = std::env::temp_dir().join(format!("xyscript-cwd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        e.set_cwd(dir.clone());
+        assert!(
+            e.special_str("CWD").contains(&format!("xyscript-cwd-{}", std::process::id())),
+            "$CWD should reflect the set dir, got {:?}",
+            e.special_str("CWD")
+        );
+        // A non-directory is ignored (no panic, $CWD unchanged) — the DUPVIEW/W --cwd restore is safe.
+        let before = e.special_str("CWD");
+        e.set_cwd(std::path::PathBuf::from("Z:/no/such/dir/xyzzy-000"));
+        assert_eq!(e.special_str("CWD"), before, "a non-existent dir is ignored");
+        let _ = std::fs::remove_dir(&dir);
     }
 
     #[test]
