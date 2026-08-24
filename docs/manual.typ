@@ -160,6 +160,15 @@ From a terminal you can also pass arguments (paths are relative to the directory
 
 Each flag accepts a single or double dash (#raw("-s") or #raw("--startup"), #raw("-run") or #raw("--run")).
 
+#tip("Where startup.xpl looks for things")[At launch your *working directory* (#raw("$CWD")) is
+wherever you started XyScript from — a shortcut's "Start in", the shell you launched from, or the
+program's own folder if you double-clicked it. #raw("startup.xpl") runs first, with that same
+#raw("$CWD"), so if it loads your library, colors, or keyboard with *relative* paths, what it finds
+depends on how you were launched. The robust habit is to begin #raw("startup.xpl") with
+#raw("cd $XSDIR") — the program's own folder, where your configuration files live — or to qualify
+every path with #raw("$XSDIR"). Then it loads identically however you start the program, and a second
+window opened with #raw("DUPVIEW/W") inherits the very same setup.]
+
 == First launch
 
 You will see a single window with, from top to bottom:

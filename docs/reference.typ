@@ -191,6 +191,14 @@ readable as #sv("CWD"). Change it with `CD`. To turn a finished document into a 
 use `TOPDF`: a `.typ` file is typeset with Typst, anything else rendered as Markdown
 (see `DOCTYPE`).
 
+#tip[At launch your working directory is wherever you started the program — a shortcut's
+"Start in", the shell you ran it from, or the program's own folder if you double-clicked.
+`startup.xpl` runs with that same #sv("CWD"), so a config load written with a *relative*
+path (`LOADCFG cld.cfg`) depends on how you launched. Make it certain: begin `startup.xpl`
+with `CD $XSDIR` — the program's own folder, where your config kit lives — or qualify each
+path with #sv("XSDIR"). It then loads the same way every time, including in a second window
+opened with `DUPVIEW/W`.]
+
 == Finding and changing text
 
 `SE` searches forward from the cursor for the next match (`SEB` goes backward); add `A`
