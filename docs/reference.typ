@@ -32,7 +32,7 @@
 
 #align(center)[
   #text(20pt, weight: "bold")[The XyScript Reference] \
-  #v(2pt) #text(11pt, style: "italic")[A field guide for the first testers] \
+  #v(2pt) #text(11pt, style: "italic")[An authoritative guide for users, customizers, and developers] \
   #v(2pt) #text(9pt, fill: luma(110))[draft — a work in progress]
 ]
 #v(8pt)
@@ -213,8 +213,8 @@ Open several files and they ride in tabs along the top — `BUFNEXT` / `BUFPREV`
 between them. A long file name is truncated to fit its tab (the start and extension
 are kept); hovering a tab shows a tooltip with the file's full path and name — always,
 not only when the label is shortened. `DIR` browses a folder, and `DIR/W` puts that browser in its own window.
-Two side panes can ride along: `SH` opens a shell at the bottom for running commands,
-and `PV` opens the live PDF preview on the right, which re-renders as you type.
+`SH` opens a Console tab for running shell commands, and `PV` opens the live PDF
+preview in a side pane on the right, which re-renders as you type.
 
 = Adapting your keyboard file
 
