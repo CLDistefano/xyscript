@@ -8015,10 +8015,17 @@ impl GuiApp {
         if self.editor.auto_reopen() {
             let interval = std::time::Duration::from_secs(1);
             if self.last_reopen_check.elapsed() >= interval {
-                for note in self.editor.poll_external_changes() {
+                let notes = self.editor.poll_external_changes();
+                let reloaded = !notes.is_empty();
+                for note in notes {
                     self.status = note; // last note wins on the status line
                 }
                 self.last_reopen_check = std::time::Instant::now();
+                // The poll runs AFTER this frame's canvas was drawn, so a reload's new content would
+                // otherwise wait for the next 1s tick — repaint now to show it immediately.
+                if reloaded {
+                    ctx.request_repaint();
+                }
             }
             ctx.request_repaint_after(interval);
         }

@@ -3611,8 +3611,11 @@ impl AppHost {
                 None => {
                     self.disk_mtimes.insert(id, fs_mtime); // first sight — baseline, don't reload
                 }
-                Some(prev) if fs_mtime <= prev => {} // unchanged
+                Some(prev) if fs_mtime == prev => {} // unchanged
                 Some(_) => {
+                    // Any DIFFERENCE (not just a newer time) counts as a change — some tools rewrite a
+                    // file with an equal-or-older timestamp (git checkout, rsync --times, editors that
+                    // preserve mtime), which a `>` test would silently miss.
                     let name = path
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
@@ -7134,6 +7137,10 @@ impl AppHost {
         };
         doc.set_hex_view(hex); // `/HEX` — open straight into the hex + text view
         self.add_opened_doc(doc);
+        // Baseline the AUTOREOPEN mtime NOW (at open), not lazily on the first poll — otherwise an
+        // external save landing in the up-to-1s gap before that poll is absorbed into the baseline and
+        // never triggers a reload (the reported "the other DUPVIEW/W window didn't reopen").
+        self.refresh_disk_mtime(self.active);
         // Leave the caret IN the opened text (not the command line), so the user is editing the
         // file immediately — even when OPEN/READ was run from the cmline. Matches DIR's behavior.
         self.set_focus(Target::Document);

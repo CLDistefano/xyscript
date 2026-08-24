@@ -2556,6 +2556,26 @@ mod tests {
     }
 
     #[test]
+    fn autoreopen_baselines_at_open_so_a_pre_first_poll_change_is_caught() {
+        // The mtime is baselined at OPEN, not at the first poll — so a save landing in the up-to-1s
+        // gap before that first poll (the DUPVIEW/W second-window case) is still detected. Without the
+        // open-time baseline the first poll would stamp the already-saved mtime and never reload.
+        let path = std::env::temp_dir().join(format!("xyscript-autoreopen-open-{}.txt", std::process::id()));
+        std::fs::write(&path, b"before\n").unwrap();
+        let mut e = ed();
+        e.run_command("AUTOREOPEN on");
+        e.open(&path.to_string_lossy().into_owned()).unwrap(); // baselines the mtime HERE
+        // The file changes BEFORE any poll has run.
+        std::fs::write(&path, b"AFTER\n").unwrap();
+        bump_mtime(&path);
+        // The very first poll already catches it (baseline is from open, not from this poll).
+        let notes = e.poll_external_changes();
+        assert!(!notes.is_empty(), "a change before the first poll must be caught");
+        assert_eq!(e.document().text().replace("\r\n", "\n"), "AFTER\n", "reloaded to disk");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn autoreopen_reloads_a_clean_file_changed_on_disk() {
         let path = std::env::temp_dir().join(format!("xyscript-autoreopen-clean-{}.txt", std::process::id()));
         std::fs::write(&path, b"one\ntwo\nthree\n").unwrap();
