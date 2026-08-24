@@ -2788,6 +2788,52 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
+    /// With `HLAUTO on`, a session restore must light EVERY reopened tab — not only the one that had
+    /// focus. The restore pushes docs straight onto the stack and used to auto-highlight just the
+    /// active one, so the rest came back colourless until manually reopened.
+    #[test]
+    fn session_restore_with_hlauto_highlights_every_tab() {
+        let base = std::env::temp_dir().join(format!("xyscript-hlsession-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let sdir = base.join("session");
+        std::fs::write(base.join("one.md"), b"# One\n").unwrap();
+        std::fs::write(base.join("two.md"), b"# Two\n").unwrap();
+
+        // Session 1: two Markdown tabs (a recognized type), HLAUTO on; two.md ends up focused.
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("HLAUTO on");
+        e.run_command("OPEN one.md");
+        e.run_command("OPEN two.md");
+        let saved = e.host_mut().save_session(&sdir).unwrap();
+        assert!(saved >= 2, "both .md tabs recorded, got {saved}");
+
+        // Session 2: fresh editor with HLAUTO on, restore.
+        let mut e2 = ed();
+        e2.run_command(&format!("CD {}", base.display()));
+        e2.run_command("HLAUTO on");
+        let restored = e2.host_mut().restore_session(&sdir).unwrap();
+        assert_eq!(restored, saved, "every recorded tab restored");
+
+        let md_tabs: Vec<usize> = (0..e2.buffer_count())
+            .filter(|&i| {
+                e2.host().document_at(i).path().and_then(|p| p.extension()).and_then(|x| x.to_str())
+                    == Some("md")
+            })
+            .collect();
+        assert_eq!(md_tabs.len(), 2, "both .md tabs came back");
+        for i in md_tabs {
+            assert_eq!(
+                e2.host().document_at(i).highlighter_name(),
+                Some("markdown"),
+                "restored tab {i} is highlighted, not just the focused one",
+            );
+        }
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
     /// Phase 2 split-pane layout restore: a side-by-side split of two files comes back as a split
     /// (not flattened to tabs), with the same docs in the panes, after remapping the saved DocIds.
     #[test]

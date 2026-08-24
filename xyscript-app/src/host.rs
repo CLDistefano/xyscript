@@ -3824,6 +3824,12 @@ impl AppHost {
         &self.docs[self.active]
     }
 
+    /// The document at tab index `idx` (read-only) — for inspecting a non-active tab (highlighter,
+    /// path, render override).
+    pub fn document_at(&self, idx: usize) -> &Document {
+        &self.docs[idx]
+    }
+
     /// Cursor addition (`ADDSUM`): the cleaned numeric text of the number token at (or just after) the
     /// caret on the current line — currency signs and thousands-separators stripped, a leading sign
     /// kept — ready to parse as a `Number`. `Err` when the caret is not on a number.
@@ -6982,7 +6988,7 @@ impl AppHost {
                 self.sync_panes();
             }
             self.prune_untitled_tabs();
-            self.auto_highlight_active();
+            self.auto_highlight_all(); // light EVERY restored tab, not just the focused one
         }
         Ok(restored)
     }
@@ -7181,6 +7187,19 @@ impl AppHost {
     fn auto_highlight_active(&mut self) {
         if self.hl_auto {
             self.docs[self.active].set_highlight(true);
+        }
+    }
+
+    /// Like [`auto_highlight_active`](Self::auto_highlight_active) but for EVERY open document — used
+    /// after a session restore, which reopens many tabs at once. Each document resolves its own
+    /// highlighter from its own path, so lighting only the focused tab (as `auto_highlight_active`
+    /// did) left the rest colourless until they were manually reopened. A pathless/transient buffer
+    /// (scratch, listing, shell output) resolves to no highlighter, so this is harmless for it.
+    fn auto_highlight_all(&mut self) {
+        if self.hl_auto {
+            for doc in &mut self.docs {
+                doc.set_highlight(true);
+            }
         }
     }
 
