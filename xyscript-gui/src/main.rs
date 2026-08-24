@@ -613,42 +613,21 @@ fn style_choices(verb: &str, current: &str) -> Vec<MenuNode> {
     .collect()
 }
 
-/// Type-to-find origin bookkeeping for one frame. Given the new/previous Find-term lengths, the stored
-/// search `origin`, and the live `caret`, return `(restart_caret, new_origin)`:
-/// - empty field → pin the origin to the cursor (no restart);
-/// - term shorter than before (a backspace/widen) → restart the search at the origin;
-/// - term same/longer → keep the origin, no restart.
-/// Type-to-find live target: which match to jump the caret to when the Find text changes. `matches`
-/// is the sorted (by start) match list for the new text. Growing the term (`grew`) advances to the
-/// next match at or after the caret (searching forward — "scroll down"), wrapping to the first if none
-/// lies ahead; shrinking jumps to the FIRST match in the document ("scroll back"). Returns the target
-/// match's start offset, or `None` when there are no matches.
-fn type_to_find_target(grew: bool, matches: &[(usize, usize)], caret: usize) -> Option<usize> {
-    if grew {
-        matches
-            .iter()
-            .find(|(s, _)| *s >= caret)
-            .or_else(|| matches.first())
-            .map(|(s, _)| *s)
-    } else {
-        matches.first().map(|(s, _)| *s)
-    }
-}
-
-/// Where the FIND dialog's live landing jumps the caret. With `from_top` the search BEGINS at the top,
-/// so the target is always the first match in the document; otherwise it is caret-relative (see
-/// [`type_to_find_target`]).
-fn find_landing_target(
-    from_top: bool,
-    grew: bool,
-    matches: &[(usize, usize)],
-    caret: usize,
-) -> Option<usize> {
+/// Where the FIND dialog's live landing jumps the caret, given the sorted (by start) match list.
+/// With `from_top` the search BEGINS at the top, so the target is always the first match in the
+/// document. Otherwise the search runs FORWARD from the fixed `origin` (the caret when the dialog
+/// opened): the first match at/after `origin`, wrapping to the first match only when none lies ahead.
+/// Using a fixed origin — not the live caret, which the preview moves each keystroke — is what keeps
+/// the landing from walking to the top of the file as you type.
+fn find_landing_target(from_top: bool, matches: &[(usize, usize)], origin: usize) -> Option<usize> {
     if from_top {
-        matches.first().map(|(s, _)| *s)
-    } else {
-        type_to_find_target(grew, matches, caret)
+        return matches.first().map(|(s, _)| *s);
     }
+    matches
+        .iter()
+        .find(|(s, _)| *s >= origin)
+        .or_else(|| matches.first())
+        .map(|(s, _)| *s)
 }
 
 /// Shrink `[start, end)` to exclude leading/trailing ASCII whitespace in `doc`'s CURRENT text,
@@ -1507,33 +1486,21 @@ mod menu_tests {
     }
 
     #[test]
-    fn type_to_find_targets_next_on_grow_and_first_on_shrink() {
+    fn find_landing_from_top_vs_forward_from_origin() {
         let matches = [(10usize, 12usize), (50, 52), (300, 302)];
-        // Grow: jump to the next match AT OR AFTER the caret (scroll down).
-        assert_eq!(super::type_to_find_target(true, &matches, 0), Some(10));
-        assert_eq!(super::type_to_find_target(true, &matches, 11), Some(50)); // past the first
-        assert_eq!(super::type_to_find_target(true, &matches, 50), Some(50)); // caret AT a match → stay
-        // Grow with nothing ahead → wrap to the first match.
-        assert_eq!(super::type_to_find_target(true, &matches, 999), Some(10));
-        // Shrink (backspace): always the FIRST match in the document (scroll back).
-        assert_eq!(super::type_to_find_target(false, &matches, 999), Some(10));
-        assert_eq!(super::type_to_find_target(false, &matches, 0), Some(10));
-        // No matches → nothing to jump to.
-        assert_eq!(super::type_to_find_target(true, &[], 0), None);
-        assert_eq!(super::type_to_find_target(false, &[], 0), None);
-    }
-
-    #[test]
-    fn find_landing_from_top_targets_the_first_match_else_caret_relative() {
-        let matches = [(10usize, 12usize), (50, 52), (300, 302)];
-        // From top ON: always the first match, regardless of caret or grow/shrink.
-        assert_eq!(super::find_landing_target(true, true, &matches, 999), Some(10));
-        assert_eq!(super::find_landing_target(true, false, &matches, 100), Some(10));
-        // From top OFF: caret-relative (delegates to type_to_find_target).
-        assert_eq!(super::find_landing_target(false, true, &matches, 11), Some(50));
-        assert_eq!(super::find_landing_target(false, true, &matches, 0), Some(10));
+        // From top ON: always the first match, regardless of the origin.
+        assert_eq!(super::find_landing_target(true, &matches, 999), Some(10));
+        assert_eq!(super::find_landing_target(true, &matches, 100), Some(10));
+        // From top OFF: the first match AT OR AFTER the fixed origin — forward, never toward the top.
+        assert_eq!(super::find_landing_target(false, &matches, 0), Some(10));
+        assert_eq!(super::find_landing_target(false, &matches, 11), Some(50)); // past the first
+        assert_eq!(super::find_landing_target(false, &matches, 50), Some(50)); // origin AT a match → stay
+        assert_eq!(super::find_landing_target(false, &matches, 300), Some(300));
+        // Nothing at/after the origin → wrap to the first (all remaining matches are above it).
+        assert_eq!(super::find_landing_target(false, &matches, 999), Some(10));
         // No matches → nothing either way.
-        assert_eq!(super::find_landing_target(true, true, &[], 0), None);
+        assert_eq!(super::find_landing_target(true, &[], 0), None);
+        assert_eq!(super::find_landing_target(false, &[], 0), None);
     }
 
     #[test]
@@ -1787,8 +1754,14 @@ struct FindDialog {
     keep_case: bool,
     /// "From top of file": when on, a search BEGINS at the top — the live type-to-find lands on the
     /// first match in the document (as you type, or when you tick the box) instead of the first match
-    /// at/after the caret. `Find Next` still advances forward from there, so it's a starting-point mode.
+    /// at/after the search origin. `Find Next` still advances forward from there, so it's a
+    /// starting-point mode.
     from_top: bool,
+    /// The search ORIGIN for the live type-to-find with "From top" OFF: the caret when the dialog
+    /// opened, re-pinned whenever the field goes empty. Landings jump to the first match at/after this
+    /// FIXED point rather than the live caret — the caret drifts each keystroke as the preview moves it,
+    /// and searching from a moving caret walked results toward the top of the file.
+    origin: usize,
     /// "Wrap around": when on, a `Find Next` past the last match wraps to the first (and `Find Prev`
     /// past the first wraps to the last), instead of stopping with "not found".
     wrap: bool,
@@ -1796,10 +1769,8 @@ struct FindDialog {
     focus_find: bool,
     /// One-shot: focus the Replace field on the next frame (set on open via "Replace…").
     focus_replace: bool,
-    /// The Find text from the previous frame, to detect widening (backspace) vs. narrowing so
-    /// type-to-find can jump to the right match (see `type_to_find_target`).
-    prev_find: String,
-    /// The `from_top` state from the previous frame, so ticking the box re-triggers the landing jump.
+    /// The `from_top` state from the previous frame, so ticking the box re-triggers the landing jump
+    /// (it isn't part of `find_win_params`, which gates the text/option landing).
     prev_from_top: bool,
 }
 
@@ -5953,6 +5924,18 @@ impl GuiApp {
     /// Open the Find/Replace dialog, seeding the Find field from the current selection (single-line
     /// only). `replace` focuses the Replace field (opened via "Replace…"). If it's already open,
     /// just refocus the relevant field.
+    /// The origin for a "From top" OFF search: the caret, but clamped DOWN-file to the top visible line
+    /// when the caret is scrolled off-screen above it. Scrolling the view (mouse wheel) doesn't move the
+    /// caret, so a search from the raw caret would jump UP to near the top of the file — reading as
+    /// "Find starts at the top" — while the user is looking lower down. Using the top of what they can
+    /// see keeps the search "from where I am".
+    fn find_origin(&self) -> usize {
+        let scroll_line = self.pane_view.scroll_line;
+        let doc = self.editor.doc(self.editor.active_index());
+        let top_visible = doc.line_byte_range(scroll_line).0;
+        doc.cursor().max(top_visible)
+    }
+
     fn open_find_dialog(&mut self, replace: bool) {
         if self.find_dialog.is_some() {
             self.find_refocus = true; // raise + focus the existing FIND window
@@ -5970,6 +5953,9 @@ impl GuiApp {
             self.editor.last_search()
         };
         let (case, whole_word, regex, in_selection, keep_case, from_top, wrap) = self.find_opts;
+        // Pin the search origin NOW (before any type-to-find moves the caret), so "From top" OFF
+        // searches forward from where the user actually is (see `find_origin`).
+        let origin = self.find_origin();
         self.find_dialog = Some(FindDialog {
             find: seed.clone(),
             replace: String::new(),
@@ -5982,8 +5968,8 @@ impl GuiApp {
             wrap,
             focus_find: !replace,
             focus_replace: replace,
-            prev_find: seed,
-            prev_from_top: from_top, // no landing jump merely from reopening
+            prev_from_top: from_top,
+            origin,
         });
     }
 
@@ -6432,38 +6418,40 @@ impl GuiApp {
         // refresh owns that, and keeping it the sole writer during editing stops the highlights from
         // micro-jittering when both windows recompute on independent repaint schedules. `find_current`
         // is (re)computed in `raster` from the live caret.
+        // `find_win_params` is None right after open/close, so `inputs_changed` is also true on the
+        // FIRST frame — which makes OPENING the dialog perform an initial highlight + landing.
         let win_params = (find.clone(), case, whole, regex, scope);
-        if self.find_win_params.as_ref() != Some(&win_params) {
+        let inputs_changed = self.find_win_params.as_ref() != Some(&win_params);
+        if inputs_changed {
             self.find_win_params = Some(win_params);
             if self.refresh_find_highlights() {
                 outcome.main_redraw = true; // main window repaints to show the updated highlights
             }
         }
 
-        // Live type-to-find: whenever the Find TEXT changes — or the "From top" box is ticked — jump the
-        // caret to a match and centre it (without Enter/F3). With "From top" ON the target is the FIRST
-        // match in the document (the search begins at the top); otherwise growing the term advances to
-        // the next match ahead of the caret (a backspace jumps to the first match). The centering is
-        // one-shot (`center_caret`), so an on-screen target isn't scrolled.
-        let (prev_find, grew, prev_from_top) = {
+        // Live type-to-find: whenever the search TEXT or any OPTION changes — or "From top" is toggled —
+        // jump the caret to a match and centre it (without Enter/F3). Keying the jump off ANY option
+        // change is what makes ticking Case / Whole word / Regex / In selection / From top take effect
+        // immediately, rather than only after closing and reopening. With "From top" ON the target is
+        // the FIRST match in the document; OFF, the first match at/after the fixed search ORIGIN (forward
+        // from where the user was). The centering is one-shot (`center_caret`), so an on-screen target
+        // isn't scrolled.
+        let (prev_from_top, origin) = {
             let d = self.find_dialog.as_ref().unwrap();
-            (d.prev_find.clone(), find.chars().count() >= d.prev_find.chars().count(), d.prev_from_top)
+            (d.prev_from_top, d.origin)
         };
-        if !find.is_empty() && (find != prev_find || from_top != prev_from_top) {
-            let caret = self.editor.doc(self.editor.active_index()).cursor();
-            let target = find_landing_target(from_top, grew, &self.find_highlights, caret);
-            if let Some(pos) = target {
+        if find.is_empty() {
+            // Field cleared — re-pin the origin so the NEXT term searches forward from where we are now.
+            self.find_dialog.as_mut().unwrap().origin = self.find_origin();
+        } else if inputs_changed || from_top != prev_from_top {
+            if let Some(pos) = find_landing_target(from_top, &self.find_highlights, origin) {
                 self.editor.host_mut().set_active_caret(pos, None);
                 self.pane_view.follow = true;
                 self.center_caret = true; // centre the target if it's off-screen
                 outcome.main_redraw = true;
             }
         }
-        {
-            let d = self.find_dialog.as_mut().unwrap();
-            d.prev_find = find.clone();
-            d.prev_from_top = from_top;
-        }
+        self.find_dialog.as_mut().unwrap().prev_from_top = from_top;
         outcome
     }
 

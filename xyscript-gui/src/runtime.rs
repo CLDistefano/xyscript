@@ -1667,6 +1667,12 @@ impl Handler {
                     k.consumed.clear();
                 }
             }
+            // Keep the shared modifier state fresh while the FIND window holds focus — otherwise
+            // `self.mods` (updated only from the MAIN window) is stale here, so `Shift+F3` below read
+            // Shift as up and did Find NEXT instead of Find Prev.
+            WindowEvent::ModifiersChanged(m) => {
+                self.mods = m.state();
+            }
             // F3 / Shift+F3 repeat the last search from the FIND window too, driving the main document.
             WindowEvent::KeyboardInput { event: key_event, is_synthetic: false, .. }
                 if key_event.state == ElementState::Pressed

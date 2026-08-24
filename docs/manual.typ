@@ -1194,9 +1194,13 @@ forward and backward, whether or not the dialog is open. Pressing #kbd("Enter") 
 to the next match — press it repeatedly to walk through them.
 
 As you type in the *Find* field the view follows along — no need to press #kbd("Enter") or #kbd("F3").
-Every match is highlighted, and each letter you add jumps to the next match ahead of the cursor,
-scrolling it to mid-screen if it was off-screen. Press #kbd("Backspace") and it jumps back to the
-*first* match of the now-shorter text, so widening the search returns you to the top.
+Every match is highlighted, and the cursor lands on the first match at or after where you were when you
+opened *Find*, scrolling it to mid-screen if it was off-screen. Editing the search text keeps that same
+starting point, so the preview searches forward from where you were and never drifts toward the top of
+the file as you type. (If you had scrolled the cursor off-screen, "where you were" is the top of what
+you could see, not the off-screen cursor — so the search never jumps back up to the top of the file.)
+Ticking any option — *Case sensitive*, *Whole word*, *Regular expression*, *In selection* — re-runs the
+preview at once, so its effect is immediate.
 
 By default the search begins at the cursor. Tick *From top of file* to begin at the top instead: the
 moment you tick it (or type with it ticked) the cursor lands on the *first* match in the document, and
