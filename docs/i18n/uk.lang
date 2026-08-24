@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\uk.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -104,9 +104,13 @@ menu.view.split.swap = Поміняти панелі місцями   # Swap the
 menu.view.split.zoom = Збільшити активну панель (перемкнути)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Активна панель на весь екран   # Active pane full screen
 menu.view.split.remove = Прибрати розділення   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Рядок меню   # Menu bar
 menu.view.title_bar = Рядок заголовка   # Title bar
 menu.view.writers_view = Режим письменника (Esc для виходу)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Командний рядок   # Command line
 menu.view.cmdline.popup = Спливне вікно   # Pop-up
 menu.view.cmdline.position = Розташування   # Position

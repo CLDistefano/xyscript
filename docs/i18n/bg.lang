@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\bg.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,9 +100,13 @@ menu.view.split.swap = Размяна на двата панела   # Swap the 
 menu.view.split.zoom = Увеличаване на активния панел (превключване)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Активният панел на цял екран   # Active pane full screen
 menu.view.split.remove = Премахване на разделянето   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Лента с менюта   # Menu bar
 menu.view.title_bar = Заглавна лента   # Title bar
 menu.view.writers_view = Изглед за писане (Esc за изход)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Команден ред   # Command line
 menu.view.cmdline.popup = Изскачащ прозорец   # Pop-up
 menu.view.cmdline.position = Позиция   # Position

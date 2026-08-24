@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fi.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,9 +100,13 @@ menu.view.split.swap = Vaihda ruudut keskenään   # Swap the two panes
 menu.view.split.zoom = Suurenna aktiivinen ruutu (vaihto)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktiivinen ruutu koko näytölle   # Active pane full screen
 menu.view.split.remove = Poista jako   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Valikkorivi   # Menu bar
 menu.view.title_bar = Otsikkorivi   # Title bar
 menu.view.writers_view = Kirjoitustila (poistu Esc)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Komentorivi   # Command line
 menu.view.cmdline.popup = Ponnahdusikkuna   # Pop-up
 menu.view.cmdline.position = Sijainti   # Position

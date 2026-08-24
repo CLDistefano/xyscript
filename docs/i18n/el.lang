@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\el.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,9 +100,13 @@ menu.view.split.swap = Εναλλαγή των δύο παραθύρων   # Swa
 menu.view.split.zoom = Μεγέθυνση ενεργού παραθύρου (εναλλαγή)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Ενεργό παράθυρο σε πλήρη οθόνη   # Active pane full screen
 menu.view.split.remove = Κατάργηση διαίρεσης   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Γραμμή μενού   # Menu bar
 menu.view.title_bar = Γραμμή τίτλου   # Title bar
 menu.view.writers_view = Προβολή συγγραφέα (Esc για έξοδο)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Γραμμή εντολών   # Command line
 menu.view.cmdline.popup = Αναδυόμενο   # Pop-up
 menu.view.cmdline.position = Θέση   # Position

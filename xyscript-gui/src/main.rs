@@ -6755,6 +6755,7 @@ impl GuiApp {
         let menubar_on = ed.menu_bar_shown();
         let titlebar_on = ed.show_titlebar();
         let wv_on = ed.writer_view();
+        let dimonblur_on = ed.special_str("DIMONBLUR") == "1";
         let wingeo_on = ed.remember_window_geometry();
         let ps_on = ed.special_str("PS") == "1";
         let trusted = ed.trusted();
@@ -6938,10 +6939,17 @@ impl GuiApp {
                     m_item(self.tr("menu.view.split.fullscreen", "Active pane full screen"), "FS"),
                     m_item(self.tr("menu.view.split.remove", "Remove split"), "TUS"),
                 ]),
+                // A second view of the SAME file — an in-process tab, or a free-standing window (a
+                // separate process). Companion to Split panes (which shows both views in one window).
+                m_sub(self.tr("menu.view.duplicate", "Duplicate view"), vec![
+                    m_item(self.tr("menu.view.duplicate.tab", "In a new tab"), "DUPVIEW"),
+                    m_item(self.tr("menu.view.duplicate.window", "In a new window"), "DUPVIEW/W"),
+                ]),
                 MenuNode::Sep,
                 m_tog(self.tr("menu.view.menu_bar", "Menu bar"), menubar_on, "TMB"),
                 m_tog(self.tr("menu.view.title_bar", "Title bar"), titlebar_on, "TITLEBAR"),
                 m_tog(self.tr("menu.view.writers_view", "Writer's View (Esc to exit)"), wv_on, "WV"),
+                m_tog(self.tr("menu.view.dim_inactive", "Dim when inactive"), dimonblur_on, "DIMONBLUR"),
                 m_sub(self.tr("menu.view.cmdline", "Command line"), vec![
                     m_tog(self.tr("menu.view.cmdline.popup", "Pop-up"), popup_on, "TGC"),
                     m_sub(self.tr("menu.view.cmdline.position", "Position"), vec![

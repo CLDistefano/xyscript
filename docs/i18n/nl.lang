@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\nl.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,9 +100,13 @@ menu.view.split.swap = Beide vensters verwisselen   # Swap the two panes
 menu.view.split.zoom = Actief venster vergroten (schakelen)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Actief venster op volledig scherm   # Active pane full screen
 menu.view.split.remove = Splitsing opheffen   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Menubalk   # Menu bar
 menu.view.title_bar = Titelbalk   # Title bar
 menu.view.writers_view = Schrijfmodus (Esc om te sluiten)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Opdrachtregel   # Command line
 menu.view.cmdline.popup = Pop-upvenster   # Pop-up
 menu.view.cmdline.position = Positie   # Position

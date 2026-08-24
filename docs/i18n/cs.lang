@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\cs.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -104,9 +104,13 @@ menu.view.split.swap = Prohodit oba panely   # Swap the two panes
 menu.view.split.zoom = Přiblížit aktivní panel (přepnout)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktivní panel na celou obrazovku   # Active pane full screen
 menu.view.split.remove = Zrušit rozdělení   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Panel nabídek   # Menu bar
 menu.view.title_bar = Záhlaví okna   # Title bar
 menu.view.writers_view = Režim psaní (Esc pro ukončení)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Příkazový řádek   # Command line
 menu.view.cmdline.popup = Vyskakovací okno   # Pop-up
 menu.view.cmdline.position = Umístění   # Position

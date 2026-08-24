@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\hu.lang
-# Merged from en.lang by i18n-sync.py — 6 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,9 +100,13 @@ menu.view.split.swap = A két panel felcserélése   # Swap the two panes
 menu.view.split.zoom = Aktív panel nagyítása (váltó)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktív panel teljes képernyőn   # Active pane full screen
 menu.view.split.remove = Felosztás megszüntetése   # Remove split
+menu.view.duplicate =    # Duplicate view
+menu.view.duplicate.tab =    # In a new tab
+menu.view.duplicate.window =    # In a new window
 menu.view.menu_bar = Menüsor   # Menu bar
 menu.view.title_bar = Címsor   # Title bar
 menu.view.writers_view = Írói nézet (Esc a kilépéshez)   # Writer's View (Esc to exit)
+menu.view.dim_inactive =    # Dim when inactive
 menu.view.cmdline = Parancssor   # Command line
 menu.view.cmdline.popup = Felugró   # Pop-up
 menu.view.cmdline.position = Elhelyezés   # Position
