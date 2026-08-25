@@ -3534,8 +3534,26 @@ impl AppHost {
         let mut cmd = std::process::Command::new(&exe);
         cmd.args(&args);
         cmd.current_dir(&child_cwd);
-        cmd.spawn()
+        let child = cmd
+            .spawn()
             .map_err(|e| XplError::trappable(format!("DUPVIEW: cannot open a new window: {e}")))?;
+        // Windows blocks a background process from taking the foreground (the "foreground lock"), so
+        // the freshly-spawned second instance would open WITHOUT keyboard focus — keys did nothing until
+        // you clicked it into focus by hand. As the current foreground process we may hand that right to
+        // the child by PID; it then calls `focus_window()` on resume and comes up ready to type. Granting
+        // it now (well before the child's window exists) beats the race. No-op / not needed elsewhere.
+        #[cfg(windows)]
+        unsafe {
+            #[link(name = "user32")]
+            extern "system" {
+                fn AllowSetForegroundWindow(dwProcessId: u32) -> i32;
+            }
+            // Grant the freshly-spawned second instance permission to take the foreground (Windows
+            // blocks a background process from doing so on its own). The child also forces the
+            // foreground itself on resume; this is the belt to that suspenders.
+            AllowSetForegroundWindow(child.id());
+        }
+        let _ = child; // detached; dropping a Child does not wait or kill
         Ok(Value::str(""))
     }
 

@@ -2062,6 +2062,50 @@ fn clamp_geometry(
     (lw, lh, x, y)
 }
 
+/// Windows-only: force a freshly-created window to the foreground. A `DUPVIEW/W` second instance is
+/// spawned by a process that is itself the foreground app, so Windows' foreground lock can leave the
+/// new window unfocused — and since the child then goes straight to `Focused(true)` (never a
+/// `Focused(false)` first), the keyboard-state reset that arms on focus change wouldn't fire, leaving
+/// the keyboard "frozen" until you clicked the window by hand. Bringing it to the foreground here makes
+/// the child receive `Focused(true)` immediately, so that reset runs and the keyboard works at once.
+#[cfg(windows)]
+mod winfocus {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetForegroundWindow() -> isize;
+        fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+        fn AttachThreadInput(id_attach: u32, id_attach_to: u32, attach: i32) -> i32;
+        fn SetForegroundWindow(hwnd: isize) -> i32;
+        fn BringWindowToTop(hwnd: isize) -> i32;
+        fn SetFocus(hwnd: isize) -> isize;
+        fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentThreadId() -> u32;
+    }
+
+    /// Force `hwnd` to the foreground even under Windows' foreground lock, by briefly attaching to the
+    /// current foreground thread's input queue (the classic bypass). Timing-independent — needs no
+    /// prior `AllowSetForegroundWindow` grant from the spawner, so a slow-booting child still wins.
+    pub fn force_foreground(hwnd: isize) {
+        unsafe {
+            let fg = GetForegroundWindow();
+            let fg_thread = GetWindowThreadProcessId(fg, std::ptr::null_mut());
+            let cur = GetCurrentThreadId();
+            let attached = fg_thread != 0 && fg_thread != cur && AttachThreadInput(cur, fg_thread, 1) != 0;
+            const SW_SHOW: i32 = 5;
+            ShowWindow(hwnd, SW_SHOW);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            SetFocus(hwnd);
+            if attached {
+                AttachThreadInput(cur, fg_thread, 0);
+            }
+        }
+    }
+}
+
 impl ApplicationHandler for Handler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -2121,6 +2165,19 @@ impl ApplicationHandler for Handler {
         // pinning inner here keeps the restore exact regardless of decoration/DPI accounting.)
         if let Some(sz) = restored_size {
             let _ = window.request_inner_size(sz);
+        }
+        // Claim keyboard focus. For a `DUPVIEW/W` second instance (spawned by another XyScript that is
+        // the foreground app) Windows can otherwise leave the new window unfocused. `focus_window()`
+        // alone is unreliable (the parent's foreground grant expires while a slow startup runs), so a
+        // spawned child (identified by the `DUPVIEW/W` args) also forces the foreground via
+        // AttachThreadInput — see `winfocus`. A normal launch relies on the OS, as before.
+        window.focus_window();
+        #[cfg(windows)]
+        if std::env::args().any(|a| a == "--goto" || a == "--cwd") {
+            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Some(RawWindowHandle::Win32(h)) = window.window_handle().ok().map(|h| h.as_raw()) {
+                winfocus::force_foreground(h.hwnd.get());
+            }
         }
 
         let egui_state = egui_winit::State::new(
@@ -2359,6 +2416,18 @@ impl ApplicationHandler for Handler {
                 // HOTKEY) would stay stuck "down" here and misroute every later key — assignments
                 // appear "lost" and keys fall through to the OS. Drop momentary held state so we
                 // return to a clean slate. (Latched/Caps is kept.)
+                if let Some(k) = self.key.as_mut() {
+                    k.resolver.release_held();
+                    k.consumed.clear();
+                }
+                // fall through to egui
+            }
+            WindowEvent::Focused(true) => {
+                // Gaining focus — including a freshly-spawned DUPVIEW/W window's FIRST focus, which
+                // never saw a Focused(false) to clean up. Reset momentary held state so a modifier left
+                // looking "stuck" from before we had focus can't misroute every key (the observed
+                // keyboard-frozen-until-you-click-away symptom on a `DUPVIEW/W` window). Latched/Caps is
+                // preserved by `release_held`. Symmetric with the Focused(false) cleanup above.
                 if let Some(k) = self.key.as_mut() {
                     k.resolver.release_held();
                     k.consumed.clear();
