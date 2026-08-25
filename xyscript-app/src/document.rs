@@ -465,6 +465,19 @@ impl Default for Document {
     }
 }
 
+/// The `(cursor, anchor)` pair that [`Buffer::set_caret`] needs to restore the selection `(a, b)` with
+/// its original orientation. Used as the undo before-state for `CP`/`MV`, whose selection can be a
+/// DEFINED block the caret has roamed away from — in which case `cursor()`/`anchor()` describe the
+/// roamed caret and the block's anchor, so restoring them would select everything from the block start
+/// to the roamed position instead of the block itself.
+fn selection_restore_state(buf: &Buffer, a: usize, b: usize) -> (usize, Option<usize>) {
+    if buf.anchor() == Some(b) {
+        (a, Some(b)) // backward selection: anchor at the end, caret at the start
+    } else {
+        (b, Some(a)) // forward (or unknown): anchor at the start, caret at the end
+    }
+}
+
 impl Document {
     pub fn new() -> Document {
         Document::default()
@@ -1727,7 +1740,9 @@ impl Document {
         }
         let s = self.buffer.slice(a, b);
         let at = self.buffer.cursor();
-        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        // Undo must restore the ORIGINAL SELECTION, not (drop point, block anchor) — a DEFINED block
+        // persists while the caret roams to the drop point. See `move_selection_to_cursor`.
+        let (cb, ab) = selection_restore_state(&self.buffer, a, b);
         let n = self.buffer.insert_keeping_selection(&s);
         let inserted = self.buffer.slice_bytes(at, at + n);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
@@ -1757,7 +1772,11 @@ impl Document {
         let dest = if c > b { c - (b - a) } else { c };
 
         // Unit 1: delete the selection from its origin, caret to the destination.
-        let (cb1, ab1) = (self.buffer.cursor(), self.buffer.anchor());
+        // Undo must restore the ORIGINAL SELECTION (a,b) — NOT (roamed caret, block anchor). A DEFINED
+        // block persists while the caret roams to the drop point, so `cursor()`/`anchor()` here are the
+        // drop point and the block's anchor; restoring those selects everything from the block start to
+        // the drop point. Record the selection's own span instead, preserving its orientation.
+        let (cb1, ab1) = selection_restore_state(&self.buffer, a, b);
         self.buffer.replace_range_bytes(a, b - a, &[]);
         self.buffer.set_caret(dest, None);
         let (ca1, aa1) = (self.buffer.cursor(), self.buffer.anchor());
@@ -3818,6 +3837,45 @@ mod tests {
         assert!(d.move_selection_to_cursor());
         assert_eq!(d.buffer().text(), "worldhello ");
         assert_eq!(d.buffer().selection_text(), "hello "); // moved text selected
+    }
+
+    #[test]
+    fn mv_undo_twice_restores_the_original_selection_not_a_giant_span() {
+        let mut d = Document::from_str("hello world");
+        d.move_doc_start(false);
+        d.define_toggle();
+        for _ in 0..6 {
+            d.move_right(false); // select "hello "
+        }
+        d.define_close();
+        d.move_doc_end(false); // caret roams to 11
+        assert!(d.move_selection_to_cursor());
+        assert_eq!(d.buffer().text(), "worldhello ");
+        // Undo the insert, then the delete.
+        assert!(d.undo());
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "hello world", "text fully restored");
+        // BUG: selects "hello world" (start-of-selection .. roamed caret). Should be just "hello ".
+        assert_eq!(d.buffer().selection_text(), "hello ", "original selection restored, not a giant span");
+    }
+
+    #[test]
+    fn cp_undo_restores_the_original_selection_not_a_giant_span() {
+        // Same root cause as MV: undo of a CP whose selection was a roamed DEFINED block must restore
+        // the block, not a span from the block start to the drop point.
+        let mut d = Document::from_str("hello world");
+        d.move_doc_start(false);
+        d.define_toggle();
+        for _ in 0..5 {
+            d.move_right(false); // select "hello"
+        }
+        d.define_close();
+        d.move_doc_end(false); // caret roams to 11; the defined block persists
+        assert!(d.copy_selection_to_cursor());
+        assert_eq!(d.buffer().text(), "hello worldhello");
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "hello world", "copy undone");
+        assert_eq!(d.buffer().selection_text(), "hello", "original selection restored, not a giant span");
     }
 
     #[test]
