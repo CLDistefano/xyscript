@@ -6599,10 +6599,13 @@ impl AppHost {
                 Vec::new()
             }
         };
-        match kind {
+        // Each arm yields the status message (surfaced by the VM's `host_op`). `chars` = "N character(s)".
+        let chars = |n: usize| format!("{n} character{}", if n == 1 { "" } else { "s" });
+        let msg = match kind {
             ClipKind::Set(text) => {
                 self.clipboard = text;
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                String::new() // programmatic (`CLIP`) — no status message
             }
             ClipKind::Copy => {
                 let pieces = multi_pieces(self);
@@ -6617,6 +6620,7 @@ impl AppHost {
                     self.clipboard = pieces.join(self.active().line_ending().as_str());
                     self.clipboard_pieces = pieces;
                 }
+                format!("copied {}", chars(self.clipboard.chars().count()))
             }
             ClipKind::Cut => {
                 let pieces = multi_pieces(self);
@@ -6632,30 +6636,38 @@ impl AppHost {
                     self.clipboard_pieces = pieces;
                     self.active().delete_all_selections();
                 }
+                format!("cut {}", chars(self.clipboard.chars().count()))
             }
             ClipKind::Append => {
                 self.clipboard.push_str(&selection.ok_or_else(need_selection)?);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                "appended the selection to the clipboard".to_string()
             }
             ClipKind::Prepend => {
                 self.clipboard =
                     format!("{}{}", selection.ok_or_else(need_selection)?, self.clipboard);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                "prepended the selection to the clipboard".to_string()
             }
             ClipKind::Paste => {
                 let n = self.active().caret_count();
                 // Distribute one stored piece per caret only on an exact count match (and >1 piece);
                 // otherwise paste the joined clipboard at every caret (the ordinary path).
-                if self.clipboard_pieces.len() >= 2 && self.clipboard_pieces.len() == n {
+                let pasted = if self.clipboard_pieces.len() >= 2 && self.clipboard_pieces.len() == n {
                     let pieces = self.clipboard_pieces.clone();
+                    let count = pieces.iter().map(|p| p.chars().count()).sum::<usize>();
                     self.active().paste_distributed(&pieces);
+                    count
                 } else {
                     let text = self.clipboard.clone();
+                    let count = text.chars().count();
                     self.active().insert(&text);
-                }
+                    count
+                };
+                format!("pasted {}", chars(pasted))
             }
-        }
-        Ok(Value::str(""))
+        };
+        Ok(Value::str(msg))
     }
 
     /// Set the viewport hint (top visible line, visible row count) used by the

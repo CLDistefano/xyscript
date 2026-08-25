@@ -9328,6 +9328,32 @@ mod tests {
     }
 
     #[test]
+    fn copy_cut_paste_report_a_status_message() {
+        let mut e = ed();
+        e.run_command(r#"INSERT "hello""#); // 5 chars
+        e.run_command("DFA"); // select "hello"
+        e.run_command("COPY");
+        assert_eq!(e.command_feedback().as_deref(), Some("copied 5 characters"));
+        e.run_command("XD"); // clear the selection
+        e.run_command("BF"); // caret to end
+        e.run_command("PASTE");
+        assert_eq!(e.command_feedback().as_deref(), Some("pasted 5 characters"));
+        // Now "hellohello" (10). Cut it all.
+        e.run_command("DFA");
+        e.run_command("CUT");
+        assert_eq!(e.command_feedback().as_deref(), Some("cut 10 characters"));
+        // Singular grammar.
+        e.run_command(r#"INSERT "x""#);
+        e.run_command("DFA");
+        e.run_command("COPY");
+        assert_eq!(e.command_feedback().as_deref(), Some("copied 1 character"));
+        // No selection → an error, not a "copied" message.
+        e.run_command("XD");
+        e.run_command("COPY");
+        assert!(e.command_feedback().unwrap_or_default().contains("no text is selected"));
+    }
+
+    #[test]
     fn fatal_error_reaches_command_feedback() {
         let mut e = ed();
         // An unknown command is a FATAL error: it aborts the run and (unlike a trappable `$ERROR`)
