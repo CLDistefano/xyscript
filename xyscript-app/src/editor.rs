@@ -185,6 +185,11 @@ impl Editor {
     pub fn open_hex(&mut self, path: &str, hex: bool) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false, hex }))
     }
+    /// Open a startup file argument, switching to an already-open copy (e.g. one `SESSION` restored)
+    /// rather than surfacing the blocking "already open?" prompt. See `AppHost::open_startup_file`.
+    pub fn open_startup_file(&mut self, path: &str) -> Result<String, String> {
+        op_status(self.host.open_startup_file(path))
+    }
     pub fn save(&mut self) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Save(None)))
     }
@@ -3442,6 +3447,34 @@ mod tests {
             assert_eq!(e.buffer_count(), n + 1, "{verb}/NV opens a duplicate tab");
             assert!(!e.read_only(), "{verb}/NV opens editable");
         }
+    }
+
+    #[test]
+    fn open_startup_file_switches_to_an_already_open_copy_without_prompting() {
+        // A command-line file that SESSION already restored (the usual DUPVIEW/W case) must switch to
+        // that tab, never raise the blocking "already open?" prompt that would hang the boot.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("a.txt".into(), "AAA".into());
+        e.host_mut().files.insert("b.txt".into(), "BBB".into());
+        e.run_command("OPEN a.txt");
+        e.run_command("OPEN b.txt"); // b.txt active; a.txt open in another tab
+        let n = e.buffer_count();
+
+        // Startup-opening the already-open a.txt: switch to it, no prompt, no duplicate.
+        let r = e.open_startup_file("a.txt");
+        assert!(r.is_ok(), "startup open must not error: {r:?}");
+        assert!(e.open_prompt().is_none(), "startup open must NOT arm the 'already open?' prompt");
+        assert_eq!(e.buffer_count(), n, "no duplicate tab");
+        assert!(e.active_path().unwrap().to_string_lossy().contains("a.txt"), "switched to a.txt");
+
+        // A NOT-yet-open startup file still opens normally.
+        e.host_mut().files.insert("c.txt".into(), "CCC".into());
+        let before = e.buffer_count();
+        e.open_startup_file("c.txt").unwrap();
+        assert!(e.open_prompt().is_none());
+        assert_eq!(e.buffer_count(), before + 1, "a new file opens a tab");
+        assert!(e.active_path().unwrap().to_string_lossy().contains("c.txt"));
     }
 
     #[test]

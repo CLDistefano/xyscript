@@ -2710,7 +2710,10 @@ impl GuiApp {
     fn open_startup_files(&mut self, paths: &[String]) {
         let mut first: Option<usize> = None;
         for p in paths {
-            let r = self.editor.open(p);
+            // `open_startup_file`, not `open`: a command-line file that `SESSION` already restored (the
+            // usual case for a `DUPVIEW/W` child) must switch to that tab, never raise the blocking
+            // "already open?" prompt that would hang the boot.
+            let r = self.editor.open_startup_file(p);
             self.reset_view();
             if first.is_none() {
                 first = Some(self.editor.active_index());

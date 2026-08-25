@@ -7197,6 +7197,23 @@ impl AppHost {
         Ok(Value::str(msg))
     }
 
+    /// Open a STARTUP file argument (a command-line positional). If the file is already open — because
+    /// `SESSION` restored it, or (for a `DUPVIEW/W` child) because it's the very file the parent had
+    /// open and the session brought back — SWITCH to that tab instead of arming the interactive
+    /// "already open?" prompt. At boot that prompt is spurious (the named file IS the restored one) and
+    /// blocks startup waiting for a keypress. Interactive `OPEN` still prompts as before.
+    pub fn open_startup_file(&mut self, path: &str) -> VmResult<Value> {
+        if path.trim().is_empty() {
+            return Err(XplError::trappable("OPEN: a path is required"));
+        }
+        if let Some(existing) = self.find_open_tab(path) {
+            let i = existing.min(self.docs.len().saturating_sub(1));
+            self.set_active(i);
+            return Ok(Value::str("switched to the open copy"));
+        }
+        self.open_doc(path, false, false)
+    }
+
     /// The "file is already open" prompt text, if armed (`OPEN`/`READ` of an open file). Surfaced
     /// on the status line; answered with [`resolve_open`](Self::resolve_open).
     pub fn open_prompt(&self) -> Option<String> {
