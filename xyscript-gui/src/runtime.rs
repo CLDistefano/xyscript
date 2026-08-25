@@ -2376,17 +2376,34 @@ impl ApplicationHandler for Handler {
                         }
                     }
                 }
-                // F3 / Shift+F3 = Find Next / Find Prev (universal). Handled here — ahead of the
-                // egui-focus check below — so it works even while the Find dialog's field (or the
-                // command bar) has keyboard focus, where the keymap path is skipped. Not in a dir
+                // F3 / Shift+F3 = Find Next / Find Prev — but only as a FALLBACK. A keymap binding for
+                // F3 (e.g. the shipped `F3=XD`) must win when the document owns the keyboard, so this
+                // fires only when F3 is UNBOUND at the current modifiers, or when a text edit (the
+                // command line / a picker field) owns the keyboard and the keymap path is skipped
+                // below. Otherwise F3 falls through to the keymap and runs its binding. Not in a dir
                 // listing (F3 there is express-find, handled above / by the listing).
                 if key_event.state == ElementState::Pressed
                     && key_event.physical_key == PhysicalKey::Code(KeyCode::F3)
                     && !self.app.active_is_dir_listing()
                 {
-                    self.app.find_again(self.mods.shift_key());
-                    self.request_redraw();
-                    return; // consumed
+                    // Is F3 bound in the keymap at the live modifier state? (physical → native → canonical
+                    // code, then a pure keymap lookup — no resolver side effects.)
+                    let f3_bound = self.key.as_ref().is_some_and(|k| {
+                        key_event
+                            .physical_key
+                            .to_scancode()
+                            .map(|sc| (sc & 0xFF) | if (sc >> 8) == 0xE0 { WIN_E0 } else { 0 })
+                            .and_then(|native| k.table.to_canonical(native))
+                            .is_some_and(|code| {
+                                k.resolver.keymap.resolve(k.resolver.state.current_bitmask(), code).is_some()
+                            })
+                    });
+                    if self.egui_ctx.text_edit_focused() || !f3_bound {
+                        self.app.find_again(self.mods.shift_key());
+                        self.request_redraw();
+                        return; // consumed
+                    }
+                    // bound + document focused → fall through to the keymap, which runs the binding.
                 }
                 // When an egui text box has keyboard focus (e.g. the Find dialog field or the
                 // font-picker size field), let egui handle editing keys (arrows/Backspace/Ctrl+A/…)
