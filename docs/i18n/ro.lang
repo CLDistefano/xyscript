@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ro.lang
-# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 13 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -117,6 +117,9 @@ menu.view.cmdline.position = Poziție   # Position
 menu.view.cmdline.position.top = Sus   # Top
 menu.view.cmdline.position.bottom = Jos   # Bottom
 menu.view.cmdline.position.hidden = Ascunsă   # Hidden
+menu.view.statusline =    # Status line
+menu.view.statusline.top =    # Top (under command line)
+menu.view.statusline.bottom =    # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Tip de document   # Document type

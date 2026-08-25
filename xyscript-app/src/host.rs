@@ -2648,6 +2648,9 @@ pub struct AppHost {
     cmline_caret_color: (u8, u8, u8),
     /// Where the command line is drawn (`CMPLACE`; the GUI renders from this). `$CMPLACE`.
     cmline_placement: CmlinePlacement,
+    /// Draw the status line at the TOP, just under the command line (XyWrite-style) instead of the
+    /// default bottom edge (`STATUSLINE top|bottom`; the GUI renders from this). `$STATUSLINE`.
+    status_line_top: bool,
     /// Where the `$CWD` path is shown — status line or command-line prefix (`PAPLACE`; `$PAPLACE`).
     path_place: PathPlace,
     /// Max width (chars) of the displayed `$CWD` path before it's truncated (`PATHLEN`; `$PATHLEN`).
@@ -3101,6 +3104,7 @@ impl AppHost {
             caret_shape: CaretShape::Bar,
             cmline_caret_shape: CaretShape::Bar,
             cmline_placement: CmlinePlacement::Top,
+            status_line_top: false, // default: status at the bottom edge
             path_place: PathPlace::Status,
             path_len: 45,
             cmline_blank: false,
@@ -3419,6 +3423,11 @@ impl AppHost {
     /// Where the command line is drawn (`CMPLACE`/`$CMPLACE`); the GUI renders from this each frame.
     pub fn cmline_placement(&self) -> CmlinePlacement {
         self.cmline_placement
+    }
+    /// Whether the status line is drawn at the top under the command line (`STATUSLINE`/`$STATUSLINE`);
+    /// the GUI renders from this each frame.
+    pub fn status_line_top(&self) -> bool {
+        self.status_line_top
     }
     /// Where the `$CWD` path is shown (`PAPLACE`/`$PAPLACE`); the GUI renders from this each frame.
     pub fn path_place(&self) -> PathPlace {
@@ -8517,6 +8526,7 @@ impl AppHost {
         put(&mut s, "Caret shape — bar | block | underline", format!("CRSHAPE {}", self.caret_shape.name()));
         put(&mut s, "Command-line caret shape — bar | block | underline", format!("CMCRSHAPE {}", self.cmline_caret_shape.name()));
         put(&mut s, "Command-line placement — top | bottom | hidden", format!("CMPLACE {}", self.cmline_placement.name()));
+        put(&mut s, "Status-line placement — top | bottom", format!("STATUSLINE {}", if self.status_line_top { "top" } else { "bottom" }));
         put(&mut s, "Blank the command line after a command runs from it — on | off", format!("CMBLANK {}", if self.cmline_blank { "on" } else { "off" }));
         put(&mut s, "Show the tab strip when only one file is open — on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
         put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
@@ -11807,6 +11817,9 @@ impl Host for AppHost {
                     Some(if fg { ColorTarget::PathFg } else { ColorTarget::PathBg });
                 return Ok(Value::str(""));
             }
+            EditorOp::SetStatusLineTop(v) => {
+                self.status_line_top = v;
+            }
             EditorOp::SetCmlinePlacement(p) => {
                 self.cmline_placement = p;
                 return Ok(Value::str(format!("command line: {}", p.name())));
@@ -12652,6 +12665,7 @@ impl Host for AppHost {
             "CRSHAPE" => Some(Value::str(self.caret_shape.name())),
             "CMCRSHAPE" => Some(Value::str(self.cmline_caret_shape.name())),
             "CMPLACE" => Some(Value::str(self.cmline_placement.name())),
+            "STATUSLINE" => Some(Value::str(if self.status_line_top { "top" } else { "bottom" })),
             "CMBLANK" => Some(Value::Int(if self.cmline_blank { 1 } else { 0 })),
             "SHOWONETAB" => Some(Value::Int(if self.show_one_tab { 1 } else { 0 })),
             "CARETMOTION" => {

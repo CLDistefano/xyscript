@@ -466,6 +466,7 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("BC"): blank the command line (`BC <text>` puts literal text on it). #cmd("CMH"): stash a command in the history without running it.
 / #cmd("HISTORY", "HI") / #cmd("LOADCM") / #cmd("SAVECM"): open the command-history picker / load / save the history.
 / #cmd("CMPLACE") / #cmd("CMBLANK"): where the command line sits / whether it clears after a command.
+/ #cmd("STATUSLINE"): where the status line sits — `top` (under the command line) or `bottom`.
 / #cmd("SGC", "CGC", "TGC"): the pop-up command line — on / off / toggle.
 
 == Coding aids
@@ -705,6 +706,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("URLFGCOLOR") / #cmd("URLBGCOLOR"): the URL-highlight text colour / background colour — `URLFGCOLOR <r g b>` (0–255; `/HSL` reads the triple as H S L). Bare, or `… default`, clears it: the text reverts to a built-in link blue and the background to transparent (no band — just coloured text). #cmd("URLFGCOLORS") / #cmd("URLBGCOLORS") open the colour picker. Read back with #sv("URLFGCOLOR") / #sv("URLBGCOLOR"); persisted by `SAVECFG`.
 / #cmd("CMLINE"): move focus to the command line (synonym #cmd("GH")).
 / #cmd("CMPLACE"): where the command line is drawn — `CMPLACE top|bottom|hidden` (bare reports it). `hidden` keeps it out of the way until you focus it. Read back via `$CMPLACE`; persists in the config.
+/ #cmd("STATUSLINE"): where the status line is drawn — `STATUSLINE top|bottom` (bare reports it). `top` places it just under the command line (XyWrite-style); `bottom` (the default) keeps it at the bottom edge. Read back via `$STATUSLINE`; persists in the config.
 / #cmd("CONTINUE"): skip to the next iteration of the loop.
 / #cmd("COPY"): copy the selection to the clipboard; `COPY <src> <dst>` copies a file. With a multi-caret set it stores every caret's selection as an ordered list (and puts the newline-joined text on the OS clipboard), so a later #cmd("PASTE") into the same number of carets distributes the pieces.
 / #cmd("CP"): copy the selection to the caret. With no selection in the current tab, it instead offers the selections in other open tabs in a chooser and inserts the one you pick at the caret.
@@ -1174,6 +1176,7 @@ Each reads `1` when the feature is on, `0` when off.
 
 / #sv("MB"): the menu bar. #sv("GC"): the pop-up command line. #sv("TITLEBAR"): the OS window title bar. #sv("WINGEO"): whether window size+position is remembered across runs. #sv("SESSION"): whether open tabs are auto-saved and restored across runs.
 / #sv("CMPLACE"): where the command line sits — `top`, `bottom`, or `hidden` (set with `CMPLACE`).
+/ #sv("STATUSLINE"): where the status line sits — `top` (just under the command line) or `bottom` (set with `STATUSLINE`).
 / #sv("VR") / #sv("WS") / #sv("LNS"): visible paragraph marks / visible whitespace / the line-number gutter.
 / #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
 / #sv("HLAUTO"): auto-highlighting when a file is opened.

@@ -6761,6 +6761,7 @@ impl GuiApp {
         let menubar_on = ed.menu_bar_shown();
         let titlebar_on = ed.show_titlebar();
         let wv_on = ed.writer_view();
+        let statusline_top = ed.status_line_top();
         let dimonblur_on = ed.special_str("DIMONBLUR") == "1";
         let wingeo_on = ed.remember_window_geometry();
         let ps_on = ed.special_str("PS") == "1";
@@ -6963,6 +6964,10 @@ impl GuiApp {
                         m_tog(self.tr("menu.view.cmdline.position.bottom", "Bottom"), cur_placement == "bottom", "CMPLACE bottom"),
                         m_tog(self.tr("menu.view.cmdline.position.hidden", "Hidden"), cur_placement == "hidden", "CMPLACE hidden"),
                     ]),
+                ]),
+                m_sub(self.tr("menu.view.statusline", "Status line"), vec![
+                    m_tog(self.tr("menu.view.statusline.top", "Top (under command line)"), statusline_top, "STATUSLINE top"),
+                    m_tog(self.tr("menu.view.statusline.bottom", "Bottom"), !statusline_top, "STATUSLINE bottom"),
                 ]),
             ]),
             m_sub(self.tr("menubar.document", "Document"), vec![
@@ -7887,6 +7892,44 @@ impl GuiApp {
             job.append(text, 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
         }
         job.into()
+    }
+
+    /// Render the status-line contents into `ui` (a top or bottom panel — see `STATUSLINE`). Shared so
+    /// the status line reads identically whichever edge it sits on.
+    fn render_status_body(&mut self, ui: &mut egui::Ui, status: &str, cwd_len: usize, status_opens_cmline: bool) {
+        if status.contains('\n') {
+            // Multiline status (e.g. `PR $CMH` or any PR output with real newlines): stack the lines as
+            // a plain label so the panel auto-sizes to fit them. Cap at MAX rows so a big dump can't
+            // swallow the editor; the overflow collapses into a "(+N more)" tail — use `PRINTEX`/a buffer
+            // for the full text. Top line shows first (newest-first content like `$CMH` reads from top).
+            const MAX_STATUS_ROWS: usize = 10;
+            let total = status.lines().count();
+            let shown = if total > MAX_STATUS_ROWS {
+                let head = status.lines().take(MAX_STATUS_ROWS - 1).collect::<Vec<_>>().join("\n");
+                format!("{head}\n… (+{} more)", total - (MAX_STATUS_ROWS - 1))
+            } else {
+                status.to_string()
+            };
+            let wt = self.status_text(ui, &shown, cwd_len);
+            ui.add(egui::Label::new(wt).wrap()); // wrap long individual lines too
+        } else if status_opens_cmline {
+            // `.wrap()` (not inside `ui.horizontal`, which would force no-wrap `Extend`): a long
+            // single-line message wraps to the panel width instead of scrolling off the right edge.
+            let wt = self.status_text(ui, status, cwd_len);
+            let r = ui
+                .add(egui::Label::new(wt).wrap().sense(egui::Sense::click()))
+                .on_hover_text("Click to open the command line");
+            if r.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+            }
+            if r.clicked() {
+                self.editor.open_cmdline();
+                ui.ctx().request_repaint();
+            }
+        } else {
+            let wt = self.status_text(ui, status, cwd_len);
+            ui.add(egui::Label::new(wt).wrap());
+        }
     }
 
     /// Put a just-run command's feedback on the status line: `PR`/`MSG` output if any, else
@@ -9055,45 +9098,17 @@ impl GuiApp {
         let status_opens_cmline =
             plain_status && placement == "hidden" && !self.editor.cmline_open();
         if !writer_view {
-        egui::Panel::bottom("status").show_inside(ui, |ui| {
-            if status.contains('\n') {
-                // Multiline status (e.g. `PR $CMH` or any PR output with real newlines): stack the
-                // lines as a plain label so the bottom panel auto-sizes (grows UPWARD) to fit them.
-                // (A ScrollArea here reports only a small default size during the panel's measure
-                // pass, so the panel never grows — hence a plain label.) Cap at MAX rows so a big
-                // dump can't swallow the editor; the overflow collapses into a "(+N more)" tail —
-                // use `PRINTEX`/a buffer for the full text. Top line shows first (newest-first
-                // content like `$CMH` reads from the top).
-                const MAX_STATUS_ROWS: usize = 10;
-                let total = status.lines().count();
-                let shown = if total > MAX_STATUS_ROWS {
-                    let head = status.lines().take(MAX_STATUS_ROWS - 1).collect::<Vec<_>>().join("\n");
-                    format!("{head}\n… (+{} more)", total - (MAX_STATUS_ROWS - 1))
-                } else {
-                    status.clone()
-                };
-                let wt = self.status_text(ui, &shown, cwd_len);
-                ui.add(egui::Label::new(wt).wrap()); // wrap long individual lines too
-            } else if status_opens_cmline {
-                // `.wrap()` (not inside `ui.horizontal`, which would force no-wrap `Extend`): a long
-                // single-line message wraps to the panel width and grows it upward, instead of
-                // scrolling off the right edge.
-                let wt = self.status_text(ui, &status, cwd_len);
-                let r = ui
-                    .add(egui::Label::new(wt).wrap().sense(egui::Sense::click()))
-                    .on_hover_text("Click to open the command line");
-                if r.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
-                }
-                if r.clicked() {
-                    self.editor.open_cmdline();
-                    ctx.request_repaint();
-                }
-            } else {
-                let wt = self.status_text(ui, &status, cwd_len);
-                ui.add(egui::Label::new(wt).wrap());
-            }
-        });
+        // Status-line placement (`STATUSLINE`): TOP puts it just under the command line (XyWrite-style;
+        // added here AFTER the `cmdline_top` panel so it stacks directly below it); BOTTOM (default)
+        // keeps it at the very bottom edge. The bottom panel auto-sizes UPWARD to fit a multiline
+        // status; the top one grows DOWNWARD — either way the shared body reads the same.
+        if self.editor.status_line_top() {
+            egui::Panel::top("status_top")
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, status_opens_cmline));
+        } else {
+            egui::Panel::bottom("status")
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, status_opens_cmline));
+        }
 
         // Bottom-placed command line sits just above the status line (shown after
         // it, so the status stays at the very bottom edge).

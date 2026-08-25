@@ -112,6 +112,9 @@ menu.view.cmdline.position = [Þòšìţìòñ ···]   # Position
 menu.view.cmdline.position.top = [Ţòþ ·]   # Top
 menu.view.cmdline.position.bottom = [Ɓòţţòɱ ··]   # Bottom
 menu.view.cmdline.position.hidden = [Ĥìđđèñ ··]   # Hidden
+menu.view.statusline = [Šţàţùš ĺìñè ····]   # Status line
+menu.view.statusline.top = [Ţòþ (ùñđèŕ çòɱɱàñđ ĺìñè) ··········]   # Top (under command line)
+menu.view.statusline.bottom = [Ɓòţţòɱ ··]   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = [Đòçùɱèñţ ţýþè ·····]   # Document type

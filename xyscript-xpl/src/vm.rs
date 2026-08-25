@@ -3624,6 +3624,26 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetCmlinePlacement(place))?;
                 Ok(Flow::Next)
             }
+            // `STATUSLINE top|bottom` — where the status line is drawn; bare reports it. `top` puts it
+            // just under the command line (XyWrite-style); `bottom` (default) keeps it at the bottom
+            // edge. `$STATUSLINE`.
+            "STATUSLINE" => {
+                if args.trim().is_empty() {
+                    *self.ctx.status = Some(format!("status line: {}", self.special_str("STATUSLINE")));
+                    return Ok(Flow::Next);
+                }
+                let top = match args.trim().to_ascii_lowercase().as_str() {
+                    "top" => true,
+                    "bottom" => false,
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "STATUSLINE: expected top or bottom, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetStatusLineTop(top))?;
+                Ok(Flow::Next)
+            }
             // `CMBLANK on|off` (bare = toggle) — whether the command line is blanked after a command
             // runs from it. Off (default) keeps the command for re-running (B23). `$CMBLANK`.
             "CMBLANK" => {

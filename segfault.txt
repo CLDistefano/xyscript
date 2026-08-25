@@ -1,0 +1,59 @@
+Here's a traceback which unfortunately doesn't say a lot.  The
+situation of course occurs outside of gdb; I ran gdb to see
+what it could tell me.
+
+xyscript is being run in my /home/bnewell/data/scraps
+directory, the one that contains about 4,000 small files.
+
+The command chain is simply
+
+cd /home/bnewell/data/scraps
+xyscript *
+
+(when not using gdb) and there is the segfault.
+
+However, if I do things this way
+
+cd /usr/local/share/xyscript and run
+./xyscript /home/bnewell/data/scraps/*
+
+everything works (except for the overloaded tab area).
+
+The difference is that I have
+/usr/local/share/xyscript/xyscript soft linked to
+/usr/local/bin/xyscript.  Why does that matter?  I don't know
+as yet.  It might be relevant that the link is between
+separate disk drives--- or it might not be relevant.
+
+GNU gdb (GDB) 17.2
+Copyright (C) 2025 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "x86_64-pc-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from xyscript...
+(No debugging symbols found in xyscript)
+(gdb) run *
+Starting program: /tera4/local/bin/xyscript *
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.archlinux.org>
+Enable debuginfod for this session? (y or [n]) y
+Debuginfod has been enabled.
+To make this setting permanent, add 'set debuginfod enabled on' to .gdbinit.
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00007fffffffac33 in ?? ()
+(gdb) backtrace
+#0  0x00007fffffffac33 in ?? ()
+#1  0x0000000000000000 in ?? ()
+(gdb)

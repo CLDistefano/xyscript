@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\no.lang
-# Merged from en.lang by i18n-sync.py — 10 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 13 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -113,6 +113,9 @@ menu.view.cmdline.position = Plassering   # Position
 menu.view.cmdline.position.top = Øverst   # Top
 menu.view.cmdline.position.bottom = Nederst   # Bottom
 menu.view.cmdline.position.hidden = Skjult   # Hidden
+menu.view.statusline =    # Status line
+menu.view.statusline.top =    # Top (under command line)
+menu.view.statusline.bottom =    # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Dokumenttype   # Document type

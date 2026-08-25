@@ -717,6 +717,10 @@ impl Editor {
     pub fn menu_bar_shown(&self) -> bool {
         self.host.menu_bar()
     }
+    /// Whether the status line is drawn at the top under the command line (`STATUSLINE top`).
+    pub fn status_line_top(&self) -> bool {
+        self.host.status_line_top()
+    }
     pub fn visible_returns(&self) -> bool {
         self.host.visible_returns()
     }
@@ -3879,6 +3883,31 @@ mod tests {
         e.run_command("SAVECFG cfg.cfg");
         let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
         assert!(cfg.contains("CMPLACE hidden"), "config should carry the placement: {cfg}");
+    }
+
+    #[test]
+    fn statusline_sets_and_reports_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        assert_eq!(e.special_str("STATUSLINE"), "bottom"); // default
+        assert!(!e.host().status_line_top());
+        e.run_command("STATUSLINE top");
+        assert_eq!(e.special_str("STATUSLINE"), "top");
+        assert!(e.host().status_line_top());
+        // Bare STATUSLINE reports without changing it.
+        e.run_command("STATUSLINE");
+        assert_eq!(e.special_str("STATUSLINE"), "top");
+        // A bad value errors and leaves it unchanged.
+        e.run_command("STATUSLINE sideways");
+        assert!(e.last_error().is_some(), "bad STATUSLINE value should error");
+        assert_eq!(e.special_str("STATUSLINE"), "top");
+        // $STATUSLINE is a read-only special.
+        e.run_command("SET STATUSLINE = bottom");
+        assert!(e.last_error().is_some(), "STATUSLINE is a read-only special");
+        // SAVECFG captures it.
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("STATUSLINE top"), "config should carry the placement: {cfg}");
     }
 
     #[test]

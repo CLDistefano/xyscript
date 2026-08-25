@@ -778,6 +778,10 @@ pub enum EditorOp {
     SetCmlineCaretShape(CaretShape),
     /// Set where the command line is drawn (`CMPLACE top|bottom|hidden`). Read back via `$CMPLACE`.
     SetCmlinePlacement(CmlinePlacement),
+    /// Set where the status line is drawn: `true` = at the top just under the command line
+    /// (XyWrite-style), `false` = the default bottom edge (`STATUSLINE top|bottom`). Read via
+    /// `$STATUSLINE`.
+    SetStatusLineTop(bool),
     /// Set where the `$CWD` path is shown (`PAPLACE cmline|status`). Read back via `$PAPLACE`.
     SetPathPlace(PathPlace),
     /// Set the max width (chars) of the displayed `$CWD` path (`PATHLEN n`). Read back via `$PATHLEN`.

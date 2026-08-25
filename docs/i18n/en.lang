@@ -110,6 +110,9 @@ menu.view.cmdline.position = Position
 menu.view.cmdline.position.top = Top
 menu.view.cmdline.position.bottom = Bottom
 menu.view.cmdline.position.hidden = Hidden
+menu.view.statusline = Status line
+menu.view.statusline.top = Top (under command line)
+menu.view.statusline.bottom = Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Document type

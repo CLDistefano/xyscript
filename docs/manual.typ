@@ -1343,7 +1343,12 @@ You can position the CMline near the top or bottom of the window, or hide it whe
 / #raw("CMPLACE"): top / bottom / hidden
 / #raw("$CMPLACE"): reads back the current position
 
-Add a `CMPLACE` command to startup.xpl to make your choice persistent.
+The *status line* can move too. By default it sits at the bottom of the window; #raw("STATUSLINE top")
+places it just under the command line, the classic XyWrite arrangement (#raw("STATUSLINE bottom") returns
+it; #raw("$STATUSLINE") reads it back). Pair it with #raw("CMPLACE top") for the full top-of-screen
+command-line-plus-status layout.
+
+Add a `CMPLACE` (and/or `STATUSLINE`) command to startup.xpl to make your choice persistent.
 
 == Focus: getting in and out
 
