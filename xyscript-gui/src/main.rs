@@ -2315,6 +2315,9 @@ impl GuiApp {
         let mut startup_status = String::new();
         match resolve_startup_script(&args) {
             Ok(Some((label, src))) => {
+                // Remember the startup script so `DUPVIEW/W` can launch its child with the SAME `-s`,
+                // even when we booted from an explicit `-s <file>` that isn't beside the exe.
+                editor.set_startup_path(Some(std::path::PathBuf::from(&label)));
                 editor.run_startup(&src, &label);
                 if let Some(fb) = editor.command_feedback() {
                     startup_status = fb;

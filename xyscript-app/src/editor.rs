@@ -475,6 +475,10 @@ impl Editor {
     pub fn set_cwd(&mut self, dir: std::path::PathBuf) {
         self.host.set_cwd(dir)
     }
+    /// Record the startup script this instance ran (for `DUPVIEW/W` to replicate). GUI-called at boot.
+    pub fn set_startup_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.host.set_startup_path(path)
+    }
     /// Command-history recall (Up/Down on the CMline) + the `HISTORY` picker.
     pub fn history_prev(&mut self) {
         self.host.history_prev();

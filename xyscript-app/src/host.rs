@@ -2334,6 +2334,15 @@ pub struct AppHost {
     /// relative `CD` paths resolve against it. Defaults to the process cwd; managed
     /// here (not via `std::env::set_current_dir`) so it's per-instance and testable.
     pub cwd: PathBuf,
+    /// The process working directory captured at launch, BEFORE `startup.xpl` can `cd` away. This is
+    /// where the running instance resolved its relative config kit (`loadcfg cld.cfg`, `loadkbd …`), so
+    /// a `DUPVIEW/W` child boots here to reproduce the same loads. Immutable after construction.
+    pub boot_cwd: PathBuf,
+    /// The startup script the running instance actually ran (the `-s <file>` argument, or the
+    /// auto-discovered `startup.xpl`), set by the GUI at boot. A `DUPVIEW/W` child is launched with
+    /// `-s <this>` so it runs the SAME startup even when the parent used an explicit `-s` we'd
+    /// otherwise not propagate. `None` when the instance booted with no startup script.
+    pub startup_path: Option<PathBuf>,
     /// Per-drive remembered current directory (upper-cased drive letter → last cwd on that drive),
     /// so a bare drive change (`D:`) returns to where you were on that drive — like `cmd.exe` —
     /// instead of its root. Updated on every cwd change; seeded with the startup drive.
@@ -2912,6 +2921,8 @@ impl AppHost {
             files: HashMap::new(),
             virtual_fs: false,
             cwd: std::env::current_dir().unwrap_or_default(),
+            boot_cwd: std::env::current_dir().unwrap_or_default(),
+            startup_path: None,
             drive_dirs: HashMap::new(), // seeded from the startup cwd just after construction
             new_window: false,
             dir_window_new_tab: true, // DIR/W has always opened a new tab — keep that the default
@@ -3519,23 +3530,38 @@ impl AppHost {
         })?;
         // Absolute file path, so opening it doesn't depend on the child's working directory.
         let abs = self.cwd.join(path); // `join` returns `path` unchanged when it's already absolute
+        let (args, child_cwd) = self.dupview_child_command(&abs, line);
         let mut cmd = std::process::Command::new(&exe);
-        cmd.arg(&abs)
-            .arg("--goto")
-            .arg(line.to_string())
-            // Restore the parent's $CWD in the new window (applied AFTER its startup.xpl runs).
-            .arg("--cwd")
-            .arg(&self.cwd);
-        // Boot the child in the EXE's directory — where `startup.xpl` and its RELATIVE config kit
-        // (`loadcfg cld.cfg`, `loadkbd CLD.kbd`, `loadlib …`) live — so they resolve exactly as on a
-        // normal launch. Launching in the editor's current $CWD instead made those relative loads miss
-        // whenever the user had `cd`'d away, so the window came up with default settings.
-        if let Some(dir) = exe.parent() {
-            cmd.current_dir(dir);
-        }
+        cmd.args(&args);
+        cmd.current_dir(&child_cwd);
         cmd.spawn()
             .map_err(|e| XplError::trappable(format!("DUPVIEW: cannot open a new window: {e}")))?;
         Ok(Value::str(""))
+    }
+
+    /// Build the argument list and working directory for a `DUPVIEW/W` child so it reproduces THIS
+    /// instance's boot — split out from `spawn_second_window` so the wiring is unit-testable. The child:
+    ///   * opens `abs` at `--goto <line>` (absolute path — independent of its working directory),
+    ///   * runs the SAME startup script via `-s` (covers a parent booted from an explicit `-s <file>`
+    ///     not beside the exe — otherwise the child auto-discovers nothing and comes up with defaults),
+    ///   * boots in the parent's LAUNCH directory (`boot_cwd`) so the startup's RELATIVE config kit
+    ///     (`loadcfg cld.cfg`, `loadkbd CLD.kbd`, `loadlib …`) resolves exactly as it did for the parent,
+    ///   * then has its `$CWD` restored to the parent's CURRENT working dir via `--cwd` (applied AFTER
+    ///     startup runs, so it overrides any `cd` the startup performed).
+    fn dupview_child_command(&self, abs: &Path, line: usize) -> (Vec<std::ffi::OsString>, PathBuf) {
+        use std::ffi::OsString;
+        let mut args: Vec<OsString> = vec![
+            abs.as_os_str().to_os_string(),
+            "--goto".into(),
+            line.to_string().into(),
+            "--cwd".into(),
+            self.cwd.as_os_str().to_os_string(),
+        ];
+        if let Some(sp) = &self.startup_path {
+            args.push("-s".into());
+            args.push(sp.as_os_str().to_os_string());
+        }
+        (args, self.boot_cwd.clone())
     }
 
     /// Move the active document's caret to the start of 1-based `line` (clamped). Used by the `--goto`
@@ -7283,6 +7309,12 @@ impl AppHost {
             self.cwd = dir;
             self.remember_current_drive();
         }
+    }
+
+    /// Record the startup script this instance ran, so a `DUPVIEW/W` child can be launched with the
+    /// same `-s <file>` and boot with identical settings. Called by the GUI once, at boot.
+    pub fn set_startup_path(&mut self, path: Option<PathBuf>) {
+        self.startup_path = path;
     }
 
     /// Where a bare `X:` drive change should land: the session's remembered directory for that drive
@@ -13219,6 +13251,33 @@ impl Host for AppHost {
 #[cfg(test)]
 mod tests {
     use super::fenced_block_at;
+
+    #[test]
+    fn dupview_child_command_propagates_startup_and_boots_in_launch_dir() {
+        // A DUPVIEW/W child must reproduce the parent's boot: same startup script (`-s`), same LAUNCH
+        // directory (so relative config loads resolve), opening the file, then $CWD restored to where
+        // the parent is now working.
+        let mut h = super::AppHost::new();
+        h.boot_cwd = std::path::PathBuf::from("/boot/dir");
+        h.cwd = std::path::PathBuf::from("/work/dir");
+        h.startup_path = Some(std::path::PathBuf::from("my-startup.xpl"));
+        let (args, cwd) = h.dupview_child_command(std::path::Path::new("/files/doc.md"), 42);
+        assert_eq!(cwd, std::path::PathBuf::from("/boot/dir"), "child boots in the parent's launch dir");
+        let a: Vec<String> = args.iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert_eq!(a[0], "/files/doc.md", "opens the absolute file path");
+        assert!(a.windows(2).any(|w| w[0] == "--goto" && w[1] == "42"), "at the requested line: {a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "--cwd" && w[1] == "/work/dir"), "restores current $CWD: {a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-s" && w[1] == "my-startup.xpl"), "runs the same startup: {a:?}");
+    }
+
+    #[test]
+    fn dupview_child_command_omits_dash_s_when_the_parent_had_no_startup() {
+        let mut h = super::AppHost::new();
+        h.startup_path = None;
+        let (args, _) = h.dupview_child_command(std::path::Path::new("/f.md"), 1);
+        let a: Vec<String> = args.iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert!(!a.iter().any(|x| x == "-s"), "no -s when there was no startup script: {a:?}");
+    }
 
     #[test]
     fn url_trim_drops_trailing_punctuation_but_keeps_balanced_parens() {
