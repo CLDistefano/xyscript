@@ -1014,6 +1014,12 @@ only match is the current tab, and sets #raw("$ERROR") if nothing matches. Close
 #raw("REOPEN") pops a picker of recently-closed files (restoring the cursor where you left it), and
 #raw("REOPEN n") reopens the most recent `n` without asking (#raw("REOPEN 1") for just the last one).
 
+When you close a tab with #raw("AB"), XyScript lands you on the tab to its *left* by default. If you would
+rather go back to the tab you were *last in* — so opening a file from a #raw("DIR") listing and then
+closing it returns you to that listing, not to whichever tab happens to sit to its left — turn on
+#raw("CLOSEBACK") (`CLOSEBACK on`, or Settings ▸ Editor behavior ▸ *Close returns to last-visited tab*).
+It is a single step back; put #raw("CLOSEBACK on") in startup.xpl to make it the default.
+
 When you launch with nothing to open, XyScript starts you on a single blank _Untitled_ tab. By default
 that scratch tab steps aside the moment you open a real document — and quietly reappears once you close
 the last one — so it never clutters the strip. Prefer to keep it around as its own tab? #raw("UNTITLEDTAB

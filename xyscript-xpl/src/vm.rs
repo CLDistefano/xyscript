@@ -3770,6 +3770,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetDimOnBlur(want))?;
                 Ok(Flow::Next)
             }
+            // `CLOSEBACK on|off` (bare = toggle) — whether closing a tab returns to the LAST-VISITED
+            // tab instead of the left neighbor. `$CLOSEBACK`.
+            "CLOSEBACK" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "CLOSEBACK: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetCloseBack(want))?;
+                Ok(Flow::Next)
+            }
             // `AUTOREOPEN on|off` (bare = toggle) — reload a file automatically when another program
             // changes it on disk (clean buffers only; unsaved edits are kept). Off by default; NOT
             // gated by TRUST (no external code runs). SaveCfg. `$AUTOREOPEN`.

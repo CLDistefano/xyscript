@@ -433,6 +433,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 / #cmd("BUFNEXT") / #cmd("BUFPREV") / #cmd("BUFALT"): switch to the next / previous / alternate buffer.
 / #cmd("BUFGO") / #cmd("GOFILE", "GOF"): switch to a buffer by name or index / by a path substring.
 / #cmd("BUFLIST") / #cmd("LISTTABS"): list the open buffers / open a modal tab chooser.
+/ #cmd("CLOSEBACK"): on close, return to the last-visited tab instead of the left neighbor — `CLOSEBACK on|off`.
 
 == Directories and listings
 
@@ -638,7 +639,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 == A
 
-/ #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. If the buffer is showing in a split pane, that pane is undone too (its space goes back to the neighbor) — closing the file and its pane is a single operation. To un-split *without* closing the file, use #cmd("TUS").
+/ #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. If the buffer is showing in a split pane, that pane is undone too (its space goes back to the neighbor) — closing the file and its pane is a single operation. To un-split *without* closing the file, use #cmd("TUS"). By default the close lands on the tab to the *left*; #cmd("CLOSEBACK") makes it return to the last-visited tab instead.
+/ #cmd("CLOSEBACK"): when on, closing a tab (#cmd("AB")) returns to the LAST-VISITED tab rather than the left neighbor — `CLOSEBACK on|off` (bare toggles). Off by default. So opening a file from a #cmd("DIR") listing (or any other tab) and then closing it drops you back on the tab you launched it from, not whichever tab happens to sit to its left. It is a single level — after returning, a further close falls back to the left neighbor. Read back via #sv("CLOSEBACK"); persists in the config.
 / #cmd("ABD"): delete the active document's file from disk and close it — `/V` confirms first.
 / #cmd("ADDLIB"): merge a `.lib` library into the loaded user library.
 / #cmd("ADDSUM"): cursor addition — add the number the caret is on to the running total (#sv("RUNSUM")). The number token at (or just after) the caret on the current line is taken; a leading currency sign (`$`, `€`, `£`, `¥`, `₩`, `₹`) and thousands-separating commas are stripped, a leading `-` is kept, and integers and floats may be mixed. The status line shows what was added and the new total, both honouring #cmd("DECIMALS"). It is an error (no edit) if the caret is not on a number. Reset with #cmd("CLRSUM"); write the total with #cmd("PUTSUM"). #ex("CLRSUM ; INSERT \"1,024\" ; ADDSUM ; PR $RUNSUM", "1024")
@@ -1269,6 +1271,7 @@ Every special variable in one list, for quick lookup.
 / #sv("AU"): autosave interval (seconds; 0 = off).
 / #sv("AUTOREOPEN"): `1` if files auto-reopen when changed on disk, `0` if off (set with `AUTOREOPEN`).
 / #sv("DIMONBLUR"): `1` if the window dims when it loses focus, `0` if off (set with `DIMONBLUR`).
+/ #sv("CLOSEBACK"): `1` if closing a tab returns to the last-visited tab, `0` if off (set with `CLOSEBACK`).
 / #sv("BALPAIRS"): matched-bracket highlighting on.
 / #sv("BALPAIRSCOLOR"): matched-bracket highlight color (empty = follows the selection color).
 / #sv("BGCOLOR"): editor background color.

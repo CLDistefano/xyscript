@@ -546,6 +546,9 @@ pub enum EditorOp {
     /// window is inactive — useful with `TITLEBAR off`, where the frame gives none. Off by default.
     /// Persisted by SaveCfg. `$DIMONBLUR`.
     SetDimOnBlur(Option<bool>),
+    /// Whether closing a tab (`AB`) returns to the LAST-VISITED tab rather than the left neighbor
+    /// (`CLOSEBACK on|off`; `None` toggles). Off by default. Persisted by SaveCfg. `$CLOSEBACK`.
+    SetCloseBack(Option<bool>),
     /// How the bookmark gutter is shown (`MARKGUTTER off|on|persist`; `None` toggles off↔on). `On` by
     /// default. Persisted by SaveCfg. `$MARKGUTTER`.
     SetMarkGutter(Option<MarkGutterMode>),

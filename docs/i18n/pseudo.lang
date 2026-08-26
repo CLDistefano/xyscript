@@ -237,6 +237,7 @@ menu.settings.syntax.auto = [Àùţò-ĥìĝĥĺìĝĥţ òñ òþèñ ····�
 menu.settings.editor = [Èđìţòŕ ƀèĥàṽìòŕ ······]   # Editor behavior
 menu.settings.editor.persistent_sel = [Þèŕšìšţèñţ šèĺèçţìòñ ········]   # Persistent selection
 menu.settings.editor.remember_geom = [Ŕèɱèɱƀèŕ ŵìñđòŵ šìžè+þòšìţìòñ ············]   # Remember window size+position
+menu.settings.editor.closeback = [Çĺòšè ŕèţùŕñš ţò ĺàšţ-ṽìšìţèđ ţàƀ ·············]   # Close returns to last-visited tab
 menu.settings.editor.coding = [Çòđìñĝ àìđš ····]   # Coding aids
 menu.settings.editor.coding.autoindent = [Àùţò-ìñđèñţ ñèŵ ĺìñèš ········]   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = [Šòƒţ ţàƀš (ìñšèŕţ šþàçèš) ··········]   # Soft tabs (insert spaces)

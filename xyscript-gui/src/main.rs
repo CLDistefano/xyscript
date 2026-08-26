@@ -6763,6 +6763,7 @@ impl GuiApp {
         let wv_on = ed.writer_view();
         let statusline_top = ed.status_line_top();
         let dimonblur_on = ed.special_str("DIMONBLUR") == "1";
+        let closeback_on = ed.special_str("CLOSEBACK") == "1";
         let wingeo_on = ed.remember_window_geometry();
         let ps_on = ed.special_str("PS") == "1";
         let trusted = ed.trusted();
@@ -7158,6 +7159,7 @@ impl GuiApp {
                 m_sub(self.tr("menu.settings.editor", "Editor behavior"), vec![
                     m_tog(self.tr("menu.settings.editor.persistent_sel", "Persistent selection"), ps_on, "TPS"),
                     m_tog(self.tr("menu.settings.editor.remember_geom", "Remember window size+position"), wingeo_on, "WINGEO"),
+                    m_tog(self.tr("menu.settings.editor.closeback", "Close returns to last-visited tab"), closeback_on, "CLOSEBACK"),
                     m_sub(self.tr("menu.settings.editor.coding", "Coding aids"), vec![
                         m_tog(self.tr("menu.settings.editor.coding.autoindent", "Auto-indent new lines"), tabindent_on, if tabindent_on { "TABINDENT off" } else { "TABINDENT on" }),
                         m_tog(self.tr("menu.settings.editor.coding.soft_tabs", "Soft tabs (insert spaces)"), tabspaces_on, if tabspaces_on { "TABSPACES off" } else { "TABSPACES on" }),

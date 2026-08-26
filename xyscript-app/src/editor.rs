@@ -3911,6 +3911,118 @@ mod tests {
     }
 
     #[test]
+    fn closeback_returns_to_the_tab_a_file_was_opened_from() {
+        // Reproduces the reported scenario: from one tab you open a file into a NEW tab; closing it
+        // should (with CLOSEBACK on) return to the tab you launched it from, not the left neighbor.
+        let setup = || {
+            let mut e = ed();
+            e.host_mut().virtual_fs = true;
+            e.host_mut().files.insert("a.txt".into(), "AAA".into());
+            e.host_mut().files.insert("b.txt".into(), "BBB".into());
+            e.host_mut().files.insert("c.txt".into(), "CCC".into());
+            e.run_command("OPEN a.txt"); // tab 0 (reuses the scratch)
+            e.run_command("OPEN b.txt"); // tab 1
+            e.run_command("BUFPREV"); // back to tab 0 (a) — the last-visited tab
+            e.run_command("OPEN c.txt"); // tab 2, opened FROM a
+            e
+        };
+        // Default (CLOSEBACK off): AB backs up to the left neighbor (b at index 1).
+        let mut e = setup();
+        assert_eq!(e.special_str("CLOSEBACK"), "0"); // off by default
+        e.run_command("AB");
+        assert_eq!(e.document().text(), "BBB", "off: lands on the left neighbor");
+        // CLOSEBACK on: AB returns to the tab c was opened from (a).
+        let mut e = setup();
+        e.run_command("CLOSEBACK on");
+        assert_eq!(e.special_str("CLOSEBACK"), "1");
+        e.run_command("AB");
+        assert_eq!(e.document().text(), "AAA", "on: returns to the last-visited tab");
+        // Persists via SaveCfg.
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(e.host_mut().files.get("cfg.cfg").unwrap().contains("CLOSEBACK on"));
+    }
+
+    #[test]
+    fn closeback_via_generic_open_ca_from_a_dir_listing() {
+        // The user's path: a custom binding opens the file with `CA $DR` (a generic OPEN synonym),
+        // NOT the built-in dir_enter. Verify that path keeps the listing and returns to it on close.
+        let base = std::env::temp_dir().join(format!("xyscript-cbca-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.txt"), b"alpha\n").unwrap();
+        std::fs::write(base.join("hello.txt"), b"hi there\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("CLOSEBACK on");
+        e.run_command("DIR/B"); // tab 0: DIR listing (active)
+        e.run_command("OPEN a.txt"); // tab 1: file A
+        e.run_command("BUFGO 1"); // back to the listing (tab 0)
+        assert!(e.host_mut().active_is_dir_listing());
+        let tabs_before = e.buffer_count();
+        // Open hello.txt with the GENERIC open (like `CA $DR`), NOT dir_enter.
+        e.run_command(&format!("CA {}", base.join("hello.txt").display()));
+        assert_eq!(e.document().text(), "hi there\n", "now editing hello.txt");
+        // Did it open a NEW tab (listing preserved) or REPLACE the listing?
+        assert_eq!(e.buffer_count(), tabs_before + 1, "CA opened a new tab (listing kept)");
+        // Close it: CLOSEBACK should return to the DIR listing.
+        e.run_command("AB");
+        assert!(
+            e.host_mut().active_is_dir_listing(),
+            "CLOSEBACK returns to the listing after a CA-open"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn closeback_returns_to_the_dir_listing_a_file_was_opened_from() {
+        // The exact reported scenario, through the DIR-listing open path. Layout is [listing, A, file]
+        // so the listing is NOT the file's left neighbor — this actually distinguishes CLOSEBACK on
+        // (→ listing) from off (→ A, the left neighbor).
+        let base = std::env::temp_dir().join(format!("xyscript-cbdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.txt"), b"alpha\n").unwrap();
+        std::fs::write(base.join("hello.txt"), b"hi there\n").unwrap();
+
+        // Reach the reported state: tab 0 = DIR listing (active), tab 1 = file A, then open hello.txt
+        // FROM the listing into tab 2. Returns the editor in that state.
+        let setup = || {
+            let mut e = ed();
+            e.run_command(&format!("CD {}", base.display()));
+            e.run_command("DIRNW on");
+            e.run_command("DIR/B"); // tab 0: DIR listing (reuses the scratch)
+            e.run_command("OPEN a.txt"); // tab 1: file A
+            e.run_command("BUFGO 1"); // back to tab 0 (the listing) — BUFGO is 1-based
+            assert!(e.host_mut().active_is_dir_listing(), "on the listing again");
+            e.host_mut().dir_find_push('h');
+            e.host_mut().dir_find_push('e');
+            e.host_mut().dir_enter().unwrap(); // tab 2: hello.txt (DIRNW on → new tab)
+            assert_eq!(e.document().text(), "hi there\n");
+            e
+        };
+
+        // CLOSEBACK off (default): AB lands on the left neighbor — file A, NOT the listing.
+        let mut e = setup();
+        e.run_command("CLOSEBACK off");
+        e.run_command("AB");
+        assert!(!e.host_mut().active_is_dir_listing(), "off: lands on file A (left neighbor)");
+        assert_eq!(e.document().text(), "alpha\n");
+
+        // CLOSEBACK on: AB returns to the DIR listing the file was opened from.
+        let mut e = setup();
+        e.run_command("CLOSEBACK on");
+        e.run_command("AB");
+        assert!(
+            e.host_mut().active_is_dir_listing(),
+            "on: returns to the DIR listing the file was opened from"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
     fn xc_snapshots_the_cmline_so_xc_then_bc_runs_before_blanking() {
         // The F9 = `XC;BC;GT` case: XC captures the command at invocation, so the trailing BC blanks
         // the line only AFTER the command has run — not before.

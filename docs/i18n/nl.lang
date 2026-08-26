@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\nl.lang
-# Merged from en.lang by i18n-sync.py — 13 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 14 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -238,6 +238,7 @@ menu.settings.syntax.auto = Automatisch markeren bij openen   # Auto-highlight o
 menu.settings.editor = Editorgedrag   # Editor behavior
 menu.settings.editor.persistent_sel = Blijvende selectie   # Persistent selection
 menu.settings.editor.remember_geom = Venstergrootte en -positie onthouden   # Remember window size+position
+menu.settings.editor.closeback =    # Close returns to last-visited tab
 menu.settings.editor.coding = Programmeerhulp   # Coding aids
 menu.settings.editor.coding.autoindent = Nieuwe regels automatisch inspringen   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Zachte tabs (spaties invoegen)   # Soft tabs (insert spaces)

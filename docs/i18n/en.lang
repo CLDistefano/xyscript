@@ -235,6 +235,7 @@ menu.settings.syntax.auto = Auto-highlight on open
 menu.settings.editor = Editor behavior
 menu.settings.editor.persistent_sel = Persistent selection
 menu.settings.editor.remember_geom = Remember window size+position
+menu.settings.editor.closeback = Close returns to last-visited tab
 menu.settings.editor.coding = Coding aids
 menu.settings.editor.coding.autoindent = Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Soft tabs (insert spaces)

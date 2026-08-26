@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\pl.lang
-# Merged from en.lang by i18n-sync.py — 13 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 14 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -242,6 +242,7 @@ menu.settings.syntax.auto = Podświetlaj automatycznie przy otwarciu   # Auto-hi
 menu.settings.editor = Zachowanie edytora   # Editor behavior
 menu.settings.editor.persistent_sel = Trwałe zaznaczenie   # Persistent selection
 menu.settings.editor.remember_geom = Zapamiętaj rozmiar i położenie okna   # Remember window size+position
+menu.settings.editor.closeback =    # Close returns to last-visited tab
 menu.settings.editor.coding = Pomoce programistyczne   # Coding aids
 menu.settings.editor.coding.autoindent = Automatyczne wcięcia w nowych wierszach   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Miękkie tabulatory (wstawiaj spacje)   # Soft tabs (insert spaces)

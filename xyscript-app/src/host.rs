@@ -2698,6 +2698,12 @@ pub struct AppHost {
     auto_reopen: bool,
     /// Dim the window slightly when it loses focus (`DIMONBLUR`). Off by default. `$DIMONBLUR`; SaveCfg.
     dim_on_blur: bool,
+    /// When on (`CLOSEBACK`), closing a tab (`AB`) returns to the LAST-VISITED tab instead of the left
+    /// neighbor. Off by default. `$CLOSEBACK`; SaveCfg.
+    close_back: bool,
+    /// The tab that was active just BEFORE the current one (by stable `DocId`), updated on every
+    /// deliberate switch AND on opening a new tab. `CLOSEBACK` closes back to this. Session-only.
+    focus_prev: Option<crate::panes::DocId>,
     /// Last-seen on-disk modification time per open file (keyed by the stable `DocId`), for
     /// `AUTOREOPEN` change detection. Baselined on first poll and after each save/reload. Session-only.
     disk_mtimes: HashMap<crate::panes::DocId, std::time::SystemTime>,
@@ -3123,6 +3129,8 @@ impl AppHost {
             auto_reopen: false, // off by default
             disk_mtimes: HashMap::new(),
             dim_on_blur: false, // off by default
+            close_back: false, // off by default: AB backs up to the left neighbor
+            focus_prev: None,
             ul_spaces: true, // underline through spaces by default (matches selection styling)
             #[cfg(feature = "email")]
             smtp_url: String::new(),
@@ -3524,6 +3532,10 @@ impl AppHost {
     /// Whether the window dims when it loses focus (`DIMONBLUR`/`$DIMONBLUR`).
     pub fn dim_on_blur(&self) -> bool {
         self.dim_on_blur
+    }
+    /// Whether closing a tab returns to the last-visited tab (`CLOSEBACK`/`$CLOSEBACK`).
+    pub fn close_back(&self) -> bool {
+        self.close_back
     }
 
     /// Launch a second editor window (a fresh instance) on `path`, positioned at 1-based `line`
@@ -3959,6 +3971,8 @@ impl AppHost {
         if i >= self.docs.len() || i == self.active {
             return;
         }
+        // Remember the tab we're leaving (by stable id) as the last-visited one, for `CLOSEBACK`.
+        self.focus_prev = self.docs.get(self.active).map(|d| d.id());
         self.alt_active = Some(self.active);
         self.active = i;
         self.sync_panes();
@@ -7062,6 +7076,9 @@ impl AppHost {
     /// focused pane, like [`add_or_reuse`](Self::add_or_reuse)'s push path.
     fn add_doc_new(&mut self, mut doc: Document) {
         doc.share_grammars(self.highlight_grammars.clone());
+        // Opening a new tab LEAVES the current one — record it as the last-visited tab so `CLOSEBACK`
+        // returns here when the new tab is closed (e.g. open a file from a DIR listing, then `AB`).
+        self.focus_prev = self.docs.get(self.active).map(|d| d.id());
         self.docs.push(doc);
         self.active = self.docs.len() - 1;
         self.auto_highlight_active();
@@ -7851,13 +7868,19 @@ impl AppHost {
         // If the closed buffer was showing in a split pane, that pane is removed too — its space goes
         // back to the neighbor. So `AB`/`AB/V` close the file AND undo its pane in a SINGLE operation.
         let in_split = self.panes.pane_count() > 1;
+        // `CLOSEBACK on`: land on the LAST-VISITED tab (resolved by stable id, so it survives the index
+        // shift) rather than the left neighbor — e.g. return to the DIR listing a file was opened from.
+        let back_target = self.close_back.then_some(self.focus_prev).flatten();
         self.docs.remove(self.active);
         // Removing shifts every index after `active`, so the stored alternate would point at the
         // wrong (or a gone) tab — drop it. `BUFALT` falls back to `BUFPREV` until the next switch.
         self.alt_active = None;
+        self.focus_prev = None; // consumed; the next switch/open sets it afresh
         if self.docs.is_empty() {
             self.docs.push(Document::new());
             self.active = 0;
+        } else if let Some(idx) = back_target.and_then(|id| self.docs.iter().position(|d| d.id() == id)) {
+            self.active = idx; // CLOSEBACK: the last-visited tab
         } else {
             // End on the PREVIOUS (left) buffer, not the next: closing tab N lands on N-1 (closing
             // the first tab lands on the new first). `BUFPREV`-style "back up" feel on `AB`.
@@ -8554,6 +8577,7 @@ impl AppHost {
         }
         put(&mut s, "Reload a file automatically when changed on disk — on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
         put(&mut s, "Dim the window when it loses focus — on | off", format!("DIMONBLUR {}", if self.dim_on_blur { "on" } else { "off" }));
+        put(&mut s, "Close a tab back to the last-visited tab — on | off", format!("CLOSEBACK {}", if self.close_back { "on" } else { "off" }));
         put(&mut s, "Highlight URLs and Ctrl+click to open them — on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
         if let Some((r, g, b)) = self.url_fg_color {
             put(&mut s, "URL highlight text colour — R G B, 0-255", format!("URLFGCOLOR {r} {g} {b}"));
@@ -11891,6 +11915,9 @@ impl Host for AppHost {
                     if self.auto_reopen { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetCloseBack(opt) => {
+                self.close_back = opt.unwrap_or(!self.close_back);
+            }
             EditorOp::SetDimOnBlur(opt) => {
                 self.dim_on_blur = opt.unwrap_or(!self.dim_on_blur);
                 return Ok(Value::str(format!(
@@ -12701,6 +12728,7 @@ impl Host for AppHost {
             })),
             "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
             "DIMONBLUR" => Some(Value::Int(if self.dim_on_blur { 1 } else { 0 })),
+            "CLOSEBACK" => Some(Value::Int(if self.close_back { 1 } else { 0 })),
             "URLHIGHLIGHT" => Some(Value::Int(if self.url_highlight { 1 } else { 0 })),
             "URLFGCOLOR" => Some(Value::str(match self.url_fg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),

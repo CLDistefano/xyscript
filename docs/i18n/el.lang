@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\el.lang
-# Merged from en.lang by i18n-sync.py — 13 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 14 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -238,6 +238,7 @@ menu.settings.syntax.auto = Αυτόματη επισήμανση κατά το 
 menu.settings.editor = Συμπεριφορά επεξεργαστή   # Editor behavior
 menu.settings.editor.persistent_sel = Μόνιμη επιλογή   # Persistent selection
 menu.settings.editor.remember_geom = Απομνημόνευση μεγέθους+θέσης παραθύρου   # Remember window size+position
+menu.settings.editor.closeback =    # Close returns to last-visited tab
 menu.settings.editor.coding = Βοηθήματα κωδικοποίησης   # Coding aids
 menu.settings.editor.coding.autoindent = Αυτόματη εσοχή σε νέες γραμμές   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Απαλοί στηλοθέτες (εισαγωγή κενών)   # Soft tabs (insert spaces)
