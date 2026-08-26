@@ -1,4 +1,4 @@
-// manual.typ — The XyScript User Manual (testers' draft).
+// manual.typ — The XyScript User Manual
 //
 // A narrative companion to docs/reference.typ. The reference is the exhaustive, machine-tested A–Z
 // catalog of every command, function, and special variable; THIS manual is the guided tour — how to

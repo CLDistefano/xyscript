@@ -1,4 +1,4 @@
-// reference.typ — The XyScript Reference (testers' draft).
+// reference.typ — The XyScript Reference
 //
 // Authored in Typst and rendered by XyScript itself (TOPDF). It is checked against the code by
 // xyscript-app/tests/reference_doc.rs: the file must COMPILE, every command/function/special it
@@ -32,8 +32,7 @@
 
 #align(center)[
   #text(20pt, weight: "bold")[The XyScript Reference] \
-  #v(2pt) #text(11pt, style: "italic")[An authoritative guide for users, customizers, and developers] \
-  #v(2pt) #text(9pt, fill: luma(110))[draft — a work in progress]
+  #v(2pt) #text(11pt, style: "italic")[An authoritative guide for users, customizers, and developers]
 ]
 #v(8pt)
 #line(length: 100%, stroke: 0.5pt)
