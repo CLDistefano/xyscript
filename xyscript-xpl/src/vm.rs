@@ -53,6 +53,18 @@ const POINT_AND_SHOOT_VERBS: &[&str] = &[
     "LOADAR", "LOADVARS", "LANG", "NEW", "NE",
 ];
 
+/// Single-path file verbs: the whole (trimmed) argument is one filesystem path. A user may wrap it
+/// in double-quotes — from habit, or because the path contains spaces — so before dispatch we strip
+/// ONE surrounding quote pair (see [`unquote_path`]) for these verbs. Stripped WITHOUT the string-
+/// escape lexer, so raw backslashes survive (`OPEN "C:\Users\me"` opens that file, not `C:\Users<CR>e`).
+/// Excluded: multi-token verbs (`RUN <file> args…`) and the two-path verbs (`COPY`/`RENAME`, which
+/// already tokenize with quote handling), and the `literal_text` verbs, which unquote themselves.
+const SINGLE_PATH_VERBS: &[&str] = &[
+    "OPEN", "CA", "ED", "EDIT", "READ", "NEW", "NE", "SAVE", "SA", "ST", "SAAS", "SAVEAS", "SAD",
+    "MERGE", "ME", "BEDIT", "BCLOSE", "DEL", "ERNV", "CD", "PRINTEX", "LOADKBD", "LOADLIB", "ADDLIB",
+    "LOADAR", "SAVEAR", "LOADVARS", "SAVEVARS", "LOADCFG", "SAVECFG", "LANG",
+];
+
 /// Instruction budget for one cooperative-preemption slice. The foreground editor runs scripts
 /// through [`Interpreter::run_sliced`]/[`resume_yield`](Interpreter::resume_yield) with this
 /// granularity and time-boxes the per-frame work; the WAIT/INPUT resume path
@@ -1289,6 +1301,17 @@ impl Vm<'_, '_> {
             }
         }
 
+        // Single-path file verbs accept an optional surrounding pair of quotes around the path (so a
+        // path with spaces can be quoted, and a habitual `OPEN "…"` just works). Strip it here, once,
+        // for the whole class — WITHOUT escape-processing, so `"C:\Users\me"` keeps its backslashes.
+        // (Two-path/tokenizing verbs handle their own quoting; point-and-shoot paths carry no quotes.)
+        if SINGLE_PATH_VERBS.iter().any(|v| v.eq_ignore_ascii_case(base)) {
+            let unq = unquote_path(&args);
+            if unq.len() != args.len() {
+                args = unq.to_string();
+            }
+        }
+
         // Action verbs clear $ERROR on entry; exempt verbs manage it themselves. A bare library-
         // routine invocation (`foo` ≡ `CALL foo`) is exempt too, so it matches `CALL` (which is in
         // NO_ERROR_TOUCH) — the routine's own first action verb decides $ERROR.
@@ -1346,7 +1369,9 @@ impl Vm<'_, '_> {
             // the branch below, and only touches sort/filter/view — `/W`/`/H`/`/V` were peeled off.
             let vsw = merge_dir_defaults(&vsw, &self.ctx.host.dir_default_switches());
             let (opts, rest) = parse_dir(&vsw, &args)?;
-            let p = rest.trim();
+            // The path after DIR's switches may be quoted (spaces, or habit) — strip one surrounding
+            // pair, raw (no escape-processing), like the other single-path file verbs.
+            let p = unquote_path(&rest);
             let path = if p.is_empty() { None } else { Some(p.to_string()) };
             // Under CAPTURE, render the listing to text into the buffer instead of opening it.
             if self.is_capturing() {
@@ -5231,6 +5256,20 @@ fn literal_text(args: &str) -> String {
         }
     }
     args.to_string()
+}
+
+/// Strip ONE surrounding pair of double-quotes from a command's raw path argument, if present,
+/// WITHOUT running the string-escape lexer — so `CD "C:\Users\me"` keeps its literal backslashes
+/// (a quoted *string literal* would escape-process `\U`, `\r`, etc.; a raw command path must not).
+/// A bare, unquoted path is returned unchanged, spaces and all. This lets users quote a path that
+/// contains spaces without the quotes leaking into the path itself.
+fn unquote_path(args: &str) -> &str {
+    let t = args.trim();
+    if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
+        &t[1..t.len() - 1]
+    } else {
+        t
+    }
 }
 
 /// Split `s` on **unescaped** occurrences of `delim`. `\<delim>` always embeds a

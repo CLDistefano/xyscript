@@ -9173,6 +9173,48 @@ mod tests {
     }
 
     #[test]
+    fn cd_tolerates_a_surrounding_quote_pair() {
+        // `CD` takes the raw rest-of-line, but a user may wrap a path in quotes (habit, or because it
+        // contains spaces). One surrounding pair is stripped WITHOUT escape-processing, so the path
+        // resolves and literal backslashes survive. A dir name with a space exercises the spaces case.
+        let base = std::env::temp_dir().join(format!("xyscript-cd quote-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut e = ed();
+        // Quoted absolute path with a space — the quotes must NOT leak into the path.
+        e.run_command(&format!("CD \"{}\"", base.display()));
+        assert!(
+            e.status_message().unwrap().starts_with("cwd: "),
+            "CD with a quoted path should succeed, got: {:?}",
+            e.status_message()
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn open_tolerates_a_quoted_path_with_spaces_and_backslashes() {
+        // The single-path file verbs strip one surrounding quote pair before dispatch, WITHOUT the
+        // string-escape lexer — so a quoted path with spaces AND backslashes opens the real file
+        // (a naive escape pass would turn `\t`/`\n` into control chars). Guards the whole class.
+        let base = std::env::temp_dir().join(format!("xyscript-open quote-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let file = base.join("note.txt");
+        std::fs::write(&file, b"REAL BODY\n").unwrap();
+
+        // Force backslash separators in the path we hand to OPEN (Windows), inside quotes.
+        let quoted = format!("\"{}\"", file.display().to_string().replace('/', "\\"));
+        let mut e = ed();
+        e.run_command(&format!("OPEN {quoted}"));
+        assert_eq!(e.document().text(), "REAL BODY\n", "OPEN should load the real file, not a garbage-named empty buffer");
+        assert_eq!(e.host_mut().active_file_name().as_deref(), Some("note.txt"));
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
     fn interactive_cmline_open_type_submit() {
         // A keymap that opens the cmline, types an INSERT command into it, and
         // submits it. The submitted command runs against the document.
