@@ -384,6 +384,10 @@ neighbour) — so #raw("AB") means "close the file *and* its pane," while #raw("
 file, drop the pane." For scripts that adapt to the layout, #raw("$PANES") reads how many panes are
 open and #raw("$PANE") which one has focus.
 
+Each pane draws its own document in full: a #raw("FIND") or #raw("EMPH") highlight lights up only the
+pane whose file it belongs to, and a pane whose file has bookmarks carries its own gutter dots (see
+*Bookmarks*) — nothing bleeds across the divider into a neighbouring pane.
+
 #tip("A two-pane workspace")[Bind a key to #raw("TVS") and another to #raw("TUS") (or #raw("TZ")) and
 you can flick a reference file in beside your work and back out without leaving the keyboard. The *Shell
 Output* tab can take a pane too — #raw("SW/V") / #raw("SW/H") — so a build's output sits right next to
@@ -470,7 +474,8 @@ The margin strip has three modes, set with #raw("MARKGUTTER"). #raw("MARKGUTTER 
 entirely (the bookmarks still work — you just navigate them with the commands above); #raw("MARKGUTTER
 on"), the default, shows the strip only while the file has bookmarks, so an unbookmarked file's layout
 is unchanged; and #raw("MARKGUTTER persist") keeps the strip reserved at all times, bookmarks or not,
-for a stable left margin. Bare #raw("MARKGUTTER") toggles off and on.
+for a stable left margin. Bare #raw("MARKGUTTER") toggles off and on. In a split layout each pane
+carries its own gutter, following that pane's file and the same three modes.
 
 Two colour settings let the gutter blend into the page or stand out. #raw("MARKFGCOLOR") sets the dot
 colour and #raw("MARKBGCOLOR") the strip's background — each takes an #raw("r g b") triple (0–255), or
