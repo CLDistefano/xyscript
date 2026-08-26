@@ -2039,6 +2039,10 @@ struct GuiApp {
     /// The match the caret is on / heading to (the next hit at-or-after the caret, wrapping to the
     /// first) — drawn in a distinct colour so you can see where Enter/F3 will land.
     find_current: Option<(usize, usize)>,
+    /// The document `find_highlights` were computed for. In a SPLIT, `raster` runs per pane with a
+    /// different doc active, so the FIND highlights (rope offsets of the searched doc's matches) must
+    /// only be painted in the pane showing THIS doc — otherwise they bleed onto the neighbor's text.
+    find_hl_doc: Option<xyscript_app::DocId>,
     /// Cache key for `find_highlights` = (text, case, whole-word, regex, in-selection, doc revision).
     find_hl_key: Option<(String, bool, bool, bool, bool, u64)>,
     /// PER-DOCUMENT "highlight all" cache, keyed by `DocId` → (doc revision, match spans): revisiting a
@@ -2181,6 +2185,10 @@ struct GuiApp {
     /// Per-pane wrap ratio (visual rows ÷ logical lines) captured during the composite render, keyed
     /// by `PaneId` — feeds each pane's scrollbar thumb sizing. Only populated in a split.
     pane_wrap: std::collections::HashMap<xyscript_app::PaneId, f32>,
+    /// Per-pane bookmark-gutter data captured during the split composite: `PaneId` → (strip width in
+    /// POINTS, the canvas-pixel y of each marked line's first visual row). The overlay pass paints a dot
+    /// in each pane's reserved left strip from this — so the gutter shows in split panes, not just single.
+    pane_mark_rows: std::collections::HashMap<xyscript_app::PaneId, (f32, Vec<f32>)>,
     drag_anchor: Option<usize>,
     /// Alt+drag box-select anchor corner, as `(line, column)` (0-based, logical). `Some` for the
     /// duration of a column-select drag; each drag update rebuilds a caret per spanned line.
@@ -2377,6 +2385,7 @@ impl GuiApp {
             find_dialog: None,
             find_refocus: false,
             find_highlights: Vec::new(),
+            find_hl_doc: None,
             emph_highlights: Vec::new(),
             emph_key: None,
             url_highlights: Vec::new(),
@@ -2425,6 +2434,7 @@ impl GuiApp {
             last_active_doc: None,
             pending_pane_click: None,
             pane_wrap: std::collections::HashMap::new(),
+            pane_mark_rows: std::collections::HashMap::new(),
             drag_anchor: None,
             box_anchor: None,
             hex_cell_w: 0.0,
@@ -2921,8 +2931,10 @@ impl GuiApp {
         // FIND-highlight match text: the glyph colour of highlighted matches — `FINDFGCOLOR` for
         // ordinary hits, `SELFGCOLOR` for the current (Enter/F3 target). `find_highlights` are ROPE
         // offsets, so convert to decoded before rebasing to window-local display (like `manual`).
-        let find_spans: Vec<(usize, usize, CColor)> = if self.find_highlights.is_empty() {
-            Vec::new()
+        let find_spans: Vec<(usize, usize, CColor)> = if self.find_highlights.is_empty()
+            || self.find_hl_doc != Some(self.editor.active_doc_id())
+        {
+            Vec::new() // no FIND highlights, or this pane shows a DIFFERENT doc than the one searched
         } else {
             let doc = self.editor.doc(self.editor.active_index());
             let (ffr, ffg, ffb) = self.editor.find_fg_color();
@@ -3491,6 +3503,10 @@ impl GuiApp {
         w_px: i32,
         lh_px: i32,
     ) -> Vec<(i32, i32, i32, i32, bool)> {
+        // Only the pane showing the searched doc gets FIND bands — else they bleed onto a split neighbor.
+        if self.find_hl_doc != Some(self.editor.active_doc_id()) {
+            return Vec::new();
+        }
         self.highlight_rects(&self.find_highlights, self.find_current, buffer, win, w_px, lh_px)
     }
 
@@ -3772,7 +3788,9 @@ impl GuiApp {
         // recompute runs after `raster`, so relying on it lags one frame behind the caret/selection
         // — which made a match flash unhighlighted for a frame as the caret left it). Recompute from
         // the fresh caret so a match reverts to the highlight colour the instant Enter/F3 moves off it.
-        if !self.find_highlights.is_empty() {
+        // Only track the current match in the pane that actually shows the searched doc (in a split the
+        // other pane holds a different doc — its caret must not pick a "current" match from these offsets).
+        if !self.find_highlights.is_empty() && self.find_hl_doc == Some(self.editor.active_doc_id()) {
             let caret = self.editor.doc(self.editor.active_index()).cursor();
             self.find_current = self
                 .find_highlights
@@ -4785,6 +4803,18 @@ impl GuiApp {
         egui::ColorImage::from_rgba_premultiplied([wp, hp], &canvas)
     }
 
+    /// Bookmark-gutter strip width in POINTS for the ACTIVE document (0 when none is reserved). Mirrors
+    /// the single-pane rule: reserved when `MARKGUTTER` is on and the doc has marks, or always under
+    /// `MARKGUTTER persist`. Used per pane in the split composite (active = that pane's doc) and for the
+    /// focused pane's hit-testing.
+    fn pane_mark_pts(&self) -> f32 {
+        if (self.editor.mark_gutter() && self.editor.has_marks()) || self.editor.mark_gutter_persist() {
+            (self.font_size * 0.6 * 1.4).ceil()
+        } else {
+            0.0
+        }
+    }
+
     /// Composite renderer for a SPLIT layout: raster each pane into its sub-rect of one big canvas via
     /// swap-state (point `active`/`pane_view` at each pane, render, restore), then paint the dividers
     /// and a border around the focused pane. `w`/`h` are POINTS, like [`render_canvas`]. Single-pane
@@ -4827,13 +4857,18 @@ impl GuiApp {
         let mut order = layout.clone();
         order.sort_by_key(|(p, _, _)| *p == focused); // false (0) before true (1) → focused last
         self.lint_panes.clear(); // rebuilt below: (doc, window) for EACH pane, so all get checked
+        self.pane_mark_rows.clear();
         for (pid, didx, r) in order {
             let (rx, ry) = ((r.x * s).round() as usize, (r.y * s).round() as usize);
             let full_rw = ((r.w * s).round() as usize).max(1);
-            // Text area = pane width minus the left/right offsets and the scrollbar strip.
-            let rw = full_rw.saturating_sub(ml_px + mr_px + sbw_px).max(1);
-            let rh = ((r.h * s).round() as usize).max(1);
             self.editor.host_mut().set_active_raw(didx);
+            // Reserve a bookmark-gutter strip at the far left of THIS pane (its own doc's marks decide),
+            // so the gutter shows in split panes like it does single-pane. Text starts after it.
+            let mark_pts = self.pane_mark_pts();
+            let mark_px = (mark_pts * s).round() as usize;
+            // Text area = pane width minus the mark strip, the left/right offsets, and the scrollbar strip.
+            let rw = full_rw.saturating_sub(mark_px + ml_px + mr_px + sbw_px).max(1);
+            let rh = ((r.h * s).round() as usize).max(1);
             self.pane_view = if pid == focused {
                 live_focused.clone()
             } else {
@@ -4846,7 +4881,12 @@ impl GuiApp {
             if let Some((lo, hi)) = self.lint_visible {
                 self.lint_panes.push((didx, lo, hi));
             }
-            blit_rgba(&mut big, wp, hp, &sub, rw, rh, rx + ml_px, ry); // offset right by OFL
+            // `raster` collected this doc's marked-line rows into `self.mark_rows`; stash them (with the
+            // strip width) for the overlay pass to paint per pane.
+            if mark_px > 0 {
+                self.pane_mark_rows.insert(pid, (mark_pts, self.mark_rows.clone()));
+            }
+            blit_rgba(&mut big, wp, hp, &sub, rw, rh, rx + mark_px + ml_px, ry); // right of the mark strip + OFL
             self.pane_wrap.insert(pid, self.wrap_ratio); // this pane's wrap ratio → its scrollbar thumb
             if pid != focused {
                 self.pane_views.insert(pid, self.pane_view.clone());
@@ -6214,6 +6254,7 @@ impl GuiApp {
             let had = !self.find_highlights.is_empty();
             self.find_highlights.clear();
             self.find_current = None;
+            self.find_hl_doc = None;
             self.find_hl_key = None;
             self.find_hl_cache.clear();
             self.find_hl_params = None;
@@ -6227,7 +6268,7 @@ impl GuiApp {
         }
         let rev = self.editor.doc_revision();
         let key = (find.clone(), case, whole, regex, scope, rev);
-        if self.find_hl_key.as_ref() == Some(&key) {
+        if self.find_hl_key.as_ref() == Some(&key) && self.find_hl_doc == Some(self.editor.active_doc_id()) {
             return false; // `find_highlights` already current for this exact (doc, options, revision)
         }
         // Reuse this document's prior search when it's still valid (same revision) — the per-doc cache
@@ -6249,6 +6290,7 @@ impl GuiApp {
                 hits
             }
         };
+        self.find_hl_doc = Some(did); // these offsets belong to THIS doc only (split-pane guard)
         self.find_hl_key = Some(key);
         true
     }
@@ -9630,6 +9672,7 @@ impl GuiApp {
             let cell_w = self.font_size * 0.6;
             let ml = (self.editor.margin_left() * cell_w).round();
             let mr = (self.editor.margin_right() * cell_w).round();
+            let mk = self.pane_mark_pts(); // focused pane's bookmark-gutter strip (active doc is focused)
             self.editor
                 .host()
                 .pane_layout(w as f32, h as f32)
@@ -9637,8 +9680,8 @@ impl GuiApp {
                 .find(|(p, _, _)| *p == focused_pane)
                 .map(|(_, _, r)| {
                     egui::Rect::from_min_size(
-                        resp.rect.min + egui::vec2(r.x + ml, r.y),
-                        egui::vec2((r.w - ml - mr - PANE_SB_W).max(1.0), r.h),
+                        resp.rect.min + egui::vec2(r.x + mk + ml, r.y),
+                        egui::vec2((r.w - mk - ml - mr - PANE_SB_W).max(1.0), r.h),
                     )
                 })
                 .unwrap_or(resp.rect)
@@ -9945,6 +9988,40 @@ impl GuiApp {
                     let mut v = self.pane_views.get(&pid).cloned().unwrap_or_default();
                     draw_vscrollbar(ui, i as u32, track, line_count, wrap, lh, rs, fg, &mut v);
                     self.pane_views.insert(pid, v);
+                }
+            }
+        }
+        // Split bookmark gutter: a dot in each pane's reserved left strip (collected in the composite),
+        // mirroring the single-pane gutter. Same colours (MARKFGCOLOR dot, optional MARKBGCOLOR strip).
+        if multi && !self.pane_mark_rows.is_empty() {
+            let origin = resp.rect.min;
+            let s = self.render_scale;
+            let dot_r = (self.font_size * 0.24).max(2.0);
+            let color = self
+                .editor
+                .host()
+                .mark_fg_color()
+                .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
+                .unwrap_or(egui::Color32::from_rgb(216, 118, 42)); // bookmark orange
+            let mark_bg = self.editor.host().mark_bg_color();
+            let painter = ui.painter();
+            for (pid, _didx, r) in self.editor.host().pane_layout(w as f32, h as f32) {
+                let Some((mark_pts, rows)) = self.pane_mark_rows.get(&pid) else { continue };
+                let strip_left = origin.x + r.x;
+                if let Some((br, bg, bb)) = mark_bg {
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(strip_left, origin.y + r.y),
+                            egui::vec2(*mark_pts, r.h),
+                        ),
+                        0.0,
+                        egui::Color32::from_rgb(br, bg, bb),
+                    );
+                }
+                let cx = strip_left + mark_pts * 0.5;
+                for &y in rows {
+                    let cy = origin.y + r.y + y / s + self.line_height * 0.5;
+                    painter.circle_filled(egui::pos2(cx, cy), dot_r, color);
                 }
             }
         }
