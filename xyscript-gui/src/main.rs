@@ -1425,6 +1425,41 @@ mod menu_tests {
 
     #[test]
     #[cfg(feature = "lint")]
+    fn lint_underlines_are_per_active_doc_in_splits() {
+        // A split renders each pane by making its doc active before `raster`, and `lint_underline_rects`
+        // draws `editor.lints()` — the ACTIVE doc's marks. So underlines must be stored/read per-doc, or
+        // one pane's marks would bleed onto its neighbour (the bug that hit FIND highlights). Guard it.
+        let mut app = GuiApp::new();
+        app.editor.run_command("SPELLING on");
+        // Doc 0 with one misspelling.
+        app.editor.insert_str("recieve ");
+        app.editor.recheck_lints(0, 10_000);
+        let d0 = app.editor.active_index();
+        let n0 = app.editor.lints().len();
+        // Doc 1 (fresh buffer) with a DIFFERENT misspelling.
+        app.editor.run_command("NEW");
+        app.editor.insert_str("teh ");
+        app.editor.recheck_lints(0, 10_000);
+        let d1 = app.editor.active_index();
+        let n1 = app.editor.lints().len();
+        assert_ne!(d0, d1, "should be two distinct docs");
+        assert!(n0 >= 1 && n1 >= 1, "each doc flagged: n0={n0} n1={n1}");
+        // Switch active back to doc 0 — lints() must reflect DOC 0's marks, not doc 1's.
+        let spans = |app: &GuiApp| -> Vec<(usize, usize)> {
+            app.editor.lints().iter().map(|m| (m.start, m.end)).collect()
+        };
+        app.editor.host_mut().set_active_raw(d0);
+        let back0 = spans(&app);
+        app.editor.host_mut().set_active_raw(d1);
+        let back1 = spans(&app);
+        assert_ne!(
+            back0, back1,
+            "lints() must return the ACTIVE doc's marks (per-doc), not a shared set: back0={back0:?} back1={back1:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "lint")]
     fn spelling_underline_waits_for_word_completion() {
         // The word being typed (ending at the caret, no separator yet) must NOT be underlined; once a
         // separator is typed and the word is finished, its underline appears.
