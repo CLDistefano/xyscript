@@ -460,6 +460,8 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("TUS") / #cmd("FS"): un-split the focused pane / release it to full screen.
 / #cmd("TZ"): toggle zoom of the focused pane (the split is preserved).
 
+Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") highlight appears only in the pane whose file owns the match, and a pane whose file has bookmarks shows its own #cmd("MARKGUTTER") strip — neither bleeds across the divider.
+
 == The command line
 
 / #cmd("CMLINE", "GH") / #cmd("GT") / #cmd("TH"): focus the command line / the document / toggle between them.
