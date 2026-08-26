@@ -428,6 +428,8 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 / #cmd("DEL") / #cmd("ERNV"): delete a file with / without confirmation. #cmd("RENAME", "REN"): rename or move a file. #cmd("WRITEFILE", "WF"): write content to a file.
 / #cmd("REOPEN") / #cmd("CLEARCLOSED"): reopen recently-closed files (a picker, or `REOPEN <n>` for the first n) / empty the list.
 
+*Path separators & quoting.* `/` and `\` are interchangeable separators — `C:/a/b` and `C:\a\b` are the same path. Prefer `/`: it is always safe, whereas inside a *quoted string value* or an *expression* (`SET`, `IF`, `READFILE(…)`, `FORMAT`) `\` is an escape character, so `"C:\temp"` becomes `C:⟨tab⟩emp` (case-sensitive: `\U` is inert, `\u` is not). When you hand a path *directly* to a file command (`OPEN`, `READ`, `SAVE`, `CD`, `DIR`, `DEL`, …) either slash works and one surrounding pair of quotes is accepted (and stripped without escape processing), so a path with spaces just works: `OPEN "C:/My Notes/today.typ"`.
+
 == Tabs and buffers
 
 / #cmd("BUFNEXT") / #cmd("BUFPREV") / #cmd("BUFALT"): switch to the next / previous / alternate buffer.

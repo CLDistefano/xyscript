@@ -966,6 +966,16 @@ against your *working directory* — shown on the status line and readable as #r
 #raw("CD"); on Windows a bare drive letter (#raw("CD D:")) switches drives. Relative paths are relative
 to #raw("$CWD"); absolute and `~`-style paths work too.
 
+#tip("On Windows, prefer forward slashes in paths")[XyScript accepts #raw("/") and #raw("\\")
+interchangeably as path separators, so #raw("C:/reports/q3.typ") and #raw("C:\\reports\\q3.typ") name
+the same file. Forward slashes are the safer habit, because in a few places — inside a quoted string
+value, and in expressions (#raw("SET p = \"…\""), #raw("IF"), #raw("READFILE(\"…\")"),
+#raw("FORMAT")) — a backslash is an *escape* character: #raw("\"C:\\temp\"") becomes #raw("C:") + a
+TAB, and #raw("\"C:\\new\"") gains a newline (it is case-sensitive — #raw("\\U") is harmless but
+#raw("\\u") is not). Forward slashes never trigger this. When you name a file *directly* to a command —
+#raw("OPEN"), #raw("READ"), #raw("SAVE"), #raw("CD"), #raw("DIR"), and the like — either slash is fine,
+and you may quote the path (needed when it contains spaces): #raw("OPEN \"C:/My Notes/today.typ\"").]
+
 == Opening and creating
 
 / #raw("NEW"), #raw("NE"): start a fresh, empty document. With a name (#raw("NEW report.typ")) the new document is named and ready to save — or, if that file already exists, it is simply opened.
