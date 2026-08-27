@@ -90,16 +90,26 @@ jobs:
         working-directory: xyscript-gui
         run: cargo build --release --features lint,email
 
-      # Bundle the binary with the UI translation catalogs so `Settings ▸ Language` is populated out
-      # of the box — the app discovers `<exe dir>/lang/*.lang` at runtime. English is built in and the
-      # pseudolocale is a dev-only layout aid, so neither ships.
-      - name: Package (binary + language catalogs)
+      # Bundle the binary with everything the app discovers at runtime beside it (`$XSDIR`): the UI
+      # translation catalogs (`lang/*.lang` → `Settings ▸ Language`), the colour-theme presets
+      # (`themes/*.xpl` → `Settings ▸ Appearance ▸ Theme`), and the runtime kit from `packaging/runtime/`
+      # — a working `startup.xpl` (loads the keymap, default config, a theme, auto-replace pairs, and the
+      # user library), the `xyscript-internal.kbd` keymap, `xyscript-default.cfg` (all settings at their
+      # defaults), `xyscript.ar`, `xyscript.lib`, plus `startup.xpl.template` and `user-variables.template`
+      # for the user to copy and edit. Because a GUI boot sets `$CWD` to `$XSDIR`, the unzipped folder is
+      # self-contained: those relative loads resolve here, so it runs out of the box. English is built in
+      # and the pseudolocale is a dev-only layout aid, so neither `.lang` ships.
+      - name: Package (binary + language catalogs + themes + runtime kit)
         shell: bash
         run: |
           pkg="staged/${{ matrix.artifact }}"
-          mkdir -p "$pkg/lang"
+          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars"
           cp "xyscript-gui/target/release/${{ matrix.bin }}" "$pkg/${{ matrix.exe }}"
           cp docs/i18n/*.lang "$pkg/lang/"
+          cp themes/*.xpl "$pkg/themes/"
+          cp packaging/runtime/* "$pkg/"
+          cp examples/* "$pkg/examples/"
+          cp grammars/*.xpl "$pkg/grammars/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
       - name: Upload artifact
@@ -134,17 +144,21 @@ jobs:
           cargo build --release --features lint,email --target aarch64-apple-darwin
           cargo build --release --features lint,email --target x86_64-apple-darwin
 
-      - name: Package (universal binary + language catalogs)
+      - name: Package (universal binary + language catalogs + themes + runtime kit)
         shell: bash
         run: |
           pkg="staged/xyscript-macos-universal"
-          mkdir -p "$pkg/lang"
+          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars"
           lipo -create -output "$pkg/xyscript" \
             xyscript-gui/target/aarch64-apple-darwin/release/xyscript-gui \
             xyscript-gui/target/x86_64-apple-darwin/release/xyscript-gui
           lipo -info "$pkg/xyscript"
           cp docs/i18n/*.lang "$pkg/lang/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
+          cp themes/*.xpl "$pkg/themes/"
+          cp packaging/runtime/* "$pkg/"
+          cp examples/* "$pkg/examples/"
+          cp grammars/*.xpl "$pkg/grammars/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

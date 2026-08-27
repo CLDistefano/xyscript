@@ -1,0 +1,1760 @@
+## XPL Library file ##
+## Set user variables in user-variables.xpl
+## `RUN user-variables.xpl` in startup.xpl
+## Command `LISTLIB` to list library routines
+
+#####  XyScript Documentation  #####
+
+SUB kbd
+	# DOC: Show the 104-key keyboard chart
+	# Locate `keyboard.png` in directory with xyscript.exe
+	LOCAL cmnd
+	SET cmnd = "start ".$XSDIR.$DC."keyboard.png"
+	X/NV $cmnd
+ENDSUB
+
+SUB man
+	# DOC: View XyScript user manual
+	# UserVar: $PDFreader
+	LOCAL fnm
+	SET fnm = $XSDIR.$DC."manual.pdf"
+	PDFread $fnm
+ENDSUB
+
+SUB ref
+	# DOC: View XyScript command reference
+	# UserVar: $PDFreader
+	LOCAL fnm
+	SET fnm = $XSDIR.$DC."reference.pdf"
+	PDFread $fnm
+ENDSUB
+
+SUB typst
+	# DOC: View Typst documentation
+	# DOC: UserVar: $PDFreader
+	# DOC: To view the documentation locally, locate `typst-documentation.pdf`
+	# DOC:   in the dir with xyscript.exe
+	LOCAL fnm
+	SET fnm = $XSDIR.$DC."typst-documentation.pdf"
+	IF EXISTS($fnm)
+		PDFread $fnm
+	ELSE
+		SET fnm = "https://github.com/typst/typst/releases/download/v0.15.0/typst-documentation.pdf"
+		IF $OS == "windows"
+			X/NV start $fnm
+		ELSE IF $OS == "linux"
+			X/NV xdg-open $fnm
+		ELSE
+			X/NV open $fnm
+		EI
+	EI
+ENDSUB
+
+#####  Editing  #####
+
+SUB acc
+	# DOC: Dead accents for selected characters
+	# DOC: Usage: ACC; then press ' ` , ~ " or ^ , 
+	# DOC:        then the letter to be accented (case-sensitive)
+	quiet
+	local accents char
+	rk accents Press ' ` , ~ " or ^
+	if not contains ("'`,~\"^", $accents) exit
+	switch $accents
+		case "'" # Acute
+			put ';RK char Acute: a A e E i I o O u U y Y;switch $char;case "a";BD;put á;case "A";BD;put Á;case "e";BD;put é;case "E";BD;put É;case "i";BD;put í;case "I";BD;put Í;case "o";BD;put ó;case "O";BD;put Ó;case "u";BD;put ú;case "U";BD;put Ú;case "y";BD;put ý;case "Y";BD;put Ý;default;put $char;ESW
+		case "`" # Grave
+			put `;RK char Grave: a A e E i I o O u U y Y;switch $char;case "a";BD;put à;case "A";BD;put À;case "e";BD;put è;case "E";BD;put È;case "i";BD;put ì;case "I";BD;put Ì;case "o";BD;put ò;case "O";BD;put Ò;case "u";BD;put ù;case "U";BD;put Ù;case "y";BD;put ỳ;case "Y";BD;put Ỳ;default;put $char;ESW
+		case "," # Cedilla
+			put ,;RK char Cedilla c C e E G s S;switch $char;case "c";BD;put ç;case "C";BD;put Ç;case "e";BD;put ȩ;case "E";BD;put Ȩ;case "G";BD;put Ģ;case "s";BD;put ş;case "S";BD;put Ş;default;put $char;ESW
+		case "~" # Tilde
+			put ~;RK char Tilde: a A n N o O;switch $char;case "a";BD;put ã;case "A";BD;put Ã;case "n";BD;put ñ;case "N";BD;put Ñ;case "o";BD;put õ;case "O";BD;put Õ;default;put $char;ESW
+		case "\"" # Umlaut
+			put \";RK char Umlaut: a A e E i I o O u U y Y;switch $char;case "a";BD;put ä;case "A";BD;put Ä;case "e";BD;put ë;case "E";BD;put Ë;case "i";BD;put ï;case "I";BD;put Ï;case "o";BD;put ö;case "O";BD;put Ö;case "u";BD;put ü;case "U";BD;put Ü;case "y";BD;put ÿ;case "Y";BD;put Ÿ;default;put $char;ESW
+		case "^" # Circumflex
+			put ^;RK char Circumflex: a A e E i I o O u U y Y;switch $char;case "a";BD;put â;case "A";BD;put Â;case "e";BD;put ê;case "E";BD;put Ê;case "i";BD;put î;case "I";BD;put Î;case "o";BD;put ô;case "O";BD;put Ô;case "u";BD;put û;case "U";BD;put Û;case "y";BD;put ŷ;case "Y";BD;put Ŷ;default;put $char;ESW;CLEAR char
+	esw
+ENDSUB
+
+SUB closedn
+	# DOC: Regularize vertical space (newlines) between lines/paragraphs
+	# DOC: CLOSEDN n, where n = the number of consecutive newlines
+	# DOC: Default: 2 newlines; operates on entire file or selected text
+	# DOC: Cf. CLOSEUP
+	quiet/nv
+	local chng ctr lim pos1 pos2 xchar
+		if isdec($1); set lim = $1; else; set lim = 2; ei
+	if $OS == "windows"; newline crlf; else; newline lf; ei
+	set xchar = chr(254).chr(231).chr(230)
+	set pos1 = 0; set pos2 = 0
+	dz; if $SE; set pos1 = $DS; set pos2 = $DN; ei
+	unpad r
+	# restore DF block (canceled by UNPAD):
+	if $pos2; xd; jmp $pos2; df; jmp $pos1; dz; else; jmp $pos1; ei
+	if $SE; ch/s /$NL/$xchar/; else; ch/t /$NL/$xchar/; ei
+	clerr
+	while not $error
+		if $SE
+			ch/s /$xchar$xchar/$xchar/
+		else
+			ch/t /$xchar$xchar/$xchar/
+		ei		
+	ew
+	if $SE; ch/s /$(chr(13))/$xchar/; else; ch/t /$(chr(13))/$xchar/; ei
+	if $SE; ch/s /$(chr(10))/$xchar/; else; ch/t /$(chr(10))/$xchar/; ei		
+	set ctr = 0
+	set chng = ""
+	while $ctr < $lim
+		set chng = $chng.$NL
+		set ctr += 1
+	ew
+	if $SE; ch/s /$xchar/$chng/; else; ch/t /$xchar/$chng/; ei	
+	jmp $pos1
+	while $CH == $NL
+		bd
+	ew
+ENDSUB
+
+SUB closeup
+	# DOC: Close up vertical space (newlines) between lines/paragraphs
+	# DOC: CLOSEUP n, where n = max. number of consecutive newlines
+	# DOC: Default: 2 newlines; operates on entire file or selected text
+	# DOC: Cf. CLOSEDN
+	quiet/nv
+	local ctr lim pos1 pos2 srch chng
+	if isdec($1); set lim = $1; else; set lim = 2; ei
+	if $OS == "windows"; newline crlf; else; newline lf; ei
+	set pos1 = 0; set pos2 = 0
+	dz; if $SE; set pos1 = $DS; set pos2 = $DN; ei
+	unpad r
+	# restore DF block (canceled by UNPAD):
+	if $pos2; xd; jmp $pos2; df; jmp $pos1; dz; else; jmp $pos1; ei
+	set ctr = 0
+	set srch = $NL
+	set chng = ""
+	while $ctr < $lim
+		set srch = $srch.$NL; set chng = $chng.$NL; set ctr += 1
+	ew
+	set ctr = 0
+	while $ctr < $lim
+		if $SE; ch/s /$srch/$chng/; else; ch/t /$srch/$chng/; ei
+		set ctr += 1
+	ew
+	jmp $pos1
+	while $CH == $NL; bd; ew
+ENDSUB
+
+SUB dellines
+	# DOC: Delete lines in the current file containing "string" (case-INsensitive)
+	# DOC: Usage: DELLINES <string>  [no quotes around <string>]
+	quiet
+	local ctr str
+	if not $1; pr DELLINES <string>; ex; ei
+	tf
+	set str = $1
+	set ctr = 0
+	while $CP < $FS
+		if contains(upper($li), upper($str))
+			rll
+			set ctr += 1
+		else
+			ld
+		ei
+	ew
+	tf; pr Number of lines deleted: $ctr (file not saved)
+ENDSUB
+
+SUB grablines
+	# DOC: List lines containing "string" in the current file (case-INsensitive)
+	# DOC: Usage: GRABLINES <string>  [no quotes around <string>]
+	quiet
+	local ctr out str
+	if not $1; pr GRABLINES <string>; ex; ei
+	tf
+	set str = $*
+	set ctr = 0
+	set out = ""
+	tf
+	while $CP < $FS
+		if contains(upper($li), upper($str))
+			set out = $out.$li.$NL
+			set ctr += 1
+		ei
+		ld
+	ew
+	ne; insert $out; tf
+	pr Number of matching lines found: $ctr
+ENDSUB
+
+SUB dfb
+	# DOC: Operate on text from cursor position to top of file
+	# DOC: Usage: DFB <c1[;c2;...]>  e.g.: DFB DN: delete to bottom of file
+	quiet
+	if not $1 exit
+	local cmnd
+	set cmnd = $*
+	if upper($cmnd) == "DF" set cmnd=""
+	xd;df;bf sel;dz
+	if $cmnd runcode $cmnd
+ENDSUB
+
+SUB dft
+	# DOC: Operate on text from cursor position to bottom of file
+	# DOC: Usage: DFT <command>  e.g.: DFT DN: delete to top of file
+	quiet
+	if not $1 exit
+	local cmnd
+	set cmnd = $*
+	if upper($cmnd) == "DF" set cmnd=""
+	xd;df;tf sel;dz
+	if $cmnd runcode $cmnd
+ENDSUB
+
+SUB puts
+	# DOC: Put a string a <number> of times
+	# DOC: Usage: PUTS <str> <number> (default = 1 time)
+	# DOC: PUTS U underscores the line above the cursor
+	QUIET
+	IF NOT $1 EXIT
+	LOCAL bX ctr n str out
+	SET bX = 0
+	SET ctr = 1
+	SET n = 1
+	SET out = ""
+	SET str = $1
+	IF UPPER($str) == "U" AND NOT $2
+		SET str = "-"
+		SET bX = 1
+	EI
+	IF UPPER($2) != "U"
+		SET n = $2
+	ELSE
+		SET bX = 1
+	EI
+	IF $bX SET n = Len($LI)
+	WHILE $ctr <= $n
+		SET out = $out . $str
+		SET ctr = $ctr + 1
+	ENDWHILE
+	IF $bx SET out = $NL.$out.$NL
+	ER; WR $out
+	IF $bx; ER; EI
+	RETURN $out
+ENDSUB
+
+SUB sef
+	# DOC: SEF $1 lands on first char of search string
+	IF $DF > 0 JMP $DN
+	SE |$1|
+	IF NOT $ERROR JMP $DS
+ENDSUB
+
+SUB xe
+	# DOC: Open file in external editor
+	# DOC: User Variable: ExternalEditor
+	LOCAL fn
+	IF $1
+		SET fn = $1
+	ELSE
+		SET fn = $FP
+	EI
+	X/NV start $ExternalEditor $fn
+ENDSUB
+
+SUB xe2
+	# DOC: Open file in external editor #2
+	# DOC: User Variable: ExternalEditor2
+	LOCAL fn
+	IF $1
+		SET fn = $1
+	ELSE
+		SET fn = $FP
+	EI
+	X/NV start $ExternalEditor2 $fn
+ENDSUB
+
+SUB xe3
+	# DOC: Open file in external editor #3
+	# DOC: User Variable: ExternalEditor3
+	LOCAL fn
+	IF $1
+		SET fn = $1
+	ELSE
+		SET fn = $FP
+	EI
+	X/NV start $ExternalEditor3 $fn
+ENDSUB
+
+SUB linecount
+    # DOC: Show line count of the active file.
+    PR $FI has $TL lines.
+ENDSUB
+
+SUB pdfedit
+	# DOC: Open a PDF file for editing
+	IF NOT $1 GOTO :err
+	SET file = $1
+	SET bF = EXISTS($file)
+	IF NOT $bF
+		MSG $file does not exist.
+		EXIT
+	EI
+	X/NV start $PDFeditor $file
+	EXIT
+	:err
+	MSG PDFedit <file>
+ENDSUB
+
+SUB pdfread
+	# DOC: Open a PDF file for reading
+	# DOC: UserVar: $PDFreader
+	IF NOT $1 GOTO :err
+	SET file = $1
+	SET bF = EXISTS($file)
+	IF NOT $bF
+		MSG $file does not exist.
+		EXIT
+	EI
+	X/NV start $PDFreader $file
+	EXIT
+	:err
+	MSG "Usage:\nPDFread <file>"
+ENDSUB
+
+SUB pdfread2
+	# DOC: Open a PDF file for reading
+	# DOC: UserVar: $PDFreader2
+	IF NOT $1 GOTO :err
+	SET file = $1
+	SET bF = EXISTS($file)
+	IF NOT $bF
+		MSG $file does not exist.
+		EXIT
+	EI
+	X/NV start $PDFreader2 $file
+	EXIT
+	:err
+	MSG "Usage:\nPDFread2 <file>"
+ENDSUB
+
+#####  File & Directory Management  #####
+
+SUB af
+	# DOC: Open a new temp/throwaway (autonamed) file
+	LOCAL alpha base dnm fnm i
+	QUIET/NV
+	IF NOT $TempDir SET TempDir = $XSDIR
+	SET base = $TempDir.$DC.Date("yymmdd").Time("hh.mm")
+	SET alpha = Chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	:a
+	SET i = 0
+	WHILE $i < Len($alpha) - 1
+		SET fnm = $base.$alpha[$i]
+		IF Exists($fnm)
+			SET i += 1
+		ELSE
+			IF NOT Exists($fnm)
+				BREAK
+			ELSE
+				GOTO :a
+			EI
+		EI
+	ENDWHILE
+	IF NOT $FI
+		SAAS $fnm
+	ELSE
+		NE $fnm
+	EI
+ENDSUB
+
+SUB apfil
+	# DOC: APPEND selected text to end of file
+	# DOC: Usage: APFIL <filename>
+	SET file = $1
+	IF NOT $file
+		MSG Usage: APTOP <file>
+		EXIT
+	EI
+	IF $DF < 1
+		MSG No text selected
+		GOTO :end
+	EI
+	SET text = SEL() . "\n"
+	SET nil = "\x00"
+	SET exf = EXISTS($file)
+	IF NOT $exf
+		WF/V nil $file
+	EI
+	RF $file content
+	SET content = $content . "\n" . $text
+	WF content $file
+	:end
+ENDSUB
+
+SUB aptop
+	# DOC: PREPEND selected text to top of file
+	# DOC: Usage: APTOP <filename>
+	SET file = $1
+	IF NOT $file
+		MSG Usage: APTOP <file>
+		EXIT
+	EI
+	IF $DF < 1
+		MSG No text selected
+		GOTO :end
+	EI
+	SET text = SEL() . "\n"
+	SET nil = "\x00"
+	SET exf = EXISTS($file)
+	IF NOT $exf
+		WF/V nil $file
+	EI
+	RF $file content
+	SET content = $text . "\n" . $content
+	WF content $file
+	:end
+ENDSUB
+
+SUB d
+	# DOC: ChDir from a list of directories
+	# DOC: Usage: D [fragment_of_directory_name]
+	# DOC: With list open navigate to a dir, then press <F9>
+	# DOC: UserVar: $DirList
+	QUIET
+	LOCAL dlist dname guicm mg pos
+	SET guicm = $GC
+	CGC
+	IF $DirList
+		SET dlist = $DirList
+	ELSE
+		PR Set \$DirList in user-variables.xpl.
+		EXIT
+	EI
+	IF UPPER($FP) != UPPER($dlist)
+		READ $dlist; GT
+		IF $1
+			CLERR
+			SE /$1/
+			SET pos = $CP
+			IF NOT $ERROR
+				GT; LD; LB
+				CLERR
+				SE /$1/
+				IF $ERROR
+					JMP $pos
+					GOTO :a
+				ELSE
+					YD
+					JMP $pos
+					LB
+				EI
+			EI
+		EI
+		BC d
+		SET mg = "XC|Enter changes directories..."
+		GOTO :b
+	EI
+	:a
+	DL; SET dname = SEL(); YD
+	IF CONTAINS($dname, "|")
+		SET dname = TRIMRIGHT($dname, LEN($dname) - INDEX($dname, "|"))
+		SET dname = RSTRIP($dname)
+	EI
+	CD/D $dname
+	AB
+	SET mg = "Current directory: ". $dname
+	:b
+	PR $mg
+	WAIT 50
+	IF $guicm SGC
+ENDSUB
+
+SUB cdu
+	# DOC: ChDir one level Up
+	quiet
+	if index($dirchain, left($CWD, 2)) < 0 set dirchain = ""
+	set dirchain = $CWD."|".$dirchain
+	cd ..
+	if len($CWD) < 4 BC cdd
+ENDSUB
+
+SUB cdd
+	# DOC: ChDir one level Down
+	quiet
+	local atmp
+	if not contains($dirchain, "|")
+		cd $dirchain
+		set dirchain = ""
+		BC cdu; XC
+	else
+		set atmp = split($dirchain, "|")
+		cd $atmp[0]
+		set $dirchain = trimleft($dirchain, 1 + index($dirchain, "|"))
+		set atmp = split($dirchain, "|")
+		if len($atmp) == 0; BC cdu; XC; ei
+	ei
+ENDSUB
+
+SUB ecp
+	# DOC: Express Copy
+	# DOC: Copy file to target dir (no overwrite confirmation)
+	# DOC: Usage: ECP <target_dir>
+	QUIET
+	IF NOT $1
+		PR Usage: ECP target_dir
+		EXIT
+	EI
+	LOCAL cmnd fnm
+	IF $OS == "windows"; SET cmnd = "copy/y"; ELSE; SET cmnd = "\\cp"; EI
+	IF $D1; SET fnm = $DR; ELSE; SET fnm = $FP; EI
+	X $cmnd $fnm $1
+	IF $RC > 0; PR Error: $RC
+		ELSE; PR; MSG /T:1 Copied.; EI
+ENDSUB
+
+SUB emv
+	# DOC: Express Move
+	# DOC: Move file to target dir (no overwrite confirmation)
+	# DOC: Usage: EMV <target_dir>
+	QUIET
+	IF NOT $1
+		PR Usage: EMV target_dir
+		EXIT
+	EI
+	LOCAL cmnd fnm
+	IF $OS == "windows"; SET cmnd = "move/y"; ELSE; SET cmnd = "\\mv"; EI
+	IF $D1; SET fnm = $DR; ELSE; SET fnm = $FP; EI
+	X $cmnd $fnm $1
+	IF $RC > 0; PR Error: $RC
+		ELSE; PR; MSG /T:1 Moved.; EI
+ENDSUB
+
+SUB go
+	# DOC: Change drive/directory by typing spaces instead of colon/slashes
+	# DOC: Usage GO [d] subdir1[ subdir2 ...]
+	local args astr cmnd cmnda i n pth
+	quiet
+	set cmnd = ""
+	set astr = $*
+	set pth = ""
+	if len($astr) == 1 and contains("CDEFGHIJKLMNOPQRSTUVWXYZ", upper($astr))
+		runcode $astr:
+		if not $error exit
+	ei
+	if substr($astr, 1, 1) == " "
+		set pth = upper(left($astr, 1)).":".$DC.$(replace(trimleft($astr, 2), " ", $DC))
+	else
+		set pth = replace($astr, " ", $DC)
+	ei
+	cd $pth
+	if not $error; th; bc; exit; ei
+	set pth = $DC . replace($astr, " ", $DC)
+	cd $pth
+	if not $error; th; bc; exit; ei
+	set pth = $CWD.$DC.replace($astr, " ", $DC)
+	cd $pth; if not $error; th; bc; return; ei
+	PR Path not found.
+ENDSUB
+
+SUB locate
+	# DOC: Find files via Locate.exe
+	# UserVar: $Path_to_Locate_exe (without trailing "\")
+	quiet
+	LOCAL cmnd
+	SET cmnd = $Path_to_Locate_exe.$DC."locate.exe -lfd -w ".$1
+	X/BG $cmnd
+	if $FE and $CP == 0 ab
+ENDSUB
+
+SUB opn
+	# DOC: Open file in its associated application
+	local cmnd
+	if not $1; pr Usage: OP <filename>; return; ei
+	if $OS == "windows"
+		set cmnd = "start"
+	else if $OS == "linux"
+		set cmnd = "xdg-open"
+	else
+		set cmnd = "open"
+	ei
+	x/nv $cmnd $1
+ENDSUB
+
+SUB renas
+	# DOC: Rename current file and open it under the new name
+	# DOC: RENAS <path>
+	quiet
+	local ans new old
+	if not $1
+		pr Usage: RENAS <path>
+		return
+	ei
+	set new = $1
+	set old = $fp
+	if exists($fnm)
+		input ans Target filename already exists. Overwrite it? (y|n)
+		if upper($ans) != "Y"
+			pr No operation.
+			return
+		ei
+	ei
+	if $MO
+	 input ans Current file has unsaved changes. Save them? (y|n)
+	 if upper($ans) == "Y"; sa; pr Saved; else; nop; ei
+	ei
+	saas/nv $new
+	if $error
+		:a
+		pr Rename failed.
+		return
+	ei
+	ernv $old
+	if $error goto :a
+	pr Renamed as $new
+ENDSUB
+
+SUB sab
+	# DOC: Make a backup save of the current file
+	# DOC: Format filename-yyyymmddThhmmss.ext
+	QUIET/NV
+	LOCAL bdir bname fna
+	SET bdir = $BackupDir
+	SET fn = $FP
+	SET fna = GetPath($fn)
+	IF NOT $bdir SET bdir = $fna[0]
+	SET bname=$bdir.$DC.$fna[2]."-".DATE("yyyymmdd")."T". \
+		TIME("hhmmss").".".$fna[3]
+	SA/NV $bname
+	PR Saved to $bname
+ENDSUB
+
+SUB sd
+	# DOC: "Smart" DIR command.
+	# Usage: sd file[,ext]   e.g.:  sd rep  sd rep,txt  sd /w rep
+	# Rev. CLD 2026-07-06
+	IF NOT $1
+		DIR
+		RETURN
+	EI
+	QUIET
+	LOCAL dcm n fnm ext farray spec swt hits hitcount row
+	SET dcm = "DIR"
+	SET swt = ""
+	SET fnm = $*
+	IF INDEX($fnm, "/") == 0 OR INDEX($fnm, "-") == 0
+		SET swt = $1
+		SET dcm = "DIR" . $swt
+		SET fnm = LSTRIP(REPLACE($fnm, $swt, ""))
+	EI
+	SET ext = "*"
+	IF NOT Contains($fnm, ",")
+		SET fnm = $fnm . "*"
+		GOTO :a
+	EI
+	SET fnm = REPLACE($fnm, " ", "")
+	SET farray = SPLIT($fnm, ",")
+	SET fnm = $farray[0]."*"
+	SET ext = $farray[1]."*"	
+	:a
+	SET spec = $fnm.".".$ext
+	# DIR never sets $ERROR on an empty match, so count real hits instead
+	CAPTURE hits DIR/B $spec
+	IF LEN(LINES($hits)) > 1
+		RUNCODE $dcm $spec
+		RETURN
+	EI
+	IF LEN($ext) > 1
+		SET ext = TRIMRIGHT($ext, 2)
+		SET ext = $ext . "*"
+		GOTO :a
+	EI
+	IF LEN($fnm) > 1
+		SET fnm = TRIMRIGHT($fnm, 2)
+		IF SUBSTR($fnm, LEN($fnm) - 1, 1) != "*" SET fnm = $fnm . "*"
+		GOTO :a
+	ELSE
+		PR No matching files
+	EI
+ENDSUB
+
+SUB vers
+	# DOC: View/restore files from version history archive
+	LOCAL exe
+	SET exe = $U2extras . $DC . "VerHist.exe " . $VerSA_Path
+	IF $1 SET exe = $exe." ".$1
+	X/NV $exe
+ENDSUB
+
+SUB versionsA
+	# DOC: View/restore files from version history archive
+	LOCAL exe
+	SET exe = $U2extras . $DC . "VerHist.exe " . $VerSA_Archive_Path
+	IF $1 SET exe = $exe." ".$1
+	X/NV $exe
+ENDSUB
+
+SUB VerSA
+	# DOC: Save file to version history (versave.exe must be running)
+	QUIET/NV
+	SA
+	LOCAL fn infx sufx
+	SET fn = $FP
+	SET infx = ":" . $DC
+	SET fn = REPLACE($fn, $infx, "}")
+	SET fn = REPLACE($fn, "!", "!!")
+	SET fn = REPLACE($fn, $DC, "!")
+	SET sufx = Date("yyyymmdd").Time("hhmmss")
+	SET sufx = REPLACE($sufx, "-", "")
+	SET sufx = REPLACE($sufx, ":", "")
+	SET sufx = REPLACE($sufx, ".", "")
+	SET fn = $fn . "-" . $sufx
+	SET dname=""; SET fname=""; SET ext=""
+	SET fn = $VerSA_Path . $DC . $fn
+	X copy/y $FP $fn
+	IF NOT $ERROR
+		PR Version history saved
+	ELSE
+		PR VerSA: Error
+	EI
+ENDSUB
+
+#####  Window/Tab Management  #####
+
+SUB panetoggle
+    # DOC: Flip the current file between a split pane and full screen.
+    # DOC: Usage: PANETOGGLE h|v [horizontal|vertical]
+    IF $PANES > 1
+        FS
+    ELSE
+    	IF UPPER($1) == "V"
+        TVS
+      ELSE
+      	THS
+      ENDIF
+    ENDIF
+ENDSUB
+
+SUB panezoom
+    # DOC: Toggle the current pane full-window, preserving the split.
+    # DOC: Usage: PANEZOOM h|v [horizontal|vertical]
+    IF $PANES == 1
+    	IF UPPER($1) == "V"
+        TVS
+      ELSE
+      	THS
+      ENDIF
+    ELSE
+        TZ
+    ENDIF
+ENDSUB
+
+SUB wipe
+	# DOC: Close all open tabs immediately -- DISCARD CHANGES
+	while $($tc + $d1 + $fs) > 1
+		ab
+	endwhile
+ENDSUB
+
+#####  Internet  #####
+
+SUB checkwebupdate
+	# DOC: Check if a website has been updated
+	# DOC: Usage: CHECKWEBUPDATE <url> <file_with_current_ETag>
+	# DOC: <file_with_current_ETag> is createdd if it does not already exist
+	quiet
+	local cmnd etag1 etag2 fnm out url
+	set etag1 = ""
+	if not $2 return $etag1
+	set url = $1
+	set fnm = $2
+	call getETag $url $fnm
+	set etag1 = $RV
+	if not $etag1
+		pr $url does not issue an ETag
+		ex
+	ei
+	set etag2 = readfile($fnm)
+	if $etag1 != $etag2
+		wf $fnm $etag2
+		msg /T:5 $url has changed!
+		BC X/NV start $($url))
+	else
+		pr $url has not been updated.
+	ei
+ENDSUB
+
+SUB getETag
+	# DOC: Get a website's ETag
+	# DOC: Usage: getETag <url> <file_with_current_ETag>
+	quiet
+	local flag cmnd etag fnm out url
+	set flag = 0
+	set etag = ""
+	if not $2 return $etag
+	set url = $1
+	set fnm = $2
+	if not exists($fnm) set flag = 1
+	set cmnd = "curl -I ".$url
+	XV out $cmnd
+	for lin in lines($out)
+		if index($lin, "ETag:") != 0 continue
+		set etag = $lin; break
+	ef
+	if $flag
+		wf $fnm $etag
+		pr $fnm was just created. Check again later.
+		exitall	
+	ei
+	return $etag
+ENDSUB
+
+SUB ddg
+	# DOC: DuckDuckGo search
+	# DOC: Usage: DDG <search term(s)>
+	# DOC: Search terms may be selected text
+	QUIET
+	LOCAL sURL search_str char_list chArray
+	LOCAL i j delim ch1 ch2 tmp1 tmp2
+	SET search_str = $*
+	IF NOT $search_str
+		IF $DF SET search_str = $SE
+	EI
+	IF NOT $search_str
+		PR DDG <search terms()>
+		EXIT
+	EI
+	SET search_str = REPLACE($search_str, "+", "%%2B")
+	SET search_str = REPLACE($search_str, " ", "+")
+	SET search_str = REPLACE($search_str, "\d034", "%%22")
+	SET search_str = REPLACE($search_str, "&", "%%26")
+	SET search_str = REPLACE($search_str, ",", "%%2C")
+	SET search_str = REPLACE($search_str, "=", "%%3D")
+	SET search_str = REPLACE($search_str, "?", "%%3F")
+	SET sURL = "https:\d047\d047duckduckgo.com/?q=" . $search_str . "&ia=web"
+	X/NV start $sURL
+ENDSUB
+
+SUB fnu
+	# DOC: Find next URL in text
+	SE/R "(https?|ftp|file|mailto|tel|imap|irc|nntp):/{0,3}\S+"
+ENDSUB
+
+SUB ggl
+	# DOC: Google search
+	# DOC: Usage: GGL <search term(s)>
+	# DOC: Search terms may be selected text
+	QUIET
+	LOCAL sURL search_str char_list chArray
+	LOCAL i j delim ch1 ch2 tmp1 tmp2
+	SET search_str = $*
+	IF NOT $search_str
+		IF $DF SET search_str = $SE
+	EI
+	IF NOT $search_str
+		PR GGL <search terms()>
+		EXIT
+	EI
+	SET search_str = REPLACE($search_str, "+", "%%2B")
+	SET search_str = REPLACE($search_str, " ", "+")
+	SET search_str = REPLACE($search_str, "\d034", "%%22")
+	SET search_str = REPLACE($search_str, "&", "%%26")
+	SET search_str = REPLACE($search_str, ",", "%%2C")
+	SET search_str = REPLACE($search_str, "=", "%%3D")
+	SET search_str = REPLACE($search_str, "?", "%%3F")
+	SET sURL = "https:\d047\d047www.google.com\d047search?q=" . $search_str
+X/NV start $sURL
+ENDSUB
+
+SUB url
+	# DOC: View a URL
+	# DOC: Usage: URL [<url>]
+	# DOC: <url> may be a text selection
+	SET sURL = ""
+	IF $1
+		SET sURL = $1
+	EI
+	IF $DF == 1
+		IF LEN($sURL) == 0
+			SV sURL
+		EI
+	EI
+	IF $sURL
+		OPN $sURL
+		SET sURL = ""
+	ELSE			
+		PR No URL supplied
+	EI
+ENDSUB
+
+SUB xysupdate
+	# DOC: Check for xyscript.zip update
+	quiet
+	local fnm url
+	set url = "https://ammaze.net/xywwweb/dls/xyscript.zip"
+	set fnm = $XSDIR.$DC."xyscript.zip-etag.txt"
+	call CheckWebUpdate $url $fnm
+ENDSUB
+
+SUB xysweb
+	# DOC: Open the XyScript web page
+	local url
+	set url = "https://ammaze.net/xyscript"
+	opn $url
+ENDSUB
+
+#####  Scripting  #####
+
+SUB awaitfile
+	# DOC: Wait until file exists, with timeout
+	# DOC: Usage: AWAITFILE <file> [n]  (timeout n secs.; default 5 secs.)
+	QUIET
+	LOCAL bN fn tmout
+	SET TMOUT = 5
+	SET bN = 0
+	SET fn = $1
+	IF $2 SET TMOUT = $2
+	ZT
+	WHILE 1
+		SET bN = EXISTS($fn)
+		IF $bN EXIT
+		IF $ET > $TMOUT
+			PR AWAITFILE: Timeout
+			EXITALL
+		ENDIF
+		WAIT 50
+	ENDWHILE
+ENDSUB
+
+SUB awaitdel
+	# DOC: Wait until file is deleted, with timeout
+	# DOC: Usage: AWAITDEL <file> [n]  (timeout n secs.; default 5 secs.)
+	QUIET
+	LOCAL bN fn tmout
+	SET TMOUT = 5
+	IF $2 SET TMOUT = $2
+	SET fn = $1
+	ZT
+	WHILE 1
+		SET bN = EXISTS($fn)
+		IF NOT $bN EXIT
+		IF $ET > $TMOUT
+			PR AWAITDEL: Timeout
+			EXITALL
+		ENDIF
+		WAIT 200
+	ENDWHILE
+ENDSUB
+
+SUB chkcmnt
+	# DOC: Check XPL script for malformed comments
+	SE/R/T "\#[^#\r\n\s]"
+		IF $ERROR
+			PR No malformed comments found.
+			EX
+		ELSE
+			CV/R/T "\#[^#\r\n\s]"\# "
+		EI
+	PR Done.
+ENDSUB
+
+SUB cmnt
+	# DOC: Add/remove comment symbols from DeFined block
+	# DOC: Usage: CMNT symbol  [default symbol = "#"]
+	# DOC: `CMNT semi` sets symbol = ";"
+	LOCAL pos sym
+	IF NOT $DF; PR No text is selected; EX; EI
+	IF NOT $1; SET sym = "#"; ELSE; SET sym = $1; EI
+	IF UPPER($sym) == "SEMI" SET sym = ";"
+	SET pos = $DS
+	IF INDEX(LSTRIP($SE), $sym) == 0
+		CH/R/S /$NL$sym\s|$sym\s(.*$NL)/$1/
+		XD; DF; JMP $pos; EL; DZ
+	ELSE
+		SET sym = RSTRIP($sym)
+		SET sym = $sym.Chr(32)
+		JMP $DS
+		WHILE $CP < $DN
+			EL; INSERT $sym; LD
+		EW
+		JMP $DN; XD; DF; JMP $pos; EL; DZ		
+	EI
+ENDSUB
+
+SUB fence
+	# DOC: Write an XPL fenced code block
+	# DOC: Inserts selected text, if any, in block
+	SET text = ""
+	IF $DF == 1; set text = $SE; DN; EI
+	PUT ```${NL}${NL}```${NL}
+	LU; LU
+	IF NOT $text; WRITELN; LU;
+		ELSE; PUT $text; EI
+ENDSUB
+
+SUB minm
+	# DOC: Returns the smallest of a series of values
+	# DOC: Usage: MINM n1 n2 n3 n4 ...
+	quiet
+	if not $1 return
+	local numarr
+	set numarr = split($*, " ")
+	set numarr = sort($numarr)
+	return $numarr[0]
+ENDSUB
+
+SUB max
+	# DOC: Returns the largest of a series of values
+	# DOC: Usage: MAX n1 n2 n3 n4...
+	quiet
+	if not $1 return
+	local idx numarr
+	set idx = $# - 1
+	set numarr = split($*, " ")
+	set numarr = sort($numarr)
+	return $numarr[$idx]
+ENDSUB
+
+SUB scancode
+	# DOC: Get scan code for pressed key
+	LOCAL k
+	:a
+	PR Press a key
+	RK k
+	MSG You pressed $k (scan code: $SC)
+	IF $SC != 1 GOTO :a
+ENDSUB
+
+SUB v3
+	# DOC: Identify the character under the cursor
+	quiet
+	local dec hex
+	set dec = asc($ch)
+	while len($dec) < 3; set dec = "0".$dec; ew
+	set dec = "\d".$dec
+	set hexa = upper(hex(asc($ch)))
+	while len($hexa) < 4; set hexa = "0".$hexa; ew
+	set hexa = $dec." | \U+".$hexa
+	pr $hexa
+ENDSUB
+
+#####  Shell/Operating System COMMANDS #####
+
+SUB cmd
+	# DOC: Start a shell session (Windows OR Linux)
+  IF $OS == "windows"
+		X/NV start cmd.exe /k cls&ver
+	ELSEIF $OS == "linux"
+		X/NV $shell
+	ENDIF
+ENDSUB
+
+SUB ProcExists
+	# DOC: Report whether named process exists (Windows)
+	# DOC: Usage: ProcExists "process_name"; IF $proc_out;
+	# DOC: PR $proc_out; ELSE; PR No; EI
+	LOCAL ret pgm pnm
+	IF NOT $1 EXIT
+	SET pgm = $U2Extras . $DC . "pexists.exe"
+	SET pnm = $1
+	IF NOT INDEX(UPPER($pnm), ".EXE") == LEN($pnm) - 4 \
+		SET pnm = $pgm . " " . $pnm . ".exe"
+	X $pnm
+	SET ret = $XO
+	# IF NOT $ret SET ret = "Process ".$1." does not exist."
+	# MSG $ret
+	return $ret
+ENDSUB
+
+SUB shel
+	# DOC: RUN shell command and show output in text dialog
+	# DOC: Usage: SH <command>
+	QUIET
+	IF NOT $1
+		CALL cmd
+		EXIT
+	EI
+	LOCAL cmline output
+	SET cmline = $*
+	X $cmline
+	SET output = $XO
+	IF $output
+		IF CONTAINS($output, "\n")
+			TXT $output
+		ELSE
+			MSG $output
+		EI
+	ELSE
+		MSG No output
+	EI
+ENDSUB
+
+#####  User Interface  #####
+
+SUB togs
+	# DOC: User Interface toggles
+	quiet
+	local ans
+	:a
+	rk ans "  Toggles (Esc quits)\n  -------------------\n  <L>ine numbers\n  <N>ewlines\n  <W>hitespace\n  <M>enu bar\n  <T>itle bar"
+	switch $(UPPER($ans))
+		case "L"
+			tln
+		case "N"
+			tvr
+		case "W"
+			tws
+		case "M"
+			tmb
+		case "T"
+			titlebar
+	esw
+ENDSUB
+
+#####  Utilities  #####
+
+SUB arg2
+	# DOC: Send line under cursor as an argument to a command
+	# DOC: Usage: ARG2 <command>
+	LOCAL arg cmnd
+	SET cmnd = $1
+	IF NOT $cmnd
+		PR ARG2 <command>
+		EXIT
+	EI
+	$cmnd $LI
+ENDSUB
+
+SUB cal
+	# DOC: Display a calendar for current or specified month/year
+	# DOC: Usage: CAL m/[yy]yy
+	# DOC: User variable: $CountryCode ("ca" or "us") for holidays
+	local bfile calout ccode d last mn months n nn template tmp urcolor urfgcolor urbgcolor urmarg urlsp weekdays wkd yr
+	quiet
+	if $1
+		set tmp = split($1, "/")
+		set mn = $tmp[0]
+		set yr = $tmp[1]
+		if len($yr) == 2 set yr=$(left($year, 2)).$yr
+	else
+		set mn = $mon
+		set yr = $year
+	ei
+	if len($mn) == 0 or len($yr) == 0
+		pr Invalid date.  Usage: CAL m/[yy]yy
+		ex
+	ei
+	if $CountryCode; set ccode = $CountryCode; else; set ccode = "us"; ei
+	if not contains("CA|US", UPPER($ccode)) set ccode = "us"
+	set urcfa = $CFA
+	autocfg off
+	set urcolor = $CRCOLOR
+	set urmarg = $OFL
+	set urlsp = $LSP
+	if not $TempDir set TempDir = $XSDIR.$DC."_tmp"
+	set bfile = $TempDir.$DC."bedit.tmp"
+	set weekdays = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+	set months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	set template = $NL."        mmm yyyy           ".$NL."Sun Mon Tue Wed Thu Fri Sat  ".$NL." .   .   .   .   .   .   .   ".$NL." .   .   .   .   .   .   .   ".$NL." .   .   .   .   .   .   .   ".$NL." .   .   .   .   .   .   .   ".$NL." .   .   .   .   .   .   .   ".$NL." .   .   .   .   .   .   .   ".$NL
+	if exists($bfile) ernv $bfile
+	:a
+	bedit $bfile
+	wrl; put $template
+	set wkd = dow($yr, $mn, 1)
+	set wkd = $weekdays[$wkd]
+	set tmp = $months[$mn]
+	tf
+	ch/t /mmm/$tmp/
+	ch/t /yyyy/$yr/
+	se /$wkd/;ld;cl;cl;rc;put 1
+	set last = daysinmonth($yr, $mn)
+	for n = 2 to $last
+		se /./
+		bd; if n > 9 bd
+		set nn = $n
+		if $n < 10 set nn = " ".$nn
+		insert $nn
+	ef
+	tf
+	ch/t /./ /
+	ch/t/1 /                               $NL/
+	set calout = $DOC
+	if not right($DOC, 1) == "\n" set calout = $calout.$NL
+	set calout = $calout.$NL."Home Left Right Up Down Esc".$NL
+	bclose $bfile
+	crcolor $BGCOLOR
+	ofl 6
+	lsp 125
+	ne/v; put $calout
+	if $ccode
+		call getHolidays-$ccode $yr $mn
+		set urfgcolor = $EMPHFGCOLOR
+		set urbgcolor = $EMPHBGCOLOR
+		emphbgcolor $BGCOLOR
+		emphfgcolor 200 0 0
+		emph/r (?m)^\x00\d\d\x20
+	ei
+	if $mn == $mon and $yr == $year
+		# $MDAY is zero-padded ("07") but the grid shows unpadded days: strip the pad, then
+		# match whole-word from the top (/TW) so a delimited number cannot hit a substring of
+		# the year (yyyy) or a two-digit cell; the grid precedes the holiday legend below it.
+		set d = $mday
+		if left($d, 1) == "0" set d = right($d, 1)
+		se/tw /$d/
+	ei
+	readkey ky
+	emphfgcolor $urfgcolor
+	emphbgcolor $urbgcolor
+	crcolor $BGCOLOR
+	switch $SC
+		case 1             # Esc
+			if $urcfa autocfg $urcfa
+			crcolor $urcolor; ofl $urmarg; lsp $urlsp; ab
+			if exists($bfile) ernv $bfile
+			return
+		case 71, 92        # Home
+			set mn = $mon
+			set yr = $year
+		case 72, 100       # Up
+			set yr += 1
+		case 75, 101       # Left
+			set mn -= 1
+			if $mn < 1
+				set mn = 12
+				set yr -= 1
+			ei
+		case 77, 103       # Right
+			set mn += 1
+			if $mn > 12
+				set mn = 1
+				set yr += 1
+			ei
+		case 80, 102       # Down
+			set yr -= 1
+		default
+			nop
+	endswitch
+	ab
+	goto :a
+ENDSUB
+
+SUB getHolidays-ca
+	# DOC: Add Canadian holidays to calendar (CAL)
+	quiet
+	local anno mnth vdate date1 date2 msg1 msg2
+	if not $2 return
+	set anno = $1
+	set mnth = $2
+	dfa mda; xd
+	# Easter
+	call easter $anno /nv
+	set vdate = []
+	set vdate = $RV
+	set Easter = $vdate[0].$(format("{:02d}", $vdate[1]))
+	set out = ""
+
+	switch $mnth
+		case 1
+			hilitedate 1
+			set out = $out." 01 New Year's Day".$NL			
+
+		case 2
+			# Family Day / Louis Riel Day / Heritage Day
+			nthday 3 Mo 2 $anno
+			set vdate = $(format("{:02d}", $RV))
+			hilitedate 14 $(int($vdate))
+			set out = $out."\x0014 Valentine's Day".$NL
+			set out = $out."\x00".$vdate." Family/Louis Riel/Heritage Day".$NL
+
+		case 3
+			# Daylight Saving Time
+			nthday 2 Su 3 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set DaylightTime = $(format("{:02d}", $vdate))
+			hilitedate $(int($DaylightTime))
+			set out = $out."\x00".$vdate." Daylight Saving Time starts".$NL
+			if left($Easter, 1) == "3"
+				hilitedate $(int($(trimleft($Easter, 1))) - 2) $(int($(trimleft($Easter, 1))))
+				set out = $out."\x00".$(int($(trimleft($Easter, 1))) - 2)." Good Friday".$NL
+				set out = $out."\x00".$(trimleft($Easter, 1))." Easter".$NL
+			ei
+
+		case 4
+			if left($Easter, 1) == "4"
+				hilitedate $(int($(trimleft($Easter, 1))) - 2) $(int($(trimleft($Easter, 1))))
+				set out = $out."\x00".$(int($(trimleft($Easter, 1))) - 2)." Good Friday".$NL
+				set out = $out."\x00".$(trimleft($Easter, 1))." Easter".$NL
+			ei
+
+		case 5
+			# Mother's Day
+			nthday 2 Su 5 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set MothersDay = $(format("{:02d}", $vdate))
+			# Victoria Day (Monday preceding May 25)
+			set hday = DoW($anno, 5, 25)
+			if $hday == 1 set hday = 8
+			set VictoriaDay = 25 - $hday + 1			
+			hilitedate $MothersDay $VictoriaDay
+			set out = $out."\x00".$MothersDay." Mother's Day".$NL
+			set out = $out."\x00".$VictoriaDay." Victoria Day".$NL
+
+		case 6
+			# Father's Day
+			nthday 3 Su 6 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set FathersDay = $vdate
+			hilitedate $FathersDay 24
+			minm $FathersDay 24
+			set date1 = $RV
+			if $date1 == $FathersDay
+				set date2 = 24
+				set msg1 = " Father's Day"
+				set msg2 = " St. Jean-Baptiste (Québec)".$NL
+			else
+				set date2 = $FathersDay
+				set msg1 = " St. Jean-Baptiste (Québec)".$NL
+				set msg2 = " Father's Day"
+			ei			
+			set out = $out."\x00".$(format("{:02d}", $date1)).$msg1.$NL
+			set out = $out."\x00".$(format("{:02d}", $date2)).$msg2.$NL
+
+		case 7
+			hilitedate 1
+			set out = $out."\x0001 Canada Day".$NL
+
+		case 8
+			# Civic/Provincial Holiday
+			nthday 1 Mo 8 $anno
+			set vdate = $RV
+			hilitedate $vdate
+			set vdate = $(format("{:02d}", $vdate))
+			set out = $out."\x00".$vdate." Civic/Provincial holiday".$NL
+			
+		case 9
+			# Labour Day
+			nthday 1 Mo 9 $anno
+			set vdate = $RV
+			set LabourDay = $(format("{:02d}", $vdate))
+			hilitedate $(int($LabourDay)) 30
+			set out = $out."\x00".$LabourDay." Labor Day".$NL
+			set out = $out."\x0030 Truth and Reconciliation".$NL
+
+		case 10
+			# Thanksgiving Day
+			nthday 2 Mo 10 $anno
+			set Thanksgiving = $(format("{:02d}", $RV))
+			hilitedate $(int($Thanksgiving))
+			set out = $out."\x00".$Thanksgiving." Thanksgiving Day".$NL
+
+		case 11
+			hilitedate 11
+			set out = $out."\x0011 Remembrance Day".$NL
+
+		case 12
+			hilitedate 25 26 31
+			set out = $out."\x0025 Christmas".$NL
+			set out = $out."\x0026 Boxing Day".$NL
+			set out = $out."\x0031 New Year's Eve".$NL		
+	esw
+	bf; bd; writeln $NL$NL$out
+ENDSUB
+
+SUB getHolidays-us
+	# DOC: Add U.S. holidays to calendar (CAL)
+	quiet
+	local anno mnth vdate date1 date2 msg1 msg2
+	if not $2 return
+	set anno = $1
+	set mnth = $2
+	dfa mda; xd
+	# Easter
+	call easter $anno /nv
+	set vdate = []
+	set vdate = $RV
+	set Easter = $vdate[0].$(format("{:02d}", $vdate[1]))
+
+	set out = ""
+	switch $mnth
+		case 1
+			set hday = ""
+			# Martin Luther King, Jr.
+			nthday 3 Mo 1 $anno
+			set MLKDay = $RV
+			# Inauguration Day
+			if $anno > 1936
+				if ($anno - 1) % 4 == 0 set hday = "Inauguration Day"
+			ei
+			hilitedate 1 $(int($MLKDay))
+			if $hday hilitedate 20
+			set out = $out."\x0001 New Year's Day".$NL
+			set out = $out."\x00".$MLKDay." Martin Luther King, Jr.".$NL
+			if $hday set out = $out."\x0020 Inauguration Day".$NL
+
+		case 2
+			# George Washington's birthday
+			nthday 3 Mo 2 $anno
+			set vdate = $(format("{:02d}", $RV))
+			hilitedate 12 14 $(int($vdate))
+			set out = $out."\x0012 Lincoln's Birthday".$NL
+			set out = $out."\x0014 Valentine's Day".$NL
+			set out = $out."\x00".$vdate." Washington's Birthday".$NL
+
+		case 3
+			# Daylight Saving Time
+			nthday 2 Su 3 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set DaylightTime = $(format("{:02d}", $vdate))
+			hilitedate $(int($DaylightTime))
+			set out = $out."\x00".$vdate." Daylight Saving Time starts".$NL
+			if left($Easter, 1) == "3"
+				hilitedate $(int($(trimleft($Easter, 1))))
+				set out = $out."\x00".$(trimleft($Easter, 1))." Easter".$NL
+			ei
+
+		case 4
+			if left($Easter, 1) == "4"
+				hilitedate $(int($(trimleft($Easter, 1))))
+				set out = $out."\x00".$(trimleft($Easter, 1))." Easter".$NL
+			ei
+
+		case 5
+			# Mother's Day
+			nthday 2 Su 5 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set MothersDay = $(format("{:02d}", $vdate))
+			# Memorial Day
+			nthday 4 Mo 5 $anno
+			set vdate = $(format("{:02d}", $RV))
+			if $vdate < 25
+				nthday 5 Mo 5 $anno
+				set vdate = $(format("{:02d}", $RV))
+			ei
+			set MemorialDay = $vdate
+			hilitedate $(int($MothersDay)) $(int($MemorialDay))
+			set out = $out."\x00".$MothersDay." Mother's Day".$NL
+			set out = $out."\x00".$MemorialDay." Memorial Day".$NL
+
+		case 6
+			# Father's Day
+			nthday 3 Su 6 $anno
+			set vdate = $(format("{:02d}", $RV))
+			set FathersDay = $vdate
+			hilitedate 14 19 $(int($FathersDay))
+			set out = $out."\x0014 Flag Day".$NL			
+			minm $FathersDay 19
+			set date1 = $RV
+			if $date1 == $FathersDay
+				set date2 = 19
+				set msg1 = " Father's Day"
+				set msg2 = " Juneteenth"
+			else
+				set date2 = $FathersDay
+				set msg1 = " Juneteenth"
+				set msg2 = " Father's Day"
+			ei			
+			set out = $out."\x00".$(format("{:02d}", $date1)).$msg1.$NL
+			set out = $out."\x00".$(format("{:02d}", $date2)).$msg2.$NL
+
+		case 7
+			hilitedate 4
+			set out = $out."\x0004 Independence Day".$NL
+
+		case 8
+			nop
+
+		case 9
+			# Labor Day
+			nthday 1 Mo 9 $anno
+			set vdate = $RV
+			set LaborDay = $(format("{:02d}", $vdate))
+			hilitedate $(int($LaborDay))
+			set out = $out."\x00".$LaborDay." Labor Day".$NL
+
+		case 10
+			# Columbus Day
+			nthday 2 Mo 10 $anno
+			set ColumbusDay = $(format("{:02d}", $RV))
+			hilitedate $(int($ColumbusDay)) 31
+			set out = $out."\x00".$ColumbusDay." Columbus Day".$NL
+			set out = $out."\x0031 Halloween".$NL
+
+		case 11
+			# Election Day
+			nthday 1 Tu 11 $anno
+			set vdate = $RV
+			if $vdate == 1 set vdate = 8
+			set ElectionDay = $(format("{:02d}", $vdate))
+			# Standard Time
+			nthday 1 Su 11 $anno
+			set vdate = $RV
+			if $vdate < 10 set vdate = "0".$vdate
+			set StandardTime = $(format("{:02d}", $vdate))
+			# Thanksgiving
+			nthday 4 Th 11 $anno
+			set vdate = $RV
+			if $vdate < 23 set vdate += 7
+			set Thanksgiving = $vdate
+			hilitedate $(int($ElectionDay)) $(int($StandardTime)) 11 $(int($Thanksgiving))
+			minm $(int($StandardTime)) $(int($ElectionDay))
+			set date1 = $RV
+			if $date1 == $(int($StandardTime))
+				set date2 = $(int($ElectionDay))
+				set msg1 = " Standard Time resumes"
+				set msg2 = " Election Day"
+			else
+				set date2 = $(int($StandardTime))
+				set msg1 = " Election Day"
+				set msg2 = " Standard Time resumes"
+			ei			
+			set out = $out."\x00".$(format("{:02d}", $date1)).$msg1.$NL
+			set out = $out."\x00".$(format("{:02d}", $date2)).$msg2.$NL
+			set out = $out."\x0011 Veterans Day".$NL
+			set out = $out."\x00".$Thanksgiving." Thanksgiving".$NL			
+
+		case 12
+			hilitedate 25 31
+			set out = $out."\x0025 Christmas".$NL
+			set out = $out."\x0031 New Year's Eve".$NL		
+	esw
+	bf; bd; writeln $NL$NL$out
+ENDSUB
+
+SUB hilitedate
+	local i harray pos
+	tf; se/t /Sat/; set pos = $CP
+	set harray = split($*, " ")
+	for i = 0 to len($harray) - 1
+		xd; se /$harray[$i]/
+		mda 200 0 0; xd
+		jmp $pos
+	ef	
+ENDSUB
+
+SUB nthday
+	# DOC: Find nth weekday in month year
+	# DOC: Usage: NTHDAY n dow month year
+	# DOC: Days of week abbreviated Su, Mo,..., Sa
+	quiet
+	if not $4; ex; ei
+	local d01 die dyy mnh ord wkdays yyy
+	set ord = $1
+	set die = $2
+	set mnh = $3
+	set yyy = $4
+	if $yyy < 100 set $yyy += 2000
+	set wkdays = {Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6, Su: 7}
+	if not isdec($die) set die = $wkdays[$die]	
+	set d01 = dow($yyy, $mnh, 1)
+	set tgt = $die
+	set dyy = 1
+	while $d01 != $die
+		set d01 += 1
+		if $d01 > 7 set d01 = 1
+		set dyy += 1
+	ew
+	set $dyy = $dyy + (($ord - 1) * 7)
+	if not isdate($yyy, $mnh, $dyy) set $dyy = 0
+	return $dyy
+ENDSUB
+
+SUB clone
+	# DOC: Clone the current XyScript session:
+	# DOC: Opens a new instance with the same configuration
+	local bOpen cmarr cmnd pth suf
+	quiet
+	set bOpen = 1; if $1 set bOpen = 0
+	if not $TempDir set TempDir = $XSDIR . $DC . "_tmp"
+	if not exists($TempDir) X/nv mkdir $TempDir
+	set pth = $TempDir.$DC."cloned_start.xpl"
+	call cloned_start_script $pth
+	set cmarr = ["ar", "cfg", "cm", "closed", "kbd", "ldtx", "ldpm", "lib", "vars"]
+	for suf in $cmarr
+		set cmnd = "save".$suf." ".$TempDir.$DC."cloned.".$suf
+		runcode $cmnd
+	ef
+	set cmnd = "cd/d ".$XSDIR."&&".$ED." -s ".$pth
+	if $bOpen
+		X/NV $cmnd
+	else
+		set pth=$CWD
+		cd $TempDir
+		sd cloned
+		cd $pth
+		pr Cloned-settings files
+	ei
+ENDSUB
+
+SUB cloned_start_script
+	local pth scr
+	if not $TempDir set TempDir = $XSDIR . $DC . "_tmp"
+	if not exists($TempDir) X/nv mkdir $TempDir
+	if not $1; set pth = $TempDir.$DC."cloned_start.xpl";else;set pth=$1;ei
+	set scr="cd ".$TempDir.$NL."trust 1".$NL
+	set scr=$scr."loadar cloned.ar".$NL."run cloned.cfg".$NL."loadcm cloned.cm".$NL."loadkbd cloned.kbd".$NL."loadlib cloned.lib".$NL
+	set scr=$scr."run cloned.ldtx".$NL."run cloned.ldpm".$NL
+	set scr=$scr."loadvars cloned.vars".$NL."run cloned-cwd.xpl".$NL
+	wf $pth $scr
+ENDSUB
+
+SUB GetIP
+	# DOC: Get current IP address
+	LOCAL ip
+	XV ip = curl -s https://api.ipify.org
+	MSG $ip
+ENDSUB
+
+SUB hash
+	# DOC: Get SHA256 hash of file (saved to clipboard)
+	# DOC: Usage: HASH <file>
+	QUIET
+	LOCAL cmdout fn
+	IF NOT $1 EXIT
+	SET fn = $1
+	PR Working...
+	X pwsh -c "(Get-FileHash $fn -Algorithm SHA256).Hash.Substring(0,16)"
+	SET cmdout = $XO
+	PR
+	IF $cmdout MSG $cmdout
+	CLIP $cmdout
+ENDSUB
+
+SUB idkey
+	# DOC: Press a key to see its KBD-file binding
+	local scan
+	while 1
+		rk/d scan Press a key (Esc quits)
+		set scan="$SC=".$SC."  $SCC=".$SCC.$NL.$scan.": ".$(key($SCC))
+		msg /t:10  $scan
+		if $SCC == 1 break
+	ew
+ENDSUB
+
+SUB log
+	# DOC: Append a time-stamped log entry to the top of a log file
+	# DOC: User Var $Logfile
+	LOCAL fn bX nil fcon line tim
+	set nil = ""
+	set fn = $Logfile
+	set bX = EXISTS($fn)
+	IF not $bX WF nil $fn
+	IF NOT $*
+		RE $fn
+		EXIT
+	EI
+	RF $fn fcon
+	SET line = $*
+	set tim = trimright($tm, 4)
+	SET fcon = $DA .$tim.": ".$line."\n".$fcon
+	WF fcon $fn
+ENDSUB
+
+SUB qd
+	# DOC: Quoted-Printable decode (DeFined block)
+	# QD.exe must be present in $U2EXTRAS directory
+	CLEAR
+	LOCAL cmnd exe fex fin pos
+	IF $DF
+		SET fin = $U2EXTRAS.$DC."DATAIN.TMP"
+		SET fex = $U2EXTRAS.$DC."DATAOUT.TMP"
+		SET exe = $U2EXTRAS.$DC."QD.exe"
+		WF $fin $SE
+		ERNV $fex
+		SET cmnd = $exe." ".$fin." ".$fex
+		X/NV $cmnd
+		ZT
+		:a
+		WHILE NOT EXISTS($fex)
+			WAIT 50
+			IF $ETS > 5
+				PR QD: Timeout
+				EX
+			EI
+		EW
+		DN
+		SET pos = $CP
+		ME $fex
+		JMP $pos
+		EX
+	EI
+	PR No text is selected.
+ENDSUB
+
+SUB qe
+	# DOC: Quoted-Printable encode (DeFined block)
+	# QE.exe must be present in $U2EXTRAS directory
+	IF $DF
+		SET fin = $U2EXTRAS.$DC."DATAIN.TMP"
+		SET fex = $U2EXTRAS.$DC."DATAOUT.TMP"
+		SET exe = $U2EXTRAS.$DC."QE.exe"
+		IF UPPER($1) == "/B" SET exe = $exe." /B"
+		WF $fin $SE
+		ERNV $fex
+		SET cmnd = $exe." ".$fin." ".$fex
+		X/NV $cmnd
+		ZT
+		:a
+		WHILE NOT EXISTS($fex)
+			WAIT 50
+			IF $ETS > 5
+				PR QE: Timeout
+				EX
+			EI
+		EW
+		DN
+		SET pos = $CP
+		ME $fex
+		JMP $pos
+		EX
+	EI
+	PR No text is selected.
+ENDSUB
+
+SUB siz
+	# DOC: Get size (length) of selected text
+	QUIET
+	LOCAL y z
+	IF $DF
+		SV y
+		SET z = LEN($y)
+		PR Length = $z
+		EXIT
+	EI
+	PR No selection
+ENDSUB
+
+SUB values
+	# DOC: List XyScript internal variables & their current values
+	NE; ListSpecials; PRINTEX; BUFPREV; AB
+ENDSUB
+
+#####  User Library  #####
+
+SUB U2
+	# DOC: EDIT xyscript.lib
+	# DOC: Usage: U2 [search_str]
+	LOCAL xyw guicm
+	SET guicm = $GC
+	CGC
+	SET xyw = $XSDIR.$DC."xyscript.lib"
+	EDIT $xyw
+	IF $1
+		TF
+		BC se "SUB $1"; XC
+		IF $ERROR BC se $1; XC
+	ENDIF
+	IF $guicm SGC
+ENDSUB
+
+SUB uservars
+	# DOC: Open the XyWWWeb.qnu user variables file
+	LOCAL fn
+	SET fn = $XSDIR.$DC."user-variables.xpl"
+	SET bX = EXISTS($fn)
+	IF $bX == FALSE
+		PR $fn does not exist.
+		EXIT
+	ELSE
+		CA $fn
+		TF
+	EI
+ENDSUB

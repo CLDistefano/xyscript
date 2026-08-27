@@ -8496,100 +8496,100 @@ impl AppHost {
             s.push_str("\n\n");
         };
         let (r, g, b) = self.fg_color;
-        put(&mut s, "Editor text (foreground) colour — R G B, 0-255", format!("FGCOLOR {r} {g} {b}"));
+        put(&mut s, "Editor text (foreground) colour -- R G B, 0-255", format!("FGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.bg_color;
-        put(&mut s, "Editor background colour — R G B, 0-255", format!("BGCOLOR {r} {g} {b}"));
+        put(&mut s, "Editor background colour -- R G B, 0-255", format!("BGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.ui_fg_color;
-        put(&mut s, "UI chrome text colour — R G B, 0-255", format!("UIFGCOLOR {r} {g} {b}"));
+        put(&mut s, "UI chrome text colour -- R G B, 0-255", format!("UIFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.ui_bg_color;
-        put(&mut s, "UI chrome background colour — R G B, 0-255", format!("UIBGCOLOR {r} {g} {b}"));
+        put(&mut s, "UI chrome background colour -- R G B, 0-255", format!("UIBGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.caret_color;
-        put(&mut s, "Caret colour — R G B, 0-255", format!("CRCOLOR {r} {g} {b}"));
+        put(&mut s, "Caret colour -- R G B, 0-255", format!("CRCOLOR {r} {g} {b}"));
         let (r, g, b) = self.cmline_caret_color;
-        put(&mut s, "Command-line caret colour — R G B, 0-255", format!("CMCRCOLOR {r} {g} {b}"));
+        put(&mut s, "Command-line caret colour -- R G B, 0-255", format!("CMCRCOLOR {r} {g} {b}"));
         let (r, g, b) = self.sep_color;
-        put(&mut s, "UI separator colour (panel rules + tab dividers) — R G B, 0-255", format!("SEPCOLOR {r} {g} {b}"));
+        put(&mut s, "UI separator colour (panel rules + tab dividers) -- R G B, 0-255", format!("SEPCOLOR {r} {g} {b}"));
         let (r, g, b) = self.sel_bg_color;
-        put(&mut s, "Selection background colour — R G B, 0-255", format!("SELBGCOLOR {r} {g} {b}"));
+        put(&mut s, "Selection background colour -- R G B, 0-255", format!("SELBGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.sel_fg_color;
-        put(&mut s, "Selected-text colour — R G B, 0-255", format!("SELFGCOLOR {r} {g} {b}"));
+        put(&mut s, "Selected-text colour -- R G B, 0-255", format!("SELFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.find_bg_color;
-        put(&mut s, "FIND highlight background colour — R G B, 0-255", format!("FINDBGCOLOR {r} {g} {b}"));
+        put(&mut s, "FIND highlight background colour -- R G B, 0-255", format!("FINDBGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.find_fg_color;
-        put(&mut s, "FIND-match text colour — R G B, 0-255", format!("FINDFGCOLOR {r} {g} {b}"));
+        put(&mut s, "FIND-match text colour -- R G B, 0-255", format!("FINDFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.spell_color;
-        put(&mut s, "Spelling underline colour — R G B, 0-255", format!("SPELLCOLOR {r} {g} {b}"));
+        put(&mut s, "Spelling underline colour -- R G B, 0-255", format!("SPELLCOLOR {r} {g} {b}"));
         let (r, g, b) = self.grammar_color;
-        put(&mut s, "Grammar underline colour — R G B, 0-255", format!("GRAMMARCOLOR {r} {g} {b}"));
-        put(&mut s, "Spelling underline style — dotted|solid|squiggle", format!("SPELLSTYLE {}", self.spell_style.name()));
-        put(&mut s, "Grammar underline style — dotted|solid|squiggle", format!("GRAMMARSTYLE {}", self.grammar_style.name()));
+        put(&mut s, "Grammar underline colour -- R G B, 0-255", format!("GRAMMARCOLOR {r} {g} {b}"));
+        put(&mut s, "Spelling underline style -- dotted|solid|squiggle", format!("SPELLSTYLE {}", self.spell_style.name()));
+        put(&mut s, "Grammar underline style -- dotted|solid|squiggle", format!("GRAMMARSTYLE {}", self.grammar_style.name()));
         let (r, g, b) = self.pane_border_color;
-        put(&mut s, "Active split-pane border colour — R G B, 0-255", format!("PANECOLOR {r} {g} {b}"));
+        put(&mut s, "Active split-pane border colour -- R G B, 0-255", format!("PANECOLOR {r} {g} {b}"));
         put(&mut s, "Language-check dialect", format!("DIALECT {}", self.lint_dialect.name()));
         // Spell-check engine — emit only when NOT the default (harper), plus the Hunspell knobs so a
         // hunspell setup restores fully. (Harper needs no dict/bin.)
         if self.spell_engine != crate::lint::SpellEngine::default() {
-            put(&mut s, "Spell-check engine — harper | hunspell", format!("SPELLENGINE {}", self.spell_engine.name()));
+            put(&mut s, "Spell-check engine -- harper | hunspell", format!("SPELLENGINE {}", self.spell_engine.name()));
             put(&mut s, "Hunspell dictionaries (the -d value, e.g. en_US,de_DE)", format!("SPELLDICT {}", self.spell_dicts));
             put(&mut s, "Hunspell executable (name on PATH or a full path)", format!("SPELLBIN {}", self.spell_bin));
         }
         // UI localization catalog — emit only when one is loaded (default is built-in English).
         if let Some(path) = &self.lang_path {
-            put(&mut s, "UI translation catalog (LANG) — path to a key=value strings file", format!("LANG {path}"));
+            put(&mut s, "UI translation catalog (LANG) -- path to a key=value strings file", format!("LANG {path}"));
         }
         // Tab-title backgrounds — emit only the states the user set (others stay egui's theme).
         for (state, color) in
             [("active", self.tab_active_bg), ("hover", self.tab_hover_bg), ("inactive", self.tab_inactive_bg)]
         {
             if let Some((r, g, b)) = color {
-                put(&mut s, "Tab-title background — R G B, 0-255", format!("TABBGCOLOR {state} {r} {g} {b}"));
+                put(&mut s, "Tab-title background -- R G B, 0-255", format!("TABBGCOLOR {state} {r} {g} {b}"));
             }
         }
         // Tab close-× colour — emit only when set (default follows the UI foreground).
         if let Some((r, g, b)) = self.tab_x_color {
-            put(&mut s, "Tab close-× colour — R G B, 0-255", format!("TABXCOLOR {r} {g} {b}"));
+            put(&mut s, "Tab close-× colour -- R G B, 0-255", format!("TABXCOLOR {r} {g} {b}"));
         }
         // `$CWD` path-display colours — emit only when set (defaults: dimmed UI text / transparent).
         if let Some((r, g, b)) = self.path_fg_color {
-            put(&mut s, "$CWD path text colour — R G B, 0-255", format!("PAFGCOLOR {r} {g} {b}"));
+            put(&mut s, "$CWD path text colour -- R G B, 0-255", format!("PAFGCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.path_bg_color {
-            put(&mut s, "$CWD path background colour — R G B, 0-255", format!("PABGCOLOR {r} {g} {b}"));
+            put(&mut s, "$CWD path background colour -- R G B, 0-255", format!("PABGCOLOR {r} {g} {b}"));
         }
         let (r, g, b) = self.txt_fg_color;
-        put(&mut s, "TXT dialog text colour — R G B, 0-255", format!("TXTFGCOLOR {r} {g} {b}"));
+        put(&mut s, "TXT dialog text colour -- R G B, 0-255", format!("TXTFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.txt_bg_color;
-        put(&mut s, "TXT dialog background colour — R G B, 0-255", format!("TXTBGCOLOR {r} {g} {b}"));
-        put(&mut s, "Caret shape — bar | block | underline", format!("CRSHAPE {}", self.caret_shape.name()));
-        put(&mut s, "Command-line caret shape — bar | block | underline", format!("CMCRSHAPE {}", self.cmline_caret_shape.name()));
-        put(&mut s, "Command-line placement — top | bottom | hidden", format!("CMPLACE {}", self.cmline_placement.name()));
-        put(&mut s, "Status-line placement — top | bottom", format!("STATUSLINE {}", if self.status_line_top { "top" } else { "bottom" }));
-        put(&mut s, "Blank the command line after a command runs from it — on | off", format!("CMBLANK {}", if self.cmline_blank { "on" } else { "off" }));
-        put(&mut s, "Show the tab strip when only one file is open — on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
-        put(&mut s, "Word-wrap long lines to the window — on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
+        put(&mut s, "TXT dialog background colour -- R G B, 0-255", format!("TXTBGCOLOR {r} {g} {b}"));
+        put(&mut s, "Caret shape -- bar | block | underline", format!("CRSHAPE {}", self.caret_shape.name()));
+        put(&mut s, "Command-line caret shape -- bar | block | underline", format!("CMCRSHAPE {}", self.cmline_caret_shape.name()));
+        put(&mut s, "Command-line placement -- top | bottom | hidden", format!("CMPLACE {}", self.cmline_placement.name()));
+        put(&mut s, "Status-line placement -- top | bottom", format!("STATUSLINE {}", if self.status_line_top { "top" } else { "bottom" }));
+        put(&mut s, "Blank the command line after a command runs from it -- on | off", format!("CMBLANK {}", if self.cmline_blank { "on" } else { "off" }));
+        put(&mut s, "Show the tab strip when only one file is open -- on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
+        put(&mut s, "Word-wrap long lines to the window -- on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
-        put(&mut s, "Close the blank Untitled tab when a document is opened — on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
-        put(&mut s, "Opening an already-open file switches to its tab instead of prompting — on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
-        put(&mut s, "Bookmark gutter — off | on (when bookmarked) | persist (always)", format!("MARKGUTTER {}", mark_gutter_word(self.mark_gutter)));
+        put(&mut s, "Close the blank Untitled tab when a document is opened -- on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
+        put(&mut s, "Opening an already-open file switches to its tab instead of prompting -- on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
+        put(&mut s, "Bookmark gutter -- off | on (when bookmarked) | persist (always)", format!("MARKGUTTER {}", mark_gutter_word(self.mark_gutter)));
         if let Some((r, g, b)) = self.mark_fg_color {
-            put(&mut s, "Bookmark gutter dot colour — R G B, 0-255", format!("MARKFGCOLOR {r} {g} {b}"));
+            put(&mut s, "Bookmark gutter dot colour -- R G B, 0-255", format!("MARKFGCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.mark_bg_color {
-            put(&mut s, "Bookmark gutter background colour — R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
+            put(&mut s, "Bookmark gutter background colour -- R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
         }
-        put(&mut s, "Reload a file automatically when changed on disk — on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
-        put(&mut s, "Dim the window when it loses focus — on | off", format!("DIMONBLUR {}", if self.dim_on_blur { "on" } else { "off" }));
-        put(&mut s, "Close a tab back to the last-visited tab — on | off", format!("CLOSEBACK {}", if self.close_back { "on" } else { "off" }));
-        put(&mut s, "Highlight URLs and Ctrl+click to open them — on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
+        put(&mut s, "Reload a file automatically when changed on disk -- on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Dim the window when it loses focus -- on | off", format!("DIMONBLUR {}", if self.dim_on_blur { "on" } else { "off" }));
+        put(&mut s, "Close a tab back to the last-visited tab -- on | off", format!("CLOSEBACK {}", if self.close_back { "on" } else { "off" }));
+        put(&mut s, "Highlight URLs and Ctrl+click to open them -- on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
         if let Some((r, g, b)) = self.url_fg_color {
-            put(&mut s, "URL highlight text colour — R G B, 0-255", format!("URLFGCOLOR {r} {g} {b}"));
+            put(&mut s, "URL highlight text colour -- R G B, 0-255", format!("URLFGCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.url_bg_color {
-            put(&mut s, "URL highlight background colour — R G B, 0-255", format!("URLBGCOLOR {r} {g} {b}"));
+            put(&mut s, "URL highlight background colour -- R G B, 0-255", format!("URLBGCOLOR {r} {g} {b}"));
         }
-        put(&mut s, "Underline the spaces between words in MDA underline styling — on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
-        put(&mut s, "Working-directory path placement — cmline | status", format!("PAPLACE {}", self.path_place.name()));
-        put(&mut s, "Working-directory path — max display width in characters", format!("PATHLEN {}", self.path_len));
+        put(&mut s, "Underline the spaces between words in MDA underline styling -- on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
+        put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
+        put(&mut s, "Working-directory path -- max display width in characters", format!("PATHLEN {}", self.path_len));
         // Syntax-highlight theme — emit only the kinds that differ from the built-in defaults:
         // a recolour `HLCOLOR <kind> r g b`, a clear `HLCOLOR <kind> default`, or a grammar-defined
         // (custom) kind `HLCOLOR <kind> r g b`. Built-ins first (stable chart order), then custom
@@ -8657,10 +8657,10 @@ impl AppHost {
         }
         // DIR/W window appearance — emit only the overrides the user set (the rest inherit the editor).
         if let Some((r, g, b)) = self.dw_fg_color {
-            put(&mut s, "DIR-window text colour — R G B, 0-255", format!("DWFGCOLOR {r} {g} {b}"));
+            put(&mut s, "DIR-window text colour -- R G B, 0-255", format!("DWFGCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.dw_bg_color {
-            put(&mut s, "DIR-window background colour — R G B, 0-255", format!("DWBGCOLOR {r} {g} {b}"));
+            put(&mut s, "DIR-window background colour -- R G B, 0-255", format!("DWBGCOLOR {r} {g} {b}"));
         }
         if let Some(pt) = self.dw_font {
             put(&mut s, "DIR-window text size, points", format!("DWFONT {pt}"));
@@ -8686,32 +8686,32 @@ impl AppHost {
         // Preview/TOPDF page margins (per side — emit all four so any mix round-trips). Each value is
         // a length (in/cm/mm/pt); a bare number means inches.
         let m = &self.preview_margins;
-        put(&mut s, "Preview/TOPDF page margin — left", format!("PVMARGINL {}", m.left));
-        put(&mut s, "Preview/TOPDF page margin — right", format!("PVMARGINR {}", m.right));
-        put(&mut s, "Preview/TOPDF page margin — top", format!("PVMARGINT {}", m.top));
-        put(&mut s, "Preview/TOPDF page margin — bottom", format!("PVMARGINB {}", m.bottom));
+        put(&mut s, "Preview/TOPDF page margin -- left", format!("PVMARGINL {}", m.left));
+        put(&mut s, "Preview/TOPDF page margin -- right", format!("PVMARGINR {}", m.right));
+        put(&mut s, "Preview/TOPDF page margin -- top", format!("PVMARGINT {}", m.top));
+        put(&mut s, "Preview/TOPDF page margin -- bottom", format!("PVMARGINB {}", m.bottom));
         put(&mut s, "Line spacing, percent of the editor font", format!("LSP {}", self.leading));
         put(&mut s, "Left margin (offset), character columns", format!("OFL {}", self.margin_left as i64));
         put(&mut s, "Right margin (offset), character columns", format!("OFR {}", self.margin_right as i64));
-        put(&mut s, "Menu bar — SMB shows it, CMB hides it", if self.menu_bar { "SMB" } else { "CMB" }.to_string());
-        put(&mut s, "Visible paragraph marks ¶ — SVR on, CVR off", if self.visible_returns { "SVR" } else { "CVR" }.to_string());
-        put(&mut s, "Visible whitespace (space dots / tab arrows) — SWS on, CWS off", if self.visible_whitespace { "SWS" } else { "CWS" }.to_string());
-        put(&mut s, "Line-number gutter — SLN on, CLN off", if self.line_numbers { "SLN" } else { "CLN" }.to_string());
-        put(&mut s, "Pop-up command line — SGC on, CGC off", if self.gui_cmline { "SGC" } else { "CGC" }.to_string());
-        put(&mut s, "Shell-output tab visibility — SW on/off", format!("SW {}", if self.shell_output_visible { "on" } else { "off" }));
+        put(&mut s, "Menu bar -- SMB shows it, CMB hides it", if self.menu_bar { "SMB" } else { "CMB" }.to_string());
+        put(&mut s, "Visible paragraph marks ¶ -- SVR on, CVR off", if self.visible_returns { "SVR" } else { "CVR" }.to_string());
+        put(&mut s, "Visible whitespace (space dots / tab arrows) -- SWS on, CWS off", if self.visible_whitespace { "SWS" } else { "CWS" }.to_string());
+        put(&mut s, "Line-number gutter -- SLN on, CLN off", if self.line_numbers { "SLN" } else { "CLN" }.to_string());
+        put(&mut s, "Pop-up command line -- SGC on, CGC off", if self.gui_cmline { "SGC" } else { "CGC" }.to_string());
+        put(&mut s, "Shell-output tab visibility -- SW on/off", format!("SW {}", if self.shell_output_visible { "on" } else { "off" }));
         put(&mut s, "Console prompt template (SHPROMPT; $-expanded, e.g. $CWD> )", format!("SHPROMPT {}", self.console_prompt));
-        put(&mut s, "Colour Console output from ANSI codes — on | off", format!("ANSICOLOR {}", if self.ansi_color { "on" } else { "off" }));
-        put(&mut s, "Preview pane visibility — PV on/off", format!("PV {}", if self.preview_visible { "on" } else { "off" }));
-        put(&mut s, "Persistent selection — SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
-        put(&mut s, "OS window title bar — on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
-        put(&mut s, "Remember window size+position across runs — off helps mixed-DPI multi-monitor setups", if self.remember_window_geometry { "WINGEO on" } else { "WINGEO off" }.to_string());
+        put(&mut s, "Colour Console output from ANSI codes -- on | off", format!("ANSICOLOR {}", if self.ansi_color { "on" } else { "off" }));
+        put(&mut s, "Preview pane visibility -- PV on/off", format!("PV {}", if self.preview_visible { "on" } else { "off" }));
+        put(&mut s, "Persistent selection -- SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
+        put(&mut s, "OS window title bar -- on shows it, off uses a draggable strip", if self.show_titlebar { "TITLEBAR on" } else { "TITLEBAR off" }.to_string());
+        put(&mut s, "Remember window size+position across runs -- off helps mixed-DPI multi-monitor setups", if self.remember_window_geometry { "WINGEO on" } else { "WINGEO off" }.to_string());
         put(&mut s, "Auto-save-and-restore the open tabs across runs (Notepad++-style)", if self.session_restore { "SESSION on" } else { "SESSION off" }.to_string());
-        put(&mut s, "Open a file from a DIR listing in a new tab (on) or in place (off) — DIRNW", format!("DIRNW {}", if self.new_window { "on" } else { "off" }));
-        put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) — DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
-        put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) — DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
-        put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) — DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
+        put(&mut s, "Open a file from a DIR listing in a new tab (on) or in place (off) -- DIRNW", format!("DIRNW {}", if self.new_window { "on" } else { "off" }));
+        put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) -- DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
+        put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) -- DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
+        put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) -- DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
         if !self.dir_defaults.is_empty() {
-            put(&mut s, "Default DIR sort/filter/view switches — DIRSET", format!("DIRSET {}", self.dir_defaults_string()));
+            put(&mut s, "Default DIR sort/filter/view switches -- DIRSET", format!("DIRSET {}", self.dir_defaults_string()));
         }
         put(
             &mut s,
@@ -8723,19 +8723,19 @@ impl AppHost {
             },
         );
         put(&mut s, "Tab width, spaces", format!("TB {}", self.tab_width));
-        put(&mut s, "Soft tabs — insert spaces for tabs", format!("TABSPACES {}", if self.tab_soft { "on" } else { "off" }));
+        put(&mut s, "Soft tabs -- insert spaces for tabs", format!("TABSPACES {}", if self.tab_soft { "on" } else { "off" }));
         put(&mut s, "Auto-indent new lines on Enter", format!("TABINDENT {}", if self.tab_indent { "on" } else { "off" }));
         put(&mut s, "Highlight matching brackets", format!("BALPAIRS {}", if self.bal_pairs { "on" } else { "off" }));
         put(&mut s, "Auto-close typed bracket/quote pairs", format!("TYPEPAIRS {}", if self.type_pairs { "on" } else { "off" }));
         put(&mut s, "Hanging indent for soft-wrapped lines", format!("WRAPINDENT {}", if self.wrap_indent { "on" } else { "off" }));
         if let Some((r, g, b)) = self.bal_color {
-            put(&mut s, "Matched-bracket highlight colour — R G B, 0-255", format!("BALPAIRSCOLOR {r} {g} {b}"));
+            put(&mut s, "Matched-bracket highlight colour -- R G B, 0-255", format!("BALPAIRSCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.emph_fg {
-            put(&mut s, "EMPH emphasis text colour — R G B, 0-255", format!("EMPHFGCOLOR {r} {g} {b}"));
+            put(&mut s, "EMPH emphasis text colour -- R G B, 0-255", format!("EMPHFGCOLOR {r} {g} {b}"));
         }
         if let Some((r, g, b)) = self.emph_bg {
-            put(&mut s, "EMPH emphasis background colour — R G B, 0-255", format!("EMPHBGCOLOR {r} {g} {b}"));
+            put(&mut s, "EMPH emphasis background colour -- R G B, 0-255", format!("EMPHBGCOLOR {r} {g} {b}"));
         }
         if let Some(n) = self.float_decimals {
             put(&mut s, "Fixed decimal places for float display", format!("DECIMALS {n}"));
@@ -14060,6 +14060,29 @@ mod tests {
         // BUFNEXT again lands on E (right pane) → focus jumps back to it.
         h.editor_op(EditorOp::BufNext).unwrap();
         assert_eq!(h.panes().focused_doc(), e);
+    }
+
+    #[test]
+    fn shipped_default_cfg_matches_config_script() {
+        // The shipped runtime cfg must equal what a fresh instance emits, so `LOADCFG xyscript-default.cfg`
+        // is a true no-op on defaults. If a default changes in the code, this fails — regenerate with
+        // `cargo test -p xyscript-app --lib regenerate_default_cfg -- --ignored` (or `SAVECFG` on a fresh
+        // instance). Line endings are normalized so a CRLF checkout does not trip it.
+        const SHIPPED: &str = include_str!("../../packaging/runtime/xyscript-default.cfg");
+        let generated = super::AppHost::new().config_script(false);
+        assert_eq!(
+            generated.replace("\r\n", "\n"),
+            SHIPPED.replace("\r\n", "\n"),
+            "packaging/runtime/xyscript-default.cfg is stale — regenerate it (see the test comment)"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn regenerate_default_cfg() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../packaging/runtime/xyscript-default.cfg");
+        std::fs::write(path, super::AppHost::new().config_script(false)).expect("write default cfg");
     }
 
     #[test]

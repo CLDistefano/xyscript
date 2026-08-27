@@ -11,6 +11,29 @@ platform assets with `scratchpad/make_platform_icons.ps1` if the art changes.
 | Linux/Wayland | — | `.desktop` + hicolor PNG, matched by app-id `xyscript` |
 | macOS    | `.icns` inside `XyScript.app` | n/a (macOS has no per-window icon) |
 
+## Runtime kit (`runtime/`)
+
+`runtime/` holds the files that ship **beside the binary** in every platform's release bundle (the
+`release.yml` package steps copy `runtime/*` and `themes/` into the folder next to the executable).
+Because a GUI boot sets `$CWD` to the program's own folder (`$XSDIR`), the working `startup.xpl` loads
+this kit with plain relative paths, so an unzipped release runs out of the box:
+
+| File | Purpose |
+|------|---------|
+| `startup.xpl` | Working startup script; loads the keymap, config, a theme, auto-replace pairs, and the library. |
+| `startup.xpl.template` | Documented, all-commented starting point to copy into your own `startup.xpl`. |
+| `xyscript-internal.kbd` | The default keyboard map, as a file (`loadkbd`). |
+| `xyscript-default.cfg` | Every setting at its default value — **regenerate with `SAVECFG xyscript-default.cfg`** from a fresh instance. |
+| `xyscript.ar` | Default auto-replace pairs (accented characters, symbols). |
+| `xyscript.lib` | The bundled script library (`LISTLIB` to view routines). |
+| `user-variables.template` | Blank template of the variables the library uses; the user copies it to `user-variables.xpl`. |
+
+Keep everything here ASCII (`SAVECFG` now emits ASCII comments) so the files edit cleanly in any editor.
+The release bundles also carry the repo's `themes/`, `grammars/` (syntax-highlight grammars you `RUN`),
+`examples/` (runnable sample `.xpl`/`.kbd`/`.lst`), and `lang/` catalogs beside the binary. A drift
+guard (`shipped_default_cfg_matches_config_script`) fails if `xyscript-default.cfg` no longer matches a
+fresh instance.
+
 ## Windows
 
 Nothing to do — `cargo build --release -p xyscript-gui` embeds `assets/xyscript.ico` into the

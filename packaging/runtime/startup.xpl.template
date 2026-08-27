@@ -1,0 +1,32 @@
+# startup.xpl.template -- a documented starting point for your own startup.xpl.
+#
+# Copy this file to `startup.xpl` (next to the XyScript program) and uncomment the
+# lines you want. XyScript runs `startup.xpl` automatically at launch, from the
+# folder the program itself lives in ($XSDIR). Because the working directory starts
+# at $XSDIR, the plain relative paths below resolve against THAT folder -- so you can
+# zip the whole folder, move it to another machine, unzip it, and everything still
+# loads, the same on Windows, macOS, and Linux.
+#
+# Lines beginning with '#' are ignored.
+
+# --- Shelling to the operating system -------------------------------------
+# TRUST 0 blocks the `X`/shell verbs; TRUST 1 allows them:
+# trust 0
+
+# --- Keyboard map ---------------------------------------------------------
+# Load your key bindings from a .kbd file sitting beside this one:
+# loadkbd mykeys.kbd
+
+# --- Configuration & colour theme -----------------------------------------
+# Load saved settings (colours, toggles), then apply a theme preset or your own:
+# loadcfg mysettings.cfg
+# theme themes/foolscap.xpl
+
+# --- Auto-replace & libraries ---------------------------------------------
+# loadar mypairs.ar
+# loadlib mylib.lib
+
+# --- Where to start editing ----------------------------------------------
+# You start in the program folder. To begin in your documents instead,
+# uncomment and set a path (absolute, or ~ for your home folder):
+# cd ~/Documents

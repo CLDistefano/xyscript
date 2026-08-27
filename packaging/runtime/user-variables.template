@@ -1,0 +1,83 @@
+#####  User Variables for the XyScript User Library (xyscript.lib)  #####
+## Copy this file to `user-variables.xpl`, fill in the values you use, then
+## enable it by uncommenting `run user-variables.xpl` in `startup.xpl`.
+## The values below are blank placeholders -- set the ones the routines you
+## use actually need; leave the rest empty. Paths may use / or \ on Windows.
+# ----------------------------------------------------------------- #
+
+# Backup directory (see SAB)
+SET BackupDir = ""
+
+# Temp-file directory (default: a `_tmp` folder beside the program)
+SET TempDir = $XSDIR . $DC . "_tmp"
+
+# Country code
+SET CountryCode = "us"
+
+# Deletions archive file (see DELAR)
+SET DelArchiveFile = ""
+
+# Directory list (see D)
+SET DirList = ""
+
+# Email quote symbol
+SET Email_quote_symbol = ">"
+
+# External editors (see XE, XE2, XE3) -- full path to each program
+SET ExternalEditor = ""
+SET ExternalEditor2 = ""
+SET ExternalEditor3 = ""
+
+# Log file (see LOG)
+SET Logfile = ""
+
+# PDF editor (see PDFEDIT)
+SET PDFeditor = ""
+
+# PDF readers (see PDFREAD, PDFREAD2)
+SET PDFreader = ""
+SET PDFreader2 = ""
+
+# POP mail directory
+SET POPdir = ""
+
+# Path to Locate.exe
+SET Path_to_Locate_exe = ""
+
+# Path to the Hunspell executable
+SET Path_to_Hunspell = ""
+
+# Hunspell dictionaries ("d1,d2,...")
+SET Hunspell_dicts = ""
+
+# OED lookup app
+SET OEDbat = ""
+
+# Hex editors
+SET HxDexe = ""
+SET wxexe = ""
+
+# Version-history directories (see VERSA, VERS)
+SET VerSA_Path = ""
+SET VerSA_Archive_Path = ""
+
+# XyWrite program directory
+SET XyDIR = ""
+
+# XyWWWeb .\U2EXTRAS directory
+SET U2Extras = ""
+
+##--------------------------------------##
+### DO NOT MODIFY the following code ###
+##--------------------------------------##
+# Temp-file directory
+SET tmp = $XSDIR . $DC . "_tmp"
+IF NOT Exists($tmp) X/NV mkdir $tmp
+# Null file
+IF "$OS" == "windows"
+	SET nil = "nul"
+ELSE
+	SET nil = "null"
+EI
+PR User variables are set.
+EXIT
