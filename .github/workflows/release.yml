@@ -103,13 +103,14 @@ jobs:
         shell: bash
         run: |
           pkg="staged/${{ matrix.artifact }}"
-          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars"
+          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars" "$pkg/docs"
           cp "xyscript-gui/target/release/${{ matrix.bin }}" "$pkg/${{ matrix.exe }}"
           cp docs/i18n/*.lang "$pkg/lang/"
           cp themes/*.xpl "$pkg/themes/"
           cp packaging/runtime/* "$pkg/"
           cp examples/* "$pkg/examples/"
           cp grammars/*.xpl "$pkg/grammars/"
+          cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
       - name: Upload artifact
@@ -148,7 +149,7 @@ jobs:
         shell: bash
         run: |
           pkg="staged/xyscript-macos-universal"
-          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars"
+          mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars" "$pkg/docs"
           lipo -create -output "$pkg/xyscript" \
             xyscript-gui/target/aarch64-apple-darwin/release/xyscript-gui \
             xyscript-gui/target/x86_64-apple-darwin/release/xyscript-gui
@@ -159,6 +160,7 @@ jobs:
           cp packaging/runtime/* "$pkg/"
           cp examples/* "$pkg/examples/"
           cp grammars/*.xpl "$pkg/grammars/"
+          cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

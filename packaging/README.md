@@ -30,9 +30,11 @@ this kit with plain relative paths, so an unzipped release runs out of the box:
 
 Keep everything here ASCII (`SAVECFG` now emits ASCII comments) so the files edit cleanly in any editor.
 The release bundles also carry the repo's `themes/`, `grammars/` (syntax-highlight grammars you `RUN`),
-`examples/` (runnable sample `.xpl`/`.kbd`/`.lst`), and `lang/` catalogs beside the binary. A drift
-guard (`shipped_default_cfg_matches_config_script`) fails if `xyscript-default.cfg` no longer matches a
-fresh instance.
+`examples/` (runnable sample `.xpl`/`.kbd`/`.lst`), `lang/` catalogs, and a `docs/` subfolder
+(`manual.pdf`, `reference.pdf`, the `keyboard.png` chart, and `email.md`/`regex.md`/`run-commands.md`)
+beside the binary. The library's `kbd`, `man`, and `ref` routines open `docs/keyboard.png`,
+`docs/manual.pdf`, and `docs/reference.pdf`. A drift guard (`shipped_default_cfg_matches_config_script`)
+fails if `xyscript-default.cfg` no longer matches a fresh instance.
 
 ## Windows
 
