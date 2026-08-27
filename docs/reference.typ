@@ -190,13 +190,15 @@ readable as #sv("CWD"). Change it with `CD`. To turn a finished document into a 
 use `TOPDF`: a `.typ` file is typeset with Typst, anything else rendered as Markdown
 (see `DOCTYPE`).
 
-#tip[At launch your working directory is wherever you started the program — a shortcut's
-"Start in", the shell you ran it from, or the program's own folder if you double-clicked.
-`startup.xpl` runs with that same #sv("CWD"), so a config load written with a *relative*
-path (`LOADCFG cld.cfg`) depends on how you launched. Make it certain: begin `startup.xpl`
-with `CD $XSDIR` — the program's own folder, where your config kit lives — or qualify each
-path with #sv("XSDIR"). It then loads the same way every time, including in a second window
-opened with `DUPVIEW/W`.]
+#tip[At launch your working directory is the program's *own folder* — the directory the
+executable sits in, also readable as #sv("XSDIR") — regardless of how you started it (a
+shortcut, a shell, or a double-click). `startup.xpl` runs from there, so a config load written
+with a *relative* path (`LOADCFG cld.cfg`, `LOADKBD mykeys.kbd`) resolves against the folder
+your config kit lives in, the same way every time and on every platform — which is what lets
+you zip the whole folder, move it to another machine, and have it just run. `CD` moves you from
+there (a good last line for `startup.xpl` if you want to land in your documents), absolute paths
+always work, and #sv("XSDIR") names the folder explicitly if you have since `CD`-ed away. A second
+window opened with `DUPVIEW/W` boots the same way, then restores the parent's current directory.]
 
 == Finding and changing text
 
@@ -1124,7 +1126,7 @@ plain alphabetical index.
 == Files and the program
 
 / #sv("FI") / #sv("FP"): the active document's file name (no folder) / its full path.
-/ #sv("CWD") / #sv("PA"): the editor's working directory (`$PA` is a synonym).
+/ #sv("CWD") / #sv("PA"): the editor's working directory (`$PA` is a synonym). At launch it defaults to #sv("XSDIR") — the program's own folder — not the directory you started it from; `CD` changes it.
 / #sv("DC"): the operating system's folder-separator character (`\` or `/`).
 / #sv("NEWLINE"): the document's line ending — `LF` or `CRLF`.
 / #sv("NL"): the document's line-ending *characters* (a real newline) — the character form of #sv("NEWLINE"), for building text or file content that matches the document. (A string `\n` escape is always a lone LF; #sv("NL") is `\r\n` in a CRLF document.) New documents adopt the OS default.

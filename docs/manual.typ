@@ -966,6 +966,18 @@ against your *working directory* — shown on the status line and readable as #r
 #raw("CD"); on Windows a bare drive letter (#raw("CD D:")) switches drives. Relative paths are relative
 to #raw("$CWD"); absolute and `~`-style paths work too.
 
+When the app starts, #raw("$CWD") is set to *its own folder* — the directory the XyScript executable
+sits in, also readable as #raw("$XSDIR") — not whatever directory you happened to launch it from. That
+is what makes XyScript *portable*: put the program and its companions (your #raw("startup.xpl"), keyboard
+maps, themes, libraries) in one folder, zip it, drop it on another machine, unzip, and it just runs — a
+relative #raw("LOADKBD mykeys.kbd") or #raw("OPEN notes.txt") in #raw("startup.xpl") resolves against
+that folder, the same on Windows, macOS, and Linux. From there, #raw("CD") to wherever you keep your
+documents (a good last line for #raw("startup.xpl")), or open them by absolute path.
+
+#tip("Portability in one sentence")[Everything the program needs can live beside the executable and be
+named with plain relative paths; #raw("$XSDIR") always points there, so #raw("THEME $XSDIR/themes/foolscap.xpl")
+is an explicit way to reach a companion file no matter where you have since #raw("CD")-ed.]
+
 #tip("On Windows, prefer forward slashes in paths")[XyScript accepts #raw("/") and #raw("\\")
 interchangeably as path separators, so #raw("C:/reports/q3.typ") and #raw("C:\\reports\\q3.typ") name
 the same file. Forward slashes are the safer habit, because in a few places — inside a quoted string
