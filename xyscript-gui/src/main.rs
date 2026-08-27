@@ -1065,6 +1065,23 @@ mod menu_tests {
     use super::*;
 
     #[test]
+    fn gui_boots_with_cwd_at_the_exe_dir() {
+        // Portable-folder model: a GUI boot defaults `$CWD` to the executable's own directory ($XSDIR),
+        // not the launch dir — so relative paths in startup.xpl resolve against the app folder. (No
+        // startup.xpl sits beside the test binary, so nothing CDs away before we check.)
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.to_path_buf()))
+            .expect("current_exe has a parent");
+        let app = GuiApp::new();
+        assert_eq!(
+            app.editor.cwd(),
+            exe_dir.to_string_lossy(),
+            "GUI boot should set $CWD to $XSDIR (the exe dir)"
+        );
+    }
+
+    #[test]
     fn discover_langs_skips_english_reads_endonyms_and_dedups() {
         let base = std::env::temp_dir().join(format!("xyscript-langdisc-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);
@@ -2349,6 +2366,17 @@ impl GuiApp {
         let mut editor = XyEditor::new(km.clone());
         // Personal dictionary (`LEARN`): load `xyscript-dict.txt` beside the executable, if present.
         editor.load_learned_words();
+        // Portable-folder model (XyWrite-style): default the working directory to the app's OWN folder
+        // (`$XSDIR`, the executable's directory), NOT the arbitrary launch directory the OS handed us —
+        // and do it BEFORE `startup.xpl` runs. So a relative `LOADKBD mykeys.kbd` / `THEME themes/…` /
+        // `OPEN notes.txt` in startup resolves against the folder the binary sits in: zip the folder,
+        // plant it on any machine, unzip, and it just runs, regardless of how it was launched. `CD`
+        // navigates away from here; an explicit `--cwd` (applied AFTER startup, in `main`) still wins;
+        // absolute paths are unaffected. Headless `--run`/`RUN/BG` children keep the launch cwd (they're
+        // shell-invoked, where cwd is meaningful) — this default is GUI-boot only.
+        if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+            editor.set_cwd(dir);
+        }
         // Startup script: `-s <path>` if given, else `startup.xpl` beside the executable. It may
         // `LOADKBD` (→ a fresh operative keymap), set config, `AUTOCFG`, etc.
         let args: Vec<String> = std::env::args().skip(1).collect();

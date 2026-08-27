@@ -3583,10 +3583,12 @@ impl AppHost {
     ///   * opens `abs` at `--goto <line>` (absolute path — independent of its working directory),
     ///   * runs the SAME startup script via `-s` (covers a parent booted from an explicit `-s <file>`
     ///     not beside the exe — otherwise the child auto-discovers nothing and comes up with defaults),
-    ///   * boots in the parent's LAUNCH directory (`boot_cwd`) so the startup's RELATIVE config kit
-    ///     (`loadcfg cld.cfg`, `loadkbd CLD.kbd`, `loadlib …`) resolves exactly as it did for the parent,
+    ///   * defaults `$CWD` to its own `$XSDIR` before startup (the GUI-boot portable-folder default), so
+    ///     the startup's RELATIVE config kit (`loadcfg cld.cfg`, `loadkbd CLD.kbd`, `loadlib …`) resolves
+    ///     against the app folder exactly as it did for the parent (the child spawns in `boot_cwd`, but
+    ///     that OS dir no longer governs config resolution — `$XSDIR` does),
     ///   * then has its `$CWD` restored to the parent's CURRENT working dir via `--cwd` (applied AFTER
-    ///     startup runs, so it overrides any `cd` the startup performed).
+    ///     startup runs, so it overrides both that default and any `cd` the startup performed).
     fn dupview_child_command(&self, abs: &Path, line: usize) -> (Vec<std::ffi::OsString>, PathBuf) {
         use std::ffi::OsString;
         let mut args: Vec<OsString> = vec![
