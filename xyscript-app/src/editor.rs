@@ -10794,6 +10794,23 @@ mod tests {
     }
 
     #[test]
+    fn console_bare_drive_letter_is_intercepted_not_shelled() {
+        // A bare drive letter (`D:`) at the Console prompt must change the drive like it does at the
+        // command line — applied to the Console's own `$CWD` so it persists — NOT sent to a subshell
+        // whose drive change would vanish (the "changing the drive letter doesn't take" bug). `Z:`
+        // almost certainly doesn't exist, so the change errors; the point is that it is INTERCEPTED
+        // (no shell job spawned), which is exactly what lets a real drive change take effect.
+        let mut e = ed();
+        e.run_command("TRUST 1"); // with shell enabled, the OLD code would spawn a job for `z:`
+        console_run(&mut e, "z:");
+        assert_eq!(
+            e.job_count(),
+            0,
+            "a bare drive letter must be intercepted as a CD, not run as a shell command"
+        );
+    }
+
+    #[test]
     fn auto_replace_loads_and_fixes_the_word_behind_the_caret() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

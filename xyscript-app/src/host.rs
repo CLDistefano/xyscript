@@ -4812,15 +4812,21 @@ impl AppHost {
             match arg {
                 None => self.console_emit(&format!("{}\n", self.cwd.display())),
                 Some(dir) => {
-                    let target = self.resolve_path(dir);
-                    let canon = lexical_abs(&self.cwd, &target);
-                    if canon.is_dir() {
-                        self.cwd = canon;
-                        self.remember_current_drive();
-                    } else {
-                        self.console_emit(&format!("cd: not a directory: {}\n", target.display()));
+                    if let Err(e) = self.change_directory(dir) {
+                        self.console_emit(&format!("cd: {e}\n"));
                     }
                 }
+            }
+            self.console_write_prompt();
+            return;
+        }
+        // A BARE drive letter (`D:`) at the prompt switches drives the same as at the command line —
+        // applied to the Console's `$CWD` so it PERSISTS. (Left to the subshell, a `D:` would only
+        // change the child's drive and be lost — the "changing the drive letter doesn't take" bug.)
+        // A drive-qualified PATH (`D:\sub`) stays a runnable shell command, matching `cmd.exe`.
+        if bare_drive_letter(cmd).is_some() {
+            if let Err(e) = self.change_directory(cmd) {
+                self.console_emit(&format!("{cmd}: {e}\n"));
             }
             self.console_write_prompt();
             return;
@@ -7342,6 +7348,27 @@ impl AppHost {
         }
     }
 
+    /// Change `$CWD` to `path`, matching the `CD` verb exactly: a BARE drive letter (`D:`) goes to
+    /// that drive's REMEMBERED directory (per-drive, `cmd.exe`-style), any other path resolves against
+    /// `$CWD`; `.`/`..` are resolved lexically (no `canonicalize`, so a `subst`ed drive is preserved),
+    /// the target is verified to be a directory, and per-drive last-dir memory is kept. Returns the new
+    /// `$CWD` display string on success, or a short error message. Shared by the `CD` verb and the
+    /// Console prompt so `D:` / `cd …` behave identically in both.
+    fn change_directory(&mut self, path: &str) -> Result<String, String> {
+        let target = match bare_drive_letter(path) {
+            Some(d) => self.drive_current_dir(d),
+            None => self.resolve_path(path),
+        };
+        let canon = lexical_abs(&self.cwd, &target);
+        if !canon.is_dir() {
+            return Err(format!("not a directory: {}", canon.display()));
+        }
+        self.remember_current_drive(); // save the drive we're leaving
+        self.cwd = canon;
+        self.remember_current_drive(); // and keep the drive we've landed on current
+        Ok(self.cwd.display().to_string())
+    }
+
     /// The directory that roots the active document's Typst file resolution (`#image`/`#include`/
     /// `#read` in the preview + `TOPDF`): the document's own directory when it's saved, else `$CWD`.
     pub fn typst_doc_dir(&self) -> PathBuf {
@@ -9562,26 +9589,10 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("closed blind edit {name}")));
             }
             EditorOp::ChangeDir(path) => {
-                // A bare drive letter (`D:`) switches to that drive's REMEMBERED directory (per-drive,
-                // like `cmd.exe`), not its root. `D:\`, `D:\sub`, `D:rel`, `.`/`..` resolve normally.
-                let target = match bare_drive_letter(&path) {
-                    Some(d) => self.drive_current_dir(d),
-                    None => self.resolve_path(&path),
+                return match self.change_directory(&path) {
+                    Ok(cwd) => Ok(Value::str(format!("cwd: {cwd}"))),
+                    Err(e) => Err(XplError::trappable(format!("CD: {e}"))),
                 };
-                // Resolve `.`/`..` lexically and verify existence — WITHOUT `canonicalize`, which
-                // would rewrite a `subst`ed drive to its backing path. `is_dir()` still follows the
-                // SUBST/symlink to confirm the target really is a directory.
-                let canon = lexical_abs(&self.cwd, &target);
-                if !canon.is_dir() {
-                    return Err(XplError::trappable(format!(
-                        "CD: not a directory: {}",
-                        canon.display()
-                    )));
-                }
-                self.remember_current_drive(); // save the drive we're leaving
-                self.cwd = canon;
-                self.remember_current_drive(); // and keep the drive we've landed on current
-                return Ok(Value::str(format!("cwd: {}", self.cwd.display())));
             }
             EditorOp::Dir { path, opts } => {
                 let (base, filter) = self.resolve_dir_spec(path.as_deref());
