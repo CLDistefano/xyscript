@@ -57,10 +57,6 @@ SET OEDbat = ""
 SET HxDexe = ""
 SET wxexe = ""
 
-# Version-history directories (see VERSA, VERS)
-SET VerSA_Path = ""
-SET VerSA_Archive_Path = ""
-
 # XyWrite program directory
 SET XyDIR = ""
 

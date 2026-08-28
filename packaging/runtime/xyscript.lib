@@ -677,47 +677,6 @@ SUB sd
 	EI
 ENDSUB
 
-SUB vers
-	# DOC: View/restore files from version history archive
-	LOCAL exe
-	SET exe = $U2extras . $DC . "VerHist.exe " . $VerSA_Path
-	IF $1 SET exe = $exe." ".$1
-	X/NV $exe
-ENDSUB
-
-SUB versionsA
-	# DOC: View/restore files from version history archive
-	LOCAL exe
-	SET exe = $U2extras . $DC . "VerHist.exe " . $VerSA_Archive_Path
-	IF $1 SET exe = $exe." ".$1
-	X/NV $exe
-ENDSUB
-
-SUB VerSA
-	# DOC: Save file to version history (versave.exe must be running)
-	QUIET/NV
-	SA
-	LOCAL fn infx sufx
-	SET fn = $FP
-	SET infx = ":" . $DC
-	SET fn = REPLACE($fn, $infx, "}")
-	SET fn = REPLACE($fn, "!", "!!")
-	SET fn = REPLACE($fn, $DC, "!")
-	SET sufx = Date("yyyymmdd").Time("hhmmss")
-	SET sufx = REPLACE($sufx, "-", "")
-	SET sufx = REPLACE($sufx, ":", "")
-	SET sufx = REPLACE($sufx, ".", "")
-	SET fn = $fn . "-" . $sufx
-	SET dname=""; SET fname=""; SET ext=""
-	SET fn = $VerSA_Path . $DC . $fn
-	X copy/y $FP $fn
-	IF NOT $ERROR
-		PR Version history saved
-	ELSE
-		PR VerSA: Error
-	EI
-ENDSUB
-
 #####  Window/Tab Management  #####
 
 SUB panetoggle
