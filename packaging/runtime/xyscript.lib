@@ -552,7 +552,7 @@ SUB go
 	cd $pth
 	if not $error; th; bc; exit; ei
 	set pth = $CWD.$DC.replace($astr, " ", $DC)
-	cd $pth; if not $error; th; bc; return; ei
+	cd $pth; if not $error; th; bc; return; ei
 	PR Path not found.
 ENDSUB
 
@@ -1556,6 +1556,29 @@ SUB nthday
 	if not isdate($yyy, $mnh, $dyy) set $dyy = 0
 	return $dyy
 ENDSUB
+
+SUB easter
+ 	# DOC: Calculate the date of Easter for any year (Oudin's algorithm)
+ 	# DOC: Usage: EASTER [yyyy]  (default: current year)
+ 	quiet
+ 	local c dy i j k l mn n yr disp
+ 	set disp = 1
+ 	if contains(upper($*), "/NV") set disp = 0
+ 	if $1; set yr = $1; else; set yr = $year; ei
+ 	set c = $yr/100
+ 	set n = $yr - 19 * ($yr/19)
+ 	set k = ($c - 17)/25
+ 	set i = $c - $c/4 - ($c - $k)/3 + 19*$n + 15
+ 	set i = $i - 30 * ($i/30)
+ 	set i = $i - ($i/28) * (1 - ($i/28) * (29/($i + 1)) * ((21 - $n)/11))
+ 	set j = $yr + $yr/4 + $i + 2 - $c + $c/4
+	set j = $j - 7 * ($j/7)
+	set l = $i - $j
+	set mn = 3 + ($l + 40)/44
+	set dy = $l + 28 - 31 * ($mn/4)
+	if $disp pr $mn/$dy/$yr
+	return [$mn, $dy, $yr]
+ ENDSUB
 
 SUB clone
 	# DOC: Clone the current XyScript session:
