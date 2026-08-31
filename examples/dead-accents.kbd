@@ -1,5 +1,11 @@
-;;;;; Dead accent KBD table for selected characters
-;;;;; Add these bindings to your KBD file as needed
+;;;;; Dead-accent key bindings -- REFERENCE SNIPPET, not a loadable keymap.
+;;;;;
+;;;;; This is a FRAGMENT of key bindings, not a complete keyboard file: loading it
+;;;;; on its own with LOADKBD fails (a full .kbd needs a KEYS= header and more).
+;;;;; COPY the bindings below into your own .kbd file as needed.
+;;;;;
+;;;;; For a ready-to-run version that needs no keymap edits, use the companion
+;;;;; script instead:   RUN dead-accents.xpl
 
 ;Comment        ; dead accent: acute
 unmod '         :40=PUT ';RK char;SWITCH $char;CASE "a";BD;PUT á;CASE "A";BD;PUT Á;case "e";BD;PUT é;CASE "E";BD;PUT É;CASE "i";BD;PUT í;CASE "I";BD;PUT Í;case "o";BD;PUT ó;CASE "O";BD;PUT Ó;CASE "u";BD;PUT ú;CASE "U";BD;PUT Ú;CASE "y";BD;PUT ý;CASE "Y";BD;PUT Ý;DEFAULT;PUT $char;ESW;CLEAR char
