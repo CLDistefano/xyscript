@@ -1,0 +1,8 @@
+Current Weather at Select International Airports
+Reported compiled as of |$da $tm||set url="https:/tgftp.nws.noaa.gov/data/observations/metar/decoded"|
+
+|X curl $url/KJFK.TXT||set x=$XO;set w=lines($x);set weath="";for l in $w;if index($l, "ob: ")==0 break;set weath=$weath.$l."\n";ef;$weath|
+|X curl $url/CYYZ.TXT||set x=$XO;set w=lines($x);set weath="";for l in $w;if index($l, "ob: ")==0 break;set weath=$weath.$l."\n";ef;$weath|
+|X curl $url/PHNL.TXT||set x=$XO;set w=lines($x);set weath="";for l in $w;if index($l, "ob: ")==0 break;set weath=$weath.$l."\n";ef;$weath|
+|X curl $url/EGLL.TXT||set x=$XO;set w=lines($x);set weath="";for l in $w;if index($l, "ob: ")==0 break;set weath=$weath.$l."\n";ef;$weath|
+|X curl $url/EFHK.TXT||set x=$XO;set w=lines($x);set weath="";for l in $w;if index($l, "ob: ")==0 break;set weath=$weath.$l."\n";ef;$weath|

@@ -1,0 +1,25 @@
+|$(date(yyyy-mm-dd))| |$(time(h:mm PM))| |C1 1|
+
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+This is line number |C1|.
+
+|C1 "(a)"||C2 "\t(1)"||C3 "\t\t(A)"||C4 "\t\t\t(ir)"||C5 "\t\t\t\t(Ir)"|
+Section 1.
+|C1| text text
+|C2| text text
+|C2| text text
+|C3| text text
+|C3| text text
+|C4| text text
+|C4| text text
+|C5| text text
+|C5| text text
+
+end
