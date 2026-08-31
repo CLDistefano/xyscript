@@ -43,6 +43,30 @@ Nothing to do — `cargo build --release -p xyscript-gui` embeds `assets/xyscrip
 
 ## Linux
 
+### Runtime dependencies
+
+The Linux binary is dynamically linked against system libraries (winit for X11/Wayland + keyboard,
+wgpu for GL/Vulkan, rfd/GTK for file dialogs, fontconfig for text). A full desktop usually has them,
+but a **minimal or fresh install** (e.g. a new VM) often does not — the one most commonly missing is
+`libxkbcommon-x11-0` (winit's X11 keyboard integration), whose absence stops the app from starting.
+These are the runtime `.so` packages (the counterparts of the `-dev` packages the CI build installs);
+on Debian/Ubuntu:
+
+```sh
+sudo apt install \
+  libxkbcommon0 libxkbcommon-x11-0 \
+  libx11-6 libxcb1 libxcb-render0 libxcb-shape0 libxcb-xfixes0 \
+  libxrandr2 libxi6 libxcursor1 \
+  libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+  libgtk-3-0 libgl1 libfontconfig1
+```
+
+If XyScript fails to start with a missing-library error, install the named library (most often
+`sudo apt install libxkbcommon-x11-0`). A `.deb` built with `cargo bundle` declares these as
+dependencies, so `apt`/`dpkg` pulls them in automatically.
+
+### Launcher & icons
+
 The app sets its X11 `WM_CLASS` and Wayland app-id to `xyscript` at runtime, matching
 `linux/xyscript.desktop` (`StartupWMClass=xyscript`). To install the launcher + icons per-user:
 
