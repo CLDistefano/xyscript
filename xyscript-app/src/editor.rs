@@ -1521,6 +1521,19 @@ impl Editor {
         self.dispatch_with_args(src, &[], Some(label));
     }
 
+    /// The message from the last FAILED `LOADKBD` (`None` if the most recent load succeeded). The GUI
+    /// reads this after `run_startup` so a bad keymap load in `startup.xpl` surfaces on the status line
+    /// rather than being silently overwritten by later startup commands.
+    pub fn kbd_load_error(&self) -> Option<&str> {
+        self.host.kbd_load_error()
+    }
+
+    /// Take (consume) the last-failed-`LOADKBD` message — the GUI surfaces it once with priority so a
+    /// later command's feedback can't hide a bad keymap load, then normal feedback resumes.
+    pub fn take_kbd_load_error(&mut self) -> Option<String> {
+        self.host.take_kbd_load_error()
+    }
+
     /// Run an XPL command directly — the CMline's manual command path / fallback
     /// when a key isn't bound.
     pub fn run_command(&mut self, src: &str) {
@@ -9170,6 +9183,34 @@ mod tests {
         let mut e = ed();
         e.run_command("CD this-directory-does-not-exist-zzz");
         assert!(e.status_message().unwrap().starts_with("CD: not a directory"));
+    }
+
+    #[test]
+    fn loadkbd_failure_is_recorded_on_the_host_and_survives() {
+        // A bad LOADKBD sets a transient status that later startup commands (and nested LOADCFG/THEME
+        // runs) overwrite/clear, so it would vanish silently — no keyboard, no clue why. The failure is
+        // ALSO recorded on the host (`kbd_load_error`), which survives all of that so the GUI can surface
+        // it after startup. A later successful load clears it.
+        let base = std::env::temp_dir().join(format!("xyscript-loadkbd-fail-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let bad = base.join("bad.kbd");
+        std::fs::write(&bad, "notavalidline\n").unwrap(); // not a parseable keymap
+        // A valid config file: LOADCFG runs it as a NESTED script, which clears the interpreter's
+        // output/status channel — the exact thing that wiped the first (output-based) attempt.
+        let cfg = base.join("t.cfg");
+        std::fs::write(&cfg, "FGCOLOR 10 20 30\n").unwrap();
+
+        let mut e = ed();
+        // LOADKBD (fails), then a nested LOADCFG run and a normal command that clobber the transient status.
+        e.run_command(&format!("LOADKBD {}\nLOADCFG {}\nPR ok", bad.display(), cfg.display()));
+        let err = e.kbd_load_error().unwrap_or("");
+        assert!(
+            err.contains("LOADKBD") && err.contains("parse error"),
+            "the LOADKBD failure must be recorded on the host, got: {err:?}"
+        );
+
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

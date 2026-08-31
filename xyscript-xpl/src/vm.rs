@@ -1437,7 +1437,10 @@ impl Vm<'_, '_> {
             "LOADKBD" => {
                 let path = args.trim().to_string();
                 self.host_call(|h| h.load_kbd(&path))?;
-                // Confirm on success ($ERROR is cleared on entry and set by a failed load).
+                // Confirm on success ($ERROR is cleared on entry and set by a failed load). A FAILURE
+                // sets the transient status here AND is recorded on the host (`kbd_load_error`) so it
+                // survives to the end of a `startup.xpl` — where later commands (and nested `LOADCFG`/
+                // `THEME` runs) would otherwise overwrite/clear the status, hiding why there's no keyboard.
                 if !self.ctx.env.error {
                     *self.ctx.status = Some(format!("loaded keyboard from {path}"));
                 }

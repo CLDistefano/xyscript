@@ -2393,6 +2393,13 @@ impl GuiApp {
                 if let Some(fb) = editor.command_feedback() {
                     startup_status = fb;
                 }
+                // A failed `LOADKBD` in startup (no operative keymap) takes PRECEDENCE over the last
+                // command's feedback: the transient status it set was overwritten by later startup
+                // commands, so without this the user sees "config loaded" and no hint that the keyboard
+                // never loaded. The host records the failure so it survives to here.
+                if let Some(err) = editor.kbd_load_error() {
+                    startup_status = err.to_string();
+                }
                 if let Some(e) = editor.last_error() {
                     // `e` already self-locates (`<file>:<line>: …`) for a command error; keep a short
                     // "startup" tag for the console without repeating the full path.
@@ -8043,6 +8050,13 @@ impl GuiApp {
     /// the op-result status message. Each run clears these, so this reflects just that command;
     /// when there's nothing to show the status is left untouched.
     fn surface_command_feedback(&mut self) {
+        // A failed `LOADKBD` (e.g. in startup.xpl) wins over the following command's feedback: without
+        // this, a later `MSG`/`PR`/config command's result overwrites the status line and the bad
+        // keymap load vanishes silently. One-shot (consumed here) so normal feedback resumes afterward.
+        if let Some(err) = self.editor.take_kbd_load_error() {
+            self.status = err;
+            return;
+        }
         // `command_feedback` already applies QUIET (PR always shown; op-statuses/errors filtered).
         if let Some(s) = self.editor.command_feedback() {
             self.status = s;

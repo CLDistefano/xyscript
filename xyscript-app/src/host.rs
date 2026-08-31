@@ -2407,6 +2407,10 @@ pub struct AppHost {
     last_output: String,
     /// Full path of the last keymap loaded with `LOADKBD` (`$KB`); `None` until one loads.
     last_kbd: Option<PathBuf>,
+    /// The message from the last FAILED `LOADKBD`, or `None` if the most recent load succeeded. Recorded
+    /// on the host (not just the transient status line) so a `startup.xpl` keymap failure survives to be
+    /// surfaced after startup — later commands and nested `LOADCFG`/`THEME` runs can't clobber it.
+    last_kbd_error: Option<String>,
     /// The last feedback message surfaced to the status line (`$LS`); the editor records it.
     last_status_line: String,
     /// XPL awaiting execution by the editor after the current script returns (can't
@@ -2948,6 +2952,7 @@ impl AppHost {
             shell_trusted: false,
             last_rc: 0,
             last_kbd: None,
+            last_kbd_error: None,
             last_status_line: String::new(),
             last_output: String::new(),
             pending_run: Vec::new(),
@@ -7419,6 +7424,20 @@ impl AppHost {
         self.startup_path = path;
     }
 
+    /// The message from the last FAILED `LOADKBD` (`None` if the most recent load succeeded). The GUI
+    /// reads this after `startup.xpl` runs so a bad keymap load surfaces on the status line instead of
+    /// being overwritten by later startup commands.
+    pub fn kbd_load_error(&self) -> Option<&str> {
+        self.last_kbd_error.as_deref()
+    }
+
+    /// Take (and clear) the last-failed-`LOADKBD` message — a ONE-SHOT so the GUI can surface it with
+    /// priority the first time it would otherwise be overwritten by a later command's feedback, then
+    /// let normal feedback resume. Cleared anyway by a subsequent successful load.
+    pub fn take_kbd_load_error(&mut self) -> Option<String> {
+        self.last_kbd_error.take()
+    }
+
     /// Where a bare `X:` drive change should land: the session's remembered directory for that drive
     /// if it still exists, else the OS's per-drive current directory (first visit), else the drive
     /// root. Keeps the drive letter intact (SUBST-safe).
@@ -8919,10 +8938,13 @@ impl Host for AppHost {
             LoadOutcome::Installed(km) => {
                 self.pending_kbd = Some(km);
                 self.last_kbd = Some(self.resolve_path(path)); // $KB (resolved full path)
+                self.last_kbd_error = None; // a good load clears any prior failure
                 Ok(())
             }
             LoadOutcome::Rejected(e) => {
-                Err(XplError::trappable(format!("LOADKBD {path}: {e:?}")))
+                let msg = format!("LOADKBD {path}: {e}");
+                self.last_kbd_error = Some(msg.clone()); // survives to the startup status (see field doc)
+                Err(XplError::trappable(msg))
             }
         }
     }
