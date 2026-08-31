@@ -2717,7 +2717,8 @@ ES")
 == The examples directory
 
 The snippets above are the small end of the idea. The project's #raw("examples/") folder ships
-complete, ready-to-run samples — a whole keyboard layout, input helpers, a styling demo — and they
+complete, ready-to-run samples — a whole keyboard layout, input helpers, a styling demo, #raw("PRINTEX")
+templates — and they
 repay a closer look for a reason past what each one happens to do: every one is assembled from the
 *same building blocks XyScript hands you*. Command verbs, keyboard files, string and regular-expression
 functions, the #raw("MDA") styling layer — XyScript's own features are built from exactly these, and so
@@ -2744,6 +2745,18 @@ What ships today:
   every match of a word at once with #raw("CARETALL"), append to every line of a list with
   #raw("CARETSPLIT"), then read the whole caret set back from a script through the #raw("$M…") mirror
   arrays (#raw("FOR i, piece IN $MSE")). See the *Working with Multiple Carets* chapter.
+/ #raw("lines.txt"): a *#raw("PRINTEX") template*. Open it and run #raw("PRINTEX") (see *Filling in a
+  template*) to expand every #raw("|…|") *field* in place: #raw("|$(date(yyyy-mm-dd))|") and
+  #raw("|$(time(h:mm PM))|") stamp today's date and time, #raw("|C1|") auto-numbers the lines (1, 2, 3…),
+  and a row of *decorated counters* — #raw("|C1 \"(a)\"|") for letters, its siblings for numbers and Roman
+  numerals — renders a multi-level outline that renumbers itself on every expansion. Fields only: no live
+  code, no #raw("TRUST") needed.
+/ #raw("weather.txt"): a *live #raw("PRINTEX") template* — the powerful end of the same idea. Under
+  #raw("TRUST 1") a #raw("|…|") field can hold real XPL, and here each one shells out to #raw("curl") for a
+  current METAR report from a NOAA airport station, captures the output (#raw("$XO")), and a short loop
+  pulls out the decoded observation. Run #raw("PRINTEX") and the page fills itself with live conditions at
+  JFK, Toronto, Honolulu, Heathrow, and Helsinki. (Needs #raw("TRUST 1") and a network connection — a
+  field runs code only when you trust it.)
 
 #tip("The point is not the samples — it is that you could have written them")[Everything in
 #raw("examples/") is made of verbs and files this manual documents: #raw("LOADKBD"), #raw("SUB"),
