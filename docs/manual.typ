@@ -2732,6 +2732,11 @@ What ships today:
   phonetically-nearest Cyrillic letter (#kbd("K") → к, #kbd("T") → т), with smart digraphs for the
   sounds English spells with two letters (#kbd("S") then #kbd("H") → ш). An entire alternate alphabet,
   start to finish, in one #raw(".kbd") file — load it with #raw("LOADKBD examples/russian-mnemonic.kbd").
+/ #raw("xyscript-dvorak.kbd"): the *Dvorak* keyboard layout — the full shipped keymap
+  (#raw("xyscript-internal.kbd")) with its letter keys remapped to Dvorak, a drop-in alternate for Dvorak
+  typists. Load it with #raw("LOADKBD examples/xyscript-dvorak.kbd") (and #raw("CLEARKBD") to return to the
+  default). Where #raw("russian-mnemonic.kbd") builds a layout from scratch, this shows the other route:
+  take the keymap XyScript already ships and re-letter it.
 / #raw("dead-accents.kbd") + #raw("dead-accents.xpl"): *dead-accent* composition. Press an accent —
   #raw("'") acute, #raw("`") grave, #raw("~") tilde, #raw("\"") umlaut, #raw("^") circumflex, #raw(",")
   cedilla/ogonek — then a letter, and the two combine into é, ñ, ü, ç. The keyboard file wires the
