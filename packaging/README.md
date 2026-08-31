@@ -90,6 +90,21 @@ cargo bundle --release                        # reads [package.metadata.bundle] 
 
 ## macOS
 
+### First run (Gatekeeper)
+
+The released macOS binary is **unsigned and un-notarized**, so Gatekeeper blocks it on first launch
+("cannot be opened because it is from an unidentified developer", or "is damaged" for a quarantined
+download). To run it anyway, either right-click the binary (or `XyScript.app`) in Finder and choose
+**Open** (then confirm), or clear the quarantine flag from a terminal:
+
+```sh
+xattr -dr com.apple.quarantine /path/to/xyscript        # or .../XyScript.app
+```
+
+Signing + notarization (a paid Apple Developer step) would remove this prompt; see the notes below.
+
+### Icon & `.app` bundle
+
 `assets/xyscript.icns` is a multi-resolution icon (16–1024 px, PNG-backed). Build a `.app` bundle:
 
 ```sh
