@@ -1403,6 +1403,20 @@ mod menu_tests {
     }
 
     #[test]
+    fn parse_bare_visual_line_edge_accepts_only_bare_lb_le() {
+        assert_eq!(parse_bare_visual_line_edge("LB"), Some((false, false)));
+        assert_eq!(parse_bare_visual_line_edge("le"), Some((true, false)));
+        assert_eq!(parse_bare_visual_line_edge("LE SEL"), Some((true, true)));
+        assert_eq!(parse_bare_visual_line_edge("lb sel"), Some((false, true)));
+        // Anything else — the LOGICAL edges EL/ER, an arg, or a chain — runs as written.
+        assert_eq!(parse_bare_visual_line_edge("EL"), None);
+        assert_eq!(parse_bare_visual_line_edge("ER"), None);
+        assert_eq!(parse_bare_visual_line_edge("LE 2"), None);
+        assert_eq!(parse_bare_visual_line_edge("LE ; PUT x"), None);
+        assert_eq!(parse_bare_visual_line_edge("LEADING"), None);
+    }
+
+    #[test]
     fn cmline_lu_ld_moves_by_visual_row_not_logical_line() {
         let mut app = GuiApp::new();
         app.editor
@@ -1427,6 +1441,38 @@ mod menu_tests {
         );
         // Submitting a motion lands focus back in the document (not stuck on the cmline).
         assert!(!app.editor.cmline_open(), "a submitted motion returns focus to the document");
+    }
+
+    #[test]
+    fn cmline_le_lands_at_the_visual_row_edge_not_the_logical_line_end() {
+        let mut app = GuiApp::new();
+        app.editor
+            .run_command(r#"INSERT "alpha bravo charlie delta echo foxtrot golf hotel india juliet""#);
+        app.editor.run_command(r#"INSERT "\nsecond""#);
+        app.editor.run_command("TF"); // caret at offset 0, first visual row of the wrapped line
+        app.render_canvas(200, 500); // narrow → line 0 wraps into several visual rows
+        let first_line_len = app.editor.document().text().find('\n').unwrap();
+        // Type `LE` INTO the command line and submit: it must land at the END of the first VISUAL row
+        // (the wrap point) — strictly inside the logical line — not at the logical line end.
+        app.editor.open_cmdline();
+        app.editor.insert_str("LE");
+        assert!(app.try_cmline_visual_line_edge(), "bare cmline LE is intercepted as a visual edge");
+        app.render_canvas(200, 500);
+        let after = app.editor.document().cursor();
+        assert!(after > 0, "cmline LE advanced past the row start");
+        assert!(
+            after < first_line_len,
+            "cmline LE landed at the wrapped-row end (offset {after} < {first_line_len}), \
+             not the logical line end"
+        );
+        assert!(!app.editor.cmline_open(), "a submitted edge motion returns focus to the document");
+        // And a separately-submitted edit now lands at that visual spot: PUT a marker, and it sits
+        // inside the first logical line (splitting the wrapped row), not appended at its logical end.
+        app.editor.run_command("BC"); // blank + focus the cmline (it still held "LE")
+        app.editor.insert_str("PUT ~");
+        app.editor.submit_cmdline();
+        let marker = app.editor.document().text().find('~').unwrap();
+        assert_eq!(marker, after, "the edit landed exactly at the visual-row edge the caret was moved to");
     }
 
     #[test]
@@ -1953,6 +1999,27 @@ fn parse_bare_visual_vmotion(xpl: &str) -> Option<(bool, bool)> {
         _ => return None,
     };
     Some((down, extend))
+}
+
+/// Parse a bare visual LINE-EDGE command — `LB`/`LE`, optionally followed by `SEL` (extend).
+/// Returns `Some((end, extend))` — `end` = true for `LE` (wrapped-row END), false for `LB` (row
+/// START) — for exactly those forms, else `None` (an argument, a `;`-chain, or another verb).
+/// Lets a bare `LB`/`LE` typed into the cmline resolve to the wrapped-row edge SYNCHRONOUSLY, so a
+/// separately-submitted edit lands there, instead of the engine's logical fallback + a render-time
+/// refine that a chained edit would race. Mirrors [`parse_bare_visual_vmotion`].
+fn parse_bare_visual_line_edge(xpl: &str) -> Option<(bool, bool)> {
+    let mut words = xpl.split_whitespace();
+    let end = match words.next().map(|w| w.to_ascii_uppercase()).as_deref() {
+        Some("LB") => false,
+        Some("LE") => true,
+        _ => return None,
+    };
+    let extend = match words.next() {
+        None => false,
+        Some(w) if w.eq_ignore_ascii_case("SEL") && words.next().is_none() => true,
+        _ => return None,
+    };
+    Some((end, extend))
 }
 
 fn blit_rgba(dst: &mut [u8], dw: usize, dh: usize, src: &[u8], sw: usize, sh: usize, ox: usize, oy: usize) {
@@ -5293,6 +5360,28 @@ impl GuiApp {
         }
         self.editor.submit_cmline_visual_motion();
         self.visual_vmove(down, extend);
+        true
+    }
+
+    /// Enter-in-the-command-line counterpart for a bare `LB`/`LE` (± `SEL`): resolve the wrapped-row
+    /// edge SYNCHRONOUSLY here, so the caret is already at the visual start/end when the submit
+    /// returns and a separately-submitted edit (e.g. `PUT $NL`) lands there. The normal path runs the
+    /// verb through the VM, which only does the LOGICAL edge as a fallback and defers the visual
+    /// refine to the next render — too late for a chained edit. Returns true when handled (the caller
+    /// skips the normal submit). Hex/dir contexts keep their host handling. Mirrors
+    /// [`try_cmline_visual_vmotion`].
+    fn try_cmline_visual_line_edge(&mut self) -> bool {
+        let cmd = self.editor.command_line().text();
+        let (end, extend) = match parse_bare_visual_line_edge(&cmd) {
+            Some(v) => v,
+            None => return false,
+        };
+        if self.editor.hex_view() || self.active_is_dir_listing() {
+            return false;
+        }
+        let from = self.editor.document().cursor(); // the caret whose visual row we take the edge of
+        self.editor.submit_cmline_visual_motion();
+        self.visual_line_edge(end, extend, from);
         true
     }
 
@@ -8916,9 +9005,13 @@ impl GuiApp {
                     if self.editor.cmline_open() {
                         match key {
                             egui::Key::Enter => {
-                                // A bare `LU`/`LD` typed into the cmline is a VISUAL mover (like the
-                                // bound key / arrows); everything else submits through the VM.
-                                if !self.try_cmline_visual_vmotion() {
+                                // A bare `LU`/`LD` (vertical) or `LB`/`LE` (wrapped-row edge) typed
+                                // into the cmline resolves VISUALLY + synchronously here, so a
+                                // separately-submitted edit lands at the visual spot; everything else
+                                // submits through the VM.
+                                if !self.try_cmline_visual_vmotion()
+                                    && !self.try_cmline_visual_line_edge()
+                                {
                                     self.editor.submit_cmdline();
                                 }
                                 // Surface the command's feedback (PR/MSG output or op status).
