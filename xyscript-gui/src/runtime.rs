@@ -2600,12 +2600,14 @@ fn enter_submit_prefix(xpl: &str) -> Option<&str> {
 
 /// Whether `xpl`'s first word is a vertical/page motion verb the GUI handles VISUALLY (wrap-aware
 /// line move for arrows via [`try_visual_vmotion`], page move for PageUp/Down in the egui input
-/// path). An arrow/numpad-nav key bound to one of these is left to egui so it scrolls wrap-aware;
-/// a nav key bound to anything else is claimed by the keymap so the binding actually runs.
+/// path). An arrow/numpad-nav key bound to one of these is left to egui so it moves/scrolls
+/// wrap-aware. A nav key bound to anything else is claimed by the keymap so the binding runs —
+/// including the LOGICAL movers `UP`/`DOWN` (bind an arrow to them to get plain by-line motion),
+/// which are deliberately NOT here so they stay logical wherever they're delivered.
 fn is_gui_motion(xpl: &str) -> bool {
     matches!(
         xpl.split_whitespace().next().map(|w| w.to_ascii_uppercase()).as_deref(),
-        Some("LU") | Some("LD") | Some("UP") | Some("DOWN") | Some("PU") | Some("PD")
+        Some("LU") | Some("LD") | Some("PU") | Some("PD")
     )
 }
 
@@ -2795,13 +2797,14 @@ mod tests {
 
     #[test]
     fn only_gui_refined_motions_are_left_to_egui_on_nav_keys() {
-        // These fall through to egui's wrap-aware motion when bound to an arrow/nav key.
-        for m in ["UP", "DOWN", "LU", "LD", "PU", "PD", "UP SEL", "down sel"] {
+        // The VISUAL movers + page motion fall through to egui's wrap-aware motion on an arrow/nav key.
+        for m in ["LU", "LD", "PU", "PD", "lu sel", "LD SEL"] {
             assert!(is_gui_motion(m), "{m:?} should be a GUI-refined motion");
         }
-        // Anything else bound to a nav key belongs to the keymap and must run (the numpad/arrow
-        // binding bug: `80=GT` was being swallowed by the visual-motion interception).
-        for c in ["GT", "TH", "GH", "PR hi", "SE /x/", "HM", "BS", "TOP"] {
+        // Anything else bound to a nav key belongs to the keymap and must run — including the LOGICAL
+        // movers UP/DOWN (bind an arrow to them for by-line motion; they must NOT be swallowed as
+        // visual) and non-motion verbs (the numpad/arrow binding bug: `80=GT` was being swallowed).
+        for c in ["UP", "DOWN", "UP SEL", "down sel", "GT", "TH", "GH", "PR hi", "SE /x/", "HM", "BS", "TOP"] {
             assert!(!is_gui_motion(c), "{c:?} must be claimed by the keymap, not egui");
         }
     }
