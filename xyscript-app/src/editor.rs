@@ -12805,6 +12805,42 @@ mod tests {
         assert!(e.take_visual_edge().is_none());
     }
 
+    #[test]
+    fn reflow_hard_wraps_only_the_paragraph_at_the_caret() {
+        let mut e = ed();
+        e.run_command("NEWLINE lf"); // deterministic line ending for the assertions
+        e.run_command(r#"INSERT "short para\n\none two three four five six seven eight""#);
+        e.run_command("BF"); // caret at EOF → inside the second paragraph
+        e.run_command("REFLOW 12");
+        let text = e.document().text();
+        assert!(text.starts_with("short para\n\n"), "first paragraph untouched: {text:?}");
+        let second = &text["short para\n\n".len()..];
+        for line in second.split('\n') {
+            assert!(line.chars().count() <= 12, "line over width: {line:?}");
+        }
+        assert!(second.contains('\n'), "the caret's paragraph was wrapped");
+        assert_eq!(
+            second.replace('\n', " "),
+            "one two three four five six seven eight",
+            "words preserved, only re-wrapped"
+        );
+    }
+
+    #[test]
+    fn bare_reflow_uses_the_reflowwidth_default() {
+        let mut e = ed();
+        e.run_command("NEWLINE lf");
+        e.run_command("REFLOWWIDTH 12");
+        e.run_command(r#"INSERT "one two three four five six""#);
+        e.run_command("TF");
+        e.run_command("REFLOW"); // no width → the REFLOWWIDTH default (12)
+        let text = e.document().text();
+        assert!(text.contains('\n'), "bare REFLOW wrapped at the default width");
+        for line in text.split('\n') {
+            assert!(line.chars().count() <= 12, "line over width: {line:?}");
+        }
+    }
+
     // ---- command chaining (`;`) end-to-end through run_command -------------
 
     #[test]

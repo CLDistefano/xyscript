@@ -2028,6 +2028,67 @@ fn parse_lang_entries(text: &str) -> Vec<(String, String, Option<String>)> {
     out
 }
 
+/// Hard-wrap `text` to `width` columns for `REFLOW`. Each blank-line-delimited paragraph is
+/// collapsed (all runs of whitespace, line breaks included, become single spaces) and greedily
+/// re-wrapped so no line exceeds `width` columns — counting Unicode scalar values — without ever
+/// splitting a word (a word wider than the room left by the indent overflows onto its own line).
+/// The leading whitespace of a paragraph's FIRST line becomes the indent applied to every one of
+/// its wrapped lines. Blank lines (paragraph breaks) are preserved verbatim, and a trailing line
+/// break in the input is kept. `nl` is the line ending used to join. Pure + deterministic (no
+/// layout), so it behaves identically from the cmline, a chain, or a script.
+fn reflow_text(text: &str, width: usize, nl: &str) -> String {
+    let width = width.max(1);
+    let ended_with_newline = text.ends_with('\n');
+    // Logical lines, each stripped of a trailing '\r' (CRLF-safe). Drop the empty tail that
+    // `split('\n')` yields for a trailing newline — the newline is re-added at the end.
+    let mut lines: Vec<&str> =
+        text.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
+    if ended_with_newline {
+        lines.pop(); // the "" after the final '\n'
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].trim().is_empty() {
+            out.push(String::new()); // preserve a blank line (paragraph break)
+            i += 1;
+            continue;
+        }
+        // Gather one paragraph: consecutive non-blank lines. Its indent is the first line's leading
+        // whitespace, applied to every wrapped line.
+        let indent: String = lines[i].chars().take_while(|c| c.is_whitespace()).collect();
+        let mut words: Vec<&str> = Vec::new();
+        while i < lines.len() && !lines[i].trim().is_empty() {
+            words.extend(lines[i].split_whitespace());
+            i += 1;
+        }
+        let avail = width.saturating_sub(indent.chars().count()).max(1);
+        let mut line = String::new();
+        let mut line_cols = 0usize;
+        for w in words {
+            let wcols = w.chars().count();
+            if line_cols == 0 {
+                line.push_str(w); // first word always goes on the line (may overflow `avail`)
+                line_cols = wcols;
+            } else if line_cols + 1 + wcols <= avail {
+                line.push(' ');
+                line.push_str(w);
+                line_cols += 1 + wcols;
+            } else {
+                out.push(format!("{indent}{line}"));
+                line = w.to_string();
+                line_cols = wcols;
+            }
+        }
+        out.push(format!("{indent}{line}")); // the paragraph always had >= 1 word
+    }
+    let mut result = out.join(nl);
+    if ended_with_newline {
+        result.push_str(nl);
+    }
+    result
+}
+
 /// The `string-id -> value` table for a catalog (untranslated/blank entries dropped, so a partial
 /// catalog falls back to English). Anchors are discarded — [`parse_lang_entries`] keeps them.
 fn parse_lang_table(text: &str) -> HashMap<String, String> {
@@ -2675,6 +2736,9 @@ pub struct AppHost {
     /// Hanging indent (in spaces) for wrapped continuation rows (`WRAPHANG`; `$WRAPHANG`). 0 (default) =
     /// flush wrap. Applies only when `WRAP` is on and `WRAPINDENT` is off (which auto-hangs instead).
     wrap_hang: usize,
+    /// Default column width `REFLOW` hard-wraps to when given no explicit width (`REFLOWWIDTH`;
+    /// `$REFLOWWIDTH`; persisted by SAVECFG). 65 by default.
+    reflow_width: usize,
     /// Whether the blank "Untitled" scratch tab is auto-closed when a document is opened — and any
     /// leftover empty untitled tab pruned — so a scratch never lingers beside real files (it reappears
     /// when the last document closes). On (default). (`UNTITLEDTAB`; `$UNTITLEDTAB`.)
@@ -3123,6 +3187,7 @@ impl AppHost {
             show_one_tab: false,
             wrap: true,
             wrap_hang: 0,
+            reflow_width: 65,
             untitled_auto_close: true,
             goto_open: false, // default: keep the "already open" prompt
             mark_gutter: MarkGutterMode::On, // default: strip appears when the doc has bookmarks
@@ -8614,6 +8679,7 @@ impl AppHost {
         put(&mut s, "Show the tab strip when only one file is open -- on | off", format!("SHOWONETAB {}", if self.show_one_tab { "on" } else { "off" }));
         put(&mut s, "Word-wrap long lines to the window -- on | off (off shows a horizontal scrollbar)", format!("WRAP {}", if self.wrap { "on" } else { "off" }));
         put(&mut s, "Hanging indent for wrapped continuation rows, in spaces (0 = flush; ignored when WRAPINDENT is on)", format!("WRAPHANG {}", self.wrap_hang));
+        put(&mut s, "Default column width REFLOW hard-wraps to when given no width", format!("REFLOWWIDTH {}", self.reflow_width));
         put(&mut s, "Close the blank Untitled tab when a document is opened -- on | off", format!("UNTITLEDTAB {}", if self.untitled_auto_close { "on" } else { "off" }));
         put(&mut s, "Opening an already-open file switches to its tab instead of prompting -- on | off", format!("GOTOOPEN {}", if self.goto_open { "on" } else { "off" }));
         put(&mut s, "Bookmark gutter -- off | on (when bookmarked) | persist (always)", format!("MARKGUTTER {}", mark_gutter_word(self.mark_gutter)));
@@ -9106,6 +9172,22 @@ impl Host for AppHost {
                 // Empty `s` deletes the selection. No selection → nothing to replace.
                 if let Some((a, b)) = self.active().buffer().selection_span() {
                     self.active().replace_span(a, b, &s);
+                }
+            }
+            EditorOp::Reflow { width } => {
+                // Hard-wrap the selection, else the paragraph at the caret, to `width` columns as one
+                // undo unit. `paragraph_span` returns an empty range on a blank line (nothing to do).
+                let nl = self.active().line_ending().as_str().to_string();
+                let (a, b) = {
+                    let buf = self.active().buffer();
+                    buf.selection_span().unwrap_or_else(|| buf.paragraph_span())
+                };
+                if a < b {
+                    let text = self.active().buffer().slice(a, b);
+                    let reflowed = reflow_text(&text, width, &nl);
+                    if reflowed != text {
+                        self.active().replace_span(a, b, &reflowed);
+                    }
                 }
             }
             EditorOp::TypeText(s) => {
@@ -11924,6 +12006,10 @@ impl Host for AppHost {
                 self.wrap_hang = n;
                 return Ok(Value::str(format!("wrap hang: {}", self.wrap_hang)));
             }
+            EditorOp::SetReflowWidth(n) => {
+                self.reflow_width = n.max(1);
+                return Ok(Value::str(format!("reflow width: {}", self.reflow_width)));
+            }
             EditorOp::SetUntitledTab(opt) => {
                 self.untitled_auto_close = opt.unwrap_or(!self.untitled_auto_close);
                 // Turning it on should immediately tidy up any scratch tab already lingering.
@@ -12750,6 +12836,7 @@ impl Host for AppHost {
             "MARKS" => Some(Value::Int(self.active_doc().mark_count() as i64)),
             "MARK" => Some(Value::Int(if self.active_doc().mark_at_cursor() { 1 } else { 0 })),
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
+            "REFLOWWIDTH" => Some(Value::Int(self.reflow_width as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
             "GOTOOPEN" => Some(Value::Int(if self.goto_open { 1 } else { 0 })),
             "MARKGUTTER" => Some(Value::str(mark_gutter_word(self.mark_gutter))),
@@ -13375,6 +13462,49 @@ impl Host for AppHost {
 #[cfg(test)]
 mod tests {
     use super::fenced_block_at;
+    use super::reflow_text;
+
+    #[test]
+    fn reflow_wraps_words_to_width_without_splitting() {
+        let out = reflow_text("one two three four five six", 11, "\n");
+        // Greedy fill at 11 cols: "one two" (7), +"three"=13 > 11 → wrap.
+        assert_eq!(out, "one two\nthree four\nfive six");
+        for line in out.split('\n') {
+            assert!(line.chars().count() <= 11, "line over width: {line:?}");
+        }
+    }
+
+    #[test]
+    fn reflow_collapses_existing_line_breaks_and_whitespace() {
+        // Soft-broken lines + runs of spaces collapse to single spaces, then re-wrap.
+        let out = reflow_text("alpha   beta\ngamma\n\ndelta epsilon", 12, "\n");
+        assert_eq!(out, "alpha beta\ngamma\n\ndelta\nepsilon");
+    }
+
+    #[test]
+    fn reflow_preserves_first_line_indent_on_every_line() {
+        let out = reflow_text("    aaa bbb ccc ddd", 10, "\n");
+        // 4-space indent → 6 cols of room; each wrapped line carries the indent.
+        assert_eq!(out, "    aaa\n    bbb\n    ccc\n    ddd");
+    }
+
+    #[test]
+    fn reflow_keeps_blank_lines_and_a_trailing_newline() {
+        let out = reflow_text("aa bb\n\ncc dd\n", 80, "\n");
+        assert_eq!(out, "aa bb\n\ncc dd\n"); // paragraphs fit; structure + trailing NL intact
+    }
+
+    #[test]
+    fn reflow_overflows_a_word_longer_than_the_width() {
+        let out = reflow_text("hi supercalifragilistic bye", 8, "\n");
+        assert_eq!(out, "hi\nsupercalifragilistic\nbye"); // the long word sits alone, uncut
+    }
+
+    #[test]
+    fn reflow_honors_crlf_join() {
+        let out = reflow_text("one two three", 7, "\r\n");
+        assert_eq!(out, "one two\r\nthree");
+    }
 
     #[test]
     fn dupview_child_command_propagates_startup_and_boots_in_launch_dir() {

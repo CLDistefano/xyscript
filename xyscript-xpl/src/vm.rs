@@ -3748,6 +3748,41 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetWrapHang(n))?;
                 Ok(Flow::Next)
             }
+            // `REFLOWWIDTH <n>` — the default column width `REFLOW` uses when given no width (default
+            // 65). Bare reports the current value. `$REFLOWWIDTH`; persisted by SAVECFG.
+            "REFLOWWIDTH" => {
+                if args.trim().is_empty() {
+                    *self.ctx.status =
+                        Some(format!("reflow width: {}", self.special_str("REFLOWWIDTH")));
+                    return Ok(Flow::Next);
+                }
+                let n: usize = args.trim().parse().map_err(|_| {
+                    XplError::trappable(format!(
+                        "REFLOWWIDTH: expected a number, got {:?}",
+                        args.trim()
+                    ))
+                })?;
+                self.host_op(EditorOp::SetReflowWidth(n))?;
+                Ok(Flow::Next)
+            }
+            // `REFLOW [n]` — hard-wrap the selection (else the paragraph at the caret) to `n` columns,
+            // or the `REFLOWWIDTH` default when omitted. Collapses internal whitespace, never splits a
+            // word, keeps the first line's indent, and preserves blank-line paragraph breaks.
+            "REFLOW" => {
+                let width = if args.trim().is_empty() {
+                    self.special_str("REFLOWWIDTH").parse().unwrap_or(65)
+                } else {
+                    args.trim().parse().map_err(|_| {
+                        XplError::trappable(format!(
+                            "REFLOW: expected a column width, got {:?}",
+                            args.trim()
+                        ))
+                    })?
+                };
+                self.host_op(EditorOp::Reflow { width })?;
+                *self.ctx.status = Some(format!("reflowed to {width} columns"));
+                Ok(Flow::Next)
+            }
             // `UNTITLEDTAB on|off` (bare = toggle) — whether the blank "Untitled" scratch tab is closed
             // when a document is opened (and reappears when the last document is closed). On (default).
             // `$UNTITLEDTAB`.
@@ -5405,6 +5440,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.
     "DELSEL", "RW", "RL", "RLL", "RS", "RP", "RE",
+    // Reflow edits the document at the caret/selection — land the caret in the text.
+    "REFLOW",
     // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its

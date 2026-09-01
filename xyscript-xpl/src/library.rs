@@ -63,6 +63,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "CL", "CR", "LL", "LR", "PD", "PU", "HM", "BS",
     // Editor verbs (Stage 2).
     "BS", "DEL", "DELSEL", "LEFT", "RIGHT", "UP", "DOWN", "HOME", "END", "EL", "ER", "LB", "LE",
+    "REFLOW", "REFLOWWIDTH",
     "TOP",
     "BOTTOM", "TF", "BF", "UNDO", "REDO", "NEW", "NE", "OPEN", "READ", "CA", "ED", "EDIT", "BEDIT", "BCLOSE", "SAVE", "SA",
     "BUFNEXT", "BUFPREV", "BUFALT", "BUFGO", "GOFILE", "GOF", "LISTTABS",

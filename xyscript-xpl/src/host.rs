@@ -527,6 +527,15 @@ pub enum EditorOp {
     /// Hanging indent for wrapped continuation rows, in spaces (`WRAPHANG <n>`; 0 = flush, the default).
     /// Applies only when `WRAP` is on and `WRAPINDENT` is off. `$WRAPHANG`.
     SetWrapHang(usize),
+    /// The default column width `REFLOW` uses when given no explicit width (`REFLOWWIDTH <n>`;
+    /// default 65). `$REFLOWWIDTH`; persisted by `SAVECFG`.
+    SetReflowWidth(usize),
+    /// Reflow (hard-wrap) text to `width` columns: within each blank-line-delimited paragraph,
+    /// collapse internal whitespace and greedily re-wrap the words so no line exceeds `width`
+    /// columns (never splitting a word); the first line's indent is applied to every line, and
+    /// blank-line paragraph breaks are preserved. Acts on the selection, else the paragraph at the
+    /// caret. One undo unit. `REFLOW [n]`.
+    Reflow { width: usize },
     /// Toggle whether the pristine "Untitled" scratch tab is auto-closed when a document is opened
     /// (`UNTITLEDTAB on|off`; `None` toggles). On (default) closes it, and prunes any leftover empty
     /// untitled tabs, so a blank scratch never lingers beside real files; it reappears when the last

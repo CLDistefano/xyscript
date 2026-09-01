@@ -732,6 +732,27 @@ Three verbs change the case of the selection:
 With *no* selection, each acts on the single character under the cursor and then steps one character
 right — so you can sweep along a word, flipping characters as you go, by pressing the key repeatedly.
 
+== Reflowing to a column
+
+#raw("WRAP") is a *display* setting — it wraps long lines to fit the window without touching the text.
+When you want to bake wrapping into the text itself — hard line breaks at a fixed width, the way an
+email or a plain-text file wants them — use #raw("REFLOW"):
+
+/ #raw("REFLOW <n>"): re-wrap to `n` columns.
+/ #raw("REFLOW"): re-wrap to the #raw("REFLOWWIDTH") default (65 to start).
+/ #raw("REFLOWWIDTH <n>"): set that default (saved with your config; read it back as #raw("$REFLOWWIDTH")).
+
+It works on the selection if you have one, otherwise on the paragraph (delimited by blank lines) around
+the cursor — and a selection spanning several paragraphs reflows each and keeps the blank lines between
+them. Inside a paragraph it collapses runs of spaces and existing line breaks to single spaces and then
+fills lines greedily up to the width, never splitting a word (a word too long to fit sits on its own
+line). The indentation of a paragraph's first line is carried onto every line it produces, so an
+indented block stays indented. The whole thing is one undo, and it uses the document's own line ending.
+
+Unlike #raw("LB")/#raw("LE") — whose "visual line" only exists once the text is laid out on screen —
+#raw("REFLOW") is pure arithmetic on a fixed width, so it behaves identically whether you run it from
+the command line, chain it, bind it to a key, or call it from a script.
+
 == Persistent selection
 
 Normally a selection is *transient*: any cursor movement that does not hold #kbd("Shift") drops it, and

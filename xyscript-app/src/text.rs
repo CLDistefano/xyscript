@@ -729,6 +729,36 @@ impl Buffer {
         self.selection_range()
     }
 
+    /// The byte range `[start, end)` of the blank-line-delimited paragraph containing the cursor —
+    /// the run of consecutive non-blank lines around it, INCLUDING the trailing newline of its last
+    /// line (so the range round-trips through `replace_span`), but NOT the blank lines on either
+    /// side. Returns an empty range (`start == end`, at the cursor) when the cursor sits on a blank
+    /// line between paragraphs. Used by `REFLOW` when there is no selection.
+    pub fn paragraph_span(&self) -> (usize, usize) {
+        let n = self.rope.line_count();
+        if n == 0 {
+            return (0, 0);
+        }
+        let line = self.rope.byte_to_line(self.cursor).min(n - 1);
+        if self.line_is_blank(line) {
+            return (self.cursor, self.cursor); // between paragraphs — nothing to reflow
+        }
+        let start_line = self.para_start_line(line);
+        let mut end_line = line;
+        while end_line + 1 < n && !self.line_is_blank(end_line + 1) {
+            end_line += 1;
+        }
+        let start = self.rope.line_to_byte(start_line);
+        // End = start of the line after the paragraph's last line (which carries that line's own
+        // newline), or EOF for the final line.
+        let end = if end_line + 1 < n {
+            self.rope.line_to_byte(end_line + 1)
+        } else {
+            self.rope.len()
+        };
+        (start, end)
+    }
+
     /// Map a **rope byte offset** (cursor/selection space) to the byte offset in
     /// the decoded [`text`](Buffer::text) string. They coincide for UTF-8; under a
     /// single-byte view (CP437/Latin-1) a byte can decode to a multi-byte char, so
