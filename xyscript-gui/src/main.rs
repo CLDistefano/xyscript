@@ -1374,13 +1374,59 @@ mod menu_tests {
         assert!(app.try_visual_vmotion("LD"));
         app.render_canvas(200, 500);
         assert!(app.editor.document().cursor() > before, "bound LD should step by visual row");
+        // `UP`/`DOWN` are the LOGICAL movers: NOT redirected to the visual mover, even bare, so they
+        // move by whole logical lines regardless of how the verb is delivered.
+        assert!(!app.try_visual_vmotion("UP"));
+        assert!(!app.try_visual_vmotion("DOWN"));
+        assert!(app.try_visual_vmotion("LU"));
         // Non-motion verbs, chains, and arg forms are NOT redirected (run as written).
         assert!(!app.try_visual_vmotion("PR hi"));
         assert!(!app.try_visual_vmotion("LD ; LD"));
-        assert!(!app.try_visual_vmotion("DOWN 3"));
+        assert!(!app.try_visual_vmotion("LD 3"));
         // In the command line, motion is NOT redirected (the verb moves the cmline caret).
         app.editor.run_command("GH");
         assert!(!app.try_visual_vmotion("LD"));
+    }
+
+    #[test]
+    fn parse_bare_visual_vmotion_accepts_only_bare_lu_ld() {
+        assert_eq!(parse_bare_visual_vmotion("LU"), Some((false, false)));
+        assert_eq!(parse_bare_visual_vmotion("ld"), Some((true, false)));
+        assert_eq!(parse_bare_visual_vmotion("LD SEL"), Some((true, true)));
+        assert_eq!(parse_bare_visual_vmotion("lu sel"), Some((false, true)));
+        // The LOGICAL movers and any arg/chain form are NOT visual — they run as written.
+        assert_eq!(parse_bare_visual_vmotion("UP"), None);
+        assert_eq!(parse_bare_visual_vmotion("DOWN"), None);
+        assert_eq!(parse_bare_visual_vmotion("LD 3"), None);
+        assert_eq!(parse_bare_visual_vmotion("LD ; LD"), None);
+        assert_eq!(parse_bare_visual_vmotion("LDX"), None);
+    }
+
+    #[test]
+    fn cmline_lu_ld_moves_by_visual_row_not_logical_line() {
+        let mut app = GuiApp::new();
+        app.editor
+            .run_command(r#"INSERT "alpha bravo charlie delta echo foxtrot golf hotel india juliet""#);
+        app.editor.run_command(r#"INSERT "\nsecond""#);
+        app.editor.run_command("TF");
+        app.render_canvas(200, 500); // narrow → line 0 wraps into several visual rows
+        let first_line_len = app.editor.document().text().find('\n').unwrap();
+        let before = app.editor.document().cursor();
+        // Type `LD` INTO the command line and submit it (the manual path, not a bound key). It must
+        // step one VISUAL row — staying inside the wrapped first logical line — not jump to line 2.
+        app.editor.open_cmdline();
+        app.editor.insert_str("LD");
+        assert!(app.try_cmline_visual_vmotion(), "bare cmline LD is intercepted as a visual move");
+        app.render_canvas(200, 500);
+        let after = app.editor.document().cursor();
+        assert!(after > before, "cmline LD advanced the caret");
+        assert!(
+            after < first_line_len,
+            "cmline LD stayed within the wrapped first line (visual row {after} < {first_line_len}), \
+             not a logical jump"
+        );
+        // Submitting a motion lands focus back in the document (not stuck on the cmline).
+        assert!(!app.editor.cmline_open(), "a submitted motion returns focus to the document");
     }
 
     #[test]
@@ -1889,6 +1935,26 @@ struct PaneView {
 // is a straight row copy.
 
 /// Copy a `sw`×`sh` sub-image into `dst` (`dw`×`dh`) at pixel `(ox, oy)`, clipping to `dst`'s bounds.
+/// Parse a bare vertical VISUAL-motion command — `LU`/`LD`, optionally followed by `SEL` (extend).
+/// Returns `Some((down, extend))` for exactly those forms and `None` for anything else (an argument,
+/// a `;`-chain, or the LOGICAL `UP`/`DOWN`), so the verb runs as written. Shared by the bound-key
+/// path ([`GuiApp::try_visual_vmotion`]) and the cmline-submit path
+/// ([`GuiApp::try_cmline_visual_vmotion`]) so a manually typed `LU`/`LD` moves visually too.
+fn parse_bare_visual_vmotion(xpl: &str) -> Option<(bool, bool)> {
+    let mut words = xpl.split_whitespace();
+    let down = match words.next().map(|w| w.to_ascii_uppercase()).as_deref() {
+        Some("LU") => false,
+        Some("LD") => true,
+        _ => return None,
+    };
+    let extend = match words.next() {
+        None => false,
+        Some(w) if w.eq_ignore_ascii_case("SEL") && words.next().is_none() => true,
+        _ => return None,
+    };
+    Some((down, extend))
+}
+
 fn blit_rgba(dst: &mut [u8], dw: usize, dh: usize, src: &[u8], sw: usize, sh: usize, ox: usize, oy: usize) {
     let cols = sw.min(dw.saturating_sub(ox));
     let rows = sh.min(dh.saturating_sub(oy));
@@ -5194,17 +5260,9 @@ impl GuiApp {
     }
 
     fn try_visual_vmotion(&mut self, xpl: &str) -> bool {
-        let mut words = xpl.split_whitespace();
-        let down = match words.next().map(|w| w.to_ascii_uppercase()).as_deref() {
-            Some("LU") | Some("UP") => false,
-            Some("LD") | Some("DOWN") => true,
-            _ => return false,
-        };
-        // Only a bare verb, or the verb + `SEL` (extend). Anything else (args, a `;`-chain) runs as-is.
-        let extend = match words.next() {
-            None => false,
-            Some(w) if w.eq_ignore_ascii_case("SEL") && words.next().is_none() => true,
-            _ => return false,
+        let (down, extend) = match parse_bare_visual_vmotion(xpl) {
+            Some(v) => v,
+            None => return false,
         };
         if self.editor.cmline_open() || self.modal_owns_keyboard() || self.active_is_dir_listing() {
             return false;
@@ -5214,6 +5272,26 @@ impl GuiApp {
         if self.editor.hex_view() {
             return false;
         }
+        self.visual_vmove(down, extend);
+        true
+    }
+
+    /// Enter-in-the-command-line counterpart of [`try_visual_vmotion`]: a bare `LU`/`LD` (± `SEL`)
+    /// *typed* into the cmline and submitted must also move by VISUAL row. The normal submit path
+    /// ([`Editor::submit_cmdline`]) runs the verb through the VM, which only knows LOGICAL lines, so
+    /// intercept here — do the cmline lifecycle (history + resting focus) via
+    /// [`Editor::submit_cmline_visual_motion`] and perform the visual move. Returns true when handled
+    /// (the caller skips the normal submit). Hex/dir contexts keep their host handling.
+    fn try_cmline_visual_vmotion(&mut self) -> bool {
+        let cmd = self.editor.command_line().text();
+        let (down, extend) = match parse_bare_visual_vmotion(&cmd) {
+            Some(v) => v,
+            None => return false,
+        };
+        if self.editor.hex_view() || self.active_is_dir_listing() {
+            return false;
+        }
+        self.editor.submit_cmline_visual_motion();
         self.visual_vmove(down, extend);
         true
     }
@@ -8838,7 +8916,11 @@ impl GuiApp {
                     if self.editor.cmline_open() {
                         match key {
                             egui::Key::Enter => {
-                                self.editor.submit_cmdline();
+                                // A bare `LU`/`LD` typed into the cmline is a VISUAL mover (like the
+                                // bound key / arrows); everything else submits through the VM.
+                                if !self.try_cmline_visual_vmotion() {
+                                    self.editor.submit_cmdline();
+                                }
                                 // Surface the command's feedback (PR/MSG output or op status).
                                 self.surface_command_feedback();
                                 // A command may have opened a file, jumped to a match,

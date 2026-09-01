@@ -452,6 +452,23 @@ impl Editor {
             self.cmline_submit_pending = Some(cmd);
         }
     }
+    /// The command-line lifecycle for a bare `LU`/`LD` typed into the cmline and submitted with
+    /// Enter, MINUS the motion itself — the GUI performs the VISUAL (wrapped-row) move, because
+    /// the logical `dispatch` that `submit_cmdline` would run knows nothing about screen wrapping.
+    /// Records history and lands resting focus in the document exactly as a successful motion verb
+    /// would; the command stays in the cmline (blanked only under `CMBLANK` / a verb that forces it).
+    /// The GUI calls [`GuiApp::visual_vmove`] immediately after this returns.
+    pub fn submit_cmline_visual_motion(&mut self) {
+        let cmd = self.host.command_line().text();
+        self.host.push_history(&cmd); // record for Up/Down recall + the HISTORY picker
+        self.host.explicit_focus = false;
+        self.host.target = Target::Document;
+        self.host.input_focus = Target::Document;
+        if self.host.cmline_blank() || cmd_forces_cmline_blank(&cmd) {
+            self.host.clear_command_line();
+        }
+    }
+
     pub fn last_error(&self) -> Option<&str> {
         self.last_error.as_deref()
     }

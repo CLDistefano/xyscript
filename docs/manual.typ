@@ -435,7 +435,8 @@ CMline motions are short, mnemonic, two-letter verbs in the XyWrite tradition. T
 for most:
 
 / #raw("CL") / #raw("CR"): one character left / right (gliding over a CRLF line ending as a single step, so the cursor never gets stuck inside a line break)
-/ #raw("LU") / #raw("LD"): one line up / down, keeping your column where it can
+/ #raw("LU") / #raw("LD"): one row up / down _by the lines you see_ — following a wrapped line's rows on screen, the way the arrow keys do — keeping your column where it can
+/ #raw("UP") / #raw("DOWN"): one _logical_ line up / down, by the file's real line breaks, no matter how the text wraps — the dependable by-line move for scripts and chains
 / #raw("NW") / #raw("PW"): next / previous word
 / #raw("NS") / #raw("PS"): next / previous sentence
 / #raw("NP") / #raw("PP"): next / previous paragraph
@@ -2099,10 +2100,11 @@ Because the right-hand side is the full language, a whole conditional can live o
 #ex("; if a selection is defined, delete it; otherwise delete the character ahead
 nn=IF $DF;DZ;RD;ELSE;RC;EI")
 
-The arrow, numeric-keypad, and #kbd("Page Up")/#kbd("Page Down") keys are yours to bind too. Left
-unbound, they perform their built-in *wrap-aware* cursor and page movement; bound to a vertical-motion
-verb (#raw("UP"), #raw("DOWN"), #raw("PU"), #raw("PD")) they still move by screen line or page. Bind one
-to anything else — a command, a macro, #raw("GT"), #raw("TH") — and that is what runs. So the numeric
+The arrow, numeric-keypad, and #kbd("Page Up")/#kbd("Page Down") keys are yours to bind too. In the
+default keyboard the vertical arrows are bound to #raw("LU")/#raw("LD"), so they move by *visual* row —
+wrap-aware, following a long line's rows on screen. Bind them to #raw("UP")/#raw("DOWN") instead and
+they move by *logical* line (by the file's real line breaks); #raw("PU")/#raw("PD") page as before. Bind
+one to anything else — a command, a macro, #raw("GT"), #raw("TH") — and that is what runs. So the numeric
 keypad is fully remappable, not reserved for cursor motion.
 
 == Loading and saving keyboards

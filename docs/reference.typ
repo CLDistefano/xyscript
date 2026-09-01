@@ -96,9 +96,19 @@ One character left or right. They glide over a Windows line-ending (the
 carriage-return/line-feed pair) as a single step, so the cursor never gets stuck
 "inside" a line break.
 
-#cmd("LU", "UP")
-#cmd("LD", "DOWN")
-One line up or down, keeping your column where you can.
+#cmd("LU")
+#cmd("LD")
+One line up or down *by the lines you see*, keeping your column where you can. When
+a long line has wrapped across several rows on screen, `LU`/`LD` step from row to
+row within it — this is what the arrow keys do. (In a script, with no on-screen
+layout to follow, they fall back to logical lines.)
+
+#cmd("UP")
+#cmd("DOWN")
+One *logical* line up or down — by the actual line breaks in the file, ignoring how
+the text wraps on screen. Predictable everywhere: a bound key, a `;`-chain, or a
+script all move exactly one real line. Use these when you want by-line motion you
+can count on; use `LU`/`LD` when you want to follow the wrapped display.
 
 When you want to travel by meaning rather than by keystroke, move by word,
 sentence, or paragraph:
@@ -345,7 +355,8 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 == Moving the cursor
 
 / #cmd("CL", "LEFT", "PC") / #cmd("CR", "RIGHT", "NC"): one character left / right (gliding over a CRLF as one step).
-/ #cmd("LU", "UP") / #cmd("LD", "DOWN"): one line up / down, keeping the column.
+/ #cmd("LU") / #cmd("LD"): one *visual* row up / down (following wrapped lines), keeping the column.
+/ #cmd("UP") / #cmd("DOWN"): one *logical* line up / down (by real line breaks), everywhere.
 / #cmd("NW") / #cmd("PW"): next / previous word.
 / #cmd("NS") / #cmd("PS"): next / previous sentence.
 / #cmd("NP") / #cmd("PP"): next / previous paragraph.
@@ -729,6 +740,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("DA"): insert the current date and time.
 / #cmd("DB") / #cmd("DE"): move the cursor to the beginning / end of the selection (`$ERROR` if nothing is selected).
 / #cmd("DECIMALS"): the decimal places floats display with (`off` = full precision).
+/ #cmd("DOWN") / #cmd("UP"): move one *logical* line down / up — by the file's real line breaks, holding the column where possible. Unlike #cmd("LD") / #cmd("LU") (which follow the wrapped rows you see), these always move a whole logical line, whether pressed as a bound key, run in a `;`-chain, or called from a script.
 / #cmd("DEL"): delete a file or empty folder from disk, with confirmation; #cmd("ERNV") (or `DEL/NV`) skips the prompt.
 / #cmd("DELMAIL"): delete messages from the IMAP mailbox by number — `DELMAIL <range>`, where `<range>` is a comma list of numbers and `first-last` spans (`DELMAIL 1-3,6-8,10`) or the word `all`. It flags them `\Deleted` and expunges. IMAP sequence numbers renumber after an expunge, so re-run #cmd("LISTMAIL") between deletes (or delete highest-first). Needs #cmd("IMAPURL") and #cmd("MAILUSER")/#cmd("MAILPASS"). Runs as a background curl job — #sv("RC") (curl's exit code; `0` = deleted) and #sv("XO") are set when it finishes, so `WAIT` first, then read #sv("RC") (reading it immediately gets the *previous* command's code). `DELMAIL/W` runs *synchronously* instead — it blocks until curl finishes, so #sv("RC") is already set when it returns. A command the server *refuses* (a tagged IMAP `NO`/`BAD`) sets #sv("RC") to `100`, even though curl connected and exited `0` — so a rejected delete is never mistaken for success.
 / #cmd("DELSEL", "DN"): delete the current selection.
@@ -807,7 +819,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 == L
 
-/ #cmd("LU", "UP") / #cmd("LD", "DOWN"): move one line up / down, keeping the column where possible.
+/ #cmd("LU") / #cmd("LD"): move one *visual* row up / down — following a wrapped line's rows on screen, like the arrow keys — keeping the column where possible. See #cmd("UP") / #cmd("DOWN") for logical-line motion.
 / #cmd("LL") / #cmd("LR"): move one character left / right but never crossing to another line.
 / #cmd("LB") / #cmd("LE"): move to the start / end of the visual (wrapped) row.
 / #cmd("LC") / #cmd("UC"): lower-case / upper-case the selection — or, with no selection, the character under the caret, then step one character right (so you can sweep along the text).
@@ -974,6 +986,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("UIFGCOLOR", "UIFGCOLORS") / #cmd("UIBGCOLOR", "UIBGCOLORS"): the UI chrome's text / background color (`/HSL`; `…S` opens a picker).
 / #cmd("UIFAMILY") / #cmd("UISTYLE") / #cmd("UIFONT", "UIFONTS") / #cmd("UISCALE"): the UI chrome's font family / style / size / zoom (`+n`/`-n` adjusts). #cmd("UIRESET"): reset the UI sizing knobs to their defaults.
 / #cmd("UNDO") / #cmd("REDO"): undo / redo edits (argument: a count or `ALL`).
+/ #cmd("UP") / #cmd("DOWN"): move one *logical* line up / down — see #cmd("DOWN") under _D_. (For visual, wrapped-row motion use #cmd("LU") / #cmd("LD").)
 
 == W
 
