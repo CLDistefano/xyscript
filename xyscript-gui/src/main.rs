@@ -2359,9 +2359,12 @@ struct GuiApp {
     /// Set when the pending Save-As dialog was launched by the quit sweep: a cancel then aborts the
     /// quit (rather than just closing the dialog), matching the old inline behavior.
     save_as_for_quit: bool,
-    /// Set when the user grabs the title-bar-replacement drag strip; the runtime drains it and starts
-    /// an OS window move (`window.drag_window`).
+    /// Set when the user grabs the title-bar-replacement drag strip OR starts a Ctrl+drag anywhere in
+    /// the window; the runtime drains it and starts an OS window move (`window.drag_window`).
     start_window_drag: bool,
+    /// True while a Ctrl+drag window-move gesture is in flight, so `start_window_drag` fires ONCE (on
+    /// the frame the drag is recognized), not every frame until the button releases.
+    window_drag_gesture: bool,
     /// Last-used Find dialog options, remembered across opens: (case, whole word, regex, in selection).
     find_opts: (bool, bool, bool, bool, bool, bool, bool),
     /// The open colour-picker dialog: its target + the colour currently chosen in it (`None` =
@@ -2670,6 +2673,7 @@ impl GuiApp {
             swallow_focus_click: false,
             save_as_for_quit: false,
             start_window_drag: false,
+            window_drag_gesture: false,
             find_opts: (false, false, false, false, false, false, false),
             color_picker: None,
             message_box: None,
@@ -8300,6 +8304,20 @@ impl GuiApp {
         }
         self.was_focused = focused_now;
 
+        // Ctrl+drag ANYWHERE in the window moves the OS window (handy with the title bar off). Fire the
+        // move once, when egui decides the Ctrl+primary press is a drag; the runtime hands it to the OS
+        // (`window.drag_window`), which then captures the mouse for the rest of the move. A plain
+        // Ctrl+click still adds a caret — only a drag past the threshold moves the window.
+        let ctrl_drag = ctx.input(|i| {
+            i.modifiers.ctrl && i.pointer.primary_down() && i.pointer.is_decidedly_dragging()
+        });
+        if ctrl_drag && !self.window_drag_gesture {
+            self.window_drag_gesture = true;
+            self.start_window_drag = true;
+        } else if !ctx.input(|i| i.pointer.primary_down()) {
+            self.window_drag_gesture = false; // button released — re-arm for the next gesture
+        }
+
         // A held-still press "becomes a drag" (starting a text-canvas selection) after egui's
         // `max_click_duration` — default 0.8 s, which feels sluggish. Shorten it so drag-select
         // arms quickly. It's global: it ALSO caps how long a press can last and still count as a
@@ -10480,7 +10498,8 @@ impl GuiApp {
                         self.box_anchor = Some((al, ac));
                         self.drag_anchor = None;
                         self.editor.host_mut().set_box_active_carets(al, ac, al, ac);
-                    } else if resp.drag_started() {
+                    } else if resp.drag_started() && !ctx.input(|i| i.modifiers.ctrl) {
+                        // (Ctrl+drag is a window-move, handled at the top of `ui()` — don't select.)
                         // Anchor on the pressed character so a drag that starts on it INCLUDES it,
                         // whichever way it goes. Two things have to be right:
                         //  1. Use the PRESS ORIGIN, not `interact_pointer_pos()`. `drag_started` only
