@@ -133,6 +133,9 @@ use xyscript_kbd::{load, LoadOutcome};
 const INTERNAL_KBD: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../xyscript-kbd/kbd/xyscript-internal.kbd"));
 
+/// Default line-number gutter text colour (a muted slate) when `LNFGCOLOR` is unset.
+const LINE_NUM_DEFAULT_FG: (u8, u8, u8) = (120, 130, 150);
+
 /// The testers' reference, baked into the binary so Help ▸ Reference works on any install (written
 /// to a temp `.typ` and opened on demand).
 const REFERENCE_TYP: &str =
@@ -8045,6 +8048,12 @@ impl GuiApp {
             ColorTarget::MarkBg => {
                 self.editor.host().mark_bg_color().unwrap_or(self.editor.bg_color())
             }
+            ColorTarget::LineNumFg => {
+                self.editor.host().line_num_fg_color().unwrap_or(LINE_NUM_DEFAULT_FG) // muted slate
+            }
+            ColorTarget::LineNumBg => {
+                self.editor.host().line_num_bg_color().unwrap_or(self.editor.bg_color())
+            }
             ColorTarget::UrlFg => self.editor.url_fg_color(), // effective (default link blue)
             ColorTarget::UrlBg => self.editor.url_bg_color().unwrap_or(self.editor.bg_color()),
             // EMPH emphasis colours default to the selection colours when unset — seed with those.
@@ -10244,10 +10253,21 @@ impl GuiApp {
             }
         }
         // Paint the line numbers in the gutter (right-aligned at the gutter's right edge,
-        // i.e. left of the OF margin), aligned to each logical line's first visual row.
+        // i.e. left of the OF margin), aligned to each logical line's first visual row. The text is
+        // LNFGCOLOR (default a muted slate); with LNBGCOLOR set, the gutter strip is filled first.
         if gutter_w > 0.0 {
             let painter = ui.painter();
-            let color = egui::Color32::from_rgb(120, 130, 150);
+            if let Some((r, g, b)) = self.editor.host().line_num_bg_color() {
+                // Fill just the gutter column: [mark_w][gutter_w][margin_l][text], so the gutter runs
+                // from (canvas left − margin_l − gutter_w) to (canvas left − margin_l).
+                let strip = egui::Rect::from_min_max(
+                    egui::pos2(resp.rect.min.x - margin_l - gutter_w, resp.rect.min.y),
+                    egui::pos2(resp.rect.min.x - margin_l, resp.rect.max.y),
+                );
+                painter.rect_filled(strip, 0.0, egui::Color32::from_rgb(r, g, b));
+            }
+            let (r, g, b) = self.editor.host().line_num_fg_color().unwrap_or(LINE_NUM_DEFAULT_FG);
+            let color = egui::Color32::from_rgb(r, g, b);
             let s = self.render_scale; // gutter_lines y is in canvas pixels → back to points
             for &(line, y) in &self.gutter_lines {
                 painter.text(

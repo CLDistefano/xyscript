@@ -506,6 +506,7 @@ Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") 
 
 / #cmd("SMB", "CMB", "TMB"): the menu bar — on / off / toggle. #cmd("MENU"): keyboard control of the menu bar.
 / #cmd("SVR", "CVR", "TVR") / #cmd("SWS", "CWS", "TWS") / #cmd("SLN", "CLN", "TLN"): paragraph marks / whitespace / the line-number gutter — on / off / toggle.
+/ #cmd("LNFGCOLOR") / #cmd("LNBGCOLOR") (pickers #cmd("LNFGCOLORS") / #cmd("LNBGCOLORS")): colour the line-number gutter's text / background — `<r g b>` (`/HSL`), bare or `… default` clears. Saved by `SAVECFG`.
 / #cmd("SCL", "CCL", "TCL") / #cmd("SNL", "CNL", "TNL") / #cmd("SSL", "CSL", "TSL"): Caps / Num / Scroll Lock — set / clear / toggle.
 / #cmd("SHOWONETAB") / #cmd("UNTITLEDTAB") / #cmd("GOTOOPEN") / #cmd("TITLEBAR") / #cmd("WV") / #cmd("WINGEO") / #cmd("SESSION"): show the tab strip for a lone file / auto-close the blank Untitled tab on open / switch to a file's existing tab instead of prompting when it is already open / the OS title bar / Writer's View (hide all chrome; `Esc` exits) / remember the window geometry / auto-save-and-restore the open tabs across runs.
 / #cmd("DIMONBLUR"): dim the window slightly when it loses focus (a cue that it's inactive — handy with `TITLEBAR off`).
@@ -825,6 +826,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("LB") / #cmd("LE"): move to the start / end of the visual (wrapped) row.
 / #cmd("LC") / #cmd("UC"): lower-case / upper-case the selection — or, with no selection, the character under the caret, then step one character right (so you can sweep along the text).
 / #cmd("LEADING", "LSP"): set the line spacing (percent).
+/ #cmd("LNFGCOLOR") / #cmd("LNBGCOLOR"): the line-number gutter's text colour / background colour — `LNFGCOLOR <r g b>` (0–255; `/HSL` reads the triple as H S L). Bare, or `… default`, clears it: the numbers revert to a muted slate and the gutter to transparent. #cmd("LNFGCOLORS") / #cmd("LNBGCOLORS") open the colour picker. The gutter shows only while the line numbers do (#cmd("SLN")). Read back with #sv("LNFGCOLOR") / #sv("LNBGCOLOR"); persisted by `SAVECFG`.
 / #cmd("LOADAR"): load `key=replacement` pairs into the auto-replace map (used by `AR`); a `replacement` starting with `#` is run as XPL (e.g. `pd=#DA;PW`). #cmd("SAVEAR") writes it back, #cmd("CLEARAR") empties it.
 / #cmd("LOADCFG"): run a saved config script. #cmd("LOADCM"): load a saved command-history list. #cmd("LOADCLOSED"): load a saved reopen list (recently-closed files). #cmd("LOADKBD"): load a keyboard map (a `.kbd` file annotated by #cmd("KBDDOC") loads fine — the key-name column is ignored). #cmd("LOADLIB"): load a `.lib` library (replacing the current one).
 / #cmd("LDTX"): load a text binder slot (`@slot`) — `LDTX <A-Z|0-9> [<source>]`, where the source is the current selection (no argument), a quoted literal (`LDTX A "some text"`, escapes processed, `$`/`@`/`&` kept verbatim), or a file path. #cmd("LDSC") / #cmd("LDPM") load a script binder slot (`&slot`) the same way. Save all text registers with #cmd("SAVELDTX").
@@ -1387,6 +1389,7 @@ Every special variable in one list, for quick lookup.
 / #sv("LJ"): id of the last job launched.
 / #sv("LN"): caret's line (1-based).
 / #sv("LNS"): line-number gutter visible.
+/ #sv("LNFGCOLOR") / #sv("LNBGCOLOR"): the line-number gutter's text colour / background colour as `r g b` (empty = default: a muted slate / transparent). Set with `LNFGCOLOR` / `LNBGCOLOR`.
 / #sv("LS"): last status-line message.
 / #sv("LSP"): line spacing.
 / #sv("MAILBOX"): IMAP mailbox being read (default `INBOX`).

@@ -567,6 +567,12 @@ pub enum EditorOp {
     SetMarkColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the bookmark-gutter dot (`MARKFGCOLORS`) or strip bg (`MARKBGCOLORS`).
     OpenMarkColorPicker { fg: bool },
+    /// Set the line-number gutter's text colour (`fg = true`, `LNFGCOLOR`) or background colour
+    /// (`fg = false`, `LNBGCOLOR`). `None` = default (fg = a muted slate; bg = transparent). Read back
+    /// via `$LNFGCOLOR`/`$LNBGCOLOR`.
+    SetLineNumColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for the line-number text (`LNFGCOLORS`) or gutter bg (`LNBGCOLORS`).
+    OpenLineNumColorPicker { fg: bool },
     /// Turn URL highlighting on/off (`URLHIGHLIGHT on|off`; `None` toggles). When on, URLs in the
     /// document are coloured (`URLFGCOLOR`/`URLBGCOLOR`) and Ctrl+click on one opens it in the OS
     /// default application. Off by default. Persisted by SaveCfg. `$URLHIGHLIGHT`.
