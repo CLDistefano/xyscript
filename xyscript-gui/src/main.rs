@@ -7443,6 +7443,8 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.colors.txt_bg", "TXT window background…"), "TXTBGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.dir_text", "Directory window text…"), "DWFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.dir_bg", "Directory window background…"), "DWBGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.linenum_text", "Line-number text…"), "LNFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.linenum_bg", "Line-number background…"), "LNBGCOLORS"),
                     ]),
                     m_sub(self.tr("menu.settings.appearance.fonts", "Fonts"), vec![
                         m_item(self.tr("menu.settings.appearance.fonts.editor", "Editor…"), "EDFONTS"),
