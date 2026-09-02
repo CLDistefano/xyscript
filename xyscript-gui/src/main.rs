@@ -494,7 +494,9 @@ enum Act {
 #[derive(Clone)]
 enum PendingDialog {
     /// `hex` = open the picked file in the hex view (`OPEN/HEX` with no path).
-    Open { hex: bool },
+    /// `dir` seeds the dialog's start folder (the FIRST open uses `$CWD`; later opens pass `None`
+    /// so the OS reopens at the last-used directory).
+    Open { hex: bool, dir: Option<std::path::PathBuf> },
     SaveAs,
     Export,
     Run { save: bool, filter: Option<(String, Vec<String>)>, template: String, dir: Option<std::path::PathBuf> },
@@ -1400,6 +1402,16 @@ mod menu_tests {
         assert_eq!(parse_bare_visual_vmotion("LD 3"), None);
         assert_eq!(parse_bare_visual_vmotion("LD ; LD"), None);
         assert_eq!(parse_bare_visual_vmotion("LDX"), None);
+    }
+
+    #[test]
+    fn open_dialog_seeds_cwd_until_the_first_pick() {
+        let mut app = GuiApp::new();
+        // First open (nothing picked yet): the dialog is seeded with $CWD.
+        assert_eq!(app.open_dialog_dir(), Some(app.editor.cwd_path()));
+        // Once a file has been picked, hand off to the OS's last-used-directory memory (None).
+        app.open_dialog_picked = true;
+        assert_eq!(app.open_dialog_dir(), None);
     }
 
     #[test]
@@ -2326,6 +2338,9 @@ struct GuiApp {
     /// A native file dialog requested this frame (menu Open/Save-As/Export/Run, or a `OPEN`/`save`
     /// key). The runtime drains it AFTER the frame and runs it parented + modal — see [`PendingDialog`].
     pending_dialog: Option<PendingDialog>,
+    /// Whether the Open dialog has picked a file yet this session. Until it has, the dialog is seeded
+    /// with `$CWD`; afterward it is left to reopen at the OS's last-used directory.
+    open_dialog_picked: bool,
     /// Set when the pending Save-As dialog was launched by the quit sweep: a cancel then aborts the
     /// quit (rather than just closing the dialog), matching the old inline behavior.
     save_as_for_quit: bool,
@@ -2623,6 +2638,7 @@ impl GuiApp {
             menu_col_sizes: Vec::new(),
             pending_menu_act: None,
             pending_dialog: None,
+            open_dialog_picked: false,
             save_as_for_quit: false,
             start_window_drag: false,
             find_opts: (false, false, false, false, false, false, false),
@@ -7522,7 +7538,7 @@ impl GuiApp {
                 }
             }
             MenuAct::PickOpen => {
-                self.pending_dialog = Some(PendingDialog::Open { hex: false });
+                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir() });
                 None
             }
             MenuAct::PickSaveAs => {
@@ -7558,6 +7574,12 @@ impl GuiApp {
         self.pending_dialog.take()
     }
 
+    /// The start folder for an Open dialog: `$CWD` until the first file has been picked this session,
+    /// then `None` so the OS reopens the dialog at the last-used directory.
+    fn open_dialog_dir(&self) -> Option<std::path::PathBuf> {
+        (!self.open_dialog_picked).then(|| self.editor.cwd_path())
+    }
+
     /// Whether the active document renders as Typst (vs GFM) — the runtime uses this to default the
     /// Save-As format to the active document's flavor.
     fn active_is_typst(&self) -> bool {
@@ -7577,7 +7599,10 @@ impl GuiApp {
             return; // cancelled — nothing else to do
         };
         match req {
-            PendingDialog::Open { hex } => {
+            PendingDialog::Open { hex, .. } => {
+                // A file was picked — from now on let the OS reopen at the last-used directory
+                // instead of re-seeding $CWD.
+                self.open_dialog_picked = true;
                 let r = self.editor.open_hex(&p.to_string_lossy(), hex);
                 self.reset_view();
                 self.note(r);
@@ -8620,7 +8645,7 @@ impl GuiApp {
             self.pending_dialog = Some(PendingDialog::SaveAs);
         }
         if let Some(hex) = self.editor.take_open_request() {
-            self.pending_dialog = Some(PendingDialog::Open { hex });
+            self.pending_dialog = Some(PendingDialog::Open { hex, dir: self.open_dialog_dir() });
         }
         // `FIND` requests the non-modal Find/Replace dialog (e.g. a bound key or the command line).
         if self.editor.take_find_request() {

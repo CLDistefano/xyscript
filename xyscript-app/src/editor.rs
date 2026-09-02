@@ -492,6 +492,10 @@ impl Editor {
     pub fn cwd(&self) -> String {
         self.host.cwd_display()
     }
+    /// The working directory (`$CWD`) as a path — e.g. to seed a native file dialog.
+    pub fn cwd_path(&self) -> std::path::PathBuf {
+        self.host.cwd_path()
+    }
     /// Set `$CWD` directly (the `--cwd` CLI flag; `DUPVIEW/W` restores the parent's working directory
     /// after the child boots in the exe directory).
     pub fn set_cwd(&mut self, dir: std::path::PathBuf) {

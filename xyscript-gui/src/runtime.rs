@@ -187,7 +187,10 @@ fn run_file_dialog(
     use crate::PendingDialog;
     let base = rfd::FileDialog::new().set_parent(window);
     match req {
-        PendingDialog::Open { hex } => {
+        PendingDialog::Open { hex, dir } => {
+            // Seed the start folder on the first open ($CWD); later opens pass `None` so the OS
+            // reopens at its last-used directory.
+            let base = if let Some(dir) = dir { base.set_directory(dir) } else { base };
             // A `/HEX` open is usually a binary, so lead with the All-files filter there.
             if *hex {
                 base.add_filter("All files", &["*"])

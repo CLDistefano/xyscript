@@ -3939,6 +3939,11 @@ impl AppHost {
         self.cwd.to_string_lossy().into_owned()
     }
 
+    /// The working directory (`$CWD`) as a path — e.g. to seed a native file dialog.
+    pub fn cwd_path(&self) -> std::path::PathBuf {
+        self.cwd.clone()
+    }
+
     /// The active document's buffer (for rendering / inspection).
     pub fn document(&self) -> &Buffer {
         self.docs[self.active].buffer()
