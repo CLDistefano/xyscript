@@ -2775,6 +2775,8 @@ What ships today:
   list the bindings with #raw("C-x C-h"). It shows a keyboard file, a library, and #raw("READKEY") /
   #raw("RUNCODE") / map lookups cooperating into a data-driven prefix keymap — and, in its footer, where
   the emulation still shows its seams (physical-key match, no #raw("C-u") prefix argument).
+  #raw("emacs-readme.md") is the companion guide: the full binding tables, how the prefix dispatch works,
+  and how to rebind or extend it.
 / #raw("addcolors.xpl") + #raw("color-names.lst"): a *styling demo*. The list is 653 named colours,
   each written as an #raw("R G B") triple; open it, run the script, and it walks the file with a regular
   expression, painting every value with its own colour as a background swatch via #raw("MDA/B"). Ten
