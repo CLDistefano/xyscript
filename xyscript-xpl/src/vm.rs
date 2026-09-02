@@ -5501,6 +5501,10 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "ADDSUM", "PUTSUM",
     // A second view opens a document tab — land focus in the text, like OPEN.
     "DUPVIEW",
+    // `WV` (Writer's View) hides the chrome — INCLUDING the command line — so focus MUST land in the
+    // text (there is nowhere else to type). `EnsureDocumentFocus` is document-focusing, so a
+    // cmline-submitted `WV` also rests in the text rather than snapping back to the now-hidden cmline.
+    "WV",
 ];
 
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if
