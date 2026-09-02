@@ -45,6 +45,16 @@ pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
     }
 }
 
+/// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"
+/// title text, the box background, or the OK button's text / background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MsgColorSlot {
+    HeaderFg,
+    Bg,
+    OkFg,
+    OkBg,
+}
+
 /// Editor/text operations the interpreter can request. The host (Stage 2's text
 /// engine, or the test stub) applies them. The set grows as editor verbs are
 /// registered.
@@ -573,6 +583,12 @@ pub enum EditorOp {
     SetLineNumColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the line-number text (`LNFGCOLORS`) or gutter bg (`LNBGCOLORS`).
     OpenLineNumColorPicker { fg: bool },
+    /// Set one of the modal `MSG` box colours (`MSGHFGCOLOR`/`MSGBGCOLOR`/`MSGOKFGCOLOR`/
+    /// `MSGOKBGCOLOR`). `None` = default (follow the theme). Read back via the matching `$…` special.
+    SetMsgColor { slot: MsgColorSlot, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for one of the MSG box colours (`MSGHFGCOLORS`/`MSGBGCOLORS`/
+    /// `MSGOKFGCOLORS`/`MSGOKBGCOLORS`).
+    OpenMsgColorPicker { slot: MsgColorSlot },
     /// Turn URL highlighting on/off (`URLHIGHLIGHT on|off`; `None` toggles). When on, URLs in the
     /// document are coloured (`URLFGCOLOR`/`URLBGCOLOR`) and Ctrl+click on one opens it in the OS
     /// default application. Off by default. Persisted by SaveCfg. `$URLHIGHLIGHT`.

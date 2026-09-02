@@ -7445,6 +7445,12 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.colors.dir_bg", "Directory window background…"), "DWBGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.linenum_text", "Line-number text…"), "LNFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.linenum_bg", "Line-number background…"), "LNBGCOLORS"),
+                        m_sub(self.tr("menu.settings.appearance.colors.msgbox", "Message box"), vec![
+                            m_item(self.tr("menu.settings.appearance.colors.msgbox.header", "Header text…"), "MSGHFGCOLORS"),
+                            m_item(self.tr("menu.settings.appearance.colors.msgbox.bg", "Background…"), "MSGBGCOLORS"),
+                            m_item(self.tr("menu.settings.appearance.colors.msgbox.ok_text", "OK button text…"), "MSGOKFGCOLORS"),
+                            m_item(self.tr("menu.settings.appearance.colors.msgbox.ok_bg", "OK button background…"), "MSGOKBGCOLORS"),
+                        ]),
                     ]),
                     m_sub(self.tr("menu.settings.appearance.fonts", "Fonts"), vec![
                         m_item(self.tr("menu.settings.appearance.fonts.editor", "Editor…"), "EDFONTS"),
@@ -8055,6 +8061,17 @@ impl GuiApp {
             }
             ColorTarget::LineNumBg => {
                 self.editor.host().line_num_bg_color().unwrap_or(self.editor.bg_color())
+            }
+            // MSG box colours seed with the UI chrome colours when unset (that is their default look).
+            ColorTarget::MsgHeaderFg => {
+                self.editor.host().msg_header_fg_color().unwrap_or(self.editor.ui_fg_color())
+            }
+            ColorTarget::MsgBg => self.editor.host().msg_bg_color().unwrap_or(self.editor.ui_bg_color()),
+            ColorTarget::MsgOkFg => {
+                self.editor.host().msg_ok_fg_color().unwrap_or(self.editor.ui_fg_color())
+            }
+            ColorTarget::MsgOkBg => {
+                self.editor.host().msg_ok_bg_color().unwrap_or(self.editor.ui_bg_color())
             }
             ColorTarget::UrlFg => self.editor.url_fg_color(), // effective (default link blue)
             ColorTarget::UrlBg => self.editor.url_bg_color().unwrap_or(self.editor.bg_color()),
@@ -10742,13 +10759,29 @@ impl GuiApp {
             // Scale the box up a touch — the default reads tiny. Applied to the text font, the width
             // caps, the paddings, and the OK button so it grows uniformly.
             const MSG_SCALE: f32 = 1.1;
-            egui::Window::new("Message")
+            // Optional colour overrides (MSGHFGCOLOR/MSGBGCOLOR/MSGOKFGCOLOR/MSGOKBGCOLOR); `None`
+            // follows the theme.
+            let msg_head_fg = self.editor.host().msg_header_fg_color();
+            let msg_bg = self.editor.host().msg_bg_color();
+            let msg_ok_fg = self.editor.host().msg_ok_fg_color();
+            let msg_ok_bg = self.editor.host().msg_ok_bg_color();
+            // The "Message" title: colour its text with MSGHFGCOLOR when set (egui reads the colour off
+            // the title's RichText), keeping the heading style; else the plain themed title.
+            let title: egui::WidgetText = match msg_head_fg {
+                Some((r, g, b)) => egui::RichText::new("Message").color(egui::Color32::from_rgb(r, g, b)).into(),
+                None => "Message".into(),
+            };
+            let mut win = egui::Window::new(title)
                 .id(egui::Id::new("msg_box"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .show(&ctx, |ui| {
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0));
+            // MSGBGCOLOR fills the whole box (behind the title bar + message).
+            if let Some((r, g, b)) = msg_bg {
+                win = win.frame(egui::Frame::window(&ctx.style()).fill(egui::Color32::from_rgb(r, g, b)));
+            }
+            win.show(&ctx, |ui| {
                     // Grow the dialog width with the text up to a cap, THEN wrap — instead of
                     // wrapping at egui's narrow auto-size default. Measure the widest (unwrapped)
                     // line, clamp to [min, max], and size the content to it; the label wraps only
@@ -10771,9 +10804,16 @@ impl GuiApp {
                     ui.add(egui::Label::new(egui::RichText::new(&mb).font(font_id)).wrap());
                     ui.add_space(8.0 * MSG_SCALE);
                     ui.vertical_centered(|ui| {
-                        let ok = egui::RichText::new("OK")
+                        let mut ok = egui::RichText::new("OK")
                             .font(egui::FontId::proportional(self.editor.chrome_font() * MSG_SCALE));
-                        if ui.button(ok).clicked() {
+                        if let Some((r, g, b)) = msg_ok_fg {
+                            ok = ok.color(egui::Color32::from_rgb(r, g, b));
+                        }
+                        let mut btn = egui::Button::new(ok);
+                        if let Some((r, g, b)) = msg_ok_bg {
+                            btn = btn.fill(egui::Color32::from_rgb(r, g, b));
+                        }
+                        if ui.add(btn).clicked() {
                             dismissed = true;
                         }
                     });

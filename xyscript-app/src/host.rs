@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    HelpResponse, Host, LockKey, MarkGutterMode, Motion, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    HelpResponse, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -1678,6 +1678,10 @@ pub enum ColorTarget {
     MarkBg,
     LineNumFg,
     LineNumBg,
+    MsgHeaderFg,
+    MsgBg,
+    MsgOkFg,
+    MsgOkBg,
     UrlFg,
     UrlBg,
     EmphFg,
@@ -1718,6 +1722,10 @@ impl ColorTarget {
             ColorTarget::MarkBg => "Bookmark gutter background colour".into(),
             ColorTarget::LineNumFg => "Line-number gutter text colour".into(),
             ColorTarget::LineNumBg => "Line-number gutter background colour".into(),
+            ColorTarget::MsgHeaderFg => "MSG box header text colour".into(),
+            ColorTarget::MsgBg => "MSG box background colour".into(),
+            ColorTarget::MsgOkFg => "MSG box OK-button text colour".into(),
+            ColorTarget::MsgOkBg => "MSG box OK-button background colour".into(),
             ColorTarget::UrlFg => "URL highlight text colour".into(),
             ColorTarget::UrlBg => "URL highlight background colour".into(),
             ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
@@ -1757,6 +1765,10 @@ impl ColorTarget {
             ColorTarget::MarkBg => "MARKBGCOLOR",
             ColorTarget::LineNumFg => "LNFGCOLOR",
             ColorTarget::LineNumBg => "LNBGCOLOR",
+            ColorTarget::MsgHeaderFg => "MSGHFGCOLOR",
+            ColorTarget::MsgBg => "MSGBGCOLOR",
+            ColorTarget::MsgOkFg => "MSGOKFGCOLOR",
+            ColorTarget::MsgOkBg => "MSGOKBGCOLOR",
             ColorTarget::UrlFg => "URLFGCOLOR",
             ColorTarget::UrlBg => "URLBGCOLOR",
             ColorTarget::EmphFg => "EMPHFGCOLOR",
@@ -2764,6 +2776,12 @@ pub struct AppHost {
     /// slate, the gutter background is transparent. `$LNFGCOLOR`/`$LNBGCOLOR`; SaveCfg.
     line_num_fg_color: Option<(u8, u8, u8)>,
     line_num_bg_color: Option<(u8, u8, u8)>,
+    /// Modal `MSG` box colours (`MSGHFGCOLOR`/`MSGBGCOLOR`/`MSGOKFGCOLOR`/`MSGOKBGCOLOR`). `None` =
+    /// follow the theme. `$MSGHFGCOLOR`/`$MSGBGCOLOR`/`$MSGOKFGCOLOR`/`$MSGOKBGCOLOR`; SaveCfg.
+    msg_header_fg_color: Option<(u8, u8, u8)>,
+    msg_bg_color: Option<(u8, u8, u8)>,
+    msg_ok_fg_color: Option<(u8, u8, u8)>,
+    msg_ok_bg_color: Option<(u8, u8, u8)>,
     /// Whether URLs in the document are highlighted and Ctrl+click-to-open (`URLHIGHLIGHT`). Off by
     /// default. `$URLHIGHLIGHT`; SaveCfg.
     url_highlight: bool,
@@ -3205,6 +3223,10 @@ impl AppHost {
             mark_bg_color: None,
             line_num_fg_color: None,
             line_num_bg_color: None,
+            msg_header_fg_color: None,
+            msg_bg_color: None,
+            msg_ok_fg_color: None,
+            msg_ok_bg_color: None,
             url_highlight: false, // off by default
             url_fg_color: None,
             url_bg_color: None,
@@ -3580,6 +3602,19 @@ impl AppHost {
     }
     pub fn line_num_bg_color(&self) -> Option<(u8, u8, u8)> {
         self.line_num_bg_color
+    }
+    /// Modal `MSG` box colours (`None` = follow the theme).
+    pub fn msg_header_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.msg_header_fg_color
+    }
+    pub fn msg_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.msg_bg_color
+    }
+    pub fn msg_ok_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.msg_ok_fg_color
+    }
+    pub fn msg_ok_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.msg_ok_bg_color
     }
     /// Whether URL highlighting + Ctrl+click-to-open is on (`URLHIGHLIGHT`/`$URLHIGHLIGHT`).
     pub fn url_highlight(&self) -> bool {
@@ -8717,6 +8752,18 @@ impl AppHost {
         if let Some((r, g, b)) = self.line_num_bg_color {
             put(&mut s, "Line-number gutter background colour -- R G B, 0-255", format!("LNBGCOLOR {r} {g} {b}"));
         }
+        if let Some((r, g, b)) = self.msg_header_fg_color {
+            put(&mut s, "MSG box header text colour -- R G B, 0-255", format!("MSGHFGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.msg_bg_color {
+            put(&mut s, "MSG box background colour -- R G B, 0-255", format!("MSGBGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.msg_ok_fg_color {
+            put(&mut s, "MSG box OK-button text colour -- R G B, 0-255", format!("MSGOKFGCOLOR {r} {g} {b}"));
+        }
+        if let Some((r, g, b)) = self.msg_ok_bg_color {
+            put(&mut s, "MSG box OK-button background colour -- R G B, 0-255", format!("MSGOKBGCOLOR {r} {g} {b}"));
+        }
         if let Some((r, g, b)) = self.mark_bg_color {
             put(&mut s, "Bookmark gutter background colour -- R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
         }
@@ -12122,6 +12169,28 @@ impl Host for AppHost {
                     Some(if fg { ColorTarget::LineNumFg } else { ColorTarget::LineNumBg });
                 return Ok(Value::str(""));
             }
+            EditorOp::SetMsgColor { slot, color } => {
+                let (field, what) = match slot {
+                    MsgColorSlot::HeaderFg => (&mut self.msg_header_fg_color, "header text"),
+                    MsgColorSlot::Bg => (&mut self.msg_bg_color, "background"),
+                    MsgColorSlot::OkFg => (&mut self.msg_ok_fg_color, "OK button text"),
+                    MsgColorSlot::OkBg => (&mut self.msg_ok_bg_color, "OK button background"),
+                };
+                *field = color;
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("MSG box {what} colour = {r} {g} {b}"),
+                    None => format!("MSG box {what} colour = (default)"),
+                }));
+            }
+            EditorOp::OpenMsgColorPicker { slot } => {
+                self.color_picker_request = Some(match slot {
+                    MsgColorSlot::HeaderFg => ColorTarget::MsgHeaderFg,
+                    MsgColorSlot::Bg => ColorTarget::MsgBg,
+                    MsgColorSlot::OkFg => ColorTarget::MsgOkFg,
+                    MsgColorSlot::OkBg => ColorTarget::MsgOkBg,
+                });
+                return Ok(Value::str(""));
+            }
             EditorOp::SetUrlHighlight(opt) => {
                 self.url_highlight = opt.unwrap_or(!self.url_highlight);
                 return Ok(Value::str(format!(
@@ -12901,6 +12970,22 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "LNBGCOLOR" => Some(Value::str(match self.line_num_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "MSGHFGCOLOR" => Some(Value::str(match self.msg_header_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "MSGBGCOLOR" => Some(Value::str(match self.msg_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "MSGOKFGCOLOR" => Some(Value::str(match self.msg_ok_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "MSGOKBGCOLOR" => Some(Value::str(match self.msg_ok_bg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
             })),

@@ -623,6 +623,7 @@ self-contained element to convert.
 == Dialogs and interaction
 
 / #cmd("MSG") / #cmd("MESSAGE") / #cmd("TXT"): a message box / an OS-native box (works headless) / a scrollable text dialog.
+/ #cmd("MSGHFGCOLOR") / #cmd("MSGBGCOLOR") / #cmd("MSGOKFGCOLOR") / #cmd("MSGOKBGCOLOR") (pickers #cmd("MSGHFGCOLORS") / #cmd("MSGBGCOLORS") / #cmd("MSGOKFGCOLORS") / #cmd("MSGOKBGCOLORS")): colour the #cmd("MSG") box — the "Message" header text / the box background / the OK button's text / its background. `<r g b>` (`/HSL`), bare or `… default` clears (theme). Saved by `SAVECFG`.
 / #cmd("PR"): print to the status line or script output.
 / #cmd("INPUT") / #cmd("READKEY", "RK") / #cmd("PICK", "CHOOSE"): read a typed line / a single keystroke / a list choice into a variable.
 
@@ -861,6 +862,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("MENU"): keyboard control of the menu bar. Bare `MENU` toggles it — opens the first menu for arrow-key navigation (Left/Right between menus, Up/Down through items, Enter to open a submenu or run an item, Esc to back out) or closes it if open. `MENU "f"` opens a specific menu by its #underline[accelerator] letter (the underlined letter in each label; e.g. `f` = File). While a menu is open, typing an item's accelerator letter jumps to and runs it. The bar takes mouse and keyboard interchangeably — a menu opened with the mouse is immediately arrow-navigable, and vice versa. Bind it to a key (e.g. `nn=MENU` or `nn=MENU "f"`) for mouse-free menus. GUI only.
 / #cmd("MERGE", "ME"): insert a file's contents at the caret.
 / #cmd("MSG"): show a message box — a bare `MSG` is modal and pauses the script; `MSG /T:<seconds>` is a non-blocking toast.
+/ #cmd("MSGHFGCOLOR") / #cmd("MSGBGCOLOR") / #cmd("MSGOKFGCOLOR") / #cmd("MSGOKBGCOLOR"): the modal #cmd("MSG") box's colours — the "Message" header text, the box background, and the OK button's text / background — `MSGHFGCOLOR <r g b>` (0–255; `/HSL` reads the triple as H S L). Bare, or `… default`, clears each back to the theme. #cmd("MSGHFGCOLORS") / #cmd("MSGBGCOLORS") / #cmd("MSGOKFGCOLORS") / #cmd("MSGOKBGCOLORS") open the colour picker. Read back with #sv("MSGHFGCOLOR") / #sv("MSGBGCOLOR") / #sv("MSGOKFGCOLOR") / #sv("MSGOKBGCOLOR"); persisted by `SAVECFG`.
 / #cmd("MESSAGE"): pop an OS-native desktop message box (`MESSAGE [/T:"title"] <text>`). Unlike `MSG` it needs no running editor window, so it works from a background (`RUN/BG`) script — that is what it is for. `/T:"…"` sets the window caption (default is the app name). Fire-and-forget (the box is its own process, so the script continues and the box survives even after the script ends); no `TRUST` needed. Cross-platform (Windows / macOS / Linux).
 / #cmd("MV"): move the selection to the caret, within the document.
 
@@ -1317,6 +1319,7 @@ Every special variable in one list, for quick lookup.
 / #sv("MARKS"): the number of bookmarks in the active document. #sv("MARK"): `1` when the caret sits on a bookmark, else `0` (set with `MARKSET` / `MARKCLEAR`).
 / #sv("MARKGUTTER"): the bookmark-gutter mode — `off`, `on`, or `persist` (set with `MARKGUTTER`).
 / #sv("MARKFGCOLOR") / #sv("MARKBGCOLOR"): the bookmark-gutter dot colour / strip-background colour as `r g b` (empty = default: bookmark orange / transparent). Set with `MARKFGCOLOR` / `MARKBGCOLOR`.
+/ #sv("MSGHFGCOLOR") / #sv("MSGBGCOLOR") / #sv("MSGOKFGCOLOR") / #sv("MSGOKBGCOLOR"): the MSG box's header-text / background / OK-button-text / OK-button-background colours as `r g b` (empty = default: theme). Set with `MSGHFGCOLOR` / `MSGBGCOLOR` / `MSGOKFGCOLOR` / `MSGOKBGCOLOR`.
 / #sv("WRAPHANG"): the hanging indent (in spaces) for wrapped continuation rows, `0` for flush (set with `WRAPHANG`).
 / #sv("REFLOWWIDTH"): the default column width bare `REFLOW` hard-wraps to (set with `REFLOWWIDTH`; default `65`).
 / #sv("ULSPACES"): `1` if `MDA` underlines paint through inter-word spaces, `0` if they break at spaces (set with `ULSPACES`).

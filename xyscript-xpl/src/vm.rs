@@ -26,7 +26,7 @@ use crate::error::{VmResult, XplError};
 use crate::expr::{self, EvalContext, Expr};
 use crate::host::{
     BinderSource, CalcContext, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
-    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, PersistKind, PvMarginSide,
+    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, PersistKind, PvMarginSide,
     SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
 };
 use crate::ir::{self, Instr};
@@ -3920,6 +3920,36 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenLineNumColorPicker { fg: base == "LNFGCOLORS" })?;
                 Ok(Flow::Next)
             }
+            // The modal `MSG` box's colours: `MSGHFGCOLOR` (the "Message" title text), `MSGBGCOLOR`
+            // (the box background), `MSGOKFGCOLOR`/`MSGOKBGCOLOR` (the OK button). `<r g b>` (`/HSL`);
+            // bare or `… default` clears (follow the theme). The `…S` verbs open the picker.
+            "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                let slot = match base {
+                    "MSGHFGCOLOR" => MsgColorSlot::HeaderFg,
+                    "MSGBGCOLOR" => MsgColorSlot::Bg,
+                    "MSGOKFGCOLOR" => MsgColorSlot::OkFg,
+                    _ => MsgColorSlot::OkBg,
+                };
+                self.host_op(EditorOp::SetMsgColor { slot, color })?;
+                Ok(Flow::Next)
+            }
+            "MSGHFGCOLORS" | "MSGBGCOLORS" | "MSGOKFGCOLORS" | "MSGOKBGCOLORS" => {
+                let slot = match base {
+                    "MSGHFGCOLORS" => MsgColorSlot::HeaderFg,
+                    "MSGBGCOLORS" => MsgColorSlot::Bg,
+                    "MSGOKFGCOLORS" => MsgColorSlot::OkFg,
+                    _ => MsgColorSlot::OkBg,
+                };
+                self.host_op(EditorOp::OpenMsgColorPicker { slot })?;
+                Ok(Flow::Next)
+            }
             // `URLHIGHLIGHT on|off` (bare = toggle) — highlight URLs in the document (coloured by
             // `URLFGCOLOR`/`URLBGCOLOR`) and make Ctrl+click open them. Off by default. SaveCfg.
             "URLHIGHLIGHT" => {
@@ -5529,7 +5559,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
         | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR"
-        | "LNFGCOLOR" | "LNBGCOLOR" => &["HSL"], // triple as H S L
+        | "LNFGCOLOR" | "LNBGCOLOR"
+        | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
