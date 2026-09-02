@@ -318,6 +318,10 @@ tell at a glance which window is active. (Switching to one of XyScript's own win
 most useful alongside #raw("TITLEBAR off"), where the window otherwise looks identical whether or not it
 has focus. Read the state with #raw("$DIMONBLUR"); the setting is saved with #raw("SaveCfg").
 
+With #raw("TITLEBAR off") there is no title bar to grab, so hold #kbd("Ctrl") and drag anywhere in the
+window to move it — the same as dragging a title bar. (A plain #kbd("Ctrl")+click still adds a caret; only
+a #kbd("Ctrl")+drag moves the window.)
+
 == The menu bar
 
 A one-line orientation to each of the eight menus. Every item simply runs an ordinary XyScript command —
