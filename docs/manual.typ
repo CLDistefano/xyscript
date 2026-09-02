@@ -2765,6 +2765,14 @@ What ships today:
   cedilla/ogonek — then a letter, and the two combine into é, ñ, ü, ç. The keyboard file wires the
   accent keys to the script, which holds the composing logic: a #raw(".kbd") and an #raw(".xpl")
   cooperating.
+/ #raw("emacs.kbd"): a starter *Emacs* keyboard — #raw("LOADKBD examples/emacs.kbd"). The single-stroke
+  Emacs bindings (#raw("C-f"), #raw("C-a"), #raw("M-f"), the #raw("C-SPC") mark, #raw("C-w")/#raw("C-y")
+  kill and yank, …) are ordinary keymap cells; the multi-key *prefix chords* — #raw("C-x C-s"),
+  #raw("C-x 2"), and the rest — the #raw(".kbd") format has no native syntax for, so #raw("C-x") is bound
+  to XPL that reads the next key with #raw("READKEY") and branches on its scancode (#raw("SWITCH $SC")),
+  the same prefix trick #raw("dead-accents.kbd") uses one level deep. It shows both what a keyboard file
+  can emulate and where the emulation shows its seams (no prefix argument, no which-key hints); the file's
+  footer spells out the caveats.
 / #raw("addcolors.xpl") + #raw("color-names.lst"): a *styling demo*. The list is 653 named colours,
   each written as an #raw("R G B") triple; open it, run the script, and it walks the file with a regular
   expression, painting every value with its own colour as a background swatch via #raw("MDA/B"). Ten

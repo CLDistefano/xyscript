@@ -1,0 +1,220 @@
+;KB;; emacs.kbd
+;;;;; A STARTER Emacs-style keyboard for XyScript.  LOADKBD emacs.kbd
+;;;;;
+;;;;; It shows how far a .kbd file can go toward Emacs: every single-stroke
+;;;;; binding (C-f, C-a, M-f, ...) is a normal keymap cell, and the multi-key
+;;;;; PREFIX chords (C-x C-s, C-x 2, ...) are EMULATED — the .kbd format has no
+;;;;; native key-sequence grammar, so the C-x key is bound to XPL that reads the
+;;;;; next keystroke with READKEY (RK) and dispatches on its scancode ($SC).
+;;;;; The dead-accents.kbd example uses the same RK + SWITCH idiom.
+;;;;;
+;;;;; This is a STARTER: it covers movement, editing, the kill-ring-ish
+;;;;; clipboard, search, and the common C-x prefix — not all of Emacs. Copy it,
+;;;;; then add or retune cells to taste.  Notes / caveats at the bottom.
+;
+KEYS=104
+SHIFT=42,54
+ALT=56,98
+CTRL=29,99
+;
+; ======================================================================
+; Unshifted: normal typing + navigation.  Esc is the META (ESC-) prefix,
+; the Emacs way — so `Esc f` acts like `M-f`.  (Prefer Esc-to-cancel?
+; change the Esc cell back to `:1=KF`.  Modal dialogs still get Esc.)
+; ======================================================================
+TABLE=
+unmod Esc       :1=RK k;SWITCH $SC;CASE 33;NW;CASE 48;PW;CASE 32;RW;CASE 17;COPY;CASE 45;BC;CASE 47;PU;CASE 51;TF;CASE 52;BF;DEFAULT;MSG ESC- is not an Emacs prefix here;ESW
+unmod Tab       :15=TAB
+unmod Backspace :14=BD
+unmod Enter     :28=ENTER
+unmod 1         :2=1
+unmod 2         :3=2
+unmod 3         :4=3
+unmod 4         :5=4
+unmod 5         :6=5
+unmod 6         :7=6
+unmod 7         :8=7
+unmod 8         :9=8
+unmod 9         :10=9
+unmod 0         :11=0
+unmod Q         :16=q
+unmod W         :17=w
+unmod E         :18=e
+unmod R         :19=r
+unmod T         :20=t
+unmod Y         :21=y
+unmod U         :22=u
+unmod I         :23=i
+unmod O         :24=o
+unmod P         :25=p
+unmod A         :30=a
+unmod S         :31=s
+unmod D         :32=d
+unmod F         :33=f
+unmod G         :34=g
+unmod H         :35=h
+unmod J         :36=j
+unmod K         :37=k
+unmod L         :38=l
+unmod Z         :44=z
+unmod X         :45=x
+unmod C         :46=c
+unmod V         :47=v
+unmod B         :48=b
+unmod N         :49=n
+unmod M         :50=m
+unmod -         :12=-
+unmod =         :13="="
+unmod [         :26=[
+unmod ]         :27=]
+unmod ;         :39=;
+unmod '         :40='
+unmod `         :41=`
+unmod \         :43="\\"
+unmod ,         :51=,
+unmod .         :52=.
+unmod /         :53=/
+unmod Space     :57=" "
+unmod F10       :68=TH
+; gray nav cluster (arrows / Home / End / PgUp / PgDn) + forward-delete
+90=RC
+91=KF
+92=HOME
+93=PU
+95=RC
+96=END
+97=PD
+100=LU
+101=LEFT
+102=LD
+103=RIGHT
+;
+; ======================================================================
+; Shift: uppercase, shifted punctuation, Shift+arrows extend the selection.
+; ======================================================================
+TABLE=SHIFT
+shift Backspace :14=BD
+shift Tab       :15=TAB out
+shift Enter     :28=ENTER
+shift Q         :16=Q
+shift W         :17=W
+shift E         :18=E
+shift R         :19=R
+shift T         :20=T
+shift Y         :21=Y
+shift U         :22=U
+shift I         :23=I
+shift O         :24=O
+shift P         :25=P
+shift A         :30=A
+shift S         :31=S
+shift D         :32=D
+shift F         :33=F
+shift G         :34=G
+shift H         :35=H
+shift J         :36=J
+shift K         :37=K
+shift L         :38=L
+shift Z         :44=Z
+shift X         :45=X
+shift C         :46=C
+shift V         :47=V
+shift B         :48=B
+shift N         :49=N
+shift M         :50=M
+shift 1         :2=!
+shift 2         :3=@
+shift 3         :4=#
+shift 4         :5=$
+shift 5         :6=%
+shift 6         :7=^
+shift 7         :8=&
+shift 8         :9=*
+shift 9         :10=(
+shift 0         :11=)
+shift -         :12=_
+shift =         :13=+
+shift [         :26={
+shift ]         :27=}
+shift ;         :39=:
+shift '         :40="\""
+shift `         :41=~
+shift \         :43=|
+shift ,         :51=<
+shift .         :52=>
+shift /         :53=?
+shift Space     :57=" "
+shift Home      :92=HOME SEL
+shift End       :96=END SEL
+shift PgUp      :93=PU SEL
+shift PgDn      :97=PD SEL
+shift Up        :100=LU SEL
+shift Left      :101=LEFT SEL
+shift Down      :102=LD SEL
+shift Right     :103=RIGHT SEL
+shift Enter     :28=ENTER
+;
+; ======================================================================
+; Control: the Emacs C- commands.  Unbound Ctrl keys do nothing (as in Emacs).
+;   C-a/C-e line ends  C-f/C-b char  C-n/C-p line  C-v page  C-d/C-k delete
+;   C-SPC set mark, then motion extends the region; C-w cut, M-w copy, C-y yank
+;   C-s/C-r search   C-/ undo   C-g cancel   C-x = the prefix (see below)
+; ======================================================================
+TABLE=CTRL
+ctrl Space     :57=DF
+ctrl A         :30=EL
+ctrl B         :48=CL
+ctrl D         :32=RC
+ctrl E         :18=ER
+ctrl F         :33=CR
+ctrl G         :34=DZ
+ctrl H         :35=HELP
+ctrl J         :36=ENTER
+ctrl K         :37=RE
+ctrl N         :49=LD
+ctrl O         :24=PUT $NL;CL
+ctrl P         :25=LU
+ctrl R         :19=FIND
+ctrl S         :31=FIND
+ctrl V         :47=PD
+ctrl W         :17=CUT
+ctrl Y         :21=PASTE
+ctrl /         :53=UNDO
+;Comment       ;; C-x PREFIX: read the next key and dispatch (emulated chord).
+;Comment       ;;   C-x C-s save   C-x C-f open   C-x C-c quit   C-x k close
+;Comment       ;;   C-x 2 split-below  C-x 3 split-right  C-x 1 only  C-x 0 close-pane
+;Comment       ;;   C-x o other-pane   C-x b buffer list
+ctrl X         :45=RK k;SWITCH $SC;CASE 31;SAVE;CASE 33;OPEN;CASE 46;QUIT;CASE 37;AB/V;CASE 3;THS;CASE 4;TVS;CASE 2;FS;CASE 11;TUS;CASE 24;TW;CASE 48;LISTTABS;DEFAULT;MSG C-x: undefined key;ESW
+;
+; ======================================================================
+; Meta (Alt): the Emacs M- commands.
+;   M-f/M-b word    M-d kill-word   M-w copy   M-v page-up   M-x command line
+; ======================================================================
+TABLE=ALT
+alt B          :48=PW
+alt D          :32=RW
+alt F          :33=NW
+alt V          :47=PU
+alt W          :17=COPY
+alt X          :45=BC
+;
+; ======================================================================
+; Meta+Shift:  M-< top of buffer,  M-> bottom of buffer.
+; ======================================================================
+TABLE=ALT+SHIFT
+alt+shift ,    :51=TF
+alt+shift .    :52=BF
+;
+;;;;; ------------------------------------------------------------------
+;;;;; NOTES
+;;;;;  * Prefix chords are EMULATED: C-x is XPL (RK reads the next key,
+;;;;;    SWITCH $SC branches on its scancode).  The match is on the physical
+;;;;;    key, so C-x C-s and C-x s both save.  Nest a second RK for deeper
+;;;;;    chords (e.g. a C-c map).  There is no native `C-x C-s =` syntax.
+;;;;;  * $SC is the raw scancode of the follow-up key; for a hint box while
+;;;;;    waiting, use `RK k "C-x -"` instead of bare `RK k`.
+;;;;;  * C-x C-f (find-file) pops the open-file dialog; M-x opens the command
+;;;;;    line (Emacs's execute-command minibuffer); F10 also reaches it.
+;;;;;  * No prefix ARGUMENT (C-u), keymap inheritance, or which-key hints —
+;;;;;    those would be more XPL on top of this.
+;;;;; ------------------------------------------------------------------
