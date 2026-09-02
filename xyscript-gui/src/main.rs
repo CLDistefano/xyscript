@@ -2510,6 +2510,10 @@ struct GuiApp {
     history_filter: String,
     /// The `PICK` list chooser, when open: the highlighted row in the (type-to-find) filtered view.
     pick_dialog: Option<usize>,
+    /// One-shot: bring the highlighted `PICK`/`LISTTABS` row into view on the NEXT render. Set on open
+    /// and on keyboard navigation; cleared after scrolling once, so the mouse wheel owns the scroll
+    /// position afterward (an unconditional per-frame `scroll_to_me` snaps back and fights the wheel).
+    pick_scroll_to_sel: bool,
     /// The `PICK` chooser's live type-to-find filter (case-insensitive substring; empty = all).
     pick_filter: String,
     /// A `QUIT` (verify) is sweeping dirty tabs, prompting save/discard/cancel for each.
@@ -2718,6 +2722,7 @@ impl GuiApp {
             history_dialog: None,
             history_filter: String::new(),
             pick_dialog: None,
+            pick_scroll_to_sel: false,
             pick_filter: String::new(),
             quitting: false,
             should_exit: false,
@@ -8843,6 +8848,7 @@ impl GuiApp {
                     let filtered = pick_filter_view(&items, &self.pick_filter);
                     let last = filtered.len().saturating_sub(1);
                     let sel = self.pick_dialog.unwrap_or(0).min(last);
+                    let before = self.pick_dialog;
                     match ev {
                         egui::Event::Key { key: egui::Key::ArrowUp, pressed: true, .. } => {
                             self.pick_dialog = Some(sel.saturating_sub(1));
@@ -8885,6 +8891,11 @@ impl GuiApp {
                             self.pick_dialog = Some(0);
                         }
                         _ => {}
+                    }
+                    // The highlight moved via the keyboard — reveal it on the next render (a wheel
+                    // scroll, which doesn't change `pick_dialog`, is left alone).
+                    if self.pick_dialog.is_some() && self.pick_dialog != before {
+                        self.pick_scroll_to_sel = true;
                     }
                 }
             } else {
@@ -10800,6 +10811,7 @@ impl GuiApp {
             if just_opened {
                 self.pick_dialog = Some(0);
                 self.pick_filter.clear();
+                self.pick_scroll_to_sel = true; // reveal the initial selection once
             }
             let filtered = pick_filter_view(&items, &self.pick_filter);
             let sel = self.pick_dialog.unwrap_or(0).min(filtered.len().saturating_sub(1));
@@ -10838,6 +10850,9 @@ impl GuiApp {
                         ui.label(egui::RichText::new(format!("filter: {}", self.pick_filter)).weak());
                     }
                     ui.separator();
+                    // Reveal the highlighted row only on open / keyboard nav; afterward the wheel owns
+                    // the scroll (a per-frame `scroll_to_me` would snap back and fight it).
+                    let do_scroll = std::mem::take(&mut self.pick_scroll_to_sel);
                     egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
                         // Entries extend instead of wrapping (a row may be wider than the window —
                         // the horizontal scrollbar is the fallback past the width clamp). Fill the
@@ -10851,7 +10866,7 @@ impl GuiApp {
                                 row_i == sel,
                                 egui::RichText::new(label).monospace(),
                             );
-                            if row_i == sel {
+                            if row_i == sel && do_scroll {
                                 row.scroll_to_me(None);
                             }
                             if row.clicked() {
