@@ -1405,6 +1405,21 @@ mod menu_tests {
     }
 
     #[test]
+    fn cli_file_arg_resolves_against_the_launch_dir_not_cwd() {
+        let launch = std::env::temp_dir();
+        // A relative filename is joined onto the OS launch directory.
+        assert_eq!(
+            super::resolve_cli_file("notes.txt", Some(&launch)),
+            launch.join("notes.txt").to_string_lossy()
+        );
+        // An absolute path passes through unchanged.
+        let abs = launch.join("abs.txt").to_string_lossy().into_owned();
+        assert_eq!(super::resolve_cli_file(&abs, Some(&launch)), abs);
+        // No launch directory available → unchanged.
+        assert_eq!(super::resolve_cli_file("notes.txt", None), "notes.txt");
+    }
+
+    #[test]
     fn open_dialog_seeds_cwd_until_the_first_pick() {
         let mut app = GuiApp::new();
         // First open (nothing picked yet): the dialog is seeded with $CWD.
@@ -10984,6 +10999,19 @@ fn attach_parent_console() {
 #[cfg(not(windows))]
 fn attach_parent_console() {}
 
+/// Resolve a file named on the command line. A RELATIVE path follows the universal CLI convention:
+/// it is resolved against `launch` — the OS working directory the process was started in — NOT
+/// against `$CWD`, which boots at `$XSDIR` so `startup.xpl`'s relative config loads stay portable.
+/// An absolute path (or a missing `launch`) passes through unchanged.
+fn resolve_cli_file(arg: &str, launch: Option<&std::path::Path>) -> String {
+    match launch {
+        Some(base) if !std::path::Path::new(arg).is_absolute() => {
+            base.join(arg).to_string_lossy().into_owned()
+        }
+        _ => arg.to_string(),
+    }
+}
+
 fn main() {
     // Record panics to a log file (a release/windowed build has no console to print them to).
     install_crash_logger();
@@ -11065,7 +11093,12 @@ fn main() {
         }
     }
     if !files.is_empty() {
-        app.open_startup_files(&files);
+        // Command-line files resolve against the OS launch directory (the usual CLI convention),
+        // not $CWD — which boots at $XSDIR for portable startup. Absolute paths are unaffected.
+        let launch = std::env::current_dir().ok();
+        let resolved: Vec<String> =
+            files.iter().map(|f| resolve_cli_file(f, launch.as_deref())).collect();
+        app.open_startup_files(&resolved);
     }
     if let Some(line) = goto_line {
         app.editor.goto_line(line);
