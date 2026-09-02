@@ -1,16 +1,20 @@
 ;KB;; emacs.kbd
-;;;;; A STARTER Emacs-style keyboard for XyScript.  LOADKBD emacs.kbd
+;;;;; A STARTER Emacs-style keyboard for XyScript.  Needs its companion library:
+;;;;;     ADDLIB emacs-kbd.lib
+;;;;;     LOADKBD emacs.kbd
+;;;;; (put both in startup.xpl).  Single-stroke bindings work without the lib;
+;;;;; the C-x and ESC prefixes call routines from it.
 ;;;;;
-;;;;; It shows how far a .kbd file can go toward Emacs: every single-stroke
-;;;;; binding (C-f, C-a, M-f, ...) is a normal keymap cell, and the multi-key
-;;;;; PREFIX chords (C-x C-s, C-x 2, ...) are EMULATED — the .kbd format has no
-;;;;; native key-sequence grammar, so the C-x key is bound to XPL that reads the
-;;;;; next keystroke with READKEY (RK) and dispatches on its scancode ($SC).
-;;;;; The dead-accents.kbd example uses the same RK + SWITCH idiom.
+;;;;; Every single-stroke binding (C-f, C-a, M-f, ...) is a normal keymap cell.
+;;;;; The multi-key PREFIX chords (C-x C-s, C-x 2, ...) are EMULATED — the .kbd
+;;;;; format has no native key-sequence grammar — but instead of a hard-coded
+;;;;; SWITCH, C-x calls `emacs_cx`, which reads the next keystroke (READKEY) and
+;;;;; runs whatever `cx_map[<that key's scancode>]` holds.  The map IS the keymap:
+;;;;; rebind at runtime with `SET cx_map[19] = "REDO"`, and press C-x C-h for a
+;;;;; which-key list.  See emacs-kbd.lib.
 ;;;;;
-;;;;; This is a STARTER: it covers movement, editing, the kill-ring-ish
-;;;;; clipboard, search, and the common C-x prefix — not all of Emacs. Copy it,
-;;;;; then add or retune cells to taste.  Notes / caveats at the bottom.
+;;;;; A STARTER: movement, editing, the kill-ring-ish clipboard, search, and the
+;;;;; common C-x prefix — not all of Emacs.  Notes / caveats at the bottom.
 ;
 KEYS=104
 SHIFT=42,54
@@ -23,7 +27,7 @@ CTRL=29,99
 ; change the Esc cell back to `:1=KF`.  Modal dialogs still get Esc.)
 ; ======================================================================
 TABLE=
-unmod Esc       :1=RK k;SWITCH $SC;CASE 33;NW;CASE 48;PW;CASE 32;RW;CASE 17;COPY;CASE 45;BC;CASE 47;PU;CASE 51;TF;CASE 52;BF;DEFAULT;MSG ESC- is not an Emacs prefix here;ESW
+unmod Esc       :1=emacs_meta
 unmod Tab       :15=TAB
 unmod Backspace :14=BD
 unmod Enter     :28=ENTER
@@ -180,11 +184,11 @@ ctrl V         :47=PD
 ctrl W         :17=CUT
 ctrl Y         :21=PASTE
 ctrl /         :53=UNDO
-;Comment       ;; C-x PREFIX: read the next key and dispatch (emulated chord).
-;Comment       ;;   C-x C-s save   C-x C-f open   C-x C-c quit   C-x k close
-;Comment       ;;   C-x 2 split-below  C-x 3 split-right  C-x 1 only  C-x 0 close-pane
-;Comment       ;;   C-x o other-pane   C-x b buffer list
-ctrl X         :45=RK k;SWITCH $SC;CASE 31;SAVE;CASE 33;OPEN;CASE 46;QUIT;CASE 37;AB/V;CASE 3;THS;CASE 4;TVS;CASE 2;FS;CASE 11;TUS;CASE 24;TW;CASE 48;LISTTABS;DEFAULT;MSG C-x: undefined key;ESW
+;Comment       ;; C-x PREFIX -> emacs_cx (emacs-kbd.lib): reads the next key and
+;Comment       ;; runs cx_map[$SC].  C-x C-s save  C-x C-f open  C-x C-c quit
+;Comment       ;; C-x k close  C-x 2/3 split  C-x 1 only  C-x 0 close-pane
+;Comment       ;; C-x o other-pane  C-x b buffer list  C-x C-h which-key
+ctrl X         :45=emacs_cx
 ;
 ; ======================================================================
 ; Meta (Alt): the Emacs M- commands.
@@ -207,14 +211,17 @@ alt+shift .    :52=BF
 ;
 ;;;;; ------------------------------------------------------------------
 ;;;;; NOTES
-;;;;;  * Prefix chords are EMULATED: C-x is XPL (RK reads the next key,
-;;;;;    SWITCH $SC branches on its scancode).  The match is on the physical
-;;;;;    key, so C-x C-s and C-x s both save.  Nest a second RK for deeper
-;;;;;    chords (e.g. a C-c map).  There is no native `C-x C-s =` syntax.
-;;;;;  * $SC is the raw scancode of the follow-up key; for a hint box while
-;;;;;    waiting, use `RK k "C-x -"` instead of bare `RK k`.
+;;;;;  * Prefix chords are EMULATED (the .kbd format has no native sequence
+;;;;;    syntax): C-x -> emacs_cx reads the next key and runs cx_map[$SC].  The
+;;;;;    map lives in emacs-kbd.lib, so the chords are DATA — rebind at runtime
+;;;;;    (SET cx_map[19]="REDO"), list them (C-x C-h), add a C-c prefix by
+;;;;;    giving it its own map + a two-line routine.
+;;;;;  * The match is on the physical key ($SC), so C-x C-s and C-x s both save.
 ;;;;;  * C-x C-f (find-file) pops the open-file dialog; M-x opens the command
 ;;;;;    line (Emacs's execute-command minibuffer); F10 also reaches it.
-;;;;;  * No prefix ARGUMENT (C-u), keymap inheritance, or which-key hints —
-;;;;;    those would be more XPL on top of this.
+;;;;;  * Esc is the ESC/Meta prefix (emacs_meta) — so Esc no longer cancels in
+;;;;;    plain editing (modals still get it).  Prefer Esc-to-cancel?  Set the
+;;;;;    Esc cell to `:1=KF`.
+;;;;;  * Still no prefix ARGUMENT (C-u) or keymap inheritance — those would be
+;;;;;    more XPL on top of this.
 ;;;;; ------------------------------------------------------------------

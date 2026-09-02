@@ -1,0 +1,64 @@
+## emacs-kbd.lib -- data-driven prefix keymaps for examples/emacs.kbd
+##
+## Load it alongside the keyboard, e.g. in startup.xpl:
+##     ADDLIB emacs-kbd.lib
+##     LOADKBD emacs.kbd
+##
+## The C-x and ESC (Meta) prefixes are DATA-DRIVEN: emacs.kbd binds C-x to
+## the `emacs_cx` routine, which reads the next keystroke and runs the command
+## mapped to its SCANCODE ($SC) in `cx_map`.  No hard-coded SWITCH -- the map
+## IS the keymap, so you can rebind at runtime:
+##     SET cx_map[19] = "REDO"      # 19 = the R key -> C-x r now redoes
+## and list the bindings with C-x C-h (the `emacs_keys` which-key routine).
+##
+## Keys are the follow-up key's scancode; values are XPL handed to RUNCODE.
+
+SUB emacs_init
+	# DOC: Build the Emacs prefix keymaps (cx_map, meta_map). Lazy-run on first use.
+	SET cx_map = {31:"SAVE", 33:"OPEN", 46:"QUIT", 37:"AB/V", 3:"THS", 4:"TVS", 2:"FS", 11:"TUS", 24:"TW", 48:"LISTTABS", 35:"emacs_keys"}
+	SET meta_map = {33:"NW", 48:"PW", 32:"RW", 17:"COPY", 45:"BC", 47:"PU", 51:"TF", 52:"BF"}
+	SET emacs_ready = 1
+ENDSUB
+
+SUB emacs_cx
+	# DOC: Emacs C-x prefix -- read the next key, run cx_map[its scancode]
+	LOCAL c
+	IF NOT $emacs_ready
+		emacs_init
+	EI
+	RK k
+	SET c = $($cx_map[$SC])
+	IF LEN($c)
+		RUNCODE $c
+	ELSE
+		PR C-x: undefined key
+	EI
+ENDSUB
+
+SUB emacs_meta
+	# DOC: Emacs ESC / Meta prefix -- read the next key, run meta_map[its scancode]
+	LOCAL c
+	IF NOT $emacs_ready
+		emacs_init
+	EI
+	RK k
+	SET c = $($meta_map[$SC])
+	IF LEN($c)
+		RUNCODE $c
+	ELSE
+		PR ESC-: undefined key
+	EI
+ENDSUB
+
+SUB emacs_keys
+	# DOC: which-key -- show the C-x prefix table (introspects cx_map)
+	LOCAL hint, k, v
+	IF NOT $emacs_ready
+		emacs_init
+	EI
+	SET hint = "C-x bindings  (follow-up scancode = command):"
+	FOR k,v IN $cx_map
+		SET hint = $hint . $NL . $k . " = " . $v
+	EF
+	TXT $hint
+ENDSUB
