@@ -1423,6 +1423,27 @@ mod menu_tests {
     }
 
     #[test]
+    fn a_silent_successful_command_clears_a_stale_status_message() {
+        let mut app = GuiApp::new();
+        app.editor.run_command(r#"INSERT "hello world""#);
+        // A command with feedback sets the status line.
+        app.editor.run_command("PR a message");
+        app.surface_command_feedback();
+        assert_eq!(app.status, "a message");
+        // A silent SUCCESSFUL command clears the now-stale message.
+        app.editor.run_command("NC"); // move right one char — silent, succeeds
+        app.surface_command_feedback();
+        assert_eq!(app.status, "", "a silent successful command should clear the stale message");
+        // A FAILED command surfaces its OWN error instead of clearing.
+        app.editor.run_command("PR keep me");
+        app.surface_command_feedback();
+        assert_eq!(app.status, "keep me");
+        app.editor.run_command("NOSUCHVERB"); // unknown command → fatal error feedback
+        app.surface_command_feedback();
+        assert!(app.status.contains("error"), "a failed command shows its error: {:?}", app.status);
+    }
+
+    #[test]
     fn open_dialog_seeds_cwd_until_the_first_pick() {
         let mut app = GuiApp::new();
         // First open (nothing picked yet): the dialog is seeded with $CWD.
@@ -8314,6 +8335,11 @@ impl GuiApp {
         // `command_feedback` already applies QUIET (PR always shown; op-statuses/errors filtered).
         if let Some(s) = self.editor.command_feedback() {
             self.status = s;
+        } else if self.editor.command_succeeded() {
+            // A silent SUCCESSFUL command clears a now-stale message: a status line persists only until
+            // the next command that runs without setting $ERROR (Emacs echo-area behaviour). A failed
+            // command shows its own error above; a QUIET-suppressed error leaves the message in place.
+            self.status.clear();
         }
     }
 

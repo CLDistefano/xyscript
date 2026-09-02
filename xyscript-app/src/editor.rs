@@ -1680,6 +1680,12 @@ impl Editor {
     /// always shown; an automatic op-result/error status obeys the quiet level: 1 hides
     /// informational statuses (errors still show), 2 also hides non-fatal (trappable) error text
     /// — `$ERROR` is set either way. Used by the GUI/TUI status line and `$LS`.
+    /// Whether the last command ran without setting `$ERROR` — i.e. it succeeded. A silent success
+    /// (no [`command_feedback`](Self::command_feedback)) uses this to clear a now-stale status message.
+    pub fn command_succeeded(&self) -> bool {
+        !self.interp.error_flag() && self.last_error.is_none()
+    }
+
     pub fn command_feedback(&self) -> Option<String> {
         // A FATAL error (unknown command, parse/compile failure, assigning a read-only special, …)
         // aborts the run and is reported via `last_error` — it never sets `$ERROR`/`status_message`,
