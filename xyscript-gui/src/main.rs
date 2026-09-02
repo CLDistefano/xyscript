@@ -2404,6 +2404,14 @@ struct GuiApp {
     /// POINTS, the canvas-pixel y of each marked line's first visual row). The overlay pass paints a dot
     /// in each pane's reserved left strip from this — so the gutter shows in split panes, not just single.
     pane_mark_rows: std::collections::HashMap<xyscript_app::PaneId, (f32, Vec<f32>)>,
+    /// Whether the window held keyboard focus at the end of the previous frame — used to detect the
+    /// frame it *regains* focus (see `swallow_focus_click`).
+    was_focused: bool,
+    /// One-shot armed when the window is CLICKED back into focus (a mouse button was down as focus
+    /// returned). The caret placement on that click's release is then swallowed, so a click on an
+    /// unfocused window only activates it and leaves the caret where it was. Alt-tab focus (no button
+    /// down) does not arm it, and a drag clears it.
+    swallow_focus_click: bool,
     drag_anchor: Option<usize>,
     /// Alt+drag box-select anchor corner, as `(line, column)` (0-based, logical). `Some` for the
     /// duration of a column-select drag; each drag update rebuilds a caret per spanned line.
@@ -2654,6 +2662,8 @@ impl GuiApp {
             pending_menu_act: None,
             pending_dialog: None,
             open_dialog_picked: false,
+            was_focused: true,
+            swallow_focus_click: false,
             save_as_for_quit: false,
             start_window_drag: false,
             find_opts: (false, false, false, false, false, false, false),
@@ -8275,6 +8285,16 @@ impl GuiApp {
     fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
 
+        // A click on an UNFOCUSED window focuses it — that focusing click should only activate the
+        // window, not jump the caret to where it landed. Detect the frame focus returns: if a mouse
+        // button is down as it does, the window was clicked into, so arm a one-shot to swallow the
+        // caret placement on that click's release. Alt-tab focus (no button down) doesn't arm it.
+        let focused_now = ctx.input(|i| i.focused);
+        if focused_now && !self.was_focused && ctx.input(|i| i.pointer.any_down()) {
+            self.swallow_focus_click = true;
+        }
+        self.was_focused = focused_now;
+
         // A held-still press "becomes a drag" (starting a text-canvas selection) after egui's
         // `max_click_duration` — default 0.8 s, which feels sluggish. Shorten it so drag-select
         // arms quickly. It's global: it ALSO caps how long a press can last and still count as a
@@ -10409,6 +10429,11 @@ impl GuiApp {
                     ctx.request_repaint();
                 }
             } else if rel.x >= 0.0 && rel.y >= 0.0 {
+                // A drag after a click-to-focus means the user is selecting, not just focusing —
+                // clear the swallow so the drag proceeds and doesn't linger to swallow a later click.
+                if resp.drag_started() {
+                    self.swallow_focus_click = false;
+                }
                 if let Some(off) = self.hit(rel.x * s, rel.y * s) {
                     self.goal_x = None; // a click/drag drops the vertical goal column
                     if self.editor.hex_view() {
@@ -10469,11 +10494,16 @@ impl GuiApp {
                         self.drag_anchor = Some(anchor);
                         self.editor.host_mut().set_active_caret(anchor, None);
                     } else if click {
+                        // A click that just brought the window back into focus only activates it —
+                        // leave the caret where it was (consume the one-shot).
+                        if std::mem::take(&mut self.swallow_focus_click) {
+                            // focus-only: no caret change
+                        }
                         // Ctrl+click ADDS a caret (multi-caret); a plain click collapses the set
                         // back to one and places the caret there (the spec's "plain click resets").
                         // Exception: with URLHIGHLIGHT on, a Ctrl+click that lands on a highlighted URL
                         // opens it in the OS default app instead of adding a caret.
-                        if ctx.input(|i| i.modifiers.ctrl) {
+                        else if ctx.input(|i| i.modifiers.ctrl) {
                             if let Some(url) = self.url_at_offset(off) {
                                 self.editor.open_url(&url);
                             } else {
