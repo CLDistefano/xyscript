@@ -72,23 +72,17 @@ LOADKBD emacs.kbd
 
 ### `C-x` — files, buffers, windows
 
-The `C-x` prefix reads the next key and runs its command. **You do not have to
-hold `Ctrl` for the second key** — `C-x C-s` and `C-x s` both save (the match is
-on the physical key).
+The `C-x` prefix reads the next key and runs its command. Like real Emacs, it
+tells a **Ctrl-modified** follow-up from a **plain** one, so `C-x C-s` and `C-x s`
+are different commands.
 
-| Key | Does | Verb |
-|-----|------|------|
-| `C-x C-s` | save buffer | `SAVE` |
-| `C-x C-f` | find file (open-file dialog) | `OPEN` |
-| `C-x C-c` | save and quit | `QUIT` |
-| `C-x k` | kill buffer (asks to save) | `AB/V` |
-| `C-x 2` | split window below | `THS` |
-| `C-x 3` | split window right | `TVS` |
-| `C-x 1` | one window (this pane fills the frame) | `FS` |
-| `C-x 0` | close this pane | `TUS` |
-| `C-x o` | other window | `TW` |
-| `C-x b` | switch buffer (list) | `LISTTABS` |
-| `C-x C-h` | which-key — list the `C-x` bindings | `emacs_keys` |
+| Key | Does | Verb | | Key | Does | Verb |
+|-----|------|------|-|-----|------|------|
+| `C-x C-s` | save buffer | `SAVE` | | `C-x s` | save all modified | `SL` |
+| `C-x C-f` | find file (dialog) | `OPEN` | | `C-x b` | switch buffer | `BUFALT` |
+| `C-x C-c` | save and quit | `QUIT` | | `C-x k` | kill buffer (asks to save) | `AB/V` |
+| `C-x C-b` | list buffers | `LISTTABS` | | `C-x o` | other window | `TW` |
+| `C-x C-h` | which-key list | `emacs_keys` | | `C-x 2` `3` `1` `0` | split / only / close pane | `THS` `TVS` `FS` `TUS` |
 
 ### `M-x` and the Meta prefix
 
@@ -108,18 +102,22 @@ longer cancels in plain editing — modal dialogs still get it. Prefer
 The `.kbd` format binds one key per cell; it has no native syntax for a sequence
 like `C-x C-s`. So `C-x` is bound to a routine, `emacs_cx`, that:
 
-1. reads the next keystroke with `READKEY`,
-2. looks its scancode up in the `cx_map` table, and
+1. reads the next keystroke with `READKEY/D` (the `/D` gives a readable key
+   description, e.g. `"CTRL+S"`),
+2. picks `cx_ctrl_map` if that description contains `CTRL`, else `cx_map`, and
+   looks the follow-up's scancode up in the chosen table,
 3. runs the command it finds with `RUNCODE`.
 
-The map *is* the keymap — plain data in `emacs-kbd.lib`:
+The maps *are* the keymap — plain data in `emacs-kbd.lib`:
 
 ```
-SET cx_map = {31:"SAVE", 33:"OPEN", 46:"QUIT", 37:"AB/V", 3:"THS", 4:"TVS",
-              2:"FS", 11:"TUS", 24:"TW", 48:"LISTTABS", 35:"emacs_keys"}
+SET cx_map      = {31:"SL", 48:"BUFALT", 37:"AB/V", 3:"THS", 4:"TVS", 2:"FS", 11:"TUS", 24:"TW"}
+SET cx_ctrl_map = {31:"SAVE", 33:"OPEN", 46:"QUIT", 48:"LISTTABS", 35:"emacs_keys"}
 ```
 
-Keys are the follow-up key's **scancode**; values are XPL commands.
+Keys are the follow-up key's **scancode**; values are XPL commands. The Ctrl
+test is by modifier **name** (from `READKEY/D`), so it doesn't depend on how the
+modifier bit values happen to be numbered.
 
 ### Customizing
 
@@ -133,7 +131,7 @@ Keys are the follow-up key's **scancode**; values are XPL commands.
   script.)
 
 - **List the bindings** — press `C-x C-h`, or call `emacs_keys`, which iterates
-  `cx_map` and shows it.
+  both maps and shows them.
 
 - **Add another prefix** (say `C-c`) — give it its own map and a two-line routine
   modeled on `emacs_cx`, then bind a `ctrl C` cell to it. That's the whole
@@ -147,9 +145,10 @@ key.
 
 ## Caveats
 
-- **Physical-key match.** The follow-up key is matched by scancode, so `C-x C-s`
-  and `C-x s` are the same. That is usually what you want; it does mean a chord
-  can't distinguish "with Ctrl" from "without".
+- **Ctrl vs plain follow-up** *is* distinguished (via `READKEY/D`), so `C-x C-s`
+  and `C-x s` differ — but only **Ctrl** is tested. A follow-up carrying some
+  other modifier (Alt, Shift) falls through to the plain `cx_map`; extend
+  `emacs_cx` if you need to tell those apart too.
 - **No prefix argument** (`C-u N`) and no keymap inheritance — those would be
   more XPL on top of this.
 - **`Esc` as Meta** replaces `Esc`-to-cancel in plain editing (see above).

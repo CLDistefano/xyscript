@@ -4,30 +4,45 @@
 ##     ADDLIB emacs-kbd.lib
 ##     LOADKBD emacs.kbd
 ##
-## The C-x and ESC (Meta) prefixes are DATA-DRIVEN: emacs.kbd binds C-x to
-## the `emacs_cx` routine, which reads the next keystroke and runs the command
-## mapped to its SCANCODE ($SC) in `cx_map`.  No hard-coded SWITCH -- the map
-## IS the keymap, so you can rebind at runtime:
-##     SET cx_map[19] = "REDO"      # 19 = the R key -> C-x r now redoes
-## and list the bindings with C-x C-h (the `emacs_keys` which-key routine).
+## The C-x and ESC (Meta) prefixes are DATA-DRIVEN: emacs.kbd binds C-x to the
+## `emacs_cx` routine, which reads the next keystroke and runs the command
+## mapped to its SCANCODE ($SC).  The map IS the keymap, so you can rebind at
+## runtime:  SET cx_map[19] = "REDO"   (19 = the R key -> C-x r now redoes).
+##
+## C-x distinguishes a Ctrl-modified follow-up from a plain one, exactly as real
+## Emacs does (C-x C-s = save-buffer vs C-x s = save-some-buffers; C-x C-b =
+## list-buffers vs C-x b = switch-buffer).  emacs_cx reads the follow-up with
+## READKEY/D, which names the held modifiers (e.g. "CTRL+S"), and picks
+## cx_ctrl_map when that description contains CTRL, else cx_map.  Detection is by
+## modifier NAME, so it is unaffected by however the modifier BIT values are
+## numbered in the loaded keymap.
 ##
 ## Keys are the follow-up key's scancode; values are XPL handed to RUNCODE.
 
 SUB emacs_init
-	# DOC: Build the Emacs prefix keymaps (cx_map, meta_map). Lazy-run on first use.
-	SET cx_map = {31:"SAVE", 33:"OPEN", 46:"QUIT", 37:"AB/V", 3:"THS", 4:"TVS", 2:"FS", 11:"TUS", 24:"TW", 48:"LISTTABS", 35:"emacs_keys"}
+	# DOC: Build the Emacs prefix keymaps (cx_map, cx_ctrl_map, meta_map). Lazy-run on first use.
+	# Plain  C-x <key>:  s save-some / b switch-buffer / k kill-buffer / 2 3 1 0 o windows
+	SET cx_map = {31:"SL", 48:"BUFALT", 37:"AB/V", 3:"THS", 4:"TVS", 2:"FS", 11:"TUS", 24:"TW"}
+	# C-x C-<key> (Ctrl-modified follow-up):  C-s save / C-f find / C-c quit / C-b list / C-h which-key
+	SET cx_ctrl_map = {31:"SAVE", 33:"OPEN", 46:"QUIT", 48:"LISTTABS", 35:"emacs_keys"}
+	# ESC / Meta prefix (follow-ups are plain, as in ESC f = M-f):
 	SET meta_map = {33:"NW", 48:"PW", 32:"RW", 17:"COPY", 45:"BC", 47:"PU", 51:"TF", 52:"BF"}
 	SET emacs_ready = 1
 ENDSUB
 
 SUB emacs_cx
-	# DOC: Emacs C-x prefix -- read the next key, run cx_map[its scancode]
+	# DOC: Emacs C-x prefix -- read the next key; a Ctrl-modified follow-up (C-x C-s)
+	# DOC:   dispatches through cx_ctrl_map, a plain one (C-x s) through cx_map.
 	LOCAL c
 	IF NOT $emacs_ready
 		emacs_init
 	EI
-	RK k
-	SET c = $($cx_map[$SC])
+	RK/D k
+	IF CONTAINS(UPPER($k), "CTRL")
+		SET c = $($cx_ctrl_map[$SC])
+	ELSE
+		SET c = $($cx_map[$SC])
+	EI
 	IF LEN($c)
 		RUNCODE $c
 	ELSE
@@ -51,14 +66,18 @@ SUB emacs_meta
 ENDSUB
 
 SUB emacs_keys
-	# DOC: which-key -- show the C-x prefix table (introspects cx_map)
+	# DOC: which-key -- show the C-x prefix table (both plain and C-<key> forms)
 	LOCAL hint, k, v
 	IF NOT $emacs_ready
 		emacs_init
 	EI
-	SET hint = "C-x bindings  (follow-up scancode = command):"
+	SET hint = "C-x <key>  (scancode = command):"
 	FOR k,v IN $cx_map
-		SET hint = $hint . $NL . $k . " = " . $v
+		SET hint = $hint . $NL . "  " . $k . " = " . $v
+	EF
+	SET hint = $hint . $NL . "C-x C-<key>:"
+	FOR k,v IN $cx_ctrl_map
+		SET hint = $hint . $NL . "  " . $k . " = " . $v
 	EF
 	TXT $hint
 ENDSUB

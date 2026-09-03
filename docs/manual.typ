@@ -2774,11 +2774,13 @@ What ships today:
   bindings (#raw("C-f"), #raw("C-a"), #raw("M-f"), the #raw("C-SPC") mark, #raw("C-w")/#raw("C-y") kill
   and yank, …) are ordinary keymap cells. The multi-key *prefix chords* — #raw("C-x C-s"), #raw("C-x 2"),
   … — the #raw(".kbd") format has no native syntax for, so #raw("C-x") calls a library routine that reads
-  the next key with #raw("READKEY") and runs whatever #raw("cx_map[$SC]") holds. The map *is* the keymap:
-  it is plain data in the library, so you can rebind at runtime (#raw("SET cx_map[19] = \"REDO\"")) and
-  list the bindings with #raw("C-x C-h"). It shows a keyboard file, a library, and #raw("READKEY") /
-  #raw("RUNCODE") / map lookups cooperating into a data-driven prefix keymap — and, in its footer, where
-  the emulation still shows its seams (physical-key match, no #raw("C-u") prefix argument).
+  the next key with #raw("READKEY/D") and runs whatever the maps hold. It even tells a Ctrl-modified
+  follow-up from a plain one — #raw("C-x C-s") (save) vs #raw("C-x s") (save all), like real Emacs — by
+  checking the modifier name #raw("READKEY/D") reports. The maps *are* the keymap: plain data in the
+  library, so you can rebind at runtime (#raw("SET cx_map[19] = \"REDO\"")) and list the bindings with
+  #raw("C-x C-h"). It shows a keyboard file, a library, and #raw("READKEY") / #raw("RUNCODE") / map
+  lookups cooperating into a data-driven prefix keymap — and, in its footer, where the emulation still
+  shows its seams (no #raw("C-u") prefix argument).
   #raw("emacs-readme.md") is the companion guide: the full binding tables, how the prefix dispatch works,
   and how to rebind or extend it.
 / #raw("addcolors.xpl") + #raw("color-names.lst"): a *styling demo*. The list is 653 named colours,

@@ -216,7 +216,8 @@ alt+shift .    :52=BF
 ;;;;;    map lives in emacs-kbd.lib, so the chords are DATA — rebind at runtime
 ;;;;;    (SET cx_map[19]="REDO"), list them (C-x C-h), add a C-c prefix by
 ;;;;;    giving it its own map + a two-line routine.
-;;;;;  * The match is on the physical key ($SC), so C-x C-s and C-x s both save.
+;;;;;  * C-x tells a Ctrl-modified follow-up from a plain one (READKEY/D names the
+;;;;;    held modifiers), so C-x C-s (save) and C-x s (save all) differ, as in Emacs.
 ;;;;;  * C-x C-f (find-file) pops the open-file dialog; M-x opens the command
 ;;;;;    line (Emacs's execute-command minibuffer); F10 also reaches it.
 ;;;;;  * Esc is the ESC/Meta prefix (emacs_meta) — so Esc no longer cancels in
