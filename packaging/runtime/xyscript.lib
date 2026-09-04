@@ -580,6 +580,23 @@ SUB opn
 	x/nv $cmnd $1
 ENDSUB
 
+SUB openall
+	# DOC: Open all files matching a filespec
+	# DOC: Usage: OPENALL <filespec>
+	# DOC: E.g.: OPENALL d:\path\my*.txt
+	local aspec fspec fils fnm 
+	if not $1
+		pr Usage: OPENALL <filespec>
+		return
+	ei
+	set fspec = $1
+	set aspec = GetPath($fspec)
+	capture fils dir/b $fspec
+	for fnm in lines($fils)
+		open/nv $aspec[0]/$fnm
+	ef
+ENDSUB
+
 SUB renas
 	# DOC: Rename current file and open it under the new name
 	# DOC: RENAS <path>
@@ -1026,7 +1043,7 @@ ENDSUB
 
 SUB shel
 	# DOC: RUN shell command and show output in text dialog
-	# DOC: Usage: SH <command>
+	# DOC: Usage: SHEL <command>
 	QUIET
 	IF NOT $1
 		CALL cmd
@@ -1609,6 +1626,32 @@ SUB idkey
 		msg /t:10  $scan
 		if $SCC == 1 break
 	ew
+ENDSUB
+
+SUB inspect
+	# DOC: Inspect/adjust Appearance settings
+	quiet
+	local rgb settings_list
+	set settings_list = "# To change a setting, put the cursor on it and command:".$NL."# BC;PUT $LI".$NL."# then edit the command".$NL.$NL."Editor font family".$NL."EDFAMILY |$EDFAMILY|".$NL.$NL."Editor font size".$NL."EDFONT |$EDFONT|".$NL.$NL."Editor font style".$NL."EDSTYLE |$EDSTYLE|".$NL.$NL."Editor text foreground color".$NL."FGCOLOR |$FGCOLOR|".$NL."<                              >".$NL.$NL."Editor text color".$NL."BGCOLOR |$BGCOLOR|".$NL."<                              >".$NL.$NL."Editor cursor color".$NL."CRCOLOR |$CRCOLOR|".$NL."<                              >".$NL.$NL."Editor cursor shape".$NL."CRSHAPE |$CRSHAPE|".$NL.$NL."Command line position".$NL."CMPLACE |$CMPLACE|".$NL.$NL."Command line cursor color".$NL."CMCRCOLOR |$CMCRCOLOR|".$NL."<                              >".$NL.$NL."Command line cursor shape".$NL."CMCRSHAPE |$CMCRSHAPE|".$NL.$NL."Text selection foreground color".$NL."SELFGCOLOR |$SELFGCOLOR|".$NL."<                              >".$NL.$NL."Text selection background color".$NL."SELBGCOLOR |$SELBGCOLOR|".$NL."<                              >".$NL.$NL."URL highlighting".$NL."URLHIGHLIGHT |$URLHIGHLIGHT|".$NL.$NL."URL foreground color".$NL."URLFGCOLOR |$URLFGCOLOR|".$NL."<                              >".$NL.$NL."URL background color".$NL."URLBGCOLOR |$URLBGCOLOR|".$NL."<                              >".$NL.$NL."Emphasis foreground color".$NL."EMPHFGCOLOR |$EMPHFGCOLOR|".$NL."<                              >".$NL.$NL."Emphasis background color".$NL."EMPHBGCOLOR |$EMPHBGCOLOR|".$NL."<                              >".$NL.$NL."Spell check underline color".$NL."SPELLCOLOR |$SPELLCOLOR|".$NL."<                              >".$NL.$NL."Grammar check underline color".$NL."GRAMMARCOLOR |$GRAMMARCOLOR|".$NL."<                              >".$NL.$NL."Line spacing".$NL."LSP |$LSP|".$NL.$NL."Left margin offset".$NL."OFL |$OFL|".$NL.$NL."Right margin offset".$NL."OFR |$OFR|".$NL.$NL."User interface font family".$NL."UIFAMILY |$UIFAMILY|".$NL.$NL."User interface font size".$NL."UIFONT |$UIFONT|".$NL.$NL."User interface font style".$NL."UISTYLE |$UISTYLE|".$NL.$NL."User interface scale".$NL."UISCALE |$UISCALE|".$NL.$NL."User interface text foreground color".$NL."UIFGCOLOR |$UIFGCOLOR|".$NL."<                              >".$NL.$NL."User interface text background color".$NL."UIBGCOLOR |$UIBGCOLOR|".$NL."<                              >".$NL.$NL."User interface field separator color".$NL."SEPCOLOR |$SEPCOLOR|".$NL."<                              >".$NL.$NL."Status line position".$NL."STATUSLINE |$STATUSLINE|".$NL.$NL."Tab active color".$NL."TABACTIVE |$TABACTIVE|".$NL."<                              >".$NL.$NL."Tab inactive color".$NL."TABINACTIVE |$TABINACTIVE|".$NL."<                              >".$NL.$NL."Path foreground color".$NL."PAFGCOLOR |$PAFGCOLOR|".$NL."<                              >".$NL.$NL."Path background color".$NL."PABGCOLOR |$PABGCOLOR|".$NL."<                              >".$NL.$NL."Directory window font family".$NL."DWFAMILY |$DWFAMILY|".$NL.$NL."Directory window font size".$NL."DWFONT |$DWFONT|".$NL.$NL."Directory window font style".$NL."DWSTYLE |$DWSTYLE|".$NL.$NL."Directory window scale".$NL."DWSCALE |$DWSCALE|".$NL.$NL."Directory window foreground color".$NL."DWFGCOLOR |$DWFGCOLOR|".$NL."<                              >".$NL.$NL."Directory window background color".$NL."DWBGCOLOR |$DWBGCOLOR|".$NL."<                              >".$NL.$NL."Tab hover color".$NL."TABHOVER |$TABHOVER|".$NL."<                              >".$NL.$NL."Bookmark gutter behavior".$NL."MARKGUTTER |$MARKGUTTER|".$NL.$NL."Bookmark gutter foreground color".$NL."MARKFGCOLOR |$MARKFGCOLOR|".$NL."<                              >".$NL.$NL."Bookmark gutter background color".$NL."MARKBGCOLOR |$MARKBGCOLOR|".$NL."<                              >".$NL.$NL."Message box foreground color".$NL."MSGHFGCOLOR |$MSGHFGCOLOR|".$NL."<                              >".$NL.$NL."Message box background color".$NL."MSGBGCOLOR |$MSGBGCOLOR|".$NL."<                              >".$NL.$NL."Message box OK button foreground color".$NL."MSGOKFGCOLOR |$MSGOKFGCOLOR|".$NL."<                              >".$NL.$NL."Message box OK button background color".$NL."MSGOKBGCOLOR |$MSGOKBGCOLOR|".$NL."<                              >".$NL.$NL."Text box font family".$NL."TXTFAMILY |$TXTFAMILY|".$NL.$NL."Text box font size".$NL."TXTFONT |$TXTFONT|".$NL.$NL."Text box font style".$NL."TXTSTYLE |$TXTSTYLE|".$NL.$NL."Text box scale".$NL."TXTSCALE |$TXTSCALE|".$NL.$NL."Text box foreground color".$NL."TXTFGCOLOR |$TXTFGCOLOR|".$NL."<                              >".$NL.$NL."Text box background color".$NL."TXTBGCOLOR |$TXTBGCOLOR|".$NL."<                              >".$NL.$NL
+	ne
+	put $settings_list
+	tf
+	printex
+	bufprev; ab
+	tf
+	clerr
+	while 1
+		clerr
+		se/r / \d{1,3} \d{1,3} \d{1,3}/
+		if $error break
+		set rgb = $(trimleft($SE, 1))
+		el; ld; xd; df; er; dz
+		mda/b $rgb
+	ew
+	tf
+	sea /EDFAMILY/
+	lb; yd; bc "BC;PUT $LI"; bd; el; rc
+	pr Done.
 ENDSUB
 
 SUB log
