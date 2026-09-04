@@ -273,7 +273,7 @@ fn search_does_not_wrap_at_end_of_file() {
     editor.run_command("PR $ERROR");
     assert_eq!(
         editor.output().last().map(String::as_str),
-        Some("1"),
+        Some("4"), // ErrCode::SearchNotFound
         "forward search wrapped instead of stopping at EOF"
     );
 
@@ -283,7 +283,7 @@ fn search_does_not_wrap_at_end_of_file() {
     editor.run_command("PR $ERROR");
     assert_eq!(
         editor.output().last().map(String::as_str),
-        Some("1"),
+        Some("4"), // ErrCode::SearchNotFound
         "backward search wrapped instead of stopping at BOF"
     );
 }
@@ -341,8 +341,9 @@ fn search_not_found_trips_an_error() {
     // A not-found is a *trappable* error: it sets $ERROR and continues (it does
     // not surface as a fatal last_error). No match → no selection.
     assert!(editor.document().selection_span().is_none());
-    editor.run_command("PR $ERROR");
-    assert_eq!(editor.output().last().map(String::as_str), Some("1"));
+    // Both reads in one command — an action verb clears $ERROR on entry (after expanding args).
+    editor.run_command("PR $ERROR $ERRORMSG[$ERROR]");
+    assert_eq!(editor.output().last().map(String::as_str), Some("4 search text not found")); // ErrCode::SearchNotFound
 }
 
 #[test]

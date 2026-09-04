@@ -1918,6 +1918,12 @@ that reached the status line — with the offending file name, say — is always
 that has not yet been given its own number reads as the generic `1`, so the numbers only ever get more
 precise over time; code that checks #raw("IF $ERROR") or #raw("$ERROR == 0") keeps working either way.
 
+#raw("$ERROR") is for *foldable* failures — the soft runtime outcomes a script is meant to react to
+(a search finds nothing, a file is missing, no text is selected). A *malformed command* — a bad numeric
+argument, an unknown verb — is a different thing: it is a mistake in the script, so it halts that
+command and reports on the status line, and it does #emph[not] set #raw("$ERROR"). So test #raw("$ERROR")
+for conditions you expect and handle, not for typos.
+
 #ex("OPEN report.txt
 IF $ERROR
   PR $ERRORMSG[$ERROR]: $LS

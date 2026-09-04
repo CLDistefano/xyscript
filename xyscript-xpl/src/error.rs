@@ -28,10 +28,17 @@
 //! [`XplError::trappable_code`] with a specific [`ErrCode`]. Uncoded sites keep
 //! working — they simply read as code `1` until migrated.
 
-/// Systematic trappable-error codes. The discriminant is the value `$ERROR`
-/// takes; [`error_message`] maps it to the generic text `$ERRORMSG[n]` returns.
-/// Code `0` (success) is intentionally absent — it is not an error. Grow this
-/// list as more sites are migrated to specific codes.
+/// Systematic trappable-error codes — the value `$ERROR` takes; [`error_message`]
+/// maps it to the generic text `$ERRORMSG[n]` returns. Code `0` (success) is
+/// intentionally absent — it is not an error.
+///
+/// Only codes for **foldable** trappables live here: soft runtime outcomes that
+/// fold into `$ERROR` and let the script continue (the host-op path — search,
+/// file, selection, …), the failures a script branches on with `IF $ERROR`. A
+/// *malformed-command* error (a bad numeric argument, an unknown verb) is a
+/// different channel: it halts the command and reports via the status line /
+/// `last_error`, and never sets `$ERROR` — so it is deliberately NOT catalogued
+/// here. Grow this list as more foldable sites are migrated to specific codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ErrCode {
@@ -41,22 +48,12 @@ pub enum ErrCode {
     FileNotFound = 2,
     /// A verb needs a selection/defined block and there is none.
     NothingSelected = 3,
-    /// A numeric argument was expected but the text isn't a number.
-    BadNumber = 4,
-    /// The command / verb / label / routine name is not known.
-    UnknownCommand = 5,
-    /// An index, line, or count is outside the valid range.
-    OutOfRange = 6,
-    /// A directory (to change to / list) does not exist.
-    NoSuchDir = 7,
-    /// A target file already exists (and clobbering was declined).
-    FileExists = 8,
-    /// An argument is missing or malformed (not one of the above).
-    BadArgument = 9,
+    /// A search (`SE`/`CH`/`FIND`/…) found no match.
+    SearchNotFound = 4,
 }
 
 /// The highest defined error code — the top index of the `$ERRORMSG` catalog.
-pub const MAX_ERROR_CODE: u32 = 9;
+pub const MAX_ERROR_CODE: u32 = 4;
 
 /// The **generic** message for an error code (what `$ERRORMSG[n]` returns).
 /// `0` → `"[none]"`; a code past the catalog → `""` (the lenient out-of-range
@@ -67,12 +64,7 @@ pub fn error_message(code: u32) -> &'static str {
         1 => "error",
         2 => "file not found",
         3 => "nothing selected",
-        4 => "invalid number",
-        5 => "unknown command",
-        6 => "out of range",
-        7 => "no such directory",
-        8 => "file already exists",
-        9 => "invalid argument",
+        4 => "search text not found",
         _ => "",
     }
 }

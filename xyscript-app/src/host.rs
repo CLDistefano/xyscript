@@ -6666,7 +6666,7 @@ impl AppHost {
         let scope = if spec.scope {
             match self.active().buffer().selection_span() {
                 Some((s, e)) if e > s => Some((s, e)),
-                _ => return Err(XplError::trappable("/S: no selection to search within")),
+                _ => return Err(XplError::trappable_code(ErrCode::NothingSelected, "/S: no selection to search within")),
             }
         } else {
             None
@@ -6697,7 +6697,7 @@ impl AppHost {
                     Ok(Value::str(""))
                 } else {
                     self.active().set_caret(restore.0, restore.1);
-                    Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
+                    Err(XplError::trappable_code(ErrCode::SearchNotFound, self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
                 }
             }
             Some(replace) => {
@@ -6708,7 +6708,7 @@ impl AppHost {
                     .replace_all(&pattern, &replace, spec.from_top, scope, spec.count, spec.keep_case);
                 self.change_count = n as i64;
                 if n == 0 && spec.count.is_none() {
-                    Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
+                    Err(XplError::trappable_code(ErrCode::SearchNotFound, self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
                 } else {
                     // XyWrite-style: the caret stayed put, so report the tally on the status line.
                     let msg = if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
@@ -6734,7 +6734,7 @@ impl AppHost {
                         let b = self.active().buffer();
                         b.selection_span().map(|(a, e)| b.slice_bytes(a, e))
                     };
-                    let bytes = bytes.ok_or_else(|| XplError::trappable("no bytes selected"))?;
+                    let bytes = bytes.ok_or_else(|| XplError::trappable_code(ErrCode::NothingSelected, "no bytes selected"))?;
                     let n = bytes.len();
                     self.hex_clipboard = bytes;
                     return Ok(Value::str(format!("copied {n} byte{}", if n == 1 { "" } else { "s" })));
@@ -6742,7 +6742,7 @@ impl AppHost {
                 ClipKind::Cut => {
                     let removed = self.active().hex_delete_selection();
                     if removed.is_empty() {
-                        return Err(XplError::trappable("no bytes selected"));
+                        return Err(XplError::trappable_code(ErrCode::NothingSelected, "no bytes selected"));
                     }
                     let n = removed.len();
                     self.hex_clipboard = removed;
@@ -6905,7 +6905,7 @@ impl AppHost {
                     Some(VerifySession { pattern, replacement, origin, current: (ms, me), limit });
                 Ok(Value::str(""))
             }
-            None => Err(XplError::trappable(self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)]))),
+            None => Err(XplError::trappable_code(ErrCode::SearchNotFound, self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)]))),
         }
     }
 
@@ -10697,7 +10697,7 @@ impl Host for AppHost {
                 let b = self.file_doc().buffer();
                 let (a, c) = b
                     .selection_span()
-                    .ok_or_else(|| XplError::trappable("SAD: no text is selected"))?;
+                    .ok_or_else(|| XplError::trappable_code(ErrCode::NothingSelected, "SAD: no text is selected"))?;
                 let bytes = b.slice_bytes(a, c);
                 let target: PathBuf =
                     if self.virtual_fs { PathBuf::from(&path) } else { self.resolve_path(&path) };

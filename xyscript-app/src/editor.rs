@@ -3789,7 +3789,7 @@ mod tests {
         e.run_command("SE/9 /a/");
         assert_eq!(e.document().cursor(), 0, "failed SE/n leaves the caret put");
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("4")); // ErrCode::SearchNotFound
         // CH/2 changes at most two.
         e.run_command("TF");
         e.run_command("CH/2 /a/X/");
@@ -9543,7 +9543,8 @@ mod tests {
         assert!(e.command_feedback().unwrap_or_default().contains("no text is selected"));
         // QUIET/NV also hides the non-fatal error — but $ERROR is still set (read it back).
         e.run_command("QUIET/NV\nSAD nope.txt\nQUIET OFF\nPR $ERROR");
-        assert_eq!(e.command_feedback().as_deref(), Some("1"));
+        assert_eq!(e.command_feedback().as_deref(), Some("3")); // ErrCode::NothingSelected
+
         // Quiet is script-scoped: a fresh top-level run starts un-quieted.
         e.run_command("TB 8");
         assert_eq!(e.command_feedback().as_deref(), Some("tab width 8"));
@@ -12925,7 +12926,7 @@ mod tests {
         e.run_command(r#"SE/S "hello""#); // no selection → trappable usage error ($ERROR + status)
         assert!(e.status_message().unwrap_or_default().contains("/S"));
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("3")); // ErrCode::NothingSelected
     }
 
     #[test]
