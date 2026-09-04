@@ -1898,17 +1898,33 @@ ESW")
 == The error model
 
 Many commands can *fail* in a way a script can handle — a search finds nothing, a file is missing. Such
-a failure sets the *error flag*, read as #raw("$ERROR") (`1` after a failure, `0` after success). An
-ordinary action verb clears the flag when it starts, so test it on the line right after the command
-that might fail:
+a failure sets the *error code*, read as #raw("$ERROR"): `0` after success, and a non-zero number after
+a failure. A bare truth test still reads naturally, so nothing below has to change:
 
 #ex("SE /needle/
 IF $ERROR
   PR Not found.
 EI")
 
-Because a search does not wrap and sets #raw("$ERROR") at the end of its sweep, the standard
-"do-something-to-every-match" loop is a #raw("WHILE") that breaks when #raw("$ERROR") becomes set.
+An ordinary action verb clears the code (back to `0`) when it starts, so test it on the line right after
+the command that might fail. Because a search does not wrap and sets #raw("$ERROR") at the end of its
+sweep, the standard "do-something-to-every-match" loop is a #raw("WHILE") that breaks when
+#raw("$ERROR") becomes set.
+
+The number is more than a yes/no. Each non-zero value names a *class* of failure — `2` file not found,
+`3` nothing selected, and so on — so a script can tell them apart, and #raw("$ERRORMSG[$ERROR]") gives
+the generic description of the current one (#raw("$ERRORMSG[0]") is `[none]`). The *specific* message
+that reached the status line — with the offending file name, say — is always #raw("$LS"). A failure
+that has not yet been given its own number reads as the generic `1`, so the numbers only ever get more
+precise over time; code that checks #raw("IF $ERROR") or #raw("$ERROR == 0") keeps working either way.
+
+#ex("OPEN report.txt
+IF $ERROR
+  PR $ERRORMSG[$ERROR]: $LS
+EI")
+
+You can raise the code yourself: #raw("SETERR") sets the generic `1`, #raw("SETERR <n>") sets code `n`
+(a script can signal its own numbered conditions that way), and #raw("CLERR") clears it back to `0`.
 
 == Quiet
 

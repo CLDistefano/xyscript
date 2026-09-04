@@ -206,7 +206,7 @@ impl Interpreter {
             Kind::Var(var, items, index_mode) => {
                 let value = match choice {
                     Some(i) if i < items.len() => {
-                        self.env.error = false;
+                        self.env.error = 0;
                         if index_mode {
                             Value::Int((i + 1) as i64)
                         } else {
@@ -214,7 +214,7 @@ impl Interpreter {
                         }
                     }
                     _ => {
-                        self.env.error = true; // cancelled / out of range
+                        self.env.error = 1; // cancelled / out of range
                         if index_mode { Value::Int(0) } else { Value::str(String::new()) }
                     }
                 };
@@ -222,39 +222,39 @@ impl Interpreter {
             }
             Kind::Cp(sources) => match choice.and_then(|i| sources.get(i).copied()) {
                 Some(buf) => {
-                    self.env.error = false;
+                    self.env.error = 0;
                     host.copy_selection_from(buf)?; // insert that tab's selection at the caret
                 }
-                None => self.env.error = true, // cancelled
+                None => self.env.error = 1, // cancelled
             },
             Kind::Reopen(entries) => match choice.and_then(|i| entries.get(i).cloned()) {
                 Some((path, caret)) => {
-                    self.env.error = false;
+                    self.env.error = 0;
                     host.reopen_file(&path, caret)?; // open + restore caret
                 }
-                None => self.env.error = true, // cancelled
+                None => self.env.error = 1, // cancelled
             },
             Kind::Tab(targets) => match choice.and_then(|i| targets.get(i).copied()) {
                 Some(buf) => {
-                    self.env.error = false;
+                    self.env.error = 0;
                     host.switch_to_buffer(buf)?; // make that tab active
                 }
-                None => self.env.error = true, // cancelled — active tab unchanged
+                None => self.env.error = 1, // cancelled — active tab unchanged
             },
             Kind::Mark(targets) => match choice.and_then(|i| targets.get(i).copied()) {
                 Some(off) => {
-                    self.env.error = false;
+                    self.env.error = 0;
                     host.jump_to_offset(off)?; // move the caret to that bookmark (centered)
                 }
-                None => self.env.error = true, // cancelled — caret unchanged
+                None => self.env.error = 1, // cancelled — caret unchanged
             },
             Kind::LintFix(span, replacements) => {
                 match choice.and_then(|i| replacements.get(i).cloned()) {
                     Some(rep) => {
-                        self.env.error = false;
+                        self.env.error = 0;
                         host.apply_lint_fix(span, &rep)?; // replace the issue with the chosen fix
                     }
-                    None => self.env.error = true, // cancelled — document unchanged
+                    None => self.env.error = 1, // cancelled — document unchanged
                 }
             }
         }
@@ -446,8 +446,13 @@ impl Interpreter {
         self.last_status = msg;
     }
 
-    /// Whether `$ERROR` is currently set.
+    /// Whether `$ERROR` is currently set (non-zero).
     pub fn error_flag(&self) -> bool {
+        self.env.error != 0
+    }
+
+    /// The current `$ERROR` code (`0` = no error).
+    pub fn error_code(&self) -> u32 {
         self.env.error
     }
 
@@ -1038,9 +1043,8 @@ impl Vm<'_, '_> {
     fn eval_expr_trap(&mut self, e: &Expr) -> VmResult<Option<Value>> {
         match self.eval_expr(e) {
             Ok(v) => Ok(Some(v)),
-            Err(XplError::Trappable(m)) => {
-                self.ctx.env.error = true;
-                *self.ctx.status = Some(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 Ok(None)
             }
             Err(fatal) => Err(fatal),
@@ -1109,15 +1113,14 @@ impl Vm<'_, '_> {
         // With a file: write it, then open it in a new tab.
         match self.ctx.host.write_file(&path, &expanded) {
             Ok(()) => {}
-            Err(XplError::Trappable(m)) => {
-                self.ctx.env.error = true;
-                *self.ctx.status = Some(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 return Ok(Flow::Next); // don't try to open a file we failed to write
             }
             Err(fatal) => return Err(fatal),
         }
         self.host_op(EditorOp::Open { path: path.clone(), force: true, hex: false })?; // open the result, no prompt
-        if !self.ctx.env.error {
+        if self.ctx.env.error == 0 {
             *self.ctx.status =
                 Some(format!("PRINTEX: expanded {count} field{plural} to {path} (opened)"));
         }
@@ -1265,7 +1268,7 @@ impl Vm<'_, '_> {
                 *self.ctx.status = Some(format!(
                     "{verb}: slot must be a single letter A-Z or digit 0-9 (got {slot_str:?})"
                 ));
-                self.ctx.env.error = true;
+                self.ctx.env.error = 1;
                 return Ok(());
             }
         };
@@ -1316,7 +1319,7 @@ impl Vm<'_, '_> {
         // routine invocation (`foo` ≡ `CALL foo`) is exempt too, so it matches `CALL` (which is in
         // NO_ERROR_TOUCH) — the routine's own first action verb decides $ERROR.
         if !NO_ERROR_TOUCH.contains(&base) && !self.subs.contains_key(base) {
-            self.ctx.env.error = false;
+            self.ctx.env.error = 0;
         }
 
         // Search / replace. Switches are flags-first: attached to the verb (`SE/W`)
@@ -1441,7 +1444,7 @@ impl Vm<'_, '_> {
                 // sets the transient status here AND is recorded on the host (`kbd_load_error`) so it
                 // survives to the end of a `startup.xpl` — where later commands (and nested `LOADCFG`/
                 // `THEME` runs) would otherwise overwrite/clear the status, hiding why there's no keyboard.
-                if !self.ctx.env.error {
+                if self.ctx.env.error == 0 {
                     *self.ctx.status = Some(format!("loaded keyboard from {path}"));
                 }
                 Ok(Flow::Next)
@@ -1687,7 +1690,7 @@ impl Vm<'_, '_> {
                 } else if vswitches.iter().any(|s| s.eq_ignore_ascii_case("NV")) {
                     match self.ctx.host.shell_spawn(&args) {
                         Ok(()) => {}
-                        Err(XplError::Trappable(m)) => self.fail_soft(m),
+                        Err(XplError::Trappable { code, msg }) => self.fail_trap(code, msg),
                         Err(fatal) => return Err(fatal),
                     }
                 } else if let Some((_out, code)) = self.shell_run(&args)? {
@@ -2131,10 +2134,7 @@ impl Vm<'_, '_> {
                     let path = if arg.is_empty() { "xyscript-vars.txt" } else { arg };
                     if let Err(e) = self.ctx.host.write_file(path, &text) {
                         match e {
-                            XplError::Trappable(m) => {
-                                self.ctx.env.error = true;
-                                *self.ctx.status = Some(m);
-                            }
+                            XplError::Trappable { code, msg } => self.fail_trap(code, msg),
                             other => return Err(other),
                         }
                     }
@@ -2146,9 +2146,8 @@ impl Vm<'_, '_> {
                 let path = if arg.is_empty() { "xyscript-vars.txt".to_string() } else { arg.to_string() };
                 let text = match self.ctx.host.read_file(&path) {
                     Ok(s) => s,
-                    Err(XplError::Trappable(m)) => {
-                        self.ctx.env.error = true;
-                        *self.ctx.status = Some(m);
+                    Err(XplError::Trappable { code, msg }) => {
+                        self.fail_trap(code, msg);
                         return Ok(Flow::Next);
                     }
                     Err(fatal) => return Err(fatal),
@@ -2170,7 +2169,7 @@ impl Vm<'_, '_> {
                     }
                 }
                 if bad > 0 {
-                    self.ctx.env.error = true;
+                    self.ctx.env.error = 1;
                     *self.ctx.status = Some(format!("LoadVars: loaded {loaded}, skipped {bad} bad line(s)"));
                 } else {
                     *self.ctx.status = Some(format!("LoadVars: loaded {loaded} variable(s)"));
@@ -3066,7 +3065,7 @@ impl Vm<'_, '_> {
                             *self.ctx.status = Some(format!("= {s}  (copied)"));
                         }
                         Err(e) => {
-                            self.ctx.env.error = true;
+                            self.ctx.env.error = 1;
                             *self.ctx.status = Some(format!("CALC: {e}"));
                         }
                     }
@@ -3085,7 +3084,7 @@ impl Vm<'_, '_> {
                             *self.ctx.status = Some(format!("= {s}"));
                         }
                         Err(e) => {
-                            self.ctx.env.error = true;
+                            self.ctx.env.error = 1;
                             *self.ctx.status = Some(format!("CALC: {e}"));
                         }
                     },
@@ -3108,7 +3107,7 @@ impl Vm<'_, '_> {
                         }
                         match err {
                             Some(m) => {
-                                self.ctx.env.error = true;
+                                self.ctx.env.error = 1;
                                 *self.ctx.status = Some(format!("CALC: {m}"));
                             }
                             None => {
@@ -3135,7 +3134,7 @@ impl Vm<'_, '_> {
                         *self.ctx.status = Some(format!("+ {added}  (sum = {total})"));
                     }
                     Err(e) => {
-                        self.ctx.env.error = true;
+                        self.ctx.env.error = 1;
                         *self.ctx.status = Some(format!("ADDSUM: {e}"));
                     }
                 }
@@ -4410,7 +4409,7 @@ impl Vm<'_, '_> {
                     None => {
                         *self.ctx.status =
                             Some("LINTFIX: no correction available at the caret".to_string());
-                        self.ctx.env.error = true;
+                        self.ctx.env.error = 1;
                         Ok(Flow::Next)
                     }
                     Some(o) if o.labels.len() == 1 => {
@@ -4477,12 +4476,23 @@ impl Vm<'_, '_> {
                 self.ctx.env.set(name, Value::str(sel));
                 Ok(Flow::Next)
             }
+            // `SETERR [n]` sets `$ERROR` to code `n` (default `1`, the generic code); the code
+            // is otherwise arbitrary, so a script can raise its own numbered conditions.
             "SETERR" => {
-                self.ctx.env.error = true;
+                let a = self.subst(&args);
+                let a = a.trim();
+                let code: u32 = if a.is_empty() {
+                    crate::error::ErrCode::Generic as u32
+                } else {
+                    a.parse::<u32>().map_err(|_| {
+                        XplError::fatal(format!("SETERR: {a:?} is not a valid error code (0..)"))
+                    })?
+                };
+                self.ctx.env.error = code;
                 Ok(Flow::Next)
             }
             "CLERR" => {
-                self.ctx.env.error = false;
+                self.ctx.env.error = 0;
                 Ok(Flow::Next)
             }
             // Suppress status messages for the rest of the script: `QUIET` hides automatic
@@ -4571,10 +4581,7 @@ impl Vm<'_, '_> {
                     let path = if arg.is_empty() { "xyscript.lib" } else { arg };
                     if let Err(e) = self.ctx.host.write_file(path, &text) {
                         match e {
-                            XplError::Trappable(m) => {
-                                self.ctx.env.error = true;
-                                *self.ctx.status = Some(m);
-                            }
+                            XplError::Trappable { code, msg } => self.fail_trap(code, msg),
                             other => return Err(other),
                         }
                     }
@@ -4595,7 +4602,7 @@ impl Vm<'_, '_> {
                     return Ok(Flow::Next);
                 }
                 if resp.not_found {
-                    self.ctx.env.error = true;
+                    self.ctx.env.error = 1;
                     *self.ctx.status = Some(resp.body);
                     return Ok(Flow::Next);
                 }
@@ -4741,24 +4748,24 @@ impl Vm<'_, '_> {
                 let items: Vec<String> = match eval_result {
                     Ok(Value::Array(a)) => a.iter().map(|v| v.to_str()).collect(),
                     Ok(_) => {
-                        self.ctx.env.error = true;
+                        self.ctx.env.error = 1;
                         *self.ctx.status = Some("PICK: not a list".into());
                         return Ok(Flow::Next);
                     }
                     Err(e) => {
-                        self.ctx.env.error = true;
+                        self.ctx.env.error = 1;
                         *self.ctx.status = Some(format!("PICK: {}", e.msg));
                         return Ok(Flow::Next);
                     }
                 };
                 if items.is_empty() {
-                    self.ctx.env.error = true;
+                    self.ctx.env.error = 1;
                     *self.ctx.status = Some("PICK: empty list".into());
                     return Ok(Flow::Next);
                 }
                 const PICK_CAP: usize = 5000;
                 if items.len() > PICK_CAP {
-                    self.ctx.env.error = true;
+                    self.ctx.env.error = 1;
                     *self.ctx.status = Some(format!("PICK: too many items (> {PICK_CAP})"));
                     return Ok(Flow::Next);
                 }
@@ -4871,8 +4878,8 @@ impl Vm<'_, '_> {
         let arg_vals: Vec<Value> = arg_toks.into_iter().map(Value::str).collect();
         let src = match self.ctx.host.read_file(&path) {
             Ok(s) => s,
-            Err(XplError::Trappable(_)) => {
-                self.ctx.env.error = true;
+            Err(XplError::Trappable { code, .. }) => {
+                self.ctx.env.error = code;
                 return Ok(Flow::Next);
             }
             Err(fatal) => return Err(fatal),
@@ -4888,7 +4895,7 @@ impl Vm<'_, '_> {
             let loc = format!("{}:{}: ", run_file_label(&path), self.ctx.err_line);
             match e {
                 XplError::Fatal(m) => XplError::fatal(format!("{loc}{m}")),
-                XplError::Trappable(m) => XplError::trappable(format!("{loc}{m}")),
+                XplError::Trappable { code, msg } => XplError::Trappable { code, msg: format!("{loc}{msg}") },
             }
         })
     }
@@ -4950,7 +4957,7 @@ impl Vm<'_, '_> {
     fn lib_load(&mut self, args: &str, replace: bool) -> VmResult<Flow> {
         let path = args.trim().to_string();
         if path.is_empty() {
-            self.ctx.env.error = true;
+            self.ctx.env.error = 1;
             self.ctx.output.push("LOADLIB: a path is required".to_string());
             return Ok(Flow::Next);
         }
@@ -4963,7 +4970,7 @@ impl Vm<'_, '_> {
             self.ctx.output.push(msg.clone());
         }
         if accepted.is_empty() {
-            self.ctx.env.error = true;
+            self.ctx.env.error = 1;
             self.ctx.output.push(format!("{path}: no usable routines (all shadowed)"));
             return Ok(Flow::Next);
         }
@@ -4990,7 +4997,7 @@ impl Vm<'_, '_> {
     fn lib_reload(&mut self) -> VmResult<Flow> {
         let loads = self.ctx.lib_loads.clone();
         if loads.is_empty() {
-            self.ctx.env.error = true;
+            self.ctx.env.error = 1;
             self.ctx.output.push("RELOADLIB: nothing loaded; use LOADLIB".to_string());
             return Ok(Flow::Next);
         }
@@ -5022,7 +5029,7 @@ impl Vm<'_, '_> {
         let text = match self.ctx.host.read_file(path) {
             Ok(t) => t,
             Err(e) => {
-                self.ctx.env.error = true;
+                self.ctx.env.error = 1;
                 self.ctx.output.push(format!("{path}: {}", e.message()));
                 return Err(());
             }
@@ -5030,7 +5037,7 @@ impl Vm<'_, '_> {
         match parse_lib(&text, LibSource::User) {
             Ok(rs) => Ok(rs),
             Err(errs) => {
-                self.ctx.env.error = true;
+                self.ctx.env.error = 1;
                 for e in errs {
                     self.ctx.output.push(format!("{path}: {e}"));
                 }
@@ -5047,9 +5054,8 @@ impl Vm<'_, '_> {
     {
         match f(self.ctx.host) {
             Ok(()) => Ok(()),
-            Err(XplError::Trappable(m)) => {
-                self.ctx.env.error = true;
-                *self.ctx.status = Some(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 Ok(())
             }
             Err(fatal) => Err(fatal),
@@ -5068,9 +5074,8 @@ impl Vm<'_, '_> {
                 }
                 Ok(())
             }
-            Err(XplError::Trappable(m)) => {
-                self.ctx.env.error = true;
-                *self.ctx.status = Some(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 Ok(())
             }
             Err(fatal) => Err(fatal),
@@ -5099,9 +5104,8 @@ impl Vm<'_, '_> {
     fn host_op_value(&mut self, op: EditorOp) -> VmResult<Value> {
         match self.ctx.host.editor_op(op) {
             Ok(v) => Ok(v),
-            Err(XplError::Trappable(m)) => {
-                self.ctx.env.error = true;
-                *self.ctx.status = Some(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 Ok(Value::str(""))
             }
             Err(fatal) => Err(fatal),
@@ -5116,7 +5120,13 @@ impl Vm<'_, '_> {
     /// Record a trappable failure: set `$ERROR` and the status line (the soft-fail path
     /// shared by `host_op`/`host_call` and the shell verbs).
     fn fail_soft(&mut self, msg: String) {
-        self.ctx.env.error = true;
+        self.ctx.env.error = crate::error::ErrCode::Generic as u32;
+        *self.ctx.status = Some(msg);
+    }
+
+    /// Fold a trappable error into `$ERROR` (using its own `code`) + the status line.
+    fn fail_trap(&mut self, code: u32, msg: String) {
+        self.ctx.env.error = code;
         *self.ctx.status = Some(msg);
     }
 
@@ -5126,8 +5136,8 @@ impl Vm<'_, '_> {
     fn shell_run(&mut self, cmd: &str) -> VmResult<Option<(String, i64)>> {
         match self.ctx.host.shell(cmd) {
             Ok(r) => Ok(Some(r)),
-            Err(XplError::Trappable(m)) => {
-                self.fail_soft(m);
+            Err(XplError::Trappable { code, msg }) => {
+                self.fail_trap(code, msg);
                 Ok(None)
             }
             Err(fatal) => Err(fatal),
@@ -5323,7 +5333,7 @@ fn locate_top_level(e: XplError, label: Option<&str>, line: usize, located: bool
             let loc = format!("{}:{}: ", run_file_label(l), line);
             match e {
                 XplError::Fatal(m) => XplError::fatal(format!("{loc}{m}")),
-                XplError::Trappable(m) => XplError::trappable(format!("{loc}{m}")),
+                XplError::Trappable { code, msg } => XplError::Trappable { code, msg: format!("{loc}{msg}") },
             }
         }
         _ => e,
@@ -6030,7 +6040,15 @@ impl EvalContext for Ctx<'_> {
     fn get_var(&self, name: &str) -> Option<Value> {
         let f = fold_ident(name);
         match f.as_str() {
-            "ERROR" => return Some(Value::Int(if self.env.error { 1 } else { 0 })),
+            "ERROR" => return Some(Value::Int(self.env.error as i64)),
+            // `$ERRORMSG` is the generic-message catalog, indexed by code:
+            // `$ERRORMSG[$ERROR]` names the last error's class. `[0]` = "[none]".
+            "ERRORMSG" => {
+                let catalog = (0..=crate::error::MAX_ERROR_CODE)
+                    .map(|c| Value::str(crate::error::error_message(c)))
+                    .collect();
+                return Some(Value::Array(catalog));
+            }
             "#" => return Some(Value::Int(self.args.len() as i64)),
             "*" => {
                 let joined = self
@@ -6682,6 +6700,37 @@ mod tests {
     fn seterr_clerr_manage_flag() {
         let (i, _) = run("SETERR\nIF $ERROR PR on\nCLERR\nIFNOT $ERROR PR off");
         assert_eq!(i.output(), &["on".to_string(), "off".to_string()]);
+    }
+
+    #[test]
+    fn error_is_a_numeric_code_default_generic_one() {
+        // Bare SETERR raises the generic code 1; $ERROR reads back as that number.
+        let (i, _) = run("SETERR\nPR $ERROR");
+        assert_eq!(i.output(), &["1".to_string()]);
+    }
+
+    #[test]
+    fn seterr_takes_an_explicit_code() {
+        let (i, _) = run("SETERR 7\nPR $ERROR");
+        assert_eq!(i.output(), &["7".to_string()]);
+    }
+
+    #[test]
+    fn seterr_rejects_a_non_numeric_code() {
+        assert!(run_res("SETERR nope").is_err());
+    }
+
+    #[test]
+    fn errormsg_catalog_is_indexed_by_code() {
+        // $ERRORMSG[0] is the sentinel; $ERRORMSG[$ERROR] names the current error's class.
+        let (i, _) = run("PR $ERRORMSG[0]\nSETERR 2\nPR $ERRORMSG[$ERROR]");
+        assert_eq!(i.output(), &["[none]".to_string(), "file not found".to_string()]);
+    }
+
+    #[test]
+    fn errormsg_out_of_range_is_empty() {
+        let (i, _) = run("PR [$ERRORMSG[9999]]");
+        assert_eq!(i.output(), &["[]".to_string()]);
     }
 
     // ---- host seam ----------------------------------------------------------

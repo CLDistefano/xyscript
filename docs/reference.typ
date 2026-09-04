@@ -604,7 +604,7 @@ self-contained element to convert.
 / #cmd("CAPTURE", "ENDCAPTURE", "EC"): redirect a command's output into a variable.
 / #cmd("RUN") / #cmd("RUNCODE") / #cmd("RUNHERE"): run a script file / XPL text in a variable / the fenced block under the caret.
 / #cmd("EXIT", "EX") / #cmd("EXITALL", "EX1") / #cmd("NOP"): halt this script / every script / do nothing.
-/ #cmd("QUIET") / #cmd("SETERR") / #cmd("CLERR") / #cmd("BK"): suppress messages / set / clear the `$ERROR` flag / a debugging breakpoint.
+/ #cmd("QUIET") / #cmd("SETERR") / #cmd("CLERR") / #cmd("BK"): suppress messages / set the `$ERROR` code (`SETERR [n]`, default `1`) / clear it / a debugging breakpoint.
 / #cmd("SRANDOM"): seed the `RANDOM` generator. #cmd("LISTSPECIALS"): insert a template of every special variable.
 
 == Libraries
@@ -710,7 +710,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("CLEAR"): unset one or more variables.
 / #cmd("CLEARATTACH"): empty the #cmd("ATTACH") staging list (the files queued for the next #cmd("SENDMAIL")).
 / #cmd("CLEARKBD"): reset the keyboard map to the built-in baseline.
-/ #cmd("CLERR"): clear the `$ERROR` flag (and #cmd("SETERR") sets it).
+/ #cmd("CLERR"): clear `$ERROR` (set it to `0`). #cmd("SETERR") `[n]` sets it — bare raises the generic code `1`, `SETERR <n>` raises code `n` (so a script can signal its own numbered conditions). See #sv("ERROR") / #sv("ERRORMSG").
 / #cmd("CLIP"): set the clipboard from a string argument.
 / #cmd("CLRSUM"): cursor addition — (re)set the running total (#sv("RUNSUM")) to 0. The companion of #cmd("ADDSUM") (add the number under the caret) and #cmd("PUTSUM") (put the total). The total is session-only and global (one register), so start a fresh column with `CLRSUM`.
 / #cmd("CMH"): stash a command at the top of the history without running it — bare uses the command line, `CMH "command"` uses that string.
@@ -1273,7 +1273,8 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 
 == Scripting
 
-/ #sv("ERROR"): the trappable-error flag — `1` right after a command failed, so a script can react.
+/ #sv("ERROR"): the trappable-error *code* — `0` when the last command succeeded, non-zero when it failed, so `IF $ERROR …` still works. Each non-zero value names a class of failure (see #sv("ERRORMSG")); a still-uncoded failure reads as the generic `1`. Auto-clears to `0` at the next command, or manage it with #cmd("SETERR")/#cmd("CLERR"). The *specific* message text of the failure is #sv("LS").
+/ #sv("ERRORMSG"): the generic-message catalog, indexed by error code — `$ERRORMSG[$ERROR]` names the class of the last failure, and `$ERRORMSG[0]` is `[none]`. An out-of-range code yields the empty string. Current codes: `1` error, `2` file not found, `3` nothing selected, `4` invalid number, `5` unknown command, `6` out of range, `7` no such directory, `8` file already exists, `9` invalid argument. #ex("SETERR 2 ; PR $ERRORMSG[$ERROR]", "file not found")
 / #sv("RV"): the value the last `RETURN` produced.
 
 Inside a `SUB`, the arguments passed to it are also available: `$1`, `$2`, … by position,
@@ -1370,7 +1371,8 @@ Every special variable in one list, for quick lookup.
 / #sv("EMPHBGCOLOR"): effective EMPH emphasis background color.
 / #sv("EMPHFGCOLOR"): effective EMPH emphasis text color.
 / #sv("EN"): active document's encoding-view name.
-/ #sv("ERROR"): trappable-error flag.
+/ #sv("ERROR"): trappable-error code (`0` = success; non-zero names a failure class).
+/ #sv("ERRORMSG"): generic-message catalog indexed by code (`$ERRORMSG[$ERROR]`; `[0]` = `[none]`).
 / #sv("ET"): stopwatch elapsed (formatted).
 / #sv("ETS"): stopwatch elapsed (seconds).
 / #sv("FB"): `1` if the caret is at the buffer start.

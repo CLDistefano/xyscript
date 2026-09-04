@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    HelpResponse, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -6740,7 +6740,7 @@ impl AppHost {
             let b = self.active().buffer();
             b.has_selection().then(|| b.selection_text())
         };
-        let need_selection = || XplError::trappable("no text is selected");
+        let need_selection = || XplError::trappable_code(ErrCode::NothingSelected, "no text is selected");
         // With a multi-caret set, gather one selection piece per caret (document order); `""` for a
         // bare caret. Empty unless multi.
         let multi_pieces = |host: &mut Self| -> Vec<String> {
@@ -7354,7 +7354,7 @@ impl AppHost {
                 format!("opened {name} ({} lines, {})", doc.buffer().line_count(), doc.encoding_name())
             }
         } else if read_only {
-            return Err(XplError::trappable(format!("READ: {path}: not found")));
+            return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("READ: {path}: not found")));
         } else {
             // OPEN of a missing file: start a new, empty buffer named for it (ready to SAVE).
             doc.set_path(target.clone());
@@ -8521,7 +8521,7 @@ impl AppHost {
             return Ok(text.clone().into_bytes());
         }
         if self.virtual_fs {
-            return Err(XplError::trappable(self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
+            return Err(XplError::trappable_code(ErrCode::FileNotFound, self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
         }
         cloud_only_guard(Path::new(path))?;
         std::fs::read(path).map_err(|e| {
@@ -9593,7 +9593,7 @@ impl Host for AppHost {
             EditorOp::RubDelete => {
                 let sel = self.active().buffer().selection_text();
                 if sel.is_empty() {
-                    return Err(XplError::trappable("no text is selected"));
+                    return Err(XplError::trappable_code(ErrCode::NothingSelected, "no text is selected"));
                 }
                 self.deletion_buffer = sel;
                 self.active().delete_selection();
@@ -9607,7 +9607,7 @@ impl Host for AppHost {
             EditorOp::DeleteSel => {
                 let sel = self.active().buffer().selection_text();
                 if sel.is_empty() {
-                    return Err(XplError::trappable("no text is selected"));
+                    return Err(XplError::trappable_code(ErrCode::NothingSelected, "no text is selected"));
                 }
                 self.active().delete_selection();
             }
@@ -9622,18 +9622,18 @@ impl Host for AppHost {
                         let target = if end { e } else { s };
                         self.active().move_carets(|bb| bb.move_to_offset(target, false));
                     }
-                    _ => return Err(XplError::trappable("no text is selected")),
+                    _ => return Err(XplError::trappable_code(ErrCode::NothingSelected, "no text is selected")),
                 }
             }
             EditorOp::Case(kind) => self.active().change_case(kind),
             EditorOp::CopySelection => {
                 if !self.active().copy_selection_to_cursor() {
-                    return Err(XplError::trappable("no text is selected"));
+                    return Err(XplError::trappable_code(ErrCode::NothingSelected, "no text is selected"));
                 }
             }
             EditorOp::MoveSelection => {
                 if !self.active().move_selection_to_cursor() {
-                    return Err(XplError::trappable("no text is selected"));
+                    return Err(XplError::trappable_code(ErrCode::NothingSelected, "no text is selected"));
                 }
             }
             EditorOp::Search(spec) => return self.do_search(spec),
@@ -10001,7 +10001,7 @@ impl Host for AppHost {
                         let b = self.active().buffer();
                         b.has_selection()
                             .then(|| b.selection_text())
-                            .ok_or_else(|| XplError::trappable("no text is selected"))?
+                            .ok_or_else(|| XplError::trappable_code(ErrCode::NothingSelected, "no text is selected"))?
                     }
                 };
                 let sigil = if script { '&' } else { '@' };
@@ -10169,7 +10169,7 @@ impl Host for AppHost {
             EditorOp::FileCopy { src, dst } => {
                 if self.virtual_fs {
                     let content = self.files.get(&src).cloned().ok_or_else(|| {
-                        XplError::trappable(format!("COPY: {src}: not found"))
+                        XplError::trappable_code(ErrCode::FileNotFound, format!("COPY: {src}: not found"))
                     })?;
                     self.files.insert(dst.clone(), content);
                     return Ok(Value::str(format!("copied {src} -> {dst}")));
@@ -10197,7 +10197,7 @@ impl Host for AppHost {
                 }
                 if self.virtual_fs {
                     if self.files.remove(&path).is_none() {
-                        return Err(XplError::trappable(format!("DEL: {path}: not found")));
+                        return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("DEL: {path}: not found")));
                     }
                     let p = self.resolve_path(&path);
                     self.refresh_listings_after_delete(&p);
@@ -10226,7 +10226,7 @@ impl Host for AppHost {
                     (p.to_string_lossy().into_owned(), p.exists(), name)
                 };
                 if !exists {
-                    return Err(XplError::trappable(format!("DEL: {path}: not found")));
+                    return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("DEL: {path}: not found")));
                 }
                 self.pending_close =
                     Some(PendingClose::DeleteFile { path: PathBuf::from(key), name });
@@ -10235,7 +10235,7 @@ impl Host for AppHost {
             EditorOp::FileRename { from, to } => {
                 if self.virtual_fs {
                     let content = self.files.remove(&from).ok_or_else(|| {
-                        XplError::trappable(format!("RENAME: {from}: not found"))
+                        XplError::trappable_code(ErrCode::FileNotFound, format!("RENAME: {from}: not found"))
                     })?;
                     self.files.insert(to.clone(), content);
                     // Retarget an open tab showing the old name so its tab label follows the rename.
@@ -12279,7 +12279,7 @@ impl Host for AppHost {
                     (r, ok)
                 };
                 if !exists {
-                    return Err(XplError::trappable(format!("ATTACH: file not found: {raw}")));
+                    return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("ATTACH: file not found: {raw}")));
                 }
                 let name = stored
                     .file_name()
@@ -13264,7 +13264,7 @@ impl Host for AppHost {
             return Ok(text.clone());
         }
         if self.virtual_fs {
-            return Err(XplError::trappable(self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
+            return Err(XplError::trappable_code(ErrCode::FileNotFound, self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)])));
         }
         // Resolve relative paths against the editor's working dir ($CWD / `CD`), like every
         // other file op — NOT the process cwd. Absolute paths (e.g. `$FP`) pass through. This

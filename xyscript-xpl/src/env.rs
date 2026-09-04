@@ -19,8 +19,9 @@ use std::collections::HashMap;
 pub struct Env {
     /// User variables, keyed by case-folded name.
     pub vars: HashMap<String, Value>,
-    /// `$ERROR` — the trappable-error flag.
-    pub error: bool,
+    /// `$ERROR` — the trappable-error code. `0` = success/no error; any
+    /// non-zero value is an [`crate::error::ErrCode`] (see `error.rs`).
+    pub error: u32,
     /// Active `CAPTURE` buffers, innermost last (so captures nest). Each entry is
     /// `(folded var name, accumulated output)`. Lives here (not on the transient `Vm`) so a
     /// capture survives a suspend/resume or a sliced background run. Empty = not capturing.
@@ -102,8 +103,8 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9",
     // email (send config + IMAP receive config; masked password reads "set"/"not set")
     "SMTPURL", "MAILUSER", "MAILFROM", "MAILPASS", "MAILDEBUG", "IMAPURL", "MAILBOX", "ATTACH",
-    // error flag
-    "ERROR",
+    // error code + generic-message catalog ($ERRORMSG[n])
+    "ERROR", "ERRORMSG",
     // args / return
     "RV",
 ];

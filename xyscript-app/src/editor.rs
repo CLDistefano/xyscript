@@ -7116,7 +7116,7 @@ mod tests {
         // A missing file errors (sets $ERROR) and leaves the list untouched.
         e.run_command("ATTACH nope.pdf");
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"), "missing file sets $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("2"), "missing file sets $ERROR (FileNotFound)");
         assert_eq!(e.special_str("ATTACH"), "a.pdf, b.png");
         e.run_command("CLEARATTACH");
         assert_eq!(e.special_str("ATTACH"), "");
@@ -9601,7 +9601,7 @@ mod tests {
         e.run_command("MERGE nope.txt");
         assert_eq!(e.document().text(), "INSERTEDAB");
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("2")); // ErrCode::FileNotFound
     }
 
     #[test]
@@ -11948,7 +11948,7 @@ mod tests {
         // theme-file path, which fails to load), leaving colours untouched.
         e.run_command("THEME bogus");
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("2")); // ErrCode::FileNotFound
         assert_eq!(e.bg_color(), (30, 30, 34)); // still dark
     }
 
@@ -11972,7 +11972,7 @@ mod tests {
         // A path that does not exist is trappable, leaving colours untouched.
         e.run_command("THEME no-such-theme.xpl");
         e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert_eq!(e.output().last().map(String::as_str), Some("2")); // ErrCode::FileNotFound
         assert_eq!(e.fg_color(), (220, 220, 220)); // still dark
     }
 
@@ -12136,13 +12136,13 @@ mod tests {
         let mut e = Editor::new(typing_keymap());
         let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
         e.run_command("insert \"hello\"");
-        // No selection → DB/DE are trappable (set $ERROR), caret unchanged.
+        // No selection → DB/DE are trappable (set $ERROR = NothingSelected), caret unchanged.
         e.run_command("DB");
         e.run_command("PR $ERROR");
-        assert_eq!(out(&e).as_deref(), Some("1"));
+        assert_eq!(out(&e).as_deref(), Some("3")); // ErrCode::NothingSelected
         e.run_command("DE");
         e.run_command("PR $ERROR");
-        assert_eq!(out(&e).as_deref(), Some("1"));
+        assert_eq!(out(&e).as_deref(), Some("3")); // ErrCode::NothingSelected
         // Forward-select "hel" (0..3); caret sits at the end (3).
         e.run_command("TOP");
         e.run_command("RIGHT SEL");

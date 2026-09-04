@@ -26,7 +26,7 @@ pub mod value;
 pub mod vm;
 
 pub use ast::{Program, Span, Stmt};
-pub use error::{VmResult, XplError};
+pub use error::{error_message, ErrCode, VmResult, XplError, MAX_ERROR_CODE};
 pub use env::SPECIAL_NAMES;
 pub use expr::{eval, parse as parse_expr, EvalContext, Expr, ExprError, FUNCTION_NAMES};
 pub use library::{BUILTIN_VERBS, CONTROL_KEYWORDS};
