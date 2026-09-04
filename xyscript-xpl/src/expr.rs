@@ -745,7 +745,7 @@ fn non_numeric(v: &Value, sym: &str) -> ExprError {
 /// each to be documented in `docs/reference.typ`.
 pub const FUNCTION_NAMES: &[&str] = &[
     // string
-    "LEN", "UPPER", "LOWER", "STRIP", "LSTRIP", "RSTRIP", "TRIMLEFT", "TRIMRIGHT", "SUBSTR", "LEFT",
+    "LEN", "UPPER", "LOWER", "REVERSE", "STRIP", "LSTRIP", "RSTRIP", "TRIMLEFT", "TRIMRIGHT", "SUBSTR", "LEFT",
     "RIGHT", "INDEX", "CONTAINS", "REPLACE", "SPLIT", "SPLITS", "JOIN", "CHARS", "WORDS", "LINES",
     "CHR", "ASC", "FORMAT",
     // string classification predicates (all → 1/0; false for an empty string)
@@ -1211,6 +1211,13 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
         "UPPER" => {
             expect(1)?;
             Ok(Value::str(s(0).to_uppercase()))
+        }
+        // `REVERSE(s)` — the string with its characters in reverse order (`"abc"` -> `"cba"`).
+        // Char-based, matching `LEN`/`CHARS` (a combining mark is one char, so it reverses with
+        // its base rather than as a grapheme cluster).
+        "REVERSE" => {
+            expect(1)?;
+            Ok(Value::str(s(0).chars().rev().collect::<String>()))
         }
         // `GETPATH(p)` — split a path into a 4-element array: [directory (no trailing slash),
         // filename+extension, filename only, extension only]. If `p` is an EXISTING DIRECTORY the
@@ -2934,6 +2941,9 @@ mod tests {
         assert_eq!(ev(r#"LEN("hello")"#), Value::Int(5));
         assert_eq!(ev(r#"UPPER("aBc")"#), Value::str("ABC"));
         assert_eq!(ev(r#"LOWER("aBc")"#), Value::str("abc"));
+        assert_eq!(ev(r#"REVERSE("string")"#), Value::str("gnirts"));
+        assert_eq!(ev(r#"REVERSE("")"#), Value::str("")); // empty is fine
+        assert_eq!(ev(r#"REVERSE("aé")"#), Value::str("éa")); // char-based (é = one char)
         assert_eq!(ev(r#"STRIP("  hi  ")"#), Value::str("hi"));
         assert_eq!(ev(r#"SUBSTR("hello", 1, 3)"#), Value::str("ell"));
         assert_eq!(ev(r#"LEFT("hello", 2)"#), Value::str("he"));
