@@ -23,7 +23,7 @@ this kit with plain relative paths, so an unzipped release runs out of the box:
 | `startup.xpl` | Working startup script; loads the keymap, config, a theme, auto-replace pairs, and the library. |
 | `startup.xpl.template` | Documented, all-commented starting point to copy into your own `startup.xpl`. |
 | `xyscript-internal.kbd` | The default keyboard map, as a file (`loadkbd`). |
-| `xyscript-default.cfg` | Every setting at its default value — **regenerate with `SAVECFG xyscript-default.cfg`** from a fresh instance. |
+| `xyscript-default.cfg` | Complete reference: every setting at its default (follow-theme/unset knobs shown as no-op `… default`/`normal` lines, or commented `#` lines where the verb has no reset form) — so `LOADCFG` of it is a true no-op. **Regenerate with `cargo test -p xyscript-app --lib regenerate_default_cfg -- --ignored`** (a plain `SAVECFG` emits only your customised settings, not the full template). |
 | `xyscript.ar` | Default auto-replace pairs (accented characters, symbols). |
 | `xyscript.lib` | The bundled script library (`LISTLIB` to view routines). |
 | `user-variables.template` | Blank template of the variables the library uses; the user copies it to `user-variables.xpl`. |

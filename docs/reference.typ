@@ -1028,7 +1028,7 @@ an expression: in `SET`, `IF`, and `WHILE`, or inline on any command line inside
 
 / #func("LEN", "s"): number of characters in string `s` (or the number of items, if `s` is an array or map).
 / #func("UPPER", "s") / #func("LOWER", "s"): `s` in upper- or lower-case.
-/ #func("REVERSE", "s"): `s` with its characters in reverse order. #ex("REVERSE(\"string\")", "gnirts")
+/ #func("REVERSE", "s"): `s` with its characters in reverse order. #ex("PR $(REVERSE(\"string\"))", "gnirts")
 / #func("STRIP", "s"): `s` with leading *and* trailing whitespace removed.
 / #func("LSTRIP", "s") / #func("RSTRIP", "s"): `s` with whitespace removed from just the left or just the right.
 / #func("TRIMLEFT", "s, n") / #func("TRIMRIGHT", "s, n"): `s` with its first / last `n` characters dropped.

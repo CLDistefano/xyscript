@@ -4969,6 +4969,22 @@ mod tests {
     }
 
     #[test]
+    fn shipped_default_cfg_loads_as_a_noop() {
+        // The full default template lists every optional knob at its default (`… default`/`normal`)
+        // plus commented lines for the no-reset ones. Loading it into a fresh instance must change
+        // NOTHING — every active line is a no-op. (Complements the text-equality check in host.rs.)
+        const SHIPPED: &str = include_str!("../../packaging/runtime/xyscript-default.cfg");
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        let before = e.host().config_script(true, false);
+        e.host_mut().write_file("default.cfg", SHIPPED).unwrap();
+        e.run_command("LOADCFG default.cfg");
+        assert!(e.last_error().is_none(), "LOADCFG of the default cfg errored: {:?}", e.last_error());
+        let after = e.host().config_script(true, false);
+        assert_eq!(before, after, "loading the shipped default cfg is not a no-op");
+    }
+
+    #[test]
     fn loadcfg_confirms_after_running_the_config() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
