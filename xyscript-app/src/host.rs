@@ -2792,6 +2792,11 @@ pub struct AppHost {
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
+    /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
+    error_log: bool,
+    /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
+    /// A set path is stored as given and resolved against `$CWD` at write time. `$ERRORLOGFILE`; SaveCfg.
+    error_log_file: Option<String>,
     /// Dim the window slightly when it loses focus (`DIMONBLUR`). Off by default. `$DIMONBLUR`; SaveCfg.
     dim_on_blur: bool,
     /// When on (`CLOSEBACK`), closing a tab (`AB`) returns to the LAST-VISITED tab instead of the left
@@ -3231,6 +3236,8 @@ impl AppHost {
             url_fg_color: None,
             url_bg_color: None,
             auto_reopen: false, // off by default
+            error_log: false, // off by default
+            error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
             dim_on_blur: false, // off by default
             close_back: false, // off by default: AB backs up to the left neighbor
@@ -3652,6 +3659,24 @@ impl AppHost {
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
+    }
+
+    /// Whether error logging is on (`ERRORLOG`/`$ERRORLOG`).
+    pub fn error_log(&self) -> bool {
+        self.error_log
+    }
+
+    /// The effective error-log file path (`$ERRORLOGFILE`): the configured path resolved against
+    /// `$CWD`, or the default `xyscript-errors.log` in `$XSDIR` when none is set. Falls back to a
+    /// bare relative name if the executable's directory can't be determined.
+    pub fn error_log_path(&self) -> std::path::PathBuf {
+        match &self.error_log_file {
+            Some(f) if !f.trim().is_empty() => self.resolve_path(f),
+            _ => std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("xyscript-errors.log")))
+                .unwrap_or_else(|| std::path::PathBuf::from("xyscript-errors.log")),
+        }
     }
 
     /// Whether the window dims when it loses focus (`DIMONBLUR`/`$DIMONBLUR`).
@@ -8768,6 +8793,10 @@ impl AppHost {
             put(&mut s, "Bookmark gutter background colour -- R G B, 0-255", format!("MARKBGCOLOR {r} {g} {b}"));
         }
         put(&mut s, "Reload a file automatically when changed on disk -- on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Log trappable + fatal errors to a file -- on | off", format!("ERRORLOG {}", if self.error_log { "on" } else { "off" }));
+        if let Some(f) = &self.error_log_file {
+            put(&mut s, "Error-log file path (default: xyscript-errors.log in $XSDIR)", format!("ERRORLOGFILE {f}"));
+        }
         put(&mut s, "Dim the window when it loses focus -- on | off", format!("DIMONBLUR {}", if self.dim_on_blur { "on" } else { "off" }));
         put(&mut s, "Close a tab back to the last-visited tab -- on | off", format!("CLOSEBACK {}", if self.close_back { "on" } else { "off" }));
         put(&mut s, "Highlight URLs and Ctrl+click to open them -- on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
@@ -12114,6 +12143,22 @@ impl Host for AppHost {
                     if self.auto_reopen { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetErrorLog(opt) => {
+                self.error_log = opt.unwrap_or(!self.error_log);
+                return Ok(Value::str(format!(
+                    "ERRORLOG {} ({})",
+                    if self.error_log { "on" } else { "off" },
+                    self.error_log_path().display()
+                )));
+            }
+            EditorOp::SetErrorLogFile(path) => {
+                let p = path.trim();
+                self.error_log_file = if p.is_empty() { None } else { Some(p.to_string()) };
+                return Ok(Value::str(format!(
+                    "ERRORLOGFILE {}",
+                    self.error_log_path().display()
+                )));
+            }
             EditorOp::SetCloseBack(opt) => {
                 self.close_back = opt.unwrap_or(!self.close_back);
             }
@@ -12990,6 +13035,9 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
+            "ERRORLOG" => Some(Value::Int(if self.error_log { 1 } else { 0 })),
+            // The effective log path (default included), so a script/user can see where it writes.
+            "ERRORLOGFILE" => Some(Value::str(self.error_log_path().to_string_lossy().into_owned())),
             "DIMONBLUR" => Some(Value::Int(if self.dim_on_blur { 1 } else { 0 })),
             "CLOSEBACK" => Some(Value::Int(if self.close_back { 1 } else { 0 })),
             "URLHIGHLIGHT" => Some(Value::Int(if self.url_highlight { 1 } else { 0 })),
@@ -13433,6 +13481,64 @@ impl Host for AppHost {
             XplError::trappable(format!("cannot finalize {}: {e}", target.display()))
         })?;
         Ok(())
+    }
+
+    fn error_log_enabled(&self) -> bool {
+        self.error_log
+    }
+
+    fn log_error(&mut self, fatal: bool, code: u32, command: &str, location: &str, message: &str) {
+        if !self.error_log {
+            return;
+        }
+        // Assemble the 8-column TSV row. Fields never contain a tab/newline (the message might, so
+        // sanitize); fatals carry no $ERROR code/class, and unknown fields use "-" to keep 8 columns.
+        let clean = |s: &str| s.replace('\t', " ").replace(['\r', '\n'], " ");
+        let dt = self.now_local();
+        let ts = format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            dt.year, dt.month, dt.mday, dt.hour, dt.min, dt.sec
+        );
+        let tier = if fatal { "FATAL" } else { "TRAP" };
+        let code_col = if fatal { "-".to_string() } else { code.to_string() };
+        let class_col = if fatal { "-".to_string() } else { xyscript_xpl::error_message(code).to_string() };
+        let doc = self
+            .active_doc()
+            .path()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let non_empty = |s: String| if s.is_empty() { "-".to_string() } else { s };
+        let row = format!(
+            "{tier}\t{ts}\t{code}\t{class}\t{cmd}\t{loc}\t{doc}\t{msg}\n",
+            code = code_col,
+            class = clean(&class_col),
+            cmd = clean(command),
+            loc = clean(&non_empty(location.to_string())),
+            doc = clean(&non_empty(doc)),
+            msg = clean(message),
+        );
+        const HEADER: &str =
+            "# tier\ttimestamp\tcode\tclass\tcommand\tlocation\tdoc\tmessage\n";
+        let path = self.error_log_path();
+        // Best-effort: a logging failure is swallowed — it must never set $ERROR or recurse.
+        if self.virtual_fs {
+            let key = path.to_string_lossy().into_owned();
+            let entry = self.files.entry(key).or_default();
+            if entry.is_empty() {
+                entry.push_str(HEADER);
+            }
+            entry.push_str(&row);
+            return;
+        }
+        let need_header = !path.exists();
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            if need_header {
+                let _ = f.write_all(HEADER.as_bytes());
+            }
+            let _ = f.write_all(row.as_bytes());
+            let _ = f.flush();
+        }
     }
 
     fn shell(&mut self, cmd: &str) -> VmResult<(String, i64)> {

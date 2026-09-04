@@ -605,6 +605,7 @@ self-contained element to convert.
 / #cmd("RUN") / #cmd("RUNCODE") / #cmd("RUNHERE"): run a script file / XPL text in a variable / the fenced block under the caret.
 / #cmd("EXIT", "EX") / #cmd("EXITALL", "EX1") / #cmd("NOP"): halt this script / every script / do nothing.
 / #cmd("QUIET") / #cmd("SETERR") / #cmd("CLERR") / #cmd("BK"): suppress messages / set the `$ERROR` code (`SETERR [n]`, default `1`) / clear it / a debugging breakpoint.
+/ #cmd("ERRORLOG") / #cmd("ERRORLOGFILE"): `ERRORLOG on|off` (bare toggles) appends every trappable *and* fatal error to a log file; `ERRORLOGFILE <path>` sets that file (bare resets to the default, `xyscript-errors.log` in #sv("XSDIR"); a given path resolves against #sv("CWD")). Each row is tab-separated: tier (`TRAP`/`FATAL`), timestamp, `$ERROR` code, generic class, the command that triggered it, `file:line` location, active document, and the specific message; a `#`-comment header names the columns. Off by default; not `TRUST`-gated (only a local log is written); a logging failure is silent. Read state via #sv("ERRORLOG") / #sv("ERRORLOGFILE"); persisted in the config.
 / #cmd("SRANDOM"): seed the `RANDOM` generator. #cmd("LISTSPECIALS"): insert a template of every special variable.
 
 == Libraries
@@ -773,6 +774,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("ET"): insert the stopwatch's elapsed time.
 / #cmd("ELSE") / #cmd("ELSEIF") / #cmd("ENDIF", "EI"): the other parts of an `IF` block (see `IF`).
 / #cmd("ENDWHILE", "EW") / #cmd("ENDFOR", "EF") / #cmd("ENDSUB", "ES") / #cmd("ENDSWITCH", "ESW"): close a `WHILE` / `FOR` / `SUB` / `SWITCH`.
+/ #cmd("ERRORLOG"): `ERRORLOG on|off` (bare toggles) — append every trappable and fatal error to a log file as a tab-separated row (tier, timestamp, `$ERROR` code, class, triggering command, `file:line`, document, message), with a `#`-comment column header. Off by default; not `TRUST`-gated; a logging failure is silent. State: #sv("ERRORLOG"). Persisted in the config.
+/ #cmd("ERRORLOGFILE"): `ERRORLOGFILE <path>` — set the error-log file; bare resets to the default `xyscript-errors.log` in #sv("XSDIR"). A given path resolves against #sv("CWD"). Effective path: #sv("ERRORLOGFILE").
 / #cmd("EXIT", "EX") / #cmd("EXITALL", "EX1"): halt the current script / halt every running script.
 
 == F
@@ -1275,6 +1278,8 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 
 / #sv("ERROR"): the trappable-error *code* — `0` when the last command succeeded, non-zero when it failed, so `IF $ERROR …` still works. Each non-zero value names a class of failure (see #sv("ERRORMSG")); a still-uncoded failure reads as the generic `1`. Auto-clears to `0` at the next command, or manage it with #cmd("SETERR")/#cmd("CLERR"). The *specific* message text of the failure is #sv("LS").
 / #sv("ERRORMSG"): the generic-message catalog, indexed by error code — `$ERRORMSG[$ERROR]` names the class of the last failure, and `$ERRORMSG[0]` is `[none]`. An out-of-range code yields the empty string. Current codes: `1` error, `2` file not found, `3` nothing selected, `4` invalid number, `5` unknown command, `6` out of range, `7` no such directory, `8` file already exists, `9` invalid argument. #ex("SETERR 2 ; PR $ERRORMSG[$ERROR]", "file not found")
+/ #sv("ERRORLOG"): `1` if error logging is on (see #cmd("ERRORLOG")), else `0`.
+/ #sv("ERRORLOGFILE"): the effective error-log file path — the configured path, or the default `xyscript-errors.log` in #sv("XSDIR").
 / #sv("RV"): the value the last `RETURN` produced.
 
 Inside a `SUB`, the arguments passed to it are also available: `$1`, `$2`, … by position,
@@ -1373,6 +1378,8 @@ Every special variable in one list, for quick lookup.
 / #sv("EN"): active document's encoding-view name.
 / #sv("ERROR"): trappable-error code (`0` = success; non-zero names a failure class).
 / #sv("ERRORMSG"): generic-message catalog indexed by code (`$ERRORMSG[$ERROR]`; `[0]` = `[none]`).
+/ #sv("ERRORLOG"): `1` if error logging is on.
+/ #sv("ERRORLOGFILE"): effective error-log file path.
 / #sv("ET"): stopwatch elapsed (formatted).
 / #sv("ETS"): stopwatch elapsed (seconds).
 / #sv("FB"): `1` if the caret is at the buffer start.

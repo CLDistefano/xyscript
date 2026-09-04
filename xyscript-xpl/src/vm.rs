@@ -395,6 +395,9 @@ impl Interpreter {
                     exit_all: &mut exit_all,
                     err_line: 0,
                     err_located: false,
+                    cur_command: String::new(),
+                    cur_file: None,
+                    err_logged: false,
                 };
                 resume_program(&program, &mut ctx, ip, frames, rv, Some(PREEMPT_SLICE))?
             };
@@ -526,6 +529,9 @@ impl Interpreter {
                 exit_all: &mut exit_all,
                 err_line: 0,
                 err_located: false,
+                cur_command: String::new(),
+                cur_file: None,
+                err_logged: false,
             };
             execute(&program, &mut ctx, args, None)?
         };
@@ -578,6 +584,9 @@ impl Interpreter {
                 exit_all: &mut exit_all,
                 err_line: 0,
                 err_located: false,
+                cur_command: String::new(),
+                cur_file: label.map(|s| s.to_string()),
+                err_logged: false,
             };
             match execute(&program, &mut ctx, args, Some(budget)) {
                 Ok(o) => o,
@@ -622,6 +631,9 @@ impl Interpreter {
                     exit_all: &mut exit_all,
                     err_line: 0,
                     err_located: false,
+                    cur_command: String::new(),
+                    cur_file: None,
+                    err_logged: false,
                 };
                 resume_program(&program, &mut ctx, ip, frames, rv, Some(budget))?
             };
@@ -675,6 +687,17 @@ struct ExecCtx<'h> {
     /// Set once `exec_run` has stamped an error with `<file>:<line>` — so an OUTER `RUN` in the same
     /// chain doesn't re-stamp it with the wrong (outer) file/line. Reset with each top-level run.
     err_located: bool,
+    /// The verb + raw args of the command currently executing — for the error log's `command` column.
+    /// Updated per command; a fold site (`fail_trap`) or the fatal hook reads it. Shared across nested
+    /// executes, so it names the actual failing command.
+    cur_command: String,
+    /// The source file the current run is executing (a `RUN` path or the top-level `--run`/startup
+    /// label) — for the error log's `location` column. `None` for an ad-hoc command line. Saved and
+    /// restored around a nested `RUN` so the outer file is not left stale.
+    cur_file: Option<String>,
+    /// Set once a FATAL error has been written to the error log, so it is logged exactly once at its
+    /// origin and not again as it unwinds through outer `RUN` frames. Reset with each top-level run.
+    err_logged: bool,
 }
 
 /// Run a lowered program against `ctx` with positional `args`, from the top.
@@ -991,15 +1014,26 @@ impl Vm<'_, '_> {
                 }
                 Instr::Command { verb, raw_args, span } => {
                     self.ctx.err_line = span.line; // for `exec_run`'s `<file>:<line>` on failure
-                    match self.exec_command(&verb, &raw_args, span.line, span.col)? {
-                        Flow::Next => self.ip += 1,
-                        Flow::Jumped => {}
-                        Flow::Halt => break,
+                    // Remember the triggering command for the error log (verb + raw args).
+                    self.ctx.cur_command =
+                        if raw_args.is_empty() { verb.clone() } else { format!("{verb} {raw_args}") };
+                    match self.exec_command(&verb, &raw_args, span.line, span.col) {
+                        Ok(Flow::Next) => self.ip += 1,
+                        Ok(Flow::Jumped) => {}
+                        Ok(Flow::Halt) => break,
                         // Pause: advance past the READKEY/INPUT so the resumed run
                         // continues *after* it, then stop the loop.
-                        Flow::Suspend => {
+                        Ok(Flow::Suspend) => {
                             self.ip += 1;
                             break;
+                        }
+                        Err(e) => {
+                            // Log a fatal once, at its origin, before it unwinds through outer frames.
+                            if e.is_fatal() && !self.ctx.err_logged {
+                                self.ctx.err_logged = true;
+                                self.log_error_entry(true, 0, e.message());
+                            }
+                            return Err(e);
                         }
                     }
                 }
@@ -3865,6 +3899,31 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetAutoReopen(want))?;
                 Ok(Flow::Next)
             }
+            // `ERRORLOG on|off` (bare = toggle) — append every trappable + fatal error to the log
+            // file as a TSV row (timestamp, code, class, command, location, doc, message). Off by
+            // default; NOT TRUST-gated (it only writes a local log). SaveCfg. `$ERRORLOG`.
+            "ERRORLOG" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "ERRORLOG: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetErrorLog(want))?;
+                Ok(Flow::Next)
+            }
+            // `ERRORLOGFILE <path>` — set the error-log file (bare resets to the default,
+            // `xyscript-errors.log` in `$XSDIR`); a given path resolves against `$CWD`. SaveCfg.
+            // `$ERRORLOGFILE`.
+            "ERRORLOGFILE" => {
+                let path = self.subst(&args).trim().to_string();
+                self.host_op(EditorOp::SetErrorLogFile(path))?;
+                Ok(Flow::Next)
+            }
             // `MARKGUTTER off|on|persist` (bare = toggle off↔on) — whether bookmarks show a dot in the
             // left gutter, and whether the strip is reserved even without bookmarks (`persist`). `On` by
             // default. Persisted by SaveCfg. `$MARKGUTTER`.
@@ -4884,10 +4943,15 @@ impl Vm<'_, '_> {
             }
             Err(fatal) => return Err(fatal),
         };
+        // Name the RUN-ed file as the error-log `location` while it runs; restore the outer file
+        // after (so a later error in the parent script isn't attributed to the child).
+        let saved_file = self.ctx.cur_file.replace(run_file_label(&path).to_string());
         // Run the file; on failure, stamp the error with `<file>:<line>` so a bad line in a RUN-ed
         // script (e.g. from `startup.xpl`) points AT it, instead of a bare message. `err_line` holds
         // the line the nested run failed on; `err_located` guards against an OUTER RUN re-stamping.
-        self.run_source_sync(&src, &arg_vals).map_err(|e| {
+        let result = self.run_source_sync(&src, &arg_vals);
+        self.ctx.cur_file = saved_file;
+        result.map_err(|e| {
             if self.ctx.err_located {
                 return e;
             }
@@ -5120,14 +5184,29 @@ impl Vm<'_, '_> {
     /// Record a trappable failure: set `$ERROR` and the status line (the soft-fail path
     /// shared by `host_op`/`host_call` and the shell verbs).
     fn fail_soft(&mut self, msg: String) {
-        self.ctx.env.error = crate::error::ErrCode::Generic as u32;
+        self.fail_trap(crate::error::ErrCode::Generic as u32, msg);
+    }
+
+    /// Fold a trappable error into `$ERROR` (using its own `code`) + the status line, and log it.
+    fn fail_trap(&mut self, code: u32, msg: String) {
+        self.ctx.env.error = code;
+        self.log_error_entry(false, code, &msg);
         *self.ctx.status = Some(msg);
     }
 
-    /// Fold a trappable error into `$ERROR` (using its own `code`) + the status line.
-    fn fail_trap(&mut self, code: u32, msg: String) {
-        self.ctx.env.error = code;
-        *self.ctx.status = Some(msg);
+    /// Write one error to the error log if `ERRORLOG` is on. Assembles the `command` (the current
+    /// verb + args) and `location` (`file:line`, empty for an ad-hoc command line) from the run
+    /// context; the host adds timestamp + document and does the (best-effort) file append.
+    fn log_error_entry(&mut self, fatal: bool, code: u32, message: &str) {
+        if !self.ctx.host.error_log_enabled() {
+            return;
+        }
+        let location = match &self.ctx.cur_file {
+            Some(f) => format!("{f}:{}", self.ctx.err_line),
+            None => String::new(),
+        };
+        let command = self.ctx.cur_command.clone();
+        self.ctx.host.log_error(fatal, code, &command, &location, message);
     }
 
     /// Run a shell command (`X`/`XY`/`XV`), folding a trappable error (e.g. shell-out

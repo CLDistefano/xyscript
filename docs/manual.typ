@@ -1926,6 +1926,19 @@ EI")
 You can raise the code yourself: #raw("SETERR") sets the generic `1`, #raw("SETERR <n>") sets code `n`
 (a script can signal its own numbered conditions that way), and #raw("CLERR") clears it back to `0`.
 
+=== Logging errors
+
+Turn on #raw("ERRORLOG on") and every error afterwards — both the trappable kind and the fatal kind that
+aborts a script — is appended to a log file, one tab-separated row per error: the tier
+(#raw("TRAP")/#raw("FATAL")), a timestamp, the #raw("$ERROR") code and its class, the command that
+triggered it, a #raw("file:line") location (blank for an ad-hoc command line), the document that was open,
+and the specific message. A #raw("#")-comment header names the columns, so the file both reads cleanly and
+splits on tabs for a script that wants to analyze its own errors. #raw("ERRORLOGFILE <path>") chooses the
+file; with no path it defaults to #raw("xyscript-errors.log") beside the program (#raw("$XSDIR")). Logging
+is off by default, needs no #raw("TRUST"), and never interferes with the run — a log-write that fails is
+silently skipped. The settings persist with #raw("SAVECFG"); read them back as #raw("$ERRORLOG") and
+#raw("$ERRORLOGFILE").
+
 == Quiet
 
 A script that does a lot of small steps can be noisy on the status line. #raw("QUIET") suppresses status

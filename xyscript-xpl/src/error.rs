@@ -117,6 +117,10 @@ impl XplError {
             XplError::Fatal(_) => 0,
         }
     }
+    /// Whether this is a fatal (script-aborting) error.
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, XplError::Fatal(_))
+    }
 }
 
 /// Result of a host/verb operation.

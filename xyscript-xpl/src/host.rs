@@ -561,6 +561,14 @@ pub enum EditorOp {
     /// `TRUST` (no external code runs — the editor only re-reads a file you already have open).
     /// Persisted by SaveCfg. `$AUTOREOPEN`.
     SetAutoReopen(Option<bool>),
+    /// Error logging on/off (`ERRORLOG on|off`; `None` toggles). When on, each trappable *and* fatal
+    /// error is appended as a TSV row to the error-log file. Off by default. Persisted by SaveCfg.
+    /// `$ERRORLOG`.
+    SetErrorLog(Option<bool>),
+    /// Set the error-log file path (`ERRORLOGFILE <path>`; bare/empty resets to the default,
+    /// `xyscript-errors.log` in `$XSDIR`). A given path resolves against `$CWD`. Persisted by
+    /// SaveCfg. `$ERRORLOGFILE`.
+    SetErrorLogFile(String),
     /// Dim the window slightly when it loses focus (`DIMONBLUR on|off`; `None` toggles). A cue that the
     /// window is inactive — useful with `TITLEBAR off`, where the frame gives none. Off by default.
     /// Persisted by SaveCfg. `$DIMONBLUR`.
@@ -1750,6 +1758,18 @@ pub trait Host {
     fn now(&self) -> (String, String) {
         (String::new(), String::new())
     }
+
+    /// Whether error logging (`ERRORLOG`) is on — the VM checks this before assembling a log entry,
+    /// so nothing is built when logging is off. Default: off.
+    fn error_log_enabled(&self) -> bool {
+        false
+    }
+    /// Append one error to the error log (best-effort — a write failure is swallowed, never sets
+    /// `$ERROR` or recurses). `fatal` picks the tier column (`FATAL` vs `TRAP`); `code` is the
+    /// `$ERROR` code (`0` for a fatal); `command` is the verb + raw args that triggered it;
+    /// `location` is `file:line` (empty if unknown); `message` is the specific error text. The host
+    /// adds the timestamp + active-document path and writes the TSV row. Default: no-op.
+    fn log_error(&mut self, _fatal: bool, _code: u32, _command: &str, _location: &str, _message: &str) {}
 
     /// One line per open buffer (for `BUFLIST`). Default: none.
     fn buffer_list(&self) -> Vec<String> {

@@ -12175,6 +12175,44 @@ mod tests {
     }
 
     #[test]
+    fn errorlog_appends_tsv_rows_for_trappable_and_fatal() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.run_command("ERRORLOGFILE err.log");
+        e.run_command("ERRORLOG on");
+        assert_eq!(e.special_str("ERRORLOG"), "1");
+        // A trappable failure (DB with nothing selected → code 3) and a fatal (unknown command).
+        e.run_command("insert \"hi\"");
+        e.run_command("DB");
+        e.run_command("NOSUCHVERB foo");
+        // Find the log in the virtual FS and read its rows.
+        let log = e
+            .host()
+            .files
+            .iter()
+            .find(|(k, _)| k.ends_with("err.log"))
+            .map(|(_, v)| v.clone())
+            .expect("error log file was written");
+        let lines: Vec<&str> = log.lines().collect();
+        assert!(lines[0].starts_with("# tier\t"), "header row first: {:?}", lines[0]);
+        let trap: Vec<&str> = lines[1].split('\t').collect();
+        assert_eq!(trap[0], "TRAP");
+        assert_eq!(trap[2], "3"); // code
+        assert_eq!(trap[3], "nothing selected"); // class
+        assert_eq!(trap[4], "DB"); // command
+        let fatal: Vec<&str> = lines[2].split('\t').collect();
+        assert_eq!(fatal[0], "FATAL");
+        assert_eq!(fatal[2], "-"); // no code for a fatal
+        assert_eq!(fatal[4], "NOSUCHVERB foo"); // command
+        assert_eq!(fatal.len(), 8, "eight tab-separated columns");
+        // Turning it off stops logging: the row count holds after another failure.
+        e.run_command("ERRORLOG off");
+        e.run_command("DB");
+        let after = e.host().files.iter().find(|(k, _)| k.ends_with("err.log")).unwrap().1.lines().count();
+        assert_eq!(after, 3, "no new rows once ERRORLOG is off (header + 2)");
+    }
+
+    #[test]
     fn db_de_keep_a_defined_block() {
         // A DEFINED block (DW/DF/…) must survive DB/DE — the caret roams to the edge but the block
         // stays defined, exactly like `JMP $DS`/`JMP $DN`. (Transient Shift selections still collapse;

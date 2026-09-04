@@ -103,8 +103,8 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9",
     // email (send config + IMAP receive config; masked password reads "set"/"not set")
     "SMTPURL", "MAILUSER", "MAILFROM", "MAILPASS", "MAILDEBUG", "IMAPURL", "MAILBOX", "ATTACH",
-    // error code + generic-message catalog ($ERRORMSG[n])
-    "ERROR", "ERRORMSG",
+    // error code + generic-message catalog ($ERRORMSG[n]); error-log on/off + file path
+    "ERROR", "ERRORMSG", "ERRORLOG", "ERRORLOGFILE",
     // args / return
     "RV",
 ];
