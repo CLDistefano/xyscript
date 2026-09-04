@@ -146,51 +146,82 @@ pub fn windows_table(virtual_base: Option<KeyCode>) -> ScancodeTable {
 
 // ===========================================================================
 // macOS. kVK_* virtual keycodes are a completely different numbering, and the OS
-// may intercept Caps Lock before clean up/down events surface (§7) — the single
-// highest-risk item, which is why the experiment targets macOS first. Mapped
-// here for the offenders (Caps, F-keys, numpad incl. Numpad 5) plus the alpha
-// and number rows so the diagnostic is meaningful; rest is chart work (§3.4).
+// may intercept Caps Lock before clean up/down events surface (§7). Unlike the
+// Windows/Linux tables (a mostly-identity run), every macOS key must be mapped by
+// hand. This is the FULL main typing area + numpad + nav cluster, so a remapped
+// layout (Dvorak, etc.) that relocates its letters onto punctuation-position keys
+// works: `to_canonical` returns a code for every physical key, not just the alpha
+// and number rows. (An earlier partial table omitted the punctuation keys, so a
+// binding like Dvorak's Ctrl+W -> :51 — the comma-position key — silently dropped.)
 // ===========================================================================
 pub fn macos_table(virtual_base: Option<KeyCode>) -> ScancodeTable {
     let mut t = ScancodeTable::new("macos", virtual_base);
-    // kVK_ANSI_* -> canonical. (Hex on the left = Apple virtual keycode.)
+    // kVK_* (Apple virtual keycode, hex on the left) -> canonical set-1 code.
     let pairs: &[(u32, KeyCode)] = &[
-        // Number row
+        // Control/whitespace keys the keymap can bind (Enter/Tab also have their own
+        // always-egui / special-case handling on top; mapping them here matches the
+        // Windows identity run so a bound cell resolves the same on every platform).
+        (0x35, 1),  // kVK_Escape            -> 1
+        (0x33, 14), // kVK_Delete (Backspace)-> 14
+        (0x30, 15), // kVK_Tab               -> 15
+        (0x24, 28), // kVK_Return (Enter)    -> 28
+        // Number row: ` 1 2 … 0 - =
+        (0x32, 41), // kVK_ANSI_Grave `      -> 41
         (0x12, 2), (0x13, 3), (0x14, 4), (0x15, 5), (0x17, 6),
         (0x16, 7), (0x1A, 8), (0x1C, 9), (0x19, 10), (0x1D, 11),
-        (0x1B, 12), (0x18, 13),
-        // QWERTY row
+        (0x1B, 12), // -                      -> 12
+        (0x18, 13), // =                      -> 13
+        // QWERTY row: Q..P plus [ ] \
         (0x0C, 16), (0x0D, 17), (0x0E, 18), (0x0F, 19), (0x11, 20),
         (0x10, 21), (0x20, 22), (0x22, 23), (0x1F, 24), (0x23, 25),
-        // Home row
+        (0x21, 26), // [                      -> 26
+        (0x1E, 27), // ]                      -> 27
+        (0x2A, 43), // \                      -> 43
+        // Home row: A..L plus ; '
         (0x00, 30), (0x01, 31), (0x02, 32), (0x03, 33), (0x05, 34),
         (0x04, 35), (0x26, 36), (0x28, 37), (0x25, 38),
-        // Bottom row
+        (0x29, 39), // ;                      -> 39
+        (0x27, 40), // '                      -> 40
+        // Bottom row: (ISO <>) Z..M plus , . /
+        (0x0A, 86), // kVK_ISO_Section <>|   -> 86 (ISO keyboards)
         (0x06, 44), (0x07, 45), (0x08, 46), (0x09, 47), (0x0B, 48),
         (0x2D, 49), (0x2E, 50),
-        // Offenders: modifiers + Caps + space + function/numpad
-        (0x39, 58), // kVK_CapsLock      -> 58 (CAPS, T:C)
-        (0x38, 42), // kVK_Shift         -> 42
-        (0x3C, 54), // kVK_RightShift    -> 54
-        (0x3A, 56), // kVK_Option        -> 56 (ALT)
-        (0x3D, 98), // kVK_RightOption   -> 98
-        (0x3B, 29), // kVK_Control       -> 29 (CTRL)
-        (0x3E, 99), // kVK_RightControl  -> 99
-        (0x31, 57), // kVK_Space         -> 57
-        (0x53, 76), // kVK_ANSI_Keypad5  -> 76 (HOTKEY: the load-bearing key)
-        (0x7A, 59), // kVK_F1            -> 59
-        (0x78, 60), // kVK_F2            -> 60
-        (0x63, 61), // kVK_F3            -> 61
-        (0x76, 62), // kVK_F4            -> 62
-        (0x60, 63), // kVK_F5            -> 63
-        (0x61, 64), // kVK_F6            -> 64
-        (0x62, 65), // kVK_F7            -> 65
-        (0x64, 66), // kVK_F8            -> 66
-        (0x65, 67), // kVK_F9            -> 67
-        (0x6D, 68), // kVK_F10           -> 68
-        // Numpad Enter / slash + the gray nav cluster -> XyWrite classic 91-104.
-        (0x4C, 104), // kVK_ANSI_KeypadEnter  -> 104
-        (0x4B, 94),  // kVK_ANSI_KeypadDivide -> 94
+        (0x2B, 51), // ,                      -> 51  (Dvorak's Ctrl+W lands here)
+        (0x2F, 52), // .                      -> 52
+        (0x2C, 53), // /                      -> 53
+        // Modifiers + Caps + Space
+        (0x39, 58), // kVK_CapsLock          -> 58 (CAPS, T:C)
+        (0x38, 42), // kVK_Shift             -> 42
+        (0x3C, 54), // kVK_RightShift        -> 54
+        (0x3A, 56), // kVK_Option            -> 56 (ALT)
+        (0x3D, 98), // kVK_RightOption       -> 98
+        (0x3B, 29), // kVK_Control           -> 29 (CTRL)
+        (0x3E, 99), // kVK_RightControl      -> 99
+        (0x31, 57), // kVK_Space             -> 57
+        // Function row F1..F12
+        (0x7A, 59), (0x78, 60), (0x63, 61), (0x76, 62), (0x60, 63),
+        (0x61, 64), (0x62, 65), (0x64, 66), (0x65, 67), (0x6D, 68),
+        (0x67, 87), // kVK_F11               -> 87
+        (0x6F, 88), // kVK_F12               -> 88
+        // Numpad -> XyWrite classic 69/71-83/55/74/78 (+ Enter 104, Divide 94 below).
+        (0x47, 69), // kVK_ANSI_KeypadClear  -> 69 (NumLock position)
+        (0x59, 71), // Keypad7               -> 71
+        (0x5B, 72), // Keypad8               -> 72
+        (0x5C, 73), // Keypad9               -> 73
+        (0x4E, 74), // KeypadMinus           -> 74
+        (0x56, 75), // Keypad4               -> 75
+        (0x57, 76), // Keypad5               -> 76 (was mis-coded 0x53 = Keypad1)
+        (0x58, 77), // Keypad6               -> 77
+        (0x45, 78), // KeypadPlus            -> 78
+        (0x53, 79), // Keypad1               -> 79
+        (0x54, 80), // Keypad2               -> 80
+        (0x55, 81), // Keypad3               -> 81
+        (0x52, 82), // Keypad0               -> 82
+        (0x41, 83), // KeypadDecimal .       -> 83
+        (0x43, 55), // KeypadMultiply *      -> 55
+        (0x4C, 104), // kVK_ANSI_KeypadEnter -> 104
+        (0x4B, 94),  // kVK_ANSI_KeypadDivide-> 94
+        // Gray nav cluster -> XyWrite classic 91-104 (distinct from the numpad).
         (0x72, 91),  // kVK_Help/Insert       -> 91
         (0x73, 92),  // kVK_Home              -> 92
         (0x74, 93),  // kVK_PageUp            -> 93
@@ -225,5 +256,46 @@ pub fn host_table(virtual_base: Option<KeyCode>) -> ScancodeTable {
     #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         ScancodeTable::new("unknown", virtual_base)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `macos_table` is plain data, so this guard runs on every platform's CI — it
+    // protects the macOS mapping from a machine that can't run macOS.
+    #[test]
+    fn macos_maps_the_full_main_typing_block() {
+        let t = macos_table(None);
+        // The punctuation-position keys a remapped layout (Dvorak) relies on — the
+        // class that was missing and silently dropped Dvorak's Ctrl+W (:51 = comma key).
+        for (native, canonical) in
+            [(0x2B, 51), (0x2F, 52), (0x2C, 53), (0x21, 26), (0x1E, 27), (0x29, 39), (0x27, 40), (0x32, 41), (0x2A, 43)]
+        {
+            assert_eq!(t.to_canonical(native), Some(canonical), "native {native:#x}");
+        }
+        // Every canonical code in the main typing block must be reachable — the
+        // guarantee that a whole class can't silently drop again.
+        let want: &[KeyCode] = &[
+            1, 14, 15, 28, 29, 42, 54, 56, 57, 58, // control / whitespace / modifiers
+            2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, // number row
+            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, // QWERTY row + [ ]
+            30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 43, // home row + ; ' ` \
+            44, 45, 46, 47, 48, 49, 50, 51, 52, 53, // bottom row + , . /
+        ];
+        let mapped: std::collections::HashSet<KeyCode> =
+            (0u32..=0x80).filter_map(|n| t.to_canonical(n)).collect();
+        for c in want {
+            assert!(mapped.contains(c), "canonical {c} unmapped in macos_table");
+        }
+    }
+
+    #[test]
+    fn macos_numpad5_uses_the_correct_kvk() {
+        // Regression: Keypad5 is kVK 0x57; 0x53 is Keypad1 (was mislabelled Keypad5).
+        let t = macos_table(None);
+        assert_eq!(t.to_canonical(0x57), Some(76), "Keypad5 (76) is kVK 0x57");
+        assert_eq!(t.to_canonical(0x53), Some(79), "kVK 0x53 is Keypad1 (79)");
     }
 }
