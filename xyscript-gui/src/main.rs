@@ -2799,9 +2799,13 @@ impl GuiApp {
         // Match the Label's resolved font (Body size, Monospace family) so a galley we build for
         // hit-testing / caret geometry measures identically to what's drawn.
         let font = egui::FontId::new(self.editor.chrome_font(), egui::FontFamily::Monospace);
+        // `(display, full-path-if-truncated)`: a truncated path reveals its full form on hover.
         let cwd_text = (self.editor.special_str("PAPLACE") == "cmline").then(|| {
             let plen: usize = self.editor.special_str("PATHLEN").parse().unwrap_or(45);
-            format!("{} ", truncate_path(&self.editor.cwd(), plen))
+            let full = self.editor.cwd();
+            let disp = truncate_path(&full, plen);
+            let tip = (disp != full).then_some(full);
+            (format!("{disp} "), tip)
         });
         let mut interacted = false;
         // Right-click context menu on the cmline (clipboard block with a selection; Paste + Select
@@ -2813,7 +2817,7 @@ impl GuiApp {
             // `$CWD` prefix (PAPLACE cmline): non-interactive and NON-selectable so the mouse can't
             // grab it — it reads as context, not editable text. Colour: `PAFGCOLOR`/`PABGCOLOR` when
             // set, else the default dimmed (`.weak()`) UI text on a transparent background.
-            if let Some(cwd) = &cwd_text {
+            if let Some((cwd, tip)) = &cwd_text {
                 let mut rt = egui::RichText::new(cwd.clone()).monospace();
                 rt = match self.editor.host().path_fg_color() {
                     Some((r, g, b)) => rt.color(egui::Color32::from_rgb(r, g, b)),
@@ -2822,7 +2826,10 @@ impl GuiApp {
                 if let Some((r, g, b)) = self.editor.host().path_bg_color() {
                     rt = rt.background_color(egui::Color32::from_rgb(r, g, b));
                 }
-                ui.add(egui::Label::new(rt).selectable(false));
+                let r = ui.add(egui::Label::new(rt).selectable(false));
+                if let Some(full) = tip {
+                    r.on_hover_text(full); // truncated → hover shows the full path
+                }
             }
             // The cmline text. `.selectable(false)`: egui's own label selection is off, so the only
             // selection is the cmline BUFFER's (rendered below) — the one `CUT`/`COPY` act on.
@@ -8285,7 +8292,7 @@ impl GuiApp {
 
     /// Render the status-line contents into `ui` (a top or bottom panel — see `STATUSLINE`). Shared so
     /// the status line reads identically whichever edge it sits on.
-    fn render_status_body(&mut self, ui: &mut egui::Ui, status: &str, cwd_len: usize, status_opens_cmline: bool) {
+    fn render_status_body(&mut self, ui: &mut egui::Ui, status: &str, cwd_len: usize, cwd_tip: &Option<String>, status_opens_cmline: bool) {
         if status.contains('\n') {
             // Multiline status (e.g. `PR $CMH` or any PR output with real newlines): stack the lines as
             // a plain label so the panel auto-sizes to fit them. Cap at MAX rows so a big dump can't
@@ -8300,7 +8307,8 @@ impl GuiApp {
                 status.to_string()
             };
             let wt = self.status_text(ui, &shown, cwd_len);
-            ui.add(egui::Label::new(wt).wrap()); // wrap long individual lines too
+            let r = ui.add(egui::Label::new(wt).wrap()); // wrap long individual lines too
+            Self::add_cwd_hover(ui, r.rect, &shown, cwd_len, cwd_tip);
         } else if status_opens_cmline {
             // `.wrap()` (not inside `ui.horizontal`, which would force no-wrap `Extend`): a long
             // single-line message wraps to the panel width instead of scrolling off the right edge.
@@ -8317,8 +8325,29 @@ impl GuiApp {
             }
         } else {
             let wt = self.status_text(ui, status, cwd_len);
-            ui.add(egui::Label::new(wt).wrap());
+            let r = ui.add(egui::Label::new(wt).wrap());
+            Self::add_cwd_hover(ui, r.rect, status, cwd_len, cwd_tip);
         }
+    }
+
+    /// When the shown `$CWD` prefix (PAPLACE status) is TRUNCATED, lay an invisible hover zone over
+    /// its leading span so hovering reveals the full path — no-op when `cwd_tip` is `None` (not
+    /// truncated) or the span is empty. The zone covers `status[..cwd_len]` (path + separator),
+    /// measured in the status font; on a wrapped status the path is still on the first row.
+    fn add_cwd_hover(ui: &egui::Ui, label: egui::Rect, status: &str, cwd_len: usize, cwd_tip: &Option<String>) {
+        let Some(full) = cwd_tip else { return };
+        if cwd_len == 0 || cwd_len > status.len() {
+            return;
+        }
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let w = ui
+            .painter()
+            .layout_no_wrap(status[..cwd_len].to_string(), font, egui::Color32::PLACEHOLDER)
+            .rect
+            .width();
+        let rect = egui::Rect::from_min_max(label.left_top(), egui::pos2(label.left() + w, label.bottom()));
+        ui.interact(rect, egui::Id::new("cwd_status_tip"), egui::Sense::hover())
+            .on_hover_text(full);
     }
 
     /// Put a just-run command's feedback on the status line: `PR`/`MSG` output if any, else
@@ -9475,6 +9504,7 @@ impl GuiApp {
         // a DIR/LS listing shows its own footer (base dir + live express-key).
         let mut plain_status = false; // true = ordinary status (not a prompt/listing footer)
         let mut cwd_len = 0usize; // byte length of the leading `$CWD` prefix in `status` (0 = none)
+        let mut cwd_tip: Option<String> = None; // full path, when the shown `$CWD` is TRUNCATED (hover reveals it)
         let status = if self.quitting && self.editor.next_dirty_tab().is_some() {
             let name = self.editor.active_file_name().unwrap_or_else(|| "(untitled)".into());
             format!("Quit — save changes to {name}?  (y) save  (n) discard  (esc) cancel")
@@ -9521,7 +9551,12 @@ impl GuiApp {
                 String::new()
             } else {
                 let plen: usize = self.editor.special_str("PATHLEN").parse().unwrap_or(45);
-                format!("{}  │  ", truncate_path(&self.editor.cwd(), plen))
+                let full = self.editor.cwd();
+                let disp = truncate_path(&full, plen);
+                if disp != full {
+                    cwd_tip = Some(full); // truncated to PATHLEN → hover shows the full path
+                }
+                format!("{disp}  │  ")
             };
             cwd_len = cwd_prefix.len(); // colour just this leading span (PAFGCOLOR/PABGCOLOR)
             format!(
@@ -9543,10 +9578,10 @@ impl GuiApp {
         // status; the top one grows DOWNWARD — either way the shared body reads the same.
         if self.editor.status_line_top() {
             egui::Panel::top("status_top")
-                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, status_opens_cmline));
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, status_opens_cmline));
         } else {
             egui::Panel::bottom("status")
-                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, status_opens_cmline));
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, status_opens_cmline));
         }
 
         // Bottom-placed command line sits just above the status line (shown after

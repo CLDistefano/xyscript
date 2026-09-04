@@ -1528,8 +1528,8 @@ working directory (#raw("$CWD"), set with #raw("CD")). #raw("SW") shows or hides
 Your working directory is shown on the status line by default; #raw("PAPLACE cmline") moves it to the
 front of the command line instead (#raw("PAPLACE status") puts it back). A long path is shortened to
 fit — keeping the drive and the trailing folders, with #raw("...") for the elided middle —
-and #raw("PATHLEN n") sets how many characters that display may use. #raw("SaveCfg <my.cfg>") makes both
-settings persist in your config.
+and #raw("PATHLEN n") sets how many characters that display may use. Hover the shortened path and a
+tooltip shows it in full. #raw("SaveCfg <my.cfg>") makes both settings persist in your config.
 
 #tip("Background jobs")[A long shell command or script can run in the background with the #raw("/BG")
 switch (#raw("X/BG …"), #raw("RUN/BG …")) so the editor stays responsive; its output streams to the
