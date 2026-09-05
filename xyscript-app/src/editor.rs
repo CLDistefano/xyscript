@@ -4985,6 +4985,45 @@ mod tests {
     }
 
     #[test]
+    fn lib_routine_returns_via_rv_when_loaded_before_the_calling_run() {
+        // Real-world shape: the library is loaded at startup (one run), the routine is invoked in a
+        // LATER command (another run). That later run compiles WITH the library, so the routine is a
+        // hoisted sub and its RETURN reaches $RV. (A routine ADDLIB'd and called in the SAME run is a
+        // different, nested path where $RV is currently lost — see the $RV investigation.)
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().write_file("r.lib", "SUB rr\n\treturn \"OK\"\nENDSUB\n").unwrap();
+        e.run_command("ADDLIB r.lib"); // run 1: load
+        assert!(e.last_error().is_none());
+        e.run_command("rr
+PR [$RV]"); // run 2: call AND read $RV in the same run
+        assert_eq!(e.output().last().map(String::as_str), Some("[OK]"), "lib routine (loaded in a prior run) returns via $RV within the calling run");
+    }
+
+    #[test]
+    fn lib_routine_returns_via_rv_when_loaded_and_called_in_one_run() {
+        // Case B (the fixed gap): ADDLIB a routine and call it in the SAME run. It runs via the
+        // nested-run path (it isn't in this run's compiled program yet); its RETURN now reaches $RV.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().write_file("r.lib", "SUB rr\n\treturn \"OK\"\nENDSUB\n").unwrap();
+        e.run_command("ADDLIB r.lib\nrr\nPR [$RV]");
+        assert_eq!(e.output().last().map(String::as_str), Some("[OK]"));
+    }
+
+    #[test]
+    fn run_does_not_clobber_rv_with_a_scripts_last_return() {
+        // The fix is scoped to routine-as-command: RUN/RUNCODE of a script must NOT set $RV from the
+        // script's last RETURN (that's not the caller's result).
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().write_file("s.xpl", "return \"SCRIPTRV\"\n").unwrap();
+        e.run_command("SET x = \"keep\" ; RETURN $x"); // seed $RV in this run
+        e.run_command("RUNCODE \"return \\\"INNER\\\"\"\nPR [$RV]");
+        assert_ne!(e.output().last().map(String::as_str), Some("[INNER]"), "RUNCODE must not set $RV");
+    }
+
+    #[test]
     fn loadcfg_confirms_after_running_the_config() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

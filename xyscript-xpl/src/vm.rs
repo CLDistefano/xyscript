@@ -408,7 +408,7 @@ impl Interpreter {
             }
             match outcome {
                 // Finished: cascade — loop to resume the next (outer) frame after its RUN.
-                ExecOutcome::Done => {}
+                ExecOutcome::Done { .. } => {}
                 // Paused again: re-park this frame plus any nested it spawned (innermost last).
                 ExecOutcome::Suspended { ip, frames, rv, reason } => {
                     self.suspended.push(SuspendedScript { program, ip, frames, rv, reason });
@@ -643,7 +643,7 @@ impl Interpreter {
             }
             match outcome {
                 // Finished: cascade — resume the next (outer) frame after its RUN.
-                ExecOutcome::Done => {}
+                ExecOutcome::Done { .. } => {}
                 // Paused again (yielded or a real WAIT/INPUT): re-park this frame plus any nested
                 // it spawned (innermost last) and stop.
                 ExecOutcome::Suspended { ip, frames, rv, reason } => {
@@ -893,8 +893,9 @@ struct SuspendedScript {
 
 /// How one `execute`/`resume` of a (sub)program settled.
 enum ExecOutcome {
-    /// Ran to completion (EXIT/end-of-code/top-level RETURN).
-    Done,
+    /// Ran to completion (EXIT/end-of-code/top-level RETURN). Carries the final `RETURN` value so a
+    /// routine invoked as a command (the nested-run path) can propagate it to the caller's `$RV`.
+    Done { rv: Value },
     /// Paused on `READKEY`/`INPUT`/`WAIT`; carries the state to park.
     Suspended { ip: usize, frames: Vec<Frame>, rv: Value, reason: SuspendReason },
 }
@@ -908,7 +909,7 @@ impl Vm<'_, '_> {
             Some(reason) => {
                 ExecOutcome::Suspended { ip: self.ip, frames: self.frames, rv: self.rv, reason }
             }
-            None => ExecOutcome::Done,
+            None => ExecOutcome::Done { rv: self.rv },
         })
     }
 
@@ -1272,13 +1273,13 @@ impl Vm<'_, '_> {
             // Statements (if any) before the final expression; then the expression supplies the value.
             let before = &inner[..*last_start];
             if !before.trim().is_empty() {
-                self.run_source_sync(before, &[])?;
+                self.run_source_sync(before, &[], false)?;
             }
             Ok(self.subst(&format!("$({last})")))
         } else {
             // The whole field is statements — run it (full parse, so a single-line IF pairs up);
             // the last statement has no value, so the field is deleted.
-            self.run_source_sync(inner, &[])?;
+            self.run_source_sync(inner, &[], false)?;
             Ok(String::new())
         }
     }
@@ -1496,7 +1497,7 @@ impl Vm<'_, '_> {
                 let arg = arg.strip_prefix('"').and_then(|a| a.strip_suffix('"')).unwrap_or(arg);
                 let sub_args: Vec<Value> =
                     if arg.is_empty() { Vec::new() } else { vec![Value::str(arg)] };
-                self.run_source_sync(KBDDOC_SRC, &sub_args)
+                self.run_source_sync(KBDDOC_SRC, &sub_args, false)
             }
             // Dump the currently-loaded keymap to a KBD file (inverse of LOADKBD); no path = default.
             "SAVEKBD" => {
@@ -1568,7 +1569,7 @@ impl Vm<'_, '_> {
                 // `AR;" "` stops after the action (no trailing space). A plain text replacement (or
                 // no match) leaves nothing queued and the chain continues.
                 if let Some(xpl) = self.ctx.host.take_ar_xpl() {
-                    self.run_source_sync(&xpl, &[])?;
+                    self.run_source_sync(&xpl, &[], false)?;
                     return Ok(Flow::Halt);
                 }
                 Ok(Flow::Next)
@@ -4746,7 +4747,7 @@ impl Vm<'_, '_> {
                     self.host_op(EditorOp::RunBackgroundCode { code: args.clone(), return_var })?;
                     Ok(Flow::Next)
                 } else {
-                    self.run_source_sync(&args, &[])
+                    self.run_source_sync(&args, &[], false)
                 }
             }
             // Interactive input: pause the script and surface a request to the
@@ -4884,7 +4885,7 @@ impl Vm<'_, '_> {
                     .map(|i| format!("${i}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                self.run_source_sync(&format!("CALL {other} {refs}"), &call_args)
+                self.run_source_sync(&format!("CALL {other} {refs}"), &call_args, true)
             }
             other => Err(XplError::fatal(unknown_command_message(other, &self.subs))),
         }
@@ -4949,7 +4950,7 @@ impl Vm<'_, '_> {
         // Run the file; on failure, stamp the error with `<file>:<line>` so a bad line in a RUN-ed
         // script (e.g. from `startup.xpl`) points AT it, instead of a bare message. `err_line` holds
         // the line the nested run failed on; `err_located` guards against an OUTER RUN re-stamping.
-        let result = self.run_source_sync(&src, &arg_vals);
+        let result = self.run_source_sync(&src, &arg_vals, false);
         self.ctx.cur_file = saved_file;
         result.map_err(|e| {
             if self.ctx.err_located {
@@ -4990,7 +4991,12 @@ impl Vm<'_, '_> {
     /// If the sub-script PAUSES (`READKEY`/`INPUT`/`WAIT`/`TXT`), its continuation is parked onto
     /// `ctx.pending` and THIS (outer) frame suspends too (`Flow::Suspend` with `NestedRun`), so the
     /// interpreter's resume cascade finishes the sub-script and then continues here after the verb.
-    fn run_source_sync(&mut self, src: &str, args: &[Value]) -> VmResult<Flow> {
+    ///
+    /// `propagate_rv` copies the nested script's final `RETURN` value into THIS run's `$RV`. It's set
+    /// only for a library routine invoked as a command that arrived after compile (the nested-run
+    /// path below), so `foo 3` returns via `$RV` exactly like a hoisted `CALL foo 3` would; `RUN`/
+    /// `RUNCODE`/X-chaining leave `$RV` alone (a script's last `RETURN` isn't the caller's result).
+    fn run_source_sync(&mut self, src: &str, args: &[Value], propagate_rv: bool) -> VmResult<Flow> {
         let extra = self.ctx.library.effective();
         let program = ir::compile_with_library(src, &extra).map_err(XplError::fatal)?;
         drop(extra);
@@ -5002,7 +5008,10 @@ impl Vm<'_, '_> {
         match execute(&program, &mut *self.ctx, args, self.budget)? {
             // The sub-script ran out (EXIT/end). If it was `EXITALL`, abort this frame too (the flag
             // keeps propagating up); otherwise continue after the verb.
-            ExecOutcome::Done => {
+            ExecOutcome::Done { rv } => {
+                if propagate_rv {
+                    self.rv = rv; // routine-as-command: its RETURN is the caller's $RV
+                }
                 if *self.ctx.exit_all {
                     Ok(Flow::Halt)
                 } else {
