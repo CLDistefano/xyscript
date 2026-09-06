@@ -2633,10 +2633,16 @@ command line:
 
 #raw("SENDMAIL alice@example.com \"Lunch Thursday?\"")
 
-For more than one recipient, or to set #raw("Cc:")/#raw("Bcc:"), start the document with a header block
-— #raw("To:"), #raw("Cc:"), #raw("Bcc:"), #raw("Subject:"), #raw("From:") lines, then a blank line, then
-the body — and run a bare #raw("SENDMAIL"). To send a file you have not opened, #raw("SENDMAIL/F <file>")
-reads the message from that file instead of the current document (quote the path if it has spaces).
+Several recipients? Pass the whole comma-separated list as one quoted #raw("To:") argument:
+
+#raw("SENDMAIL \"alice@example.com, bob@example.com, carol@example.com\" \"Lunch Thursday?\"")
+
+To set #raw("Cc:")/#raw("Bcc:") as well, start the document with a header block — #raw("To:"),
+#raw("Cc:"), #raw("Bcc:"), #raw("Subject:"), #raw("From:") lines, then a blank line, then the body —
+and run a bare #raw("SENDMAIL"). Recipient lists are comma-separated in either form (a comma inside a
+quoted display name, #raw("\"Public, John\" <j@x.org>"), does not split the address). To send a file you
+have not opened, #raw("SENDMAIL/F <file>") reads the message from that file instead of the current
+document (quote the path if it has spaces).
 
 Each address may be a bare one or the display-name form, #raw("\"John Q. Public\" <john@everyman.org>")
 — the full form shows in the message, while the server sees just the address. This works for

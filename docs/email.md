@@ -69,6 +69,14 @@ The **active document is the body.** Two ways to supply headers:
 SENDMAIL alice@example.com "Lunch Thursday?"
 ```
 
+For several recipients, pass the whole comma-separated list as the single (quoted) `To:` argument:
+
+```
+SENDMAIL "alice@example.com, bob@example.com, carol@example.com" "Lunch Thursday?"
+```
+
+(The argument form has only a `To:`; use the header block below for `Cc:`/`Bcc:`.)
+
 **2. A header block** — with no arguments, `SENDMAIL` reads leading `To:` / `Cc:` / `Bcc:` /
 `Subject:` / `From:` lines from the top of the buffer, up to the first blank line; everything after the
 blank line is the body:
