@@ -1673,6 +1673,97 @@ SUB log
 	WF fcon $fn
 ENDSUB
 
+SUB num2words
+	# DOC: Convert a number to words
+	# DOC: Usage: NUM2WORDS n [/NV]
+	# DOC: Output in $RV and message box; option /NV suppresses message-box output
+	local ctr enty_map n num num_array num_in_words sep show_msg tens tens_map thous thous_array tempnum tempwds
+	set num = $1
+	set show_msg = 1
+	if upper($2) == "/NV" set show_msg = 0
+	if $(len($num)) == 0
+		pr Usage: NUM2WORDS <number>
+		return
+	ei
+	if not isdec($num)
+		pr Number must be all digits.
+		return
+	ei
+	if $(int($num)) == 0
+		return "zero"
+	ei
+	while $(left($num, 1)) == "0"
+		set $num = $(trimleft($num, 1))
+	ew
+	if $(len($num)) > 66
+		pr Number is too big.
+		return	
+	ei
+	set tens_map = {0:"", 1:"one", 2:"two", 3:"three", 4:"four", 5:"five", 6:"six", 7:"seven", 8:"eight", 9:"nine", 10:"ten", 11:"eleven", 12:"twelve", 13:"thirteen", 14:"fourteen", 15:"fifteen", 16:"sixteen", 17:"seventeen", 18:"eighteen", 19:"nineteen"}
+	set enty_map = {2:"twenty", 3:"thirty", 4:"forty", 5:"fifty", 6:"sixty", 7:"seventy", 8:"eighty", 9:"ninety"}
+	set thous_array = ["", "thousand", "million", "billion", "trillion", "quadrillion", "quintillion", "sextillion", "septillion", "octillion", "nonillion", "decillion", "undecillion", "duodecillion", "tredecillion", "quattuordecillion", "quindecillion", "sexdecillion", "septendecillion", "octodecillion", "novemdecillion", "vigintillion"]
+	set num_array = split($(reverse($num)), "")
+	set num_in_words = ""
+	set tens = 0
+	set thous = 0
+	set tempnum = ""
+	set tempwds = ""
+	set ctr = 0
+	for n = 0 to $(len($num_array) - 1)
+		switch $ctr
+			case 0
+				set ctr += 1
+				if $num_array[$n] > "0" set tempwds = $tens_map[$num_array[$n]]
+				if $n == $(len($num_array)) - 1 continue
+				if $num_array[$n + 1] == "0"
+					set ctr += 1
+					set n += 1
+					continue
+				ei
+				if $num_array[$n + 1] != "1" continue
+				set tempnum = $num_array[$n + 1] . $num_array[$n]
+				set tempwds = $tens_map[$tempnum]
+				set ctr += 1
+				set n += 1
+			case 1
+				set ctr += 1
+				if $num_array[$n] < "2" continue
+				if $tempwds; set sep = "-"; else; set sep = " "; ei
+				set tempwds = $enty_map[$num_array[$n]] . $sep . $tempwds
+			case 2
+				set ctr = 0
+				if $num_array[$n] == "0"
+	 				if $thous > 0
+	 					if $tempwds set tempwds = $tempwds . " " . $thous_array[$thous]
+	 				ei
+					set thous += 1
+					set $num_in_words = $tempwds . " " . $num_in_words
+					set tempwds = ""
+					continue
+				ei
+				set tempwds = $tens_map[$num_array[$n]] . " hundred " . $tempwds
+				if $thous > 0
+					set tempwds = $tempwds . " " . $thous_array[$thous]
+				ei
+				set thous += 1
+				set num_in_words = $tempwds . " " . $num_in_words
+				set tempwds = ""
+				continue
+			default
+				nop
+		endswitch
+	ef
+	if $tempwds
+		if $thous > 0 set tempwds = $tempwds . " " . $thous_array[$thous]
+		set $num_in_words = $tempwds . " " . $num_in_words
+	ei
+	while $(contains($num_in_words, "  "))
+		set num_in_words = $(replace($num_in_words, "  ", " "))
+	ew
+	if $show_msg msg $num_in_words
+	return $(strip($num_in_words))
+ENDSUB
+
 SUB qd
 	# DOC: Quoted-Printable decode (DeFined block)
 	# QD.exe must be present in $U2EXTRAS directory

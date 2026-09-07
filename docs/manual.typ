@@ -2152,6 +2152,7 @@ The routines, by what they do:
 === Small utilities
 
 / #raw("minm"), #raw("max"): the smallest / largest of a list of numbers.
+/ #raw("num2words"): write a number out in words, e.g. #raw("num2words 42") gives forty-two.
 / #raw("log"): add a timestamped entry to the top of a log file (#raw("$Logfile")).
 / #raw("awaitfile"), #raw("awaitdel"): wait, with a timeout, until a file appears / disappears.
 
