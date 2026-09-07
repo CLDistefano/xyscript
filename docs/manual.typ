@@ -2051,6 +2051,114 @@ LOADLIB mytools.lib")
 
 From then on, every routine in #raw("mytools.lib") answers to its name the moment the program opens.
 
+== The bundled library
+
+XyScript ships with a ready-made library, #raw("xyscript.lib"), and the default #raw("startup.xpl") loads
+it (#raw("loadlib xyscript.lib")) — so every routine below answers to its name from the first launch,
+called like any other command. They are ordinary #raw("SUB … ES") routines, so they also serve as worked
+examples: read or adapt any of them with #raw("U2") (which opens the library, optionally at a search
+string), and #raw("LISTLIB") shows the whole set with the fuller usage notes each carries in its
+#raw("# DOC:") lines. A few read *user variables* you set once in #raw("user-variables.xpl") (copied from
+#raw("user-variables.template")); each such routine's listing names the ones it uses, e.g.
+#raw("$PDFreader") or #raw("ExternalEditor").
+
+The routines, by what they do:
+
+=== Help and information
+
+/ #raw("kbd"): open the 104-key keyboard chart.
+/ #raw("man"): open this user manual.
+/ #raw("ref"): open the command reference.
+/ #raw("typst"): open the Typst documentation (#raw("$PDFreader")).
+/ #raw("idkey"): press a key to see the command it is bound to.
+/ #raw("scancode"): show the scan code of a pressed key.
+/ #raw("v3"): identify the character under the cursor.
+/ #raw("values"): list XyScript's internal variables and their current values.
+/ #raw("uservars"): open the user-variables file.
+/ #raw("U2"): open #raw("xyscript.lib") itself for editing, optionally at a search string.
+
+=== Directories
+
+/ #raw("d"): change to a directory chosen from a saved list (#raw("$DirList")).
+/ #raw("go"): change drive and directory by typing space-separated name fragments.
+/ #raw("cdu"), #raw("cdd"): move up / down one directory level.
+/ #raw("sd"): a "smart" #raw("DIR") listing.
+/ #raw("locate"): find files with #raw("Locate.exe").
+
+=== Files
+
+/ #raw("opn"): open a file in the application associated with its type.
+/ #raw("openall"): open every file matching a filespec, e.g. #raw("openall my*.txt").
+/ #raw("renas"): rename the current file and reopen it under the new name.
+/ #raw("af"): open a fresh throwaway file with an auto-generated name.
+/ #raw("ecp"), #raw("emv"): copy / move the current file to a target directory, no overwrite prompt.
+/ #raw("sab"): save a timestamped backup of the current file.
+/ #raw("wipe"): close every open tab at once, discarding changes.
+/ #raw("hash"): copy a file's SHA-256 hash to the clipboard.
+/ #raw("siz"): report the length of the selected text.
+/ #raw("linecount"): show the active file's line count.
+/ #raw("xe"), #raw("xe2"), #raw("xe3"): open the file in external editor 1, 2, or 3 (#raw("ExternalEditor"), …).
+/ #raw("pdfedit"): open a PDF for editing.
+/ #raw("pdfread"), #raw("pdfread2"): open a PDF for reading (#raw("$PDFreader"), #raw("$PDFreader2")).
+
+=== Editing and transforming text
+
+/ #raw("acc"): apply a dead accent — run #raw("acc"), then an accent key, then the letter.
+/ #raw("closeup"): reduce runs of blank lines to at most n (default 2).
+/ #raw("closedn"): regularize blank-line spacing to n (default 2).
+/ #raw("dellines"): delete every line containing a string.
+/ #raw("grablines"): list every line containing a string.
+/ #raw("dfb"): select from the caret to the end of the file, then run a command on it — e.g. #raw("dfb DN") deletes it.
+/ #raw("dft"): select from the caret to the start of the file, then run a command on it.
+/ #raw("puts"): insert a string a number of times; #raw("puts U") rules a line of dashes under the line above.
+/ #raw("sef"): search, leaving the caret on the first character of the match.
+/ #raw("apfil"), #raw("aptop"): append / prepend the selection to a file.
+/ #raw("cmnt"): add or remove comment markers on the defined block (default #raw("#")).
+/ #raw("chkcmnt"): check an XPL script for malformed comments.
+/ #raw("fence"): wrap the selection in an XPL fenced code block.
+/ #raw("qd"), #raw("qe"): quoted-printable decode / encode the defined block.
+
+=== The web
+
+/ #raw("ddg"), #raw("ggl"): search DuckDuckGo / Google for the selection or typed terms.
+/ #raw("url"): open a URL — the selection, or one you type.
+/ #raw("fnu"): jump to the next URL in the text.
+/ #raw("GetIP"): show the current IP address.
+/ #raw("checkwebupdate"), #raw("getETag"): detect when a web page has changed, via its ETag.
+/ #raw("xysupdate"): check for a XyScript update.
+/ #raw("xysweb"): open the XyScript web page.
+
+=== Panes and appearance
+
+/ #raw("panetoggle"): flip the current file between a split pane and full screen.
+/ #raw("panezoom"): zoom the current pane to fill the window, keeping the split.
+/ #raw("togs"): a menu of interface toggles.
+/ #raw("inspect"): inspect and adjust the Appearance settings.
+
+=== Dates and the calendar
+
+/ #raw("cal"): print a month calendar, with holidays for your country (#raw("$CountryCode")).
+/ #raw("nthday"): find the nth weekday of a month — e.g. the third Monday.
+/ #raw("easter"): compute the date of Easter for a year.
+
+=== Shell, processes, and sessions
+
+/ #raw("cmd"): start a shell session (Windows or Linux).
+/ #raw("shel"): run a shell command and show its output in a dialog.
+/ #raw("ProcExists"): report whether a named process is running (Windows).
+/ #raw("arg2"): pass the line under the cursor as an argument to a command.
+/ #raw("clone"): open a second instance with the same configuration.
+
+=== Small utilities
+
+/ #raw("minm"), #raw("max"): the smallest / largest of a list of numbers.
+/ #raw("log"): add a timestamped entry to the top of a log file (#raw("$Logfile")).
+/ #raw("awaitfile"), #raw("awaitdel"): wait, with a timeout, until a file appears / disappears.
+
+#tip("It is yours to change")[Every one of these is plain XPL you can read, rewrite, or delete. Trim the
+ones you will never use, or fold in your own — #raw("U2") opens the file, and #raw("RELOADLIB") picks up
+your edits without a restart.]
+
 // ===================================================================================================
 = Key Bindings
 
