@@ -21,6 +21,7 @@ pub enum Kind {
     Command,
     Special,
     Function,
+    Library,
 }
 
 impl Kind {
@@ -29,12 +30,14 @@ impl Kind {
             Kind::Command => "command",
             Kind::Special => "special variable",
             Kind::Function => "function",
+            Kind::Library => "library routine",
         }
     }
     fn from_macro(name: &str) -> Kind {
         match name {
             "sv" => Kind::Special,
             "func" => Kind::Function,
+            "lib" => Kind::Library,
             _ => Kind::Command,
         }
     }
@@ -54,8 +57,8 @@ struct Index {
     /// `(kind, UPPER-CASED name)` → entry. Keyed by kind too, so `$SE` (the special) and `SE` (the
     /// search command) — same name, different kinds — stay distinct.
     by_name: HashMap<(Kind, String), usize>,
-    /// Distinct headword names per kind (Command, Special, Function) — for the `HELP` overview.
-    counts: [usize; 3],
+    /// Distinct headword names per kind (Command, Special, Function, Library) — for the `HELP` overview.
+    counts: [usize; 4],
 }
 
 fn index() -> &'static Index {
@@ -67,7 +70,7 @@ fn index() -> &'static Index {
 /// nested `)` in the reference). Capture 1 = macro name, capture 2 = the quoted-args blob.
 fn entry_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r#"#(cmd|sv|func)\(([^)]*)\)"#).unwrap())
+    RE.get_or_init(|| Regex::new(r#"#(cmd|sv|func|lib)\(([^)]*)\)"#).unwrap())
 }
 
 /// The quoted strings inside a macro's arg blob, in order.
@@ -90,7 +93,9 @@ fn key(s: &str) -> String {
 fn macro_names(kind: &str, blob: &str) -> Vec<String> {
     let args = quoted_args(blob);
     match kind {
-        "cmd" => args,
+        // `#cmd`/`#lib` list every quoted arg (command synonyms / library-routine aliases); `#sv`/`#func`
+        // take only the first (a `#func`'s later args are the signature, not a name).
+        "cmd" | "lib" => args,
         _ => args.into_iter().take(1).collect(),
     }
 }
@@ -123,19 +128,20 @@ fn build() -> Index {
     let mut inline: Vec<(Kind, String, usize)> = Vec::new();
     let lines: Vec<&str> = REFERENCE_TYP.lines().collect();
     let mut i = 0;
-    // The "Commands by topic" section is a scannable index whose glosses are deliberately terser than
-    // the alphabetical "Commands" A–Z (which is the authoritative, detailed source). Skip it here so a
-    // command's help comes from its full A–Z entry, not its brief topical one (both sit in the doc, and
-    // the topical section comes first — so without this it would win the `or_insert` below).
+    // The "… by topic" sections are scannable indexes whose glosses are deliberately terser than the
+    // alphabetical A–Z listings (which are the authoritative, detailed source). Skip them here so an
+    // item's help comes from its full A–Z entry, not its brief topical one (both sit in the doc, and the
+    // topical section comes first — so without this it would win the `or_insert` below). This covers the
+    // built-in "Commands by topic" AND the "Library routines by topic" listings.
     let mut in_topical = false;
     while i < lines.len() {
         let line = lines[i].trim_end();
-        if line == "= Commands by topic" {
+        if line == "= Commands by topic" || line == "= Library routines by topic" {
             in_topical = true;
             i += 1;
             continue;
         }
-        if line == "= Commands" {
+        if line == "= Commands" || line == "= Library routines" {
             in_topical = false;
             i += 1;
             continue;
@@ -147,7 +153,11 @@ fn build() -> Index {
         // (1) Dictionary entry — a terms-list item `/ #cmd("X"[, "Y"]…): description`.
         if let Some(rest) = line.strip_prefix("/ ") {
             i += 1;
-            if !(rest.starts_with("#cmd(") || rest.starts_with("#sv(") || rest.starts_with("#func(")) {
+            if !(rest.starts_with("#cmd(")
+                || rest.starts_with("#sv(")
+                || rest.starts_with("#func(")
+                || rest.starts_with("#lib("))
+            {
                 continue;
             }
             let Some((term, desc)) = split_term(rest) else { continue };
@@ -178,7 +188,7 @@ fn build() -> Index {
         i += 1;
     }
     // Count distinct headword names per kind for the overview (before merging in inline mentions).
-    let mut counts = [0usize; 3];
+    let mut counts = [0usize; 4];
     let mut seen = std::collections::HashSet::new();
     for &(k, ref name, _) in &headwords {
         if seen.insert((k, name.clone())) {
@@ -247,6 +257,7 @@ fn kind_slot(k: Kind) -> usize {
         Kind::Command => 0,
         Kind::Special => 1,
         Kind::Function => 2,
+        Kind::Library => 3,
     }
 }
 
@@ -261,6 +272,11 @@ fn clean(s: &str) -> String {
             _ => names.join(" / "),
         }
     });
+    // Inline `#raw("code")` → its literal text. The library-routine entries use it for inline code
+    // (e.g. `#raw("$PDFreader")`) where the rest of the reference uses backticks; reduce both.
+    static RAW_RE: OnceLock<Regex> = OnceLock::new();
+    let raw_re = RAW_RE.get_or_init(|| Regex::new(r#"#raw\("([^"]*)"\)"#).unwrap());
+    let out = raw_re.replace_all(&out, |c: &regex::Captures| c[1].to_string());
     let out = out.replace('`', "");
     unescape(&out).trim().to_string()
 }
@@ -293,12 +309,17 @@ fn unescape(s: &str) -> String {
 pub fn lookup(name: &str) -> Option<HelpEntry> {
     let idx = index();
     let raw = name.trim();
+    // A `$` prefers a special, a trailing `()` a function; otherwise try a built-in command first, then
+    // a special, a library routine, and finally a function. Library routines can't shadow a built-in
+    // command (the loader rejects that), so the only bare-name overlap is with a like-named FUNCTION —
+    // e.g. the `log` routine vs the `LOG()` function; a bare `HELP log` favours the routine you'd type on
+    // the command line, and the function stays reachable as `HELP log()`.
     let order = if raw.starts_with('$') {
-        [Kind::Special, Kind::Command, Kind::Function]
+        [Kind::Special, Kind::Command, Kind::Function, Kind::Library]
     } else if raw.ends_with("()") {
-        [Kind::Function, Kind::Command, Kind::Special]
+        [Kind::Function, Kind::Command, Kind::Special, Kind::Library]
     } else {
-        [Kind::Command, Kind::Special, Kind::Function]
+        [Kind::Command, Kind::Special, Kind::Library, Kind::Function]
     };
     let k = key(raw);
     order
@@ -326,11 +347,11 @@ pub fn suggest(name: &str, max: usize) -> Vec<String> {
 
 /// A short overview shown by a bare `HELP` (no argument).
 pub fn overview() -> String {
-    let [c, s, f] = index().counts;
+    let [c, s, f, l] = index().counts;
     format!(
-        "HELP <name> — look up a command, $special, or function.\n\
-         e.g.  HELP CV   HELP $CWD   HELP UPPER\n\n\
-         {c} commands, {s} special variables, and {f} functions are documented.\n\
+        "HELP <name> — look up a command, $special, function, or library routine.\n\
+         e.g.  HELP CV   HELP $CWD   HELP UPPER   HELP num2words\n\n\
+         {c} commands, {s} special variables, {f} functions, and {l} library routines are documented.\n\
          Open the full reference with  Help \u{25b8} Reference."
     )
 }
@@ -379,6 +400,56 @@ mod tests {
     fn inline_secondary_entries_are_reachable() {
         // `DFA` is documented inline on the `DF` line; it should still resolve.
         assert!(lookup("DFA").is_some());
+    }
+
+    #[test]
+    fn resolves_library_routines() {
+        let n2w = lookup("num2words").expect("num2words documented");
+        assert_eq!(n2w.kind, Kind::Library);
+        assert_eq!(n2w.kind.label(), "library routine");
+        assert!(n2w.synopsis.to_lowercase().contains("number"), "synopsis: {}", n2w.synopsis);
+        // Case-insensitive, incl. mixed-case and hyphenated routine names.
+        assert_eq!(lookup("GETIP").unwrap().kind, Kind::Library);
+        assert_eq!(lookup("getHolidays-ca").unwrap().kind, Kind::Library);
+        // A bare name shared with a function favours the routine; the function needs its `()`.
+        assert_eq!(lookup("log").unwrap().kind, Kind::Library);
+        assert_eq!(lookup("log()").unwrap().kind, Kind::Function);
+        // Inline `#raw("…")` in a routine gloss is reduced to plain text in the synopsis.
+        let ty = lookup("typst").unwrap().synopsis;
+        assert!(!ty.contains("#raw("), "raw not reduced: {ty}");
+        assert!(ty.contains("$PDFreader"), "synopsis: {ty}");
+    }
+
+    #[test]
+    fn help_resolves_every_library_routine() {
+        // Same completeness guaranty as the reference: every user-facing bundled routine (a SUB with a
+        // `# DOC:` line) resolves via HELP to its library entry. No-DOC helpers are exempt.
+        const LIB: &str = include_str!("../../packaging/runtime/xyscript.lib");
+        let mut required: Vec<String> = Vec::new();
+        let (mut cur, mut has_doc): (Option<String>, bool) = (None, false);
+        for line in LIB.lines() {
+            let t = line.trim_start();
+            if let Some(rest) = t.strip_prefix("SUB ") {
+                if let Some(n) = cur.take() {
+                    if has_doc {
+                        required.push(n);
+                    }
+                }
+                has_doc = false;
+                cur = rest.split_whitespace().next().map(str::to_string);
+            } else if t.starts_with("# DOC:") {
+                has_doc = true;
+            }
+        }
+        if let Some(n) = cur.take() {
+            if has_doc {
+                required.push(n);
+            }
+        }
+        assert!(required.len() >= 70, "sanity: only {} documented routines parsed", required.len());
+        let missing: Vec<&String> =
+            required.iter().filter(|n| lookup(n).map(|e| e.kind) != Some(Kind::Library)).collect();
+        assert!(missing.is_empty(), "HELP can't resolve {} library routine(s): {missing:?}", missing.len());
     }
 
     #[test]
