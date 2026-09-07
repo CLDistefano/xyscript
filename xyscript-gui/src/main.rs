@@ -1870,6 +1870,240 @@ mod menu_tests {
         assert_eq!(nav.path, vec![1, 1]);
         assert!(matches!(nav.escape(), NavResult::Close));
     }
+
+    /// Ink bands (contiguous rows carrying text) in a rendered canvas, top→bottom, as `(top, height)`
+    /// in pixels. A "text" row is one with enough pixels that differ meaningfully from the background;
+    /// blank inter-line gaps split the bands. Used to measure the ACTUAL rendered height of each text
+    /// line from the pixels — the ground truth the layout-level GLYPHS diagnostic can't see.
+    fn ink_bands(rgba: &[u8], w: usize, h: usize, bg: (u8, u8, u8)) -> Vec<(usize, usize)> {
+        let differs = |i: usize| {
+            let (dr, dg, db) = (
+                (rgba[i] as i32 - bg.0 as i32).abs(),
+                (rgba[i + 1] as i32 - bg.1 as i32).abs(),
+                (rgba[i + 2] as i32 - bg.2 as i32).abs(),
+            );
+            // Well past anti-alias fringe, so faint edge pixels don't inflate a band.
+            dr.max(dg).max(db) > 48
+        };
+        let row_inked = |y: usize| {
+            let mut n = 0usize;
+            for x in 0..w {
+                if differs((y * w + x) * 4) {
+                    n += 1;
+                    if n >= 3 {
+                        return true;
+                    }
+                }
+            }
+            false
+        };
+        let mut bands = Vec::new();
+        let mut y = 0usize;
+        while y < h {
+            if row_inked(y) {
+                let top = y;
+                while y < h && row_inked(y) {
+                    y += 1;
+                }
+                let height = y - top;
+                if height >= 2 {
+                    bands.push((top, height));
+                }
+            } else {
+                y += 1;
+            }
+        }
+        bands
+    }
+
+    /// Reproduction harness for the "some lines/glyphs render at the wrong size" report: cycle the
+    /// editor font up and down (as the user did, on the SAME app instance so the cross-frame buffer
+    /// pool `win_buffer` accumulates exactly as it does live), render each step, dump a PNG for
+    /// eyeballing, and MEASURE per-line ink-band heights from the pixels. Within any single frame the
+    /// text is one size, so every band should be the same height; a much-shorter band = a line
+    /// rendered small = the bug, reproduced headlessly. If every frame is uniform, the raster is
+    /// exonerated and the trigger lives in live-only conditions the headless path doesn't hit.
+    ///
+    /// Ignored by default (writes PNGs, a bit slow). Run it deliberately:
+    ///   cargo test -p xyscript-gui --features lint,email font_size_cycle_renders_uniform -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn font_size_cycle_renders_uniform_line_heights() {
+        let mut app = GuiApp::new();
+        // Mixed-case words on several lines: uniform size shows as equal-height bands; a fallback face
+        // or a wrong-size run would show as "hi-lo caps within a word" in the dumped PNG.
+        app.editor.insert_str(
+            "The Quick BROWN Fox 123\n\
+             jumps OVER the Lazy DOG\n\
+             Sphinx of BLACK quartz\n\
+             judge MY vow 0O1lI!?\n\
+             Pack my BOX with jugs\n\
+             five DOZEN liquor jugs\n\
+             How VEXINGLY quick daft\n\
+             zebras JUMP over 456\n\
+             the FIVE boxing wizards\n\
+             jump QUICKLY at dawn 7\n\
+             waltz BAD nymph for QZ\n\
+             glib JOCKS vex dwarf 89",
+        );
+        app.pane_view.scroll_line = 0;
+        app.pane_view.follow = false;
+        // Match the reporter's 150% display: a fractional device scale (font_size * 1.5) is where the
+        // "tiny font" was seen, and stresses hinting/rounding the same way.
+        app.render_scale = 1.5;
+        let bg = app.editor.bg_color();
+
+        let out_dir = std::env::temp_dir().join("xyscript-fontcycle");
+        let _ = std::fs::remove_dir_all(&out_dir);
+        std::fs::create_dir_all(&out_dir).expect("create out dir");
+
+        // Logical canvas; raster takes PIXELS, so scale by render_scale (as render_canvas does live).
+        let (lw, lh) = (700.0f32, 480.0f32);
+        let w = (lw * app.render_scale).round() as usize;
+        let h = (lh * app.render_scale).round() as usize;
+
+        // "Blew it up, dropped to tiny, brought it back": the exact shape of the reported gesture.
+        let sizes = [22u32, 28, 34, 40, 20, 12, 8, 14, 22];
+        let mut worst_outliers = 0usize;
+        let mut worst_desc = String::new();
+
+        for (step, &sz) in sizes.iter().enumerate() {
+            // Drive it the way the command line does, then sync the per-frame fields ui() derives.
+            app.editor.run_command(&format!("EDFONT {sz}"));
+            app.font_size = app.editor.editor_font();
+            app.line_height =
+                (app.editor.editor_font() * app.editor.leading() / 100.0).round().max(1.0);
+            let device = app.font_size * app.render_scale;
+            // Render two frames per size: the first rebuilds the pool at the new size, the second
+            // REUSES it (global_sig now matches) — the case a stale-size line would surface in.
+            let _ = app.raster(w, h);
+            let rgba = app.raster(w, h);
+
+            let name = format!("step_{step:02}_edfont_{sz}.png");
+            let path = out_dir.join(&name);
+            image::RgbaImage::from_raw(w as u32, h as u32, rgba.clone())
+                .expect("canvas size")
+                .save(&path)
+                .expect("save png");
+
+            let bands = ink_bands(&rgba, w, h, bg);
+            let heights: Vec<usize> = bands.iter().map(|&(_, hgt)| hgt).collect();
+
+            // Robust "wrong-size line" detector. Raw band heights vary benignly for two reasons that
+            // are NOT the bug: a line with no descenders (`zebras JUMP over 456`) is shorter than one
+            // with them, and the bottom line is clipped by the canvas edge while tight leading can
+            // merge two lines into one tall band. So: drop sub-0.2x-device slivers (AA noise), drop
+            // the single tallest band (the merge/clip artifact), take the tallest REMAINING band as
+            // the true full-line height, and count how many lines fall below ~half of it. A uniform
+            // frame yields zero; a frame where a subset of lines rendered small yields one per small
+            // line — the "certain lines much smaller than others" report, caught at the pixel level.
+            let mut fb: Vec<f32> =
+                heights.iter().map(|&h| h as f32).filter(|&h| h >= 0.2 * device).collect();
+            fb.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let (reference, floor, outliers) = if fb.len() >= 3 {
+                fb.pop(); // discard the tallest (merged / bottom-clipped) band
+                let reference = *fb.last().unwrap(); // tallest genuine full line
+                let floor = reference / 1.85; // a descenderless line stays above this; a half-size line doesn't
+                (reference, floor, fb.iter().filter(|&&h| h < floor).count())
+            } else {
+                (0.0, 0.0, 0)
+            };
+            println!(
+                "step {step:02} EDFONT {sz:<3} device_size={device:.1} lines={:<2} band_heights={heights:?} ref={reference:.0} floor={floor:.1} small_lines={outliers}  -> {}",
+                bands.len(),
+                path.display(),
+            );
+            if outliers > worst_outliers {
+                worst_outliers = outliers;
+                worst_desc = format!("step {step} (EDFONT {sz}): band heights {heights:?}");
+            }
+        }
+
+        println!("\nPNGs in: {}", out_dir.display());
+        println!("worst within-frame small-line count: {worst_outliers}  [{worst_desc}]");
+        // A clean render is uniform: every full line clears the half-height floor, so zero lines are
+        // flagged. Allow a single stray (isolated AA/measurement noise at tiny sizes); two or more
+        // short lines in one frame means the raster drew text at the wrong size — the bug, reproduced.
+        assert!(
+            worst_outliers <= 1,
+            "multiple lines rendered small within one frame (raster produced wrong-size text): {worst_desc}"
+        );
+    }
+
+    /// The real reproduction order from the field: type some text, CYCLE the font up/down, then type
+    /// MORE text — the newly shaped glyphs come out tiny. Renders each stage and dumps PNGs so the
+    /// post-edit frame can be eyeballed against the pre-edit one.
+    ///
+    ///   cargo test -p xyscript-gui --features lint,email edit_after_font_cycle -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn edit_after_font_cycle_stays_uniform() {
+        let mut app = GuiApp::new();
+        app.render_scale = 1.5;
+        let out = std::env::temp_dir().join("xyscript-editcycle");
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(&out).unwrap();
+        let (lw, lh) = (500.0f32, 400.0f32);
+        let w = (lw * app.render_scale).round() as usize;
+        let h = (lh * app.render_scale).round() as usize;
+        let dump = |app: &mut GuiApp, name: &str| {
+            let _ = app.raster(w, h);
+            let rgba = app.raster(w, h);
+            let p = out.join(format!("{name}.png"));
+            let _ = image::RgbaImage::from_raw(w as u32, h as u32, rgba).map(|im| im.save(&p));
+            println!("dumped {}", p.display());
+        };
+
+        app.editor.insert_str("The quick brown fox jumps over the lazy dog.\n");
+        dump(&mut app, "0_initial");
+
+        // Cycle the font up big, down tiny, back — as the user did — driving the REAL product logic
+        // (`sync_glyph_cache`) that ui() runs each frame. Without it the shared rasterizer poisons the
+        // glyph cache; with it every size change starts clean.
+        for sz in [18u32, 28, 40, 52, 40, 24, 10, 6, 12, 18] {
+            app.editor.run_command(&format!("EDFONT {sz}"));
+            app.font_size = app.editor.editor_font();
+            app.line_height = (app.editor.editor_font() * app.editor.leading() / 100.0).round().max(1.0);
+            app.sync_glyph_cache();
+            let _ = app.raster(w, h);
+        }
+        dump(&mut app, "1_after_cycle");
+
+        // NOW type more text — the reported trigger — and render it.
+        app.editor.insert_str("Sphinx of black quartz, judge my vow!\n");
+        app.sync_glyph_cache();
+        dump(&mut app, "2_after_edit");
+
+        // Guard: the layout is uniform even when the bug bites (proven), so assert on the RASTER. For
+        // every glyph the frame just drew, the cached image (what the draw blits) must match a fresh
+        // rasterization of the same key. A poisoned cache entry diverges hard (~0.68x); a clean cache
+        // matches exactly. With sync_glyph_cache in place this holds; remove it and the new line's
+        // glyphs diverge and the assert fires.
+        let _ = app.raster(w, h);
+        let _ = app.raster(w, h);
+        let buf = app.win_buffer.take().unwrap();
+        let mut poisoned = 0usize;
+        let mut worst = String::new();
+        for run in buf.layout_runs() {
+            for g in run.glyphs.iter() {
+                let ph = g.physical((0.0, 0.0), 1.0);
+                let cached = app.swash.get_image(&mut app.font_system, ph.cache_key).as_ref().map(|i| i.placement.height as i32);
+                let fresh = app.swash.get_image_uncached(&mut app.font_system, ph.cache_key).as_ref().map(|i| i.placement.height as i32);
+                if let (Some(c), Some(f)) = (cached, fresh) {
+                    if (c - f).abs() > 2 {
+                        poisoned += 1;
+                        if worst.is_empty() {
+                            worst = format!("{:?} cached_h={c} fresh_h={f}", run.text.get(g.start..g.end).unwrap_or("?"));
+                        }
+                    }
+                }
+            }
+        }
+        app.win_buffer = Some(buf);
+        println!("PNGs in {}\npoisoned glyphs after edit: {poisoned} {worst}", out.display());
+        assert_eq!(poisoned, 0, "glyph cache poisoned by font-size churn survived a size change: {worst}");
+    }
+
 }
 
 /// The slice of the document currently handed to cosmic — a **window** of whole logical
@@ -2474,6 +2708,12 @@ struct GuiApp {
     // knobs at the top of each `ui` frame (B16). All canvas-metric code reads these.
     font_size: f32,
     line_height: f32,
+    // Device glyph size (font_size × render_scale) the `swash` glyph cache was last rasterized at.
+    // When it changes we REBUILD `swash` — cosmic's `SwashCache` shares one `ScaleContext`, and under
+    // rapid font-size churn that context caches WRONG-SIZE images under correct keys; those never
+    // evict, so a later edit fetching a poisoned key drew tiny/mixed glyphs. A fresh cache per size
+    // change (glyphs at a new device size are cache misses anyway) keeps every rasterization clean.
+    last_glyph_px: f32,
     // Line-number gutter (`$LNS`): `(document line, canvas-relative y)` for the first visual
     // row of each visible logical line, collected during `raster` and painted by the gutter.
     gutter_lines: Vec<(usize, f32)>,
@@ -2723,6 +2963,7 @@ impl GuiApp {
             render_scale: 1.0,
             font_size: 22.0,
             line_height: 32.0,
+            last_glyph_px: 0.0,
             gutter_lines: Vec::new(),
             mark_rows: Vec::new(),
             wrap_ratio: 1.0,
@@ -4008,6 +4249,22 @@ impl GuiApp {
             }
         }
         rects
+    }
+
+    /// Rebuild the glyph cache when the DEVICE glyph size (`font_size × render_scale`) changes (see
+    /// [`last_glyph_px`](Self::last_glyph_px)). cosmic's `SwashCache` shares one `ScaleContext`, and
+    /// under rapid font-size churn (dragging `EDFONT`, zooming, moving across DPIs) that context caches
+    /// WRONG-SIZE glyph images under otherwise-correct keys. Those entries never evict, so a later edit
+    /// that shapes new glyphs onto the poisoned keys drew them tiny/mixed. A fresh cache per size change
+    /// keeps every rasterization clean; glyphs at a new device size are cache misses anyway, so the only
+    /// added cost is re-rasterizing on a REVISITED size (a transient churn cost). Called from `ui` each
+    /// frame after `font_size`/`render_scale` settle. Rounded to 0.1px so sub-pixel jitter can't thrash it.
+    fn sync_glyph_cache(&mut self) {
+        let glyph_px = (self.font_size * self.render_scale * 10.0).round();
+        if (glyph_px - self.last_glyph_px).abs() >= 1.0 {
+            self.last_glyph_px = glyph_px;
+            self.swash = SwashCache::new();
+        }
     }
 
     fn raster(&mut self, w: usize, h: usize) -> Vec<u8> {
@@ -8462,6 +8719,7 @@ impl GuiApp {
         let max_side = ctx.input(|i| i.max_texture_side).max(256) as f32;
         let longest_pt = ctx.content_rect().size().max_elem().max(1.0);
         self.render_scale = raw_scale.min((max_side / longest_pt).max(0.1));
+        self.sync_glyph_cache();
 
         // UI-chrome colours (`UIFGCOLOR`/`UIBGCOLOR`) theme the whole window chrome — menu bar,
         // status line, gutter/margin strips, and pop-ups. The editor text canvas is coloured
