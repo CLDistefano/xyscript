@@ -21,6 +21,10 @@
 #set terms(spacing: 0.65em, hanging-indent: 1.2em)
 
 #let cmd(..names) = text(weight: "bold", names.pos().map(n => raw(n)).join("  /  "))
+// `#lib("name")` → a bundled-library routine headword (renders like `#cmd`). A separate marker from
+// `#cmd` because library routines are not built-in verbs: the coverage test cross-checks these against
+// the SUBs in packaging/runtime/xyscript.lib, not BUILTIN_VERBS.
+#let lib(..names) = text(weight: "bold", names.pos().map(n => raw(n)).join("  /  "))
 #let sv(name) = raw("$" + name)
 // `#func("NAME")` → NAME(); `#func("NAME", "a, b")` → NAME(a, b). The first arg is the function name
 // (the coverage index reads only that); the optional second is the rendered argument list.
@@ -612,6 +616,9 @@ self-contained element to convert.
 
 / #cmd("LOADLIB") / #cmd("ADDLIB") / #cmd("RELOADLIB") / #cmd("UNLOADLIB"): load / merge / reload / drop library routines.
 / #cmd("SAVELIB") / #cmd("LISTLIB"): write the loaded routines to a `.lib` / list them.
+
+The routines in the bundled #raw("xyscript.lib") are catalogued at the end of this reference, under
+*Library routines by topic* and *Library routines* (alphabetical).
 
 == Variables, config, and persistence
 
@@ -1490,3 +1497,268 @@ Every special variable in one list, for quick lookup.
 / #sv("XSDIR"): folder of the XyScript program.
 / #sv("YDAY"): day of year.
 / #sv("YEAR"): current year.
+
+// ===================================================================================================
+= Library routines by topic
+
+The routines that ship in #raw("xyscript.lib") --- the bundled library the default #raw("startup.xpl")
+loads --- grouped by what they do. They are callable by name like any built-in command; see
+*Libraries* (above) for loading and listing them, and *User Libraries* in the manual for writing your
+own. #raw("LISTLIB") shows the whole set with each routine's own #raw("# DOC:") notes, and #raw("U2")
+opens the file to read or adapt any of them. A few read user variables you set in
+#raw("user-variables.xpl") (e.g. #raw("$PDFreader"), #raw("$DirList")).
+
+== Help and information
+
+/ #lib("kbd"): open the 104-key keyboard chart.
+/ #lib("man"): open the XyScript user manual.
+/ #lib("ref"): open this command reference.
+/ #lib("typst"): open the Typst documentation (path in #raw("$PDFreader")).
+/ #lib("idkey"): press a key to see the command it is bound to.
+/ #lib("scancode"): show the scan code of a pressed key.
+/ #lib("v3"): identify the character under the cursor.
+/ #lib("values"): list XyScript's internal variables and their current values.
+/ #lib("uservars"): open the user-variables file.
+/ #lib("U2"): open #raw("xyscript.lib") itself for editing --- #raw("U2 <string>") jumps to a match.
+
+== Directories
+
+/ #lib("d"): change to a directory chosen from a saved list (#raw("$DirList")).
+/ #lib("go"): change drive and directory by typing space-separated name fragments, e.g. #raw("go d docs 2026").
+/ #lib("cdu"): change up one directory level.
+/ #lib("cdd"): change down one directory level.
+/ #lib("sd"): a "smart" #raw("DIR") listing.
+/ #lib("locate"): find files with #raw("Locate.exe").
+
+== Files
+
+/ #lib("opn"): open a file in the application associated with its type.
+/ #lib("openall"): open every file matching a filespec, e.g. #raw("openall my*.txt").
+/ #lib("renas"): rename the current file and reopen it under the new name.
+/ #lib("af"): open a fresh throwaway file with an auto-generated name.
+/ #lib("ecp"): express-copy the current file to a target directory (no overwrite prompt).
+/ #lib("emv"): express-move the current file to a target directory (no overwrite prompt).
+/ #lib("sab"): save a timestamped backup of the current file.
+/ #lib("wipe"): close every open tab at once, discarding changes.
+/ #lib("hash"): copy a file's SHA-256 hash to the clipboard.
+/ #lib("siz"): report the length of the selected text.
+/ #lib("linecount"): show the active file's line count.
+/ #lib("xe"): open the file in external editor 1 (#raw("$ExternalEditor")).
+/ #lib("xe2"): open the file in external editor 2 (#raw("$ExternalEditor2")).
+/ #lib("xe3"): open the file in external editor 3 (#raw("$ExternalEditor3")).
+/ #lib("pdfedit"): open a PDF for editing.
+/ #lib("pdfread"): open a PDF for reading (#raw("$PDFreader")).
+/ #lib("pdfread2"): open a PDF for reading in a second viewer (#raw("$PDFreader2")).
+
+== Editing and transforming text
+
+/ #lib("acc"): apply a dead accent --- run #raw("acc"), then an accent key, then the letter.
+/ #lib("closeup"): reduce runs of blank lines to at most n (default 2), over the file or selection.
+/ #lib("closedn"): regularize blank-line spacing to n (default 2), over the file or selection.
+/ #lib("dellines"): delete every line containing a string (case-insensitive).
+/ #lib("grablines"): list every line containing a string (case-insensitive).
+/ #lib("dfb"): select from the caret to the end of the file, then run a command on it --- e.g. #raw("dfb DN") deletes to the bottom.
+/ #lib("dft"): select from the caret to the start of the file, then run a command on it.
+/ #lib("puts"): insert a string a number of times; #raw("puts U") rules a line of dashes under the line above.
+/ #lib("sef"): search, leaving the caret on the first character of the match.
+/ #lib("apfil"): append the selection to the end of a file.
+/ #lib("aptop"): prepend the selection to the top of a file.
+/ #lib("cmnt"): add or remove comment markers on the defined block (default #raw("#"); #raw("cmnt semi") uses #raw(";")).
+/ #lib("chkcmnt"): check an XPL script for malformed comments.
+/ #lib("fence"): wrap the selection in an XPL fenced code block.
+/ #lib("qd"): quoted-printable decode the defined block.
+/ #lib("qe"): quoted-printable encode the defined block.
+
+== The web
+
+/ #lib("ddg"): search DuckDuckGo for the selection or typed terms.
+/ #lib("ggl"): search Google for the selection or typed terms.
+/ #lib("url"): open a URL --- the selection, or one you type.
+/ #lib("fnu"): jump to the next URL in the text.
+/ #lib("GetIP"): show the current IP address.
+/ #lib("checkwebupdate"): detect when a web page has changed, comparing its ETag against a saved copy.
+/ #lib("getETag"): fetch a web page's ETag (helper for #raw("checkwebupdate")).
+/ #lib("xysupdate"): check for a XyScript update.
+/ #lib("xysweb"): open the XyScript web page.
+
+== Panes and appearance
+
+/ #lib("panetoggle"): flip the current file between a split pane and full screen.
+/ #lib("panezoom"): zoom the current pane to fill the window, keeping the split.
+/ #lib("togs"): a menu of interface toggles.
+/ #lib("inspect"): inspect and adjust the Appearance settings.
+
+== Dates and the calendar
+
+/ #lib("cal"): print a month calendar, with holidays for your country (#raw("$CountryCode"), "ca" or "us").
+/ #lib("getHolidays-ca"): add Canadian holidays to the #raw("cal") calendar (invoked by #raw("cal")).
+/ #lib("getHolidays-us"): add U.S. holidays to the #raw("cal") calendar (invoked by #raw("cal")).
+/ #lib("nthday"): find the nth weekday of a month --- e.g. the third Monday.
+/ #lib("easter"): compute the date of Easter for a year (Oudin's algorithm).
+
+== Shell, processes, and sessions
+
+/ #lib("cmd"): start a shell session (Windows or Linux).
+/ #lib("shel"): run a shell command and show its output in a dialog.
+/ #lib("ProcExists"): report whether a named process is running (Windows).
+/ #lib("arg2"): pass the line under the cursor as an argument to a command.
+/ #lib("clone"): open a second instance with the same configuration.
+
+== Small utilities
+
+/ #lib("minm"): return the smallest of a list of numbers.
+/ #lib("max"): return the largest of a list of numbers.
+/ #lib("num2words"): write a number out in words, e.g. #raw("num2words 42") gives forty-two.
+/ #lib("log"): add a timestamped entry to the top of a log file (#raw("$Logfile")).
+/ #lib("awaitfile"): wait, with a timeout, until a file appears.
+/ #lib("awaitdel"): wait, with a timeout, until a file disappears.
+
+// ===================================================================================================
+= Library routines
+
+Every bundled routine, alphabetical.
+
+== A
+
+/ #lib("acc"): apply a dead accent --- run #raw("acc"), then an accent key, then the letter.
+/ #lib("af"): open a fresh throwaway file with an auto-generated name.
+/ #lib("apfil"): append the selection to the end of a file.
+/ #lib("aptop"): prepend the selection to the top of a file.
+/ #lib("arg2"): pass the line under the cursor as an argument to a command.
+/ #lib("awaitdel"): wait, with a timeout, until a file disappears.
+/ #lib("awaitfile"): wait, with a timeout, until a file appears.
+
+== C
+
+/ #lib("cal"): print a month calendar, with holidays for your country (#raw("$CountryCode"), "ca" or "us").
+/ #lib("cdd"): change down one directory level.
+/ #lib("cdu"): change up one directory level.
+/ #lib("checkwebupdate"): detect when a web page has changed, comparing its ETag against a saved copy.
+/ #lib("chkcmnt"): check an XPL script for malformed comments.
+/ #lib("clone"): open a second instance with the same configuration.
+/ #lib("closedn"): regularize blank-line spacing to n (default 2), over the file or selection.
+/ #lib("closeup"): reduce runs of blank lines to at most n (default 2), over the file or selection.
+/ #lib("cmd"): start a shell session (Windows or Linux).
+/ #lib("cmnt"): add or remove comment markers on the defined block (default #raw("#"); #raw("cmnt semi") uses #raw(";")).
+
+== D
+
+/ #lib("d"): change to a directory chosen from a saved list (#raw("$DirList")).
+/ #lib("ddg"): search DuckDuckGo for the selection or typed terms.
+/ #lib("dellines"): delete every line containing a string (case-insensitive).
+/ #lib("dfb"): select from the caret to the end of the file, then run a command on it --- e.g. #raw("dfb DN") deletes to the bottom.
+/ #lib("dft"): select from the caret to the start of the file, then run a command on it.
+
+== E
+
+/ #lib("easter"): compute the date of Easter for a year (Oudin's algorithm).
+/ #lib("ecp"): express-copy the current file to a target directory (no overwrite prompt).
+/ #lib("emv"): express-move the current file to a target directory (no overwrite prompt).
+
+== F
+
+/ #lib("fence"): wrap the selection in an XPL fenced code block.
+/ #lib("fnu"): jump to the next URL in the text.
+
+== G
+
+/ #lib("getETag"): fetch a web page's ETag (helper for #raw("checkwebupdate")).
+/ #lib("getHolidays-ca"): add Canadian holidays to the #raw("cal") calendar (invoked by #raw("cal")).
+/ #lib("getHolidays-us"): add U.S. holidays to the #raw("cal") calendar (invoked by #raw("cal")).
+/ #lib("GetIP"): show the current IP address.
+/ #lib("ggl"): search Google for the selection or typed terms.
+/ #lib("go"): change drive and directory by typing space-separated name fragments, e.g. #raw("go d docs 2026").
+/ #lib("grablines"): list every line containing a string (case-insensitive).
+
+== H
+
+/ #lib("hash"): copy a file's SHA-256 hash to the clipboard.
+
+== I
+
+/ #lib("idkey"): press a key to see the command it is bound to.
+/ #lib("inspect"): inspect and adjust the Appearance settings.
+
+== K
+
+/ #lib("kbd"): open the 104-key keyboard chart.
+
+== L
+
+/ #lib("linecount"): show the active file's line count.
+/ #lib("locate"): find files with #raw("Locate.exe").
+/ #lib("log"): add a timestamped entry to the top of a log file (#raw("$Logfile")).
+
+== M
+
+/ #lib("man"): open the XyScript user manual.
+/ #lib("max"): return the largest of a list of numbers.
+/ #lib("minm"): return the smallest of a list of numbers.
+
+== N
+
+/ #lib("nthday"): find the nth weekday of a month --- e.g. the third Monday.
+/ #lib("num2words"): write a number out in words, e.g. #raw("num2words 42") gives forty-two.
+
+== O
+
+/ #lib("openall"): open every file matching a filespec, e.g. #raw("openall my*.txt").
+/ #lib("opn"): open a file in the application associated with its type.
+
+== P
+
+/ #lib("panetoggle"): flip the current file between a split pane and full screen.
+/ #lib("panezoom"): zoom the current pane to fill the window, keeping the split.
+/ #lib("pdfedit"): open a PDF for editing.
+/ #lib("pdfread"): open a PDF for reading (#raw("$PDFreader")).
+/ #lib("pdfread2"): open a PDF for reading in a second viewer (#raw("$PDFreader2")).
+/ #lib("ProcExists"): report whether a named process is running (Windows).
+/ #lib("puts"): insert a string a number of times; #raw("puts U") rules a line of dashes under the line above.
+
+== Q
+
+/ #lib("qd"): quoted-printable decode the defined block.
+/ #lib("qe"): quoted-printable encode the defined block.
+
+== R
+
+/ #lib("ref"): open this command reference.
+/ #lib("renas"): rename the current file and reopen it under the new name.
+
+== S
+
+/ #lib("sab"): save a timestamped backup of the current file.
+/ #lib("scancode"): show the scan code of a pressed key.
+/ #lib("sd"): a "smart" #raw("DIR") listing.
+/ #lib("sef"): search, leaving the caret on the first character of the match.
+/ #lib("shel"): run a shell command and show its output in a dialog.
+/ #lib("siz"): report the length of the selected text.
+
+== T
+
+/ #lib("togs"): a menu of interface toggles.
+/ #lib("typst"): open the Typst documentation (path in #raw("$PDFreader")).
+
+== U
+
+/ #lib("U2"): open #raw("xyscript.lib") itself for editing --- #raw("U2 <string>") jumps to a match.
+/ #lib("url"): open a URL --- the selection, or one you type.
+/ #lib("uservars"): open the user-variables file.
+
+== V
+
+/ #lib("v3"): identify the character under the cursor.
+/ #lib("values"): list XyScript's internal variables and their current values.
+
+== W
+
+/ #lib("wipe"): close every open tab at once, discarding changes.
+
+== X
+
+/ #lib("xe"): open the file in external editor 1 (#raw("$ExternalEditor")).
+/ #lib("xe2"): open the file in external editor 2 (#raw("$ExternalEditor2")).
+/ #lib("xe3"): open the file in external editor 3 (#raw("$ExternalEditor3")).
+/ #lib("xysupdate"): check for a XyScript update.
+/ #lib("xysweb"): open the XyScript web page.
+

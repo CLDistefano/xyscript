@@ -11951,6 +11951,67 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert!(ma.is_empty(), "the alphabetical 'Commands' listing omits commands (see stderr)");
     }
 
+    /// The bundled-library routines get the SAME completeness guaranty as built-in commands: every
+    /// user-facing routine in `packaging/runtime/xyscript.lib` must be documented in the reference,
+    /// in BOTH the topical ("Library routines by topic") and alphabetical ("Library routines")
+    /// listings, and every `#lib(...)` entry must name a real routine. "User-facing" = a routine
+    /// carrying a `# DOC:` line; routines without one are internal helpers (e.g. `hilitedate`,
+    /// `cloned_start_script`) and are exempt. Add a routine (with a `# DOC:` line) and this test
+    /// forces documenting it — the same way the shipped `.lib` never silently outruns the docs.
+    #[test]
+    fn reference_documents_every_library_routine() {
+        const LIBRARY_LIB: &str = include_str!("../../packaging/runtime/xyscript.lib");
+        let mut all = std::collections::HashSet::<String>::new();
+        let mut required = std::collections::HashSet::<String>::new();
+        let (mut cur, mut has_doc): (Option<String>, bool) = (None, false);
+        for line in LIBRARY_LIB.lines() {
+            let t = line.trim_start();
+            if let Some(rest) = t.strip_prefix("SUB ") {
+                if let Some(n) = cur.take() {
+                    if has_doc {
+                        required.insert(n);
+                    }
+                }
+                has_doc = false;
+                if let Some(n) = rest.split_whitespace().next() {
+                    all.insert(n.to_string());
+                    cur = Some(n.to_string());
+                }
+            } else if t.starts_with("# DOC:") {
+                has_doc = true;
+            }
+        }
+        if let Some(n) = cur.take() {
+            if has_doc {
+                required.insert(n);
+            }
+        }
+        assert!(required.len() >= 70, "sanity: found only {} documented routines", required.len());
+
+        // Every `#lib(...)` entry names a real routine (no phantoms).
+        for n in documented("#lib(") {
+            assert!(all.contains(&n), "reference documents nonexistent library routine {n:?}");
+        }
+        let missing = |have: &std::collections::HashSet<String>| -> Vec<String> {
+            let mut m: Vec<String> = required.iter().filter(|n| !have.contains(*n)).cloned().collect();
+            m.sort();
+            m
+        };
+        // No-omission overall, and in each listing independently (the topical one ends where the
+        // alphabetical one begins; the alphabetical one is the last section, so it runs to the end).
+        let overall = documented("#lib(");
+        let topical =
+            documented_in(&reference_section("= Library routines by topic", "= Library routines"), "#lib(");
+        let alpha = documented_in(&reference_section("= Library routines", "= \u{0}"), "#lib(");
+        let (mo, mt, ma) = (missing(&overall), missing(&topical), missing(&alpha));
+        eprintln!("undocumented library routines ({}): {mo:?}", mo.len());
+        eprintln!("missing from the TOPICAL library listing ({}): {mt:?}", mt.len());
+        eprintln!("missing from the ALPHABETICAL library listing ({}): {ma:?}", ma.len());
+        assert!(mo.is_empty(), "reference omits library routines (see stderr)");
+        assert!(mt.is_empty(), "the 'Library routines by topic' listing omits routines (see stderr)");
+        assert!(ma.is_empty(), "the alphabetical 'Library routines' listing omits routines (see stderr)");
+    }
+
     #[test]
     fn help_resolves_every_documented_item() {
         // Phase 0 of Help v2: every built-in command, special, and function the reference documents
