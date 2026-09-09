@@ -106,13 +106,13 @@
   #link("https://xywrite.org/xywwweb"), #link("https://xywrite.org/XySearch/XySearch.php"), and #link("https://www.freelists.org/list/xywrite")). I had
   invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated
   users who remain devoted to this program many years past its heyday. Ultimately, I intend to release XyScript
-  as an open-source application, to be further developed, for non-commercial purposes, by anyone wishing
+  as an open-source application, to be further developed by anyone wishing
   to do so.
 
   #v(6pt)
   Carl L. Distefano \
   New York City \
-  22 August 2026
+  8 September 2026
 ]
 
 #pagebreak()
