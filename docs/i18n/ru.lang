@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ru.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -104,22 +104,22 @@ menu.view.split.swap = Поменять панели местами   # Swap the
 menu.view.split.zoom = Развернуть активную панель (переключатель)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Активная панель на весь экран   # Active pane full screen
 menu.view.split.remove = Убрать разделение   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Дублировать вид   # Duplicate view
+menu.view.duplicate.tab = В новой вкладке   # In a new tab
+menu.view.duplicate.window = В новом окне   # In a new window
 menu.view.menu_bar = Строка меню   # Menu bar
 menu.view.title_bar = Заголовок окна   # Title bar
 menu.view.writers_view = Режим писателя (Esc для выхода)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Затемнять при неактивности   # Dim when inactive
 menu.view.cmdline = Командная строка   # Command line
 menu.view.cmdline.popup = Всплывающая   # Pop-up
 menu.view.cmdline.position = Положение   # Position
 menu.view.cmdline.position.top = Сверху   # Top
 menu.view.cmdline.position.bottom = Снизу   # Bottom
 menu.view.cmdline.position.hidden = Скрыта   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Строка состояния   # Status line
+menu.view.statusline.top = Сверху (под командной строкой)   # Top (under command line)
+menu.view.statusline.bottom = Снизу   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Тип документа   # Document type
@@ -132,7 +132,7 @@ menu.document.encoding.convert_to = Преобразовать в (новый ф
 menu.document.line_endings = Концы строк   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Шестнадцатеричный вид   # Hex view
 menu.document.read_only = Только для чтения   # Read-only
 menu.document.word_count = Число слов   # Word count
 menu.document.char_count = Число символов   # Character count
@@ -214,13 +214,13 @@ menu.settings.appearance.colors.txt_text = Текст окна TXT…   # TXT wi
 menu.settings.appearance.colors.txt_bg = Фон окна TXT…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Текст окна каталога…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Фон окна каталога…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Текст номеров строк…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Фон номеров строк…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Окно сообщения   # Message box
+menu.settings.appearance.colors.msgbox.header = Текст заголовка…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Фон…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Текст кнопки OK…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Фон кнопки OK…   # OK button background…
 menu.settings.appearance.fonts = Шрифты   # Fonts
 menu.settings.appearance.fonts.editor = Редактор…   # Editor…
 menu.settings.appearance.fonts.ui = Интерфейс…   # UI…
@@ -249,7 +249,7 @@ menu.settings.syntax.auto = Автоподсветка при открытии  
 menu.settings.editor = Поведение редактора   # Editor behavior
 menu.settings.editor.persistent_sel = Постоянное выделение   # Persistent selection
 menu.settings.editor.remember_geom = Запоминать размер и положение окна   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Закрытие возвращает к последней посещённой вкладке   # Close returns to last-visited tab
 menu.settings.editor.coding = Средства программирования   # Coding aids
 menu.settings.editor.coding.autoindent = Автоотступ для новых строк   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Мягкие табуляции (вставлять пробелы)   # Soft tabs (insert spaces)
@@ -289,10 +289,10 @@ dialog.find.case = С учётом регистра   # Case sensitive
 dialog.find.whole_word = Слово целиком   # Whole word
 dialog.find.regex = Регулярное выражение   # Regular expression
 dialog.find.in_selection = В выделении   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = От начала файла   # From top of file
+dialog.find.from_top_hint = Начинать поиск с начала файла (перейти к первому совпадению); «Найти далее» затем движется вперёд. Выкл.: начинать от курсора.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Циклический поиск   # Wrap around
+dialog.find.wrap_hint = «Найти далее» после последнего совпадения переходит к первому (а «Найти ранее» перед первым — к последнему), вместо остановки в конце.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Сохранять регистр при замене   # Keep case in replacement
 dialog.find.keep_case_hint = Заменить / Заменить всё: приводить каждую замену к регистру заменяемого текста (строчные / С прописной / ПРОПИСНЫЕ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Найти далее (F3)   # Find next (F3)
@@ -342,5 +342,5 @@ msg.search.not_found = не найдено: {find}   # not found: {find}
 msg.save.written = сохранено {name}   # saved {name}
 msg.open.not_found = файл не найден: {path}   # file not found: {path}
 msg.readonly = документ только для чтения (RO для разблокировки)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = шестнадцатеричный вид доступен только для чтения текста (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: поиск…   # GREP: searching…

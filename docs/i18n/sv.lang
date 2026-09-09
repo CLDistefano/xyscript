@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\sv.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = Byt plats på de två rutorna   # Swap the two panes
 menu.view.split.zoom = Zooma aktiv ruta (växla)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktiv ruta i helskärm   # Active pane full screen
 menu.view.split.remove = Ta bort delning   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Duplicera vy   # Duplicate view
+menu.view.duplicate.tab = I en ny flik   # In a new tab
+menu.view.duplicate.window = I ett nytt fönster   # In a new window
 menu.view.menu_bar = Menyrad   # Menu bar
 menu.view.title_bar = Namnlist   # Title bar
 menu.view.writers_view = Skrivarvy (Esc för att avsluta)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Dämpa vid inaktivitet   # Dim when inactive
 menu.view.cmdline = Kommandorad   # Command line
 menu.view.cmdline.popup = Pop-up   # Pop-up
 menu.view.cmdline.position = Placering   # Position
 menu.view.cmdline.position.top = Överst   # Top
 menu.view.cmdline.position.bottom = Nederst   # Bottom
 menu.view.cmdline.position.hidden = Dold   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Statusrad   # Status line
+menu.view.statusline.top = Överst (under kommandoraden)   # Top (under command line)
+menu.view.statusline.bottom = Nederst   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Dokumenttyp   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Konvertera till (ny fil)   # Convert to (new
 menu.document.line_endings = Radslut   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Hex-vy   # Hex view
 menu.document.read_only = Skrivskyddat   # Read-only
 menu.document.word_count = Antal ord   # Word count
 menu.document.char_count = Antal tecken   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = Text i TXT-fönster…   # TXT window
 menu.settings.appearance.colors.txt_bg = Bakgrund i TXT-fönster…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Text i katalogfönster…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Bakgrund i katalogfönster…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Radnummertext…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Radnummerbakgrund…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Meddelanderuta   # Message box
+menu.settings.appearance.colors.msgbox.header = Rubriktext…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Bakgrund…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Text på OK-knapp…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Bakgrund på OK-knapp…   # OK button background…
 menu.settings.appearance.fonts = Teckensnitt   # Fonts
 menu.settings.appearance.fonts.editor = Redigerare…   # Editor…
 menu.settings.appearance.fonts.ui = Gränssnitt…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Färgmarkera automatiskt vid öppning   # Auto-highl
 menu.settings.editor = Redigerarbeteende   # Editor behavior
 menu.settings.editor.persistent_sel = Bestående markering   # Persistent selection
 menu.settings.editor.remember_geom = Kom ihåg fönsterstorlek och -position   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Stäng återgår till senast besökta flik   # Close returns to last-visited tab
 menu.settings.editor.coding = Kodningshjälp   # Coding aids
 menu.settings.editor.coding.autoindent = Automatiskt indrag på nya rader   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Mjuka tabbar (infoga blanksteg)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Skiftlägeskänslig   # Case sensitive
 dialog.find.whole_word = Helt ord   # Whole word
 dialog.find.regex = Reguljärt uttryck   # Regular expression
 dialog.find.in_selection = I markering   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Från filens början   # From top of file
+dialog.find.from_top_hint = Börja sökningen överst i filen (hamna på första träffen); Sök nästa går sedan framåt. Av: börja vid markören.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Slå runt   # Wrap around
+dialog.find.wrap_hint = Sök nästa förbi den sista träffen slår runt till den första (och Sök föregående förbi den första slår runt till den sista), i stället för att stanna vid slutet.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Behåll skiftläge vid ersättning   # Keep case in replacement
 dialog.find.keep_case_hint = Ersätt / Ersätt alla: anpassa varje ersättning till skiftläget i texten den ersätter (gemener / Inledande versal / VERSALER).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Sök nästa (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = hittades inte: {find}   # not found: {find}
 msg.save.written = sparade {name}   # saved {name}
 msg.open.not_found = filen hittades inte: {path}   # file not found: {path}
 msg.readonly = dokumentet är skrivskyddat (RO för att låsa upp)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = hex-vyn är skrivskyddad för textredigering (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: söker…   # GREP: searching…

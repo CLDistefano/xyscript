@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fi.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = Vaihda ruudut keskenään   # Swap the two panes
 menu.view.split.zoom = Suurenna aktiivinen ruutu (vaihto)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktiivinen ruutu koko näytölle   # Active pane full screen
 menu.view.split.remove = Poista jako   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Kahdenna näkymä   # Duplicate view
+menu.view.duplicate.tab = Uudessa välilehdessä   # In a new tab
+menu.view.duplicate.window = Uudessa ikkunassa   # In a new window
 menu.view.menu_bar = Valikkorivi   # Menu bar
 menu.view.title_bar = Otsikkorivi   # Title bar
 menu.view.writers_view = Kirjoitustila (poistu Esc)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Himmennä, kun ei aktiivinen   # Dim when inactive
 menu.view.cmdline = Komentorivi   # Command line
 menu.view.cmdline.popup = Ponnahdusikkuna   # Pop-up
 menu.view.cmdline.position = Sijainti   # Position
 menu.view.cmdline.position.top = Ylhäällä   # Top
 menu.view.cmdline.position.bottom = Alhaalla   # Bottom
 menu.view.cmdline.position.hidden = Piilotettu   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Tilarivi   # Status line
+menu.view.statusline.top = Ylhäällä (komentorivin alla)   # Top (under command line)
+menu.view.statusline.bottom = Alhaalla   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Asiakirjatyyppi   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Muunna muotoon (uusi tiedosto)   # Convert t
 menu.document.line_endings = Rivinvaihdot   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Heksanäkymä   # Hex view
 menu.document.read_only = Vain luku   # Read-only
 menu.document.word_count = Sanamäärä   # Word count
 menu.document.char_count = Merkkimäärä   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = TXT-ikkunan teksti…   # TXT window 
 menu.settings.appearance.colors.txt_bg = TXT-ikkunan tausta…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Hakemistoikkunan teksti…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Hakemistoikkunan tausta…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Rivinumeroiden teksti…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Rivinumeroiden tausta…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Viestiruutu   # Message box
+menu.settings.appearance.colors.msgbox.header = Otsikon teksti…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Tausta…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = OK-painikkeen teksti…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = OK-painikkeen tausta…   # OK button background…
 menu.settings.appearance.fonts = Fontit   # Fonts
 menu.settings.appearance.fonts.editor = Editori…   # Editor…
 menu.settings.appearance.fonts.ui = Käyttöliittymä…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Automaattinen korostus avattaessa   # Auto-highlight
 menu.settings.editor = Editorin toiminta   # Editor behavior
 menu.settings.editor.persistent_sel = Pysyvä valinta   # Persistent selection
 menu.settings.editor.remember_geom = Muista ikkunan koko ja sijainti   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Sulkeminen palaa viimeksi käytyyn välilehteen   # Close returns to last-visited tab
 menu.settings.editor.coding = Koodausavut   # Coding aids
 menu.settings.editor.coding.autoindent = Uusien rivien automaattinen sisennys   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Pehmeät sarkaimet (lisää välilyöntejä)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Huomioi kirjainkoko   # Case sensitive
 dialog.find.whole_word = Koko sana   # Whole word
 dialog.find.regex = Säännöllinen lauseke   # Regular expression
 dialog.find.in_selection = Valinnan sisällä   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Tiedoston alusta   # From top of file
+dialog.find.from_top_hint = Aloita haku tiedoston alusta (siirry ensimmäiseen osumaan); Etsi seuraava jatkaa tämän jälkeen eteenpäin. Pois: aloita kohdistimesta.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Kierrä ympäri   # Wrap around
+dialog.find.wrap_hint = Etsi seuraava viimeisen osuman jälkeen siirtyy ensimmäiseen (ja Etsi edellinen ensimmäisen edellä siirtyy viimeiseen) sen sijaan, että pysähtyisi loppuun.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Säilytä kirjainkoko korvattaessa   # Keep case in replacement
 dialog.find.keep_case_hint = Korvaa / Korvaa kaikki: mukauttaa kunkin korvauksen kirjainkoon korvattavan tekstin mukaan (pienaakkoset / Alkukirjain / SUURAAKKOSET).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Seuraava (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = ei löytynyt: {find}   # not found: {find}
 msg.save.written = tallennettu {name}   # saved {name}
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
 msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = heksanäkymä on vain luku -tilassa tekstimuokkauksille (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: etsitään…   # GREP: searching…

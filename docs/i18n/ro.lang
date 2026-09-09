@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ro.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -104,22 +104,22 @@ menu.view.split.swap = Interschimbă cele două panouri   # Swap the two panes
 menu.view.split.zoom = Mărește panoul activ (comută)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Panoul activ pe tot ecranul   # Active pane full screen
 menu.view.split.remove = Elimină împărțirea   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Duplică vizualizarea   # Duplicate view
+menu.view.duplicate.tab = Într-o filă nouă   # In a new tab
+menu.view.duplicate.window = Într-o fereastră nouă   # In a new window
 menu.view.menu_bar = Bară de meniu   # Menu bar
 menu.view.title_bar = Bară de titlu   # Title bar
 menu.view.writers_view = Vizualizare scriitor (Esc pentru ieșire)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Estompează când e inactivă   # Dim when inactive
 menu.view.cmdline = Linie de comandă   # Command line
 menu.view.cmdline.popup = Fereastră pop-up   # Pop-up
 menu.view.cmdline.position = Poziție   # Position
 menu.view.cmdline.position.top = Sus   # Top
 menu.view.cmdline.position.bottom = Jos   # Bottom
 menu.view.cmdline.position.hidden = Ascunsă   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Linie de stare   # Status line
+menu.view.statusline.top = Sus (sub linia de comandă)   # Top (under command line)
+menu.view.statusline.bottom = Jos   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Tip de document   # Document type
@@ -132,7 +132,7 @@ menu.document.encoding.convert_to = Convertește în (fișier nou)   # Convert t
 menu.document.line_endings = Terminații de rând   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Vizualizare hexazecimală   # Hex view
 menu.document.read_only = Doar-citire   # Read-only
 menu.document.word_count = Număr de cuvinte   # Word count
 menu.document.char_count = Număr de caractere   # Character count
@@ -214,13 +214,13 @@ menu.settings.appearance.colors.txt_text = Text fereastră TXT…   # TXT window
 menu.settings.appearance.colors.txt_bg = Fundal fereastră TXT…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Text fereastră director…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Fundal fereastră director…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Text numere de rând…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Fundal numere de rând…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Casetă de mesaj   # Message box
+menu.settings.appearance.colors.msgbox.header = Text antet…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Fundal…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Text buton OK…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Fundal buton OK…   # OK button background…
 menu.settings.appearance.fonts = Fonturi   # Fonts
 menu.settings.appearance.fonts.editor = Editor…   # Editor…
 menu.settings.appearance.fonts.ui = Interfață…   # UI…
@@ -249,7 +249,7 @@ menu.settings.syntax.auto = Evidențiere automată la deschidere   # Auto-highli
 menu.settings.editor = Comportament editor   # Editor behavior
 menu.settings.editor.persistent_sel = Selecție persistentă   # Persistent selection
 menu.settings.editor.remember_geom = Reține dimensiunea+poziția ferestrei   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Închiderea revine la ultima filă vizitată   # Close returns to last-visited tab
 menu.settings.editor.coding = Ajutoare de programare   # Coding aids
 menu.settings.editor.coding.autoindent = Indentare automată a rândurilor noi   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Taburi soft (inserează spații)   # Soft tabs (insert spaces)
@@ -289,10 +289,10 @@ dialog.find.case = Sensibil la majuscule   # Case sensitive
 dialog.find.whole_word = Cuvânt întreg   # Whole word
 dialog.find.regex = Expresie regulată   # Regular expression
 dialog.find.in_selection = În selecție   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = De la începutul fișierului   # From top of file
+dialog.find.from_top_hint = Începe căutarea de la începutul fișierului (poziționare pe prima potrivire); Caută următorul avansează apoi înainte. Dezactivat: începe de la cursor.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Căutare circulară   # Wrap around
+dialog.find.wrap_hint = Caută următorul dincolo de ultima potrivire reia de la prima (iar Caută precedentul dincolo de prima reia de la ultima), în loc să se oprească la sfârșit.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Păstrează majusculele la înlocuire   # Keep case in replacement
 dialog.find.keep_case_hint = Înlocuiește / Înlocuiește tot: adaptează fiecare înlocuire la majusculele textului pe care îl înlocuiește (minuscule / Cu Inițială Mare / MAJUSCULE).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Caută următorul (F3)   # Find next (F3)
@@ -342,5 +342,5 @@ msg.search.not_found = negăsit: {find}   # not found: {find}
 msg.save.written = salvat {name}   # saved {name}
 msg.open.not_found = fișier negăsit: {path}   # file not found: {path}
 msg.readonly = documentul este doar-citire (RO pentru deblocare)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = vizualizarea hexazecimală este doar-citire pentru editarea textului (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: se caută…   # GREP: searching…

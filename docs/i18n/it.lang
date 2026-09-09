@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\it.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = Scambia i due riquadri   # Swap the two panes
 menu.view.split.zoom = Ingrandisci riquadro attivo (attiva/disattiva)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Riquadro attivo a schermo intero   # Active pane full screen
 menu.view.split.remove = Rimuovi divisione   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Duplica vista   # Duplicate view
+menu.view.duplicate.tab = In una nuova scheda   # In a new tab
+menu.view.duplicate.window = In una nuova finestra   # In a new window
 menu.view.menu_bar = Barra dei menu   # Menu bar
 menu.view.title_bar = Barra del titolo   # Title bar
 menu.view.writers_view = Modalità scrittura (Esc per uscire)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Attenua quando inattiva   # Dim when inactive
 menu.view.cmdline = Riga di comando   # Command line
 menu.view.cmdline.popup = Finestra popup   # Pop-up
 menu.view.cmdline.position = Posizione   # Position
 menu.view.cmdline.position.top = In alto   # Top
 menu.view.cmdline.position.bottom = In basso   # Bottom
 menu.view.cmdline.position.hidden = Nascosta   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Riga di stato   # Status line
+menu.view.statusline.top = In alto (sotto la riga di comando)   # Top (under command line)
+menu.view.statusline.bottom = In basso   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Tipo di documento   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Converti in (nuovo file)   # Convert to (new
 menu.document.line_endings = Fine riga   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Vista esadecimale   # Hex view
 menu.document.read_only = Sola lettura   # Read-only
 menu.document.word_count = Conteggio parole   # Word count
 menu.document.char_count = Conteggio caratteri   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = Testo della finestra TXT…   # TXT w
 menu.settings.appearance.colors.txt_bg = Sfondo della finestra TXT…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Testo della finestra directory…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Sfondo della finestra directory…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Testo dei numeri di riga…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Sfondo dei numeri di riga…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Finestra di messaggio   # Message box
+menu.settings.appearance.colors.msgbox.header = Testo dell’intestazione…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Sfondo…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Testo del pulsante OK…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Sfondo del pulsante OK…   # OK button background…
 menu.settings.appearance.fonts = Caratteri   # Fonts
 menu.settings.appearance.fonts.editor = Editor…   # Editor…
 menu.settings.appearance.fonts.ui = Interfaccia…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Evidenziazione automatica all'apertura   # Auto-high
 menu.settings.editor = Comportamento dell'editor   # Editor behavior
 menu.settings.editor.persistent_sel = Selezione persistente   # Persistent selection
 menu.settings.editor.remember_geom = Ricorda dimensione e posizione della finestra   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = La chiusura torna all’ultima scheda visitata   # Close returns to last-visited tab
 menu.settings.editor.coding = Aiuti alla programmazione   # Coding aids
 menu.settings.editor.coding.autoindent = Rientra automaticamente le nuove righe   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Tabulazioni morbide (inserisci spazi)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Maiuscole/minuscole   # Case sensitive
 dialog.find.whole_word = Parola intera   # Whole word
 dialog.find.regex = Espressione regolare   # Regular expression
 dialog.find.in_selection = Nella selezione   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Dall’inizio del file   # From top of file
+dialog.find.from_top_hint = Avvia la ricerca dall’inizio del file (posizionandosi sulla prima corrispondenza); Trova successivo prosegue poi in avanti. Disattivato: inizia dal cursore.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Ricerca circolare   # Wrap around
+dialog.find.wrap_hint = Trova successivo oltre l’ultima corrispondenza riprende dalla prima (e Trova precedente oltre la prima riprende dall’ultima), invece di fermarsi alla fine.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Mantieni maiuscole/minuscole nella sostituzione   # Keep case in replacement
 dialog.find.keep_case_hint = Sostituisci / Sostituisci tutto: adatta le maiuscole/minuscole di ogni sostituzione al testo sostituito (minuscolo / Iniziale maiuscola / MAIUSCOLO).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Successivo (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = non trovato: {find}   # not found: {find}
 msg.save.written = salvato {name}   # saved {name}
 msg.open.not_found = file non trovato: {path}   # file not found: {path}
 msg.readonly = il documento è in sola lettura (RO per sbloccare)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = la vista esadecimale è in sola lettura per le modifiche al testo (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: ricerca in corso…   # GREP: searching…

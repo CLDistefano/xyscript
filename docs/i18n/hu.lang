@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\hu.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = A két panel felcserélése   # Swap the two panes
 menu.view.split.zoom = Aktív panel nagyítása (váltó)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktív panel teljes képernyőn   # Active pane full screen
 menu.view.split.remove = Felosztás megszüntetése   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Nézet megkettőzése   # Duplicate view
+menu.view.duplicate.tab = Új lapon   # In a new tab
+menu.view.duplicate.window = Új ablakban   # In a new window
 menu.view.menu_bar = Menüsor   # Menu bar
 menu.view.title_bar = Címsor   # Title bar
 menu.view.writers_view = Írói nézet (Esc a kilépéshez)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Elhalványítás inaktív állapotban   # Dim when inactive
 menu.view.cmdline = Parancssor   # Command line
 menu.view.cmdline.popup = Felugró   # Pop-up
 menu.view.cmdline.position = Elhelyezés   # Position
 menu.view.cmdline.position.top = Fent   # Top
 menu.view.cmdline.position.bottom = Lent   # Bottom
 menu.view.cmdline.position.hidden = Rejtett   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Állapotsor   # Status line
+menu.view.statusline.top = Fent (a parancssor alatt)   # Top (under command line)
+menu.view.statusline.bottom = Lent   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Dokumentumtípus   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Konvertálás erre (új fájl)   # Convert t
 menu.document.line_endings = Sorvégek   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Hexadecimális nézet   # Hex view
 menu.document.read_only = Csak olvasható   # Read-only
 menu.document.word_count = Szavak száma   # Word count
 menu.document.char_count = Karakterek száma   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = TXT-ablak szövege…   # TXT window 
 menu.settings.appearance.colors.txt_bg = TXT-ablak háttere…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Könyvtárablak szövege…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Könyvtárablak háttere…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Sorszámok szövege…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Sorszámok háttere…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Üzenetablak   # Message box
+menu.settings.appearance.colors.msgbox.header = Fejléc szövege…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Háttér…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = OK gomb szövege…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = OK gomb háttere…   # OK button background…
 menu.settings.appearance.fonts = Betűtípusok   # Fonts
 menu.settings.appearance.fonts.editor = Szerkesztő…   # Editor…
 menu.settings.appearance.fonts.ui = Kezelőfelület…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Automatikus kiemelés megnyitáskor   # Auto-highlig
 menu.settings.editor = Szerkesztő viselkedése   # Editor behavior
 menu.settings.editor.persistent_sel = Tartós kijelölés   # Persistent selection
 menu.settings.editor.remember_geom = Ablak méretének és helyzetének megjegyzése   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = A bezárás a legutóbb látogatott lapra tér vissza   # Close returns to last-visited tab
 menu.settings.editor.coding = Kódolási segédek   # Coding aids
 menu.settings.editor.coding.autoindent = Új sorok automatikus behúzása   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Lágy tabulátorok (szóközök beszúrása)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Kis- és nagybetű megkülönböztetése   # Case sensitive
 dialog.find.whole_word = Teljes szó   # Whole word
 dialog.find.regex = Reguláris kifejezés   # Regular expression
 dialog.find.in_selection = A kijelölésen belül   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = A fájl elejétől   # From top of file
+dialog.find.from_top_hint = A keresés a fájl elejétől indul (az első találatra ugrik); a Következő keresése ezután előrefelé halad. Kikapcsolva: a kurzortól indul.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Körkörös keresés   # Wrap around
+dialog.find.wrap_hint = A Következő keresése az utolsó találat után az elsőre ugrik (az Előző keresése pedig az első előtt az utolsóra), ahelyett, hogy a végén megállna.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Kis- és nagybetűk megtartása a cserénél   # Keep case in replacement
 dialog.find.keep_case_hint = Csere / Összes cseréje: minden csereszöveg a lecserélt szöveg kis- és nagybetűihez igazodik (kisbetűs / Nagy kezdőbetűs / NAGYBETŰS).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Következő keresése (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = nem található: {find}   # not found: {find}
 msg.save.written = mentve: {name}   # saved {name}
 msg.open.not_found = a fájl nem található: {path}   # file not found: {path}
 msg.readonly = a dokumentum csak olvasható (RO a feloldáshoz)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = a hexadecimális nézet csak olvasható a szövegszerkesztéshez (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: keresés…   # GREP: searching…

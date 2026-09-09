@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\cs.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -104,22 +104,22 @@ menu.view.split.swap = Prohodit oba panely   # Swap the two panes
 menu.view.split.zoom = Přiblížit aktivní panel (přepnout)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Aktivní panel na celou obrazovku   # Active pane full screen
 menu.view.split.remove = Zrušit rozdělení   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Duplikovat zobrazení   # Duplicate view
+menu.view.duplicate.tab = V nové kartě   # In a new tab
+menu.view.duplicate.window = V novém okně   # In a new window
 menu.view.menu_bar = Panel nabídek   # Menu bar
 menu.view.title_bar = Záhlaví okna   # Title bar
 menu.view.writers_view = Režim psaní (Esc pro ukončení)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Ztlumit při neaktivitě   # Dim when inactive
 menu.view.cmdline = Příkazový řádek   # Command line
 menu.view.cmdline.popup = Vyskakovací okno   # Pop-up
 menu.view.cmdline.position = Umístění   # Position
 menu.view.cmdline.position.top = Nahoře   # Top
 menu.view.cmdline.position.bottom = Dole   # Bottom
 menu.view.cmdline.position.hidden = Skryté   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Stavový řádek   # Status line
+menu.view.statusline.top = Nahoře (pod příkazovým řádkem)   # Top (under command line)
+menu.view.statusline.bottom = Dole   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Typ dokumentu   # Document type
@@ -132,7 +132,7 @@ menu.document.encoding.convert_to = Převést na (nový soubor)   # Convert to (
 menu.document.line_endings = Konce řádků   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Hexadecimální zobrazení   # Hex view
 menu.document.read_only = Jen pro čtení   # Read-only
 menu.document.word_count = Počet slov   # Word count
 menu.document.char_count = Počet znaků   # Character count
@@ -214,13 +214,13 @@ menu.settings.appearance.colors.txt_text = Text okna TXT…   # TXT window text�
 menu.settings.appearance.colors.txt_bg = Pozadí okna TXT…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Text okna adresáře…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Pozadí okna adresáře…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Text čísel řádků…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Pozadí čísel řádků…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Okno se zprávou   # Message box
+menu.settings.appearance.colors.msgbox.header = Text záhlaví…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Pozadí…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Text tlačítka OK…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Pozadí tlačítka OK…   # OK button background…
 menu.settings.appearance.fonts = Písma   # Fonts
 menu.settings.appearance.fonts.editor = Editor…   # Editor…
 menu.settings.appearance.fonts.ui = Rozhraní…   # UI…
@@ -249,7 +249,7 @@ menu.settings.syntax.auto = Zvýraznit automaticky při otevření   # Auto-high
 menu.settings.editor = Chování editoru   # Editor behavior
 menu.settings.editor.persistent_sel = Trvalý výběr   # Persistent selection
 menu.settings.editor.remember_geom = Zapamatovat velikost a polohu okna   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Zavření se vrátí na naposledy navštívenou kartu   # Close returns to last-visited tab
 menu.settings.editor.coding = Pomůcky pro psaní kódu   # Coding aids
 menu.settings.editor.coding.autoindent = Automatické odsazení nových řádků   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Měkké tabulátory (vkládat mezery)   # Soft tabs (insert spaces)
@@ -289,10 +289,10 @@ dialog.find.case = Rozlišovat velikost písmen   # Case sensitive
 dialog.find.whole_word = Celé slovo   # Whole word
 dialog.find.regex = Regulární výraz   # Regular expression
 dialog.find.in_selection = Ve výběru   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Od začátku souboru   # From top of file
+dialog.find.from_top_hint = Zahájit hledání od začátku souboru (přejít na první shodu); Najít další pak postupuje vpřed. Vypnuto: začít u kurzoru.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Přecházet dokola   # Wrap around
+dialog.find.wrap_hint = Najít další za poslední shodou přejde na první (a Najít předchozí před první přejde na poslední), místo zastavení na konci.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Zachovat velikost při nahrazení   # Keep case in replacement
 dialog.find.keep_case_hint = Nahradit / Nahradit vše: upravit velikost každé náhrady podle textu, který nahrazuje (malá / S velkým počátečním / VELKÁ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Najít další (F3)   # Find next (F3)
@@ -342,5 +342,5 @@ msg.search.not_found = nenalezeno: {find}   # not found: {find}
 msg.save.written = uloženo {name}   # saved {name}
 msg.open.not_found = soubor nenalezen: {path}   # file not found: {path}
 msg.readonly = dokument je jen pro čtení (RO pro odemčení)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = hexadecimální zobrazení je jen pro čtení pro textové úpravy (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: hledání…   # GREP: searching…

@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\el.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = Εναλλαγή των δύο παραθύρων   # Swa
 menu.view.split.zoom = Μεγέθυνση ενεργού παραθύρου (εναλλαγή)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Ενεργό παράθυρο σε πλήρη οθόνη   # Active pane full screen
 menu.view.split.remove = Κατάργηση διαίρεσης   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Διπλασιασμός προβολής   # Duplicate view
+menu.view.duplicate.tab = Σε νέα καρτέλα   # In a new tab
+menu.view.duplicate.window = Σε νέο παράθυρο   # In a new window
 menu.view.menu_bar = Γραμμή μενού   # Menu bar
 menu.view.title_bar = Γραμμή τίτλου   # Title bar
 menu.view.writers_view = Προβολή συγγραφέα (Esc για έξοδο)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Θάμπωμα όταν είναι ανενεργό   # Dim when inactive
 menu.view.cmdline = Γραμμή εντολών   # Command line
 menu.view.cmdline.popup = Αναδυόμενο   # Pop-up
 menu.view.cmdline.position = Θέση   # Position
 menu.view.cmdline.position.top = Πάνω   # Top
 menu.view.cmdline.position.bottom = Κάτω   # Bottom
 menu.view.cmdline.position.hidden = Κρυφή   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Γραμμή κατάστασης   # Status line
+menu.view.statusline.top = Πάνω (κάτω από τη γραμμή εντολών)   # Top (under command line)
+menu.view.statusline.bottom = Κάτω   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Τύπος εγγράφου   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Μετατροπή σε (νέο αρχείο
 menu.document.line_endings = Τέλη γραμμών   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Δεκαεξαδική προβολή   # Hex view
 menu.document.read_only = Μόνο για ανάγνωση   # Read-only
 menu.document.word_count = Καταμέτρηση λέξεων   # Word count
 menu.document.char_count = Καταμέτρηση χαρακτήρων   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = Κείμενο παραθύρου TXT
 menu.settings.appearance.colors.txt_bg = Φόντο παραθύρου TXT…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Κείμενο παραθύρου καταλόγου…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Φόντο παραθύρου καταλόγου…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Κείμενο αριθμών γραμμών…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Φόντο αριθμών γραμμών…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Πλαίσιο μηνύματος   # Message box
+menu.settings.appearance.colors.msgbox.header = Κείμενο κεφαλίδας…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Φόντο…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Κείμενο κουμπιού OK…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Φόντο κουμπιού OK…   # OK button background…
 menu.settings.appearance.fonts = Γραμματοσειρές   # Fonts
 menu.settings.appearance.fonts.editor = Επεξεργαστής…   # Editor…
 menu.settings.appearance.fonts.ui = Διεπαφή…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Αυτόματη επισήμανση κατά το 
 menu.settings.editor = Συμπεριφορά επεξεργαστή   # Editor behavior
 menu.settings.editor.persistent_sel = Μόνιμη επιλογή   # Persistent selection
 menu.settings.editor.remember_geom = Απομνημόνευση μεγέθους+θέσης παραθύρου   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Το κλείσιμο επιστρέφει στην προηγούμενη καρτέλα   # Close returns to last-visited tab
 menu.settings.editor.coding = Βοηθήματα κωδικοποίησης   # Coding aids
 menu.settings.editor.coding.autoindent = Αυτόματη εσοχή σε νέες γραμμές   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Απαλοί στηλοθέτες (εισαγωγή κενών)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Διάκριση πεζών-κεφαλαίων   # Case sensi
 dialog.find.whole_word = Ολόκληρη λέξη   # Whole word
 dialog.find.regex = Κανονική έκφραση   # Regular expression
 dialog.find.in_selection = Στην επιλογή   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Από την αρχή του αρχείου   # From top of file
+dialog.find.from_top_hint = Έναρξη της αναζήτησης από την αρχή του αρχείου (μετάβαση στην πρώτη αντιστοιχία)· η «Εύρεση επόμενου» στη συνέχεια προχωρά μπροστά. Ανενεργό: έναρξη από τον δρομέα.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Κυκλική μετάβαση   # Wrap around
+dialog.find.wrap_hint = Η «Εύρεση επόμενου» μετά την τελευταία αντιστοιχία μεταβαίνει στην πρώτη (και η «Εύρεση προηγούμενου» πριν από την πρώτη μεταβαίνει στην τελευταία), αντί να σταματά στο τέλος.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Διατήρηση πεζών-κεφαλαίων στην αντικατάσταση   # Keep case in replacement
 dialog.find.keep_case_hint = Αντικατάσταση / Αντικατάσταση όλων: προσαρμογή κάθε αντικατάστασης ώστε να ταιριάζει με τα πεζά-κεφαλαία του κειμένου που αντικαθιστά (πεζά / Κεφαλαιοποιημένα / ΚΕΦΑΛΑΙΑ).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Εύρεση επόμενου (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = δεν βρέθηκε: {find}   # not found: {find}
 msg.save.written = αποθηκεύτηκε {name}   # saved {name}
 msg.open.not_found = το αρχείο δεν βρέθηκε: {path}   # file not found: {path}
 msg.readonly = το έγγραφο είναι μόνο για ανάγνωση (RO για ξεκλείδωμα)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = η δεκαεξαδική προβολή είναι μόνο για ανάγνωση για επεξεργασίες κειμένου (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: αναζήτηση…   # GREP: searching…

@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\nl.lang
-# Merged from en.lang by i18n-sync.py — 21 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -100,22 +100,22 @@ menu.view.split.swap = Beide vensters verwisselen   # Swap the two panes
 menu.view.split.zoom = Actief venster vergroten (schakelen)   # Zoom active pane (toggle)
 menu.view.split.fullscreen = Actief venster op volledig scherm   # Active pane full screen
 menu.view.split.remove = Splitsing opheffen   # Remove split
-menu.view.duplicate =    # Duplicate view
-menu.view.duplicate.tab =    # In a new tab
-menu.view.duplicate.window =    # In a new window
+menu.view.duplicate = Weergave dupliceren   # Duplicate view
+menu.view.duplicate.tab = In een nieuw tabblad   # In a new tab
+menu.view.duplicate.window = In een nieuw venster   # In a new window
 menu.view.menu_bar = Menubalk   # Menu bar
 menu.view.title_bar = Titelbalk   # Title bar
 menu.view.writers_view = Schrijfmodus (Esc om te sluiten)   # Writer's View (Esc to exit)
-menu.view.dim_inactive =    # Dim when inactive
+menu.view.dim_inactive = Dimmen bij inactiviteit   # Dim when inactive
 menu.view.cmdline = Opdrachtregel   # Command line
 menu.view.cmdline.popup = Pop-upvenster   # Pop-up
 menu.view.cmdline.position = Positie   # Position
 menu.view.cmdline.position.top = Boven   # Top
 menu.view.cmdline.position.bottom = Onder   # Bottom
 menu.view.cmdline.position.hidden = Verborgen   # Hidden
-menu.view.statusline =    # Status line
-menu.view.statusline.top =    # Top (under command line)
-menu.view.statusline.bottom =    # Bottom
+menu.view.statusline = Statusregel   # Status line
+menu.view.statusline.top = Boven (onder de opdrachtregel)   # Top (under command line)
+menu.view.statusline.bottom = Onder   # Bottom
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Documenttype   # Document type
@@ -128,7 +128,7 @@ menu.document.encoding.convert_to = Converteren naar (nieuw bestand)   # Convert
 menu.document.line_endings = Regeleinden   # Line endings
 menu.document.line_endings.lf = LF (Unix)   # LF (Unix)
 menu.document.line_endings.crlf = CRLF (Windows)   # CRLF (Windows)
-menu.document.hex_view =    # Hex view
+menu.document.hex_view = Hex-weergave   # Hex view
 menu.document.read_only = Alleen-lezen   # Read-only
 menu.document.word_count = Aantal woorden   # Word count
 menu.document.char_count = Aantal tekens   # Character count
@@ -210,13 +210,13 @@ menu.settings.appearance.colors.txt_text = TXT-venstertekst…   # TXT window te
 menu.settings.appearance.colors.txt_bg = TXT-vensterachtergrond…   # TXT window background…
 menu.settings.appearance.colors.dir_text = Mapvenstertekst…   # Directory window text…
 menu.settings.appearance.colors.dir_bg = Mapvensterachtergrond…   # Directory window background…
-menu.settings.appearance.colors.linenum_text =    # Line-number text…
-menu.settings.appearance.colors.linenum_bg =    # Line-number background…
-menu.settings.appearance.colors.msgbox =    # Message box
-menu.settings.appearance.colors.msgbox.header =    # Header text…
-menu.settings.appearance.colors.msgbox.bg =    # Background…
-menu.settings.appearance.colors.msgbox.ok_text =    # OK button text…
-menu.settings.appearance.colors.msgbox.ok_bg =    # OK button background…
+menu.settings.appearance.colors.linenum_text = Regelnummertekst…   # Line-number text…
+menu.settings.appearance.colors.linenum_bg = Regelnummerachtergrond…   # Line-number background…
+menu.settings.appearance.colors.msgbox = Berichtvenster   # Message box
+menu.settings.appearance.colors.msgbox.header = Koptekst…   # Header text…
+menu.settings.appearance.colors.msgbox.bg = Achtergrond…   # Background…
+menu.settings.appearance.colors.msgbox.ok_text = Tekst van OK-knop…   # OK button text…
+menu.settings.appearance.colors.msgbox.ok_bg = Achtergrond van OK-knop…   # OK button background…
 menu.settings.appearance.fonts = Lettertypen   # Fonts
 menu.settings.appearance.fonts.editor = Editor…   # Editor…
 menu.settings.appearance.fonts.ui = Interface…   # UI…
@@ -245,7 +245,7 @@ menu.settings.syntax.auto = Automatisch markeren bij openen   # Auto-highlight o
 menu.settings.editor = Editorgedrag   # Editor behavior
 menu.settings.editor.persistent_sel = Blijvende selectie   # Persistent selection
 menu.settings.editor.remember_geom = Venstergrootte en -positie onthouden   # Remember window size+position
-menu.settings.editor.closeback =    # Close returns to last-visited tab
+menu.settings.editor.closeback = Sluiten keert terug naar het laatst bezochte tabblad   # Close returns to last-visited tab
 menu.settings.editor.coding = Programmeerhulp   # Coding aids
 menu.settings.editor.coding.autoindent = Nieuwe regels automatisch inspringen   # Auto-indent new lines
 menu.settings.editor.coding.soft_tabs = Zachte tabs (spaties invoegen)   # Soft tabs (insert spaces)
@@ -285,10 +285,10 @@ dialog.find.case = Hoofdlettergevoelig   # Case sensitive
 dialog.find.whole_word = Heel woord   # Whole word
 dialog.find.regex = Reguliere expressie   # Regular expression
 dialog.find.in_selection = In selectie   # In selection
-dialog.find.from_top =    # From top of file
-dialog.find.from_top_hint =    # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
-dialog.find.wrap =    # Wrap around
-dialog.find.wrap_hint =    # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
+dialog.find.from_top = Vanaf begin van bestand   # From top of file
+dialog.find.from_top_hint = Begin de zoekopdracht bovenaan het bestand (land op de eerste overeenkomst); Volgende gaat daarna vooruit. Uit: begin bij de cursor.   # Begin the search at the top of the file (land on the first match); Find Next then advances forward. Off: begin at the cursor.
+dialog.find.wrap = Doorlopen   # Wrap around
+dialog.find.wrap_hint = Volgende voorbij de laatste overeenkomst loopt door naar de eerste (en Vorige voorbij de eerste loopt door naar de laatste), in plaats van te stoppen aan het einde.   # Find Next past the last match wraps to the first (and Find Prev past the first wraps to the last), instead of stopping at the end.
 dialog.find.keep_case = Hoofdlettergebruik behouden bij vervangen   # Keep case in replacement
 dialog.find.keep_case_hint = Vervangen / Alles vervangen: past het hoofdlettergebruik van elke vervanging aan aan de vervangen tekst (kleine letters / Beginhoofdletter / HOOFDLETTERS).   # Replace / Replace all: recase each replacement to match the case of the text it replaces (lower / Capitalized / UPPER).
 dialog.find.find_next = Volgende (F3)   # Find next (F3)
@@ -336,5 +336,5 @@ msg.search.not_found = niet gevonden: {find}   # not found: {find}
 msg.save.written = opgeslagen {name}   # saved {name}
 msg.open.not_found = bestand niet gevonden: {path}   # file not found: {path}
 msg.readonly = document is alleen-lezen (RO om te ontgrendelen)   # document is read-only (RO to unlock)
-msg.hex_readonly =    # hex view is read-only for text edits (HEX off)
+msg.hex_readonly = hex-weergave is alleen-lezen voor tekstbewerkingen (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: bezig met zoeken…   # GREP: searching…
