@@ -1,19 +1,24 @@
-HLLANG xywrite .xy3,.xy4
-HLRULE comment "(^|\s);*;(\s.*)?$"
-HLRULE prompt "«(PR|NT|IV)[^«»]+»"
-HLRULE label "«LB[^«»]+»"
-HLRULE footnote "«FN[^«»]+»"
-HLRULE xychevron "«[«»]+»"
-HLRULE md_normal "«MDNM»[^«»]+"
-HLRULE md_italics "«MD(IT|RV)»[^«»]+"
-HLRULE md_bold "«MDBO»[^«»]+"
-HLRULE md_underline "«MDUL»[^«»]+"
-HLRULE md_bolditalics "«MD(BI|BR)»[^«»]+"
-HLRULE md_underline "«MDUL»[^«»]+"
-HLRULE md_boldunderline "«MDBU»[^«»]+"
-HLRULE md_subscript "«MDSD»[^«»]+"
-HLRULE md_superscript "«MDSU[^»]*»[^«»]+"
-HLRULE md_redl_delete "«MDD.»[^«»]+"
-HLRULE md_numeric "«MD\d{1,3}»[^«»]+"
-HLRULE md_subtractive "«MD-[^»]*»[^«»]+"
-HLRULE md_additive "«MD\+[^»]*»[^«»]+"
+# xywrite.xpl — Syntax highlighting grammar for XyWrite-formatted files
+# RUN grammars/xywrite.xpl
+# then open a .xpl/.cfg/.lib file; HIGHLIGHT on, or HLAUTO on
+# For detailed instructions, see User Manual Chapter 16
+
+HLLANG xywrite .xy,.xy3,.xy4
+
+HLRULE xycomment "(^|\s);\*;(\s.*)?$"
+HLCOLOR xycomment 35 142 35
+
+HLRULE xyprompt "«(PR|NT|IV)[^«»]+»"
+HLCOLOR xyprompt 0 255 255
+
+HLRULE xylabel "«LB[^«»]+»"
+HLCOLOR xylabel 127 0 255
+
+HLRULE xyfootnote "«FN"
+HLCOLOR xyfootnote 92 51 23
+
+HLRULE xymode "«MD[^«»]+»"
+HLCOLOR xymode 238 0 238
+
+HLRULE xyformat "«\w[^«»]+»"
+HLCOLOR xyformat 255 222 173
