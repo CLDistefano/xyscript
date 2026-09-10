@@ -680,15 +680,41 @@ impl Handler {
         let Some(window) = self.window.clone() else {
             return;
         };
-        // Keep the surface sized to the window BEFORE painting — a mixed-DPI monitor change updates
-        // egui's ppp (read fresh below) but can leave the surface stale, which renders the whole
-        // window tiny until restart.
-        let phys = window.inner_size();
+        // Size the surface to the window BEFORE painting — a mixed-DPI monitor change updates egui's
+        // ppp (read fresh below) but can leave the surface stale, which renders the whole window tiny
+        // until restart.
+        //
+        // Guard against a STALE inner_size, too: winit-on-Windows can keep reporting the maximized
+        // client size for a while after a maximize→restore, while the window is actually restored.
+        // `inner` LARGER than `outer` is physically impossible (outer = client + borders, so
+        // outer >= inner always) — that's the tell. Left uncorrected, both the wgpu surface (below)
+        // and egui's screen_rect (which `take_egui_input` also derives from inner_size) inflate to the
+        // stale size, and the oversized frame is squished into the smaller window → the whole UI (chrome
+        // and canvas alike) renders tiny and stays that way until the next resize. Fall back to
+        // outer_size (a close, valid client estimate) and nudge winit to re-emit a correct WM_SIZE.
+        let inner = window.inner_size();
+        let outer = window.outer_size();
+        let stale = inner.width > outer.width || inner.height > outer.height;
+        let phys = if stale { outer } else { inner };
+        if stale {
+            let _ = window.request_inner_size(outer);
+        }
         self.ensure_surface(phys.width, phys.height);
-        let raw_input = match self.egui_state.as_mut() {
+        let mut raw_input = match self.egui_state.as_mut() {
             Some(s) => s.take_egui_input(&window),
             None => return,
         };
+        if stale {
+            // Rescale egui's screen_rect (which it built from the stale inner_size) to the corrected
+            // physical size, so egui lays out to match the surface THIS frame — no tiny flash while we
+            // wait for winit to resync. The ratio cancels out whatever ppp/zoom egui used.
+            if let Some(r) = raw_input.screen_rect.as_mut() {
+                let sx = outer.width as f32 / inner.width.max(1) as f32;
+                let sy = outer.height as f32 / inner.height.max(1) as f32;
+                let sz = r.size();
+                *r = egui::Rect::from_min_size(r.min, egui::vec2(sz.x * sx, sz.y * sy));
+            }
+        }
         let ctx = self.egui_ctx.clone();
         let app = &mut self.app;
         // eframe gave the app a bare, full-window `Ui` (no margin/background) via `run_ui`.
