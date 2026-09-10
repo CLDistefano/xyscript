@@ -146,22 +146,6 @@ const REFERENCE_TYP: &str =
 const MANUAL_TYP: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/manual.typ"));
 
-/// Crop an RGBA image to the top-left `max`×`max` at most, so a texture upload can't exceed the GPU's
-/// max texture side (egui panics otherwise). A no-op when it already fits. Used for the preview pane,
-/// where a tall page at a high zoom can overflow.
-fn clamp_rgba(rgba: Vec<u8>, w: usize, h: usize, max: usize) -> (Vec<u8>, usize, usize) {
-    if w <= max && h <= max {
-        return (rgba, w, h);
-    }
-    let (cw, ch) = (w.min(max), h.min(max));
-    let mut out = Vec::with_capacity(cw * ch * 4);
-    for row in 0..ch {
-        let start = row * w * 4;
-        out.extend_from_slice(&rgba[start..start + cw * 4]);
-    }
-    (out, cw, ch)
-}
-
 #[allow(dead_code)] // retained as a handy paste-in sample
 const SAMPLE_MD: &str = "\
 # XyScript GUI — Milestone 2
@@ -2733,7 +2717,11 @@ struct GuiApp {
     canvas_tex: Option<egui::TextureHandle>,
     // Debounced PDF preview (right pane). Visibility is host-owned (`PV`/`$PV`); these are the
     // GUI-side render cache + debounce state.
-    preview_tex: Option<egui::TextureHandle>,
+    /// The preview render as vertical texture TILES (each ≤ the GPU max texture side tall), drawn
+    /// stacked — so a tall page at high zoom is fully scrollable instead of cropped to one texture.
+    preview_tiles: Vec<egui::TextureHandle>,
+    /// Full pixel height of the tiled preview (Σ tile heights), for the follow's proportional offset.
+    preview_h: f32,
     preview_src: String,
     preview_err: Option<String>,
     preview_was_visible: bool,
@@ -2748,6 +2736,11 @@ struct GuiApp {
     preview_seen_w: f32,
     /// The editor viewport-top line the preview was last sync-scrolled to (re-sync only on change).
     preview_synced_line: usize,
+    /// The preview pane's on-screen rect (last frame it was shown), so the editor's mouse-wheel handler
+    /// can EXCLUDE it — otherwise a wheel over the preview scrolls the editor too, and the follow logic
+    /// then snaps the preview to a proportional position (jumpy + can't reach the bottom). `None` when
+    /// the preview is hidden. Same exclusion the tab strip gets via `tab_strip_rect`.
+    preview_pane_rect: Option<egui::Rect>,
     last_text: String,
     last_change_time: f64,
     // M5: menus + status. The command line is the editor's *native* CMline
@@ -2970,7 +2963,8 @@ impl GuiApp {
             os_clipboard: arboard::Clipboard::new().ok(),
             os_clip_mirror: String::new(),
             canvas_tex: None,
-            preview_tex: None,
+            preview_tiles: Vec::new(),
+            preview_h: 0.0,
             preview_src: String::new(),
             preview_font_sig: String::new(),
             preview_err: None,
@@ -2979,6 +2973,7 @@ impl GuiApp {
             preview_pane_w: 0.0,
             preview_seen_w: 0.0,
             preview_synced_line: usize::MAX, // force an initial sync
+            preview_pane_rect: None,
             last_text: String::new(),
             last_change_time: f64::MIN,
             status: startup_status,
@@ -9723,9 +9718,13 @@ impl GuiApp {
             .and_then(|pos| ctx.layer_id_at(pos))
             .is_some_and(|layer| layer.order != egui::Order::Background);
         let over_tabs = matches!((pointer, tab_strip_rect), (Some(p), Some(r)) if r.contains(p));
+        // The preview pane is a Background-order panel with its OWN ScrollArea; without this the wheel
+        // would scroll it AND the editor (whose follow logic then snaps the preview around). Use last
+        // frame's rect (it only changes on a resize); `None` when the preview is hidden.
+        let over_preview = matches!((pointer, self.preview_pane_rect), (Some(p), Some(r)) if r.contains(p));
         let (wheel, hwheel, shift) =
             ctx.input(|i| (i.smooth_scroll_delta.y, i.smooth_scroll_delta.x, i.modifiers.shift));
-        if !over_floating && !over_tabs {
+        if !over_floating && !over_tabs && !over_preview {
             // `WRAP off`: a horizontal wheel/trackpad swipe, or Shift+wheel, PANS horizontally (and then
             // owns the scroll — no vertical move). The raster clamps the upper bound to the content width.
             if !self.editor.wrap() && (hwheel.abs() > 0.0 || (shift && wheel.abs() > 0.0)) {
@@ -10114,7 +10113,8 @@ impl GuiApp {
         let preview_on = self.editor.preview_visible();
         if !preview_on && self.preview_was_visible {
             // Visible → hidden: drop the cache so re-showing renders fresh, and do no preview work.
-            self.preview_tex = None;
+            self.preview_tiles.clear();
+            self.preview_h = 0.0;
             self.preview_src.clear();
             self.last_text.clear();
             self.preview_err = None;
@@ -10124,7 +10124,7 @@ impl GuiApp {
         let kind = self.editor.active_render_kind();
         // Authored typst styles itself; GFM and HTML both take the user's Preview font settings.
         let is_typst = matches!(kind, RenderKind::Typst);
-        egui::Panel::right("preview").resizable(true).default_size(380.0).show_inside(ui, |ui| {
+        let preview_resp = egui::Panel::right("preview").resizable(true).default_size(380.0).show_inside(ui, |ui| {
             ui.label(match kind {
                 RenderKind::Typst => "preview — typst",
                 RenderKind::Gfm => "preview — gfm",
@@ -10178,11 +10178,30 @@ impl GuiApp {
                     };
                     match res {
                         Ok((rgba, w, h)) => {
-                            // Crop so a tall page at high zoom can't exceed the GPU max texture side.
-                            let max = ctx.input(|i| i.max_texture_side).max(256);
-                            let (rgba, cw, ch) = clamp_rgba(rgba, w as usize, h as usize, max);
-                            let img = egui::ColorImage::from_rgba_premultiplied([cw, ch], &rgba);
-                            self.preview_tex = Some(ctx.load_texture("preview", img, Default::default()));
+                            // TILE the render into vertical strips, each at most the GPU's max texture
+                            // side tall, and stack them gaplessly below. A single texture would have to
+                            // be CROPPED to fit the limit (egui panics otherwise) — which cut off the
+                            // bottom of a tall page at high zoom, so it couldn't be scrolled to. Width
+                            // is bounded by the pane and essentially never exceeds the limit; crop the
+                            // right edge only in the extreme case.
+                            let max = (ctx.input(|i| i.max_texture_side).max(256)) as usize;
+                            let (w, h) = (w as usize, h as usize);
+                            let cw = w.min(max);
+                            let mut tiles = Vec::new();
+                            let mut y = 0usize;
+                            while y < h {
+                                let th = (h - y).min(max);
+                                let mut buf = Vec::with_capacity(cw * th * 4);
+                                for row in y..y + th {
+                                    let start = row * w * 4;
+                                    buf.extend_from_slice(&rgba[start..start + cw * 4]);
+                                }
+                                let img = egui::ColorImage::from_rgba_premultiplied([cw, th], &buf);
+                                tiles.push(ctx.load_texture("preview", img, Default::default()));
+                                y += th;
+                            }
+                            self.preview_tiles = tiles;
+                            self.preview_h = h as f32;
                             self.preview_err = None;
                         }
                         // Keep the last good image; show the compile error (line:col from Phase 2).
@@ -10209,17 +10228,23 @@ impl GuiApp {
             if self.pane_view.scroll_line != self.preview_synced_line {
                 self.preview_synced_line = self.pane_view.scroll_line;
                 let frac = (self.pane_view.scroll_line as f32 / total_lines as f32).clamp(0.0, 1.0);
-                let tex_h = self.preview_tex.as_ref().map(|t| t.size_vec2().y).unwrap_or(0.0);
-                scroll = scroll.vertical_scroll_offset(frac * tex_h);
+                scroll = scroll.vertical_scroll_offset(frac * self.preview_h);
             }
             scroll.show(ui, |ui| {
-                if let Some(t) = &self.preview_tex {
-                    ui.image((t.id(), t.size_vec2()));
+                if !self.preview_tiles.is_empty() {
+                    ui.spacing_mut().item_spacing.y = 0.0; // stack the tiles with no seam between them
+                    for t in &self.preview_tiles {
+                        ui.image((t.id(), t.size_vec2()));
+                    }
                 } else if self.preview_err.is_none() {
                     ui.label("(rendering…)");
                 }
             });
         });
+        // Remember the pane's rect so the wheel handler can exclude it next frame (see `preview_pane_rect`).
+        self.preview_pane_rect = Some(preview_resp.response.rect);
+        } else {
+            self.preview_pane_rect = None;
         }
 
         // Editing canvas, with an optional line-number gutter (`$LNS`) and left margin (`OF`,
