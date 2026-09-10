@@ -74,6 +74,26 @@ ES
 greet world                   ; → Hello, world!
 ```
 
+And it composes. This one line opens a fresh tab, pipes a shell command's output into it, jumps to the top, and highlights the lines that matter (Windows):
+
+```
+TRUST 1;NE;XY [type services|findstr /i "time"];TF;EMPH/R (?i)\#.*protocol
+```
+
+Because it's all XPL, the very same thing reads as a plain, commented script:
+
+```
+TRUST 1                               # enable shell-out (X / XY / XV)
+NE                                    # open a new tab
+XY [type services|findstr /i "time"]  # pull in a shell command's output
+TF                                    # cursor to the top of the file
+EMPH/R (?i)\#.*protocol               # highlight the # comments that mention "protocol"
+```
+
+![Filtered service entries with the matching comment lines highlighted in a new tab](docs/images/xpl-example-windows.png)
+
+The user manual's *Command Line* chapter carries more of these (with a Linux variant).
+
 XyScript comes with a library of useful XPL routines -- `xyscript.lib` -- which, by default, is loaded at startup. Modify `xyscript.lib` as you see fit or collect your own routines in a separate `.lib` file (`.lib` files can be loaded additively).
 
 ## About

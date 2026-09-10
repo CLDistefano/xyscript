@@ -1470,6 +1470,34 @@ pass a literal bracket through.
 
 Note: Use #raw("X") for commands that run quickly and exit, and #raw("X/NV") to launch apps that stay open.
 
+== Putting it together
+
+Chaining, the shell pass-throughs, and highlighting combine into real one-liners. This one — on Windows —
+opens a fresh tab, pipes a shell command's output into it, jumps to the top, and lights up the lines that
+matter:
+
+#ex("TRUST 1;NE;XY [type services|findstr /i \"time\"];TF;EMPH/R (?i)\\#.*protocol")
+
+Because it is all XPL, the very same thing reads as a plain, commented script — one verb per line:
+
+#ex("TRUST 1                               # enable shell-out (X / XY / XV)
+NE                                    # open a new tab
+XY [type services|findstr /i \"time\"]  # pull in a shell command's output
+TF                                    # cursor to the top of the file
+EMPH/R (?i)\\#.*protocol               # highlight protocol comment lines")
+
+You land in a new tab holding just the #raw("services") lines that mention "time", with the protocol
+comment lines highlighted. Read the script, change a pattern, and it is yours to keep.
+
+The same recipe travels. On Linux, pull the distinct #raw("man") commands out of your shell history and
+flag two of them:
+
+#ex("TRUST 1;NE;XY [cat ~/.bash_history|grep -i \"man\"|sort -u];TF;EMPH/R \"attr|sort\"")
+
+#tip("Shell-out is opt-in")[The #raw("X") / #raw("XY") / #raw("XV") pass-throughs run only after
+#raw("TRUST 1") — they are off by default (see *The Console, shell-out, and the working directory*
+below), which is why each one-liner starts by enabling them.]
+
 == Variable substitution
 
 A leading #raw("$") substitutes a variable's value into the line before the command runs; a bare word
