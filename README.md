@@ -106,4 +106,4 @@ I developed XyScript using Claude Code (Opus 4.8); it is still a work in progres
 
 ## Status & license
 
-XyScript is under active, iterative development; expect rough edges and changing internals. When it is released to the public it will be **free and open source under the [MIT License](https://opensource.org/license/mit)** — a permissive license with no non-commercial or other field-of-use restrictions. Until that release, and pending a `LICENSE` file, all rights are reserved.
+XyScript is under active, iterative development; expect rough edges and changing internals. It is **free and open source under the [MIT License](https://opensource.org/license/mit)** — a permissive license with no non-commercial or other field-of-use restrictions. See the [`LICENSE`](LICENSE) file for the full text.
