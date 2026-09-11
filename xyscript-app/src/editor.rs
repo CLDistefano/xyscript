@@ -11714,6 +11714,8 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
             (include_str!("../../grammars/xpl.xpl"), "xpl", "x.xpl", "IF $x  # check\n  PR \"hi\"\n"),
             (include_str!("../../grammars/typst.xpl"), "typst", "x.typ", "#let s = \"hi\" // c\n"),
             (include_str!("../../grammars/html.xpl"), "html", "x.html", "<!-- c --><a href=\"x\">hi</a>\n"),
+            (include_str!("../../grammars/cpp.xpl"), "cpp", "x.cpp", "int main() { return 0; } // c\n"),
+            (include_str!("../../grammars/zig.xpl"), "zig", "x.zig", "const x = 0; // c\n"),
         ];
         for (src, name, file, sample) in cases {
             let mut e = Editor::new(typing_keymap());
