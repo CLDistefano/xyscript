@@ -408,8 +408,13 @@ pure and simple.
 Each #raw("SCRATCH") opens another, so several can float at once — move and resize them freely, or drag
 one onto a second monitor to keep it beside your work. Typing in a scratchpad uses the ordinary editing
 keys (arrows, #kbd("Home") / #kbd("End"), #kbd("Ctrl+C") / #kbd("Ctrl+V") / #kbd("Ctrl+Z")) and the
-system clipboard, so text moves easily between a scratchpad and your document. It is a plain box,
-though: your keyboard file and XPL verbs drive the main window, not the scratchpad.
+system clipboard, so text moves easily between a scratchpad and your document. Your keyboard file's
+*typing* layer applies too — a custom layout types into a scratchpad the same way it does in your
+document — but its command bindings and XPL verbs still act on the main window, not the box (a
+scratchpad has no document for them to work on).
+
+If #raw("WINGEO") is on, a scratchpad remembers its size and position: move or resize one, and the next
+#raw("SCRATCH") opens where you left it.
 
 Two switches save a step:
 
