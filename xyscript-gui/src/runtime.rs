@@ -298,6 +298,9 @@ struct ScratchWindow {
     text: String,
     /// One-shot: focus the text box on the first frame so the user can type immediately.
     focus_pending: bool,
+    /// Text produced by the keyboard file's typing layer (a captured `insert "…"` cell — custom
+    /// layouts, etc.) awaiting injection into the TextEdit on the next frame, as an egui text event.
+    pending_text: String,
     /// The `EDFAMILY`+`EDSTYLE` installed into this window's egui context (`None` = egui default).
     /// Compared each frame so we only `set_fonts` on a change.
     applied_family: Option<(String, xyscript_app::host::FontStyle)>,
@@ -359,6 +362,11 @@ struct Handler {
     next_scratch_num: u32,
     /// The most-recently-focused scratchpad (the target of `SCRATCHCLOSE`); cleared as windows close.
     scratch_focus: Option<WindowId>,
+    /// Remembered scratchpad geometry (outer position + inner size) — the last one moved/resized/closed.
+    /// Restored on the next `SCRATCH` and PERSISTED to disk (`scratch-window.txt`) when `WINGEO` is on;
+    /// else this session's value, else a default cascaded from the main window.
+    scratch_pos: Option<PhysicalPosition<i32>>,
+    scratch_size: Option<PhysicalSize<u32>>,
 }
 
 impl Handler {
@@ -391,6 +399,8 @@ impl Handler {
             scratch: Vec::new(),
             next_scratch_num: 0,
             scratch_focus: None,
+            scratch_pos: None,
+            scratch_size: None,
         }
     }
 
@@ -1722,13 +1732,31 @@ impl Handler {
         let scale = self.window.as_ref().map(|w| w.scale_factor()).unwrap_or(1.0);
         self.next_scratch_num = self.next_scratch_num.saturating_add(1);
         let n = self.next_scratch_num;
-        let logical = LogicalSize::new(500.0, 600.0);
-        // Cascade: 8 steps of ~24pt before wrapping back, offset from the main window's top-left.
-        let pos = self.window.as_ref().and_then(|main| {
-            let mp = main.outer_position().ok()?;
-            let off = (40.0 * scale) as i32 + ((n as i32 - 1) % 8) * (24.0 * scale) as i32;
-            Some(PhysicalPosition::new(mp.x + off, mp.y + off))
-        });
+        // Restore geometry: disk (per `WINGEO`, clamped onto a real monitor) → this session → a default
+        // cascaded from the main window's corner. Mirrors the FIND window.
+        let restored = self
+            .app
+            .remember_window_geometry()
+            .then(|| load_geometry("scratch-window.txt"))
+            .flatten()
+            .map(|(lw, lh, x, y)| clamp_geometry(event_loop, lw, lh, x, y));
+        let logical: LogicalSize<f64> = restored
+            .map(|(lw, lh, _, _)| LogicalSize::new(lw, lh))
+            .or_else(|| self.scratch_size.map(|p| p.to_logical(scale)))
+            .unwrap_or(LogicalSize::new(500.0, 600.0));
+        // Base position: restored → this session's last → cascade from the main window's top-left.
+        let base = restored
+            .map(|(_, _, x, y)| PhysicalPosition::new(x, y))
+            .or(self.scratch_pos)
+            .or_else(|| {
+                let mp = self.window.as_ref()?.outer_position().ok()?;
+                let off = (40.0 * scale) as i32;
+                Some(PhysicalPosition::new(mp.x + off, mp.y + off))
+            });
+        // Cascade CONCURRENT windows (~24pt, wrapping at 8) so a second doesn't stack exactly on the
+        // first; a lone scratchpad opens right where you left the last one.
+        let step = ((self.scratch.len() as i32) % 8) * (24.0 * scale) as i32;
+        let pos = base.map(|p| PhysicalPosition::new(p.x + step, p.y + step));
         let attrs = Window::default_attributes()
             .with_title(format!("Scratch {n}"))
             .with_inner_size(logical)
@@ -1764,6 +1792,7 @@ impl Handler {
             painter,
             text: init,
             focus_pending: true,
+            pending_text: String::new(),
             applied_family: None,
             repaint_at: None,
         });
@@ -1814,7 +1843,14 @@ impl Handler {
             }
             sw.applied_family = want;
         }
-        let raw_input = sw.state.take_egui_input(&sw.window);
+        let mut raw_input = sw.state.take_egui_input(&sw.window);
+        // Inject any keyboard-file typing-layer text as a synthetic text event, so the TextEdit
+        // receives it at its caret exactly like ordinary typing.
+        if !sw.pending_text.is_empty() {
+            raw_input
+                .events
+                .push(egui::Event::Text(std::mem::take(&mut sw.pending_text)));
+        }
         let focus_now = std::mem::take(&mut sw.focus_pending);
         let ctx = sw.ctx.clone();
         let text = &mut sw.text;
@@ -1865,10 +1901,24 @@ impl Handler {
         self.scratch.insert(idx, sw);
     }
 
+    /// Persist a scratchpad's geometry now: remember it for this session and, if `WINGEO` is on, to
+    /// disk (`scratch-window.txt`) — called on live move/resize and on close, like the FIND window.
+    fn save_scratch_geometry(&mut self, id: WindowId) {
+        if let Some(sw) = self.scratch.iter().find(|s| s.window.id() == id) {
+            self.scratch_pos = sw.window.outer_position().ok();
+            self.scratch_size = Some(sw.window.inner_size());
+            if self.app.remember_window_geometry() {
+                save_geometry(&sw.window, "scratch-window.txt");
+            }
+        }
+    }
+
     /// Close one scratchpad: stash its text into `$SCRATCHTEXT` (and, when `insert`, drop it into the
     /// active tab at the caret — `SCRATCHCLOSE/V`), then drop the window (and its surface).
     fn close_scratch_window(&mut self, id: WindowId, insert: bool) {
         if let Some(idx) = self.scratch.iter().position(|s| s.window.id() == id) {
+            // Persist geometry (session + disk under WINGEO) before the window goes away.
+            self.save_scratch_geometry(id);
             let sw = self.scratch.remove(idx);
             self.app.set_scratch_text(sw.text.clone());
             if insert {
@@ -1883,6 +1933,49 @@ impl Handler {
     }
 
     fn scratch_window_event(&mut self, id: WindowId, event: WindowEvent) {
+        // Keyboard-file typing-layer awareness: run keys through the loaded keymap. A CAPTURED typing
+        // cell (`insert "…"` — a custom layout, a text binder) types its .kbd text into the box;
+        // command bindings do NOT run here (a plain text box has nothing for them to act on), so they
+        // fall through to egui's default editing, and ordinary typing still uses the OS layout / IME.
+        // This mirrors the main editor's typing decision (see `intercept_key`), so the scratchpad
+        // types the same way under your keyboard file.
+        if let WindowEvent::KeyboardInput { event: key_event, is_synthetic: false, .. } = &event {
+            if let Some(code) = key_event.physical_key.to_scancode().and_then(|sc| {
+                let native = (sc & 0xFF) | if (sc >> 8) == 0xE0 { WIN_E0 } else { 0 };
+                self.key.as_ref().and_then(|k| k.table.to_canonical(native))
+            }) {
+                match key_event.state {
+                    ElementState::Pressed => {
+                        // Resolve (also updates modifier state); a captured typing cell yields text.
+                        let text = self.key.as_mut().and_then(|k| {
+                            match k.resolver.resolve(KbdKey::down(code)) {
+                                Disposition::Dispatch(xpl)
+                                    if is_typing_cell(&xpl)
+                                        && should_capture(code, &k.resolver, k.passthrough_mask) =>
+                                {
+                                    typing_cell_text(&xpl)
+                                }
+                                _ => None,
+                            }
+                        });
+                        if let Some(t) = text {
+                            if let Some(sw) = self.scratch.iter_mut().find(|s| s.window.id() == id) {
+                                sw.pending_text.push_str(&t);
+                                sw.window.request_redraw();
+                            }
+                            return; // consumed — don't let egui also type the OS-layout character
+                        }
+                        // Not a captured typing cell → fall through; egui handles the key.
+                    }
+                    ElementState::Released => {
+                        // Balance the modifier state, then let egui see the release too.
+                        if let Some(k) = self.key.as_mut() {
+                            let _ = k.resolver.resolve(KbdKey::up(code));
+                        }
+                    }
+                }
+            }
+        }
         match &event {
             WindowEvent::CloseRequested => {
                 // The title-bar X discards (stash into `$SCRATCHTEXT`) — no insert.
@@ -1900,17 +1993,31 @@ impl Handler {
                     if let Some(sw) = self.scratch.iter_mut().find(|s| s.window.id() == id) {
                         sw.painter.on_window_resized(ViewportId::ROOT, w, h);
                     }
+                    self.save_scratch_geometry(id); // keep the WINGEO copy current
                 }
+                return;
+            }
+            WindowEvent::Moved(_) => {
+                self.save_scratch_geometry(id);
                 return;
             }
             WindowEvent::Focused(true) => {
                 self.scratch_focus = Some(id);
                 // fall through to egui
             }
+            WindowEvent::Focused(false) => {
+                // Drop momentary held modifiers so none stick in the shared resolver (mirrors the
+                // FIND / main windows).
+                if let Some(k) = self.key.as_mut() {
+                    k.resolver.release_held();
+                    k.consumed.clear();
+                }
+                // fall through to egui
+            }
             _ => {}
         }
-        // Forward everything else (typing, mouse caret/selection, IME, clipboard) straight to egui —
-        // no XyScript keymap interception here (the scratchpad is a plain box).
+        // Forward the rest to egui: ordinary OS-layout typing, mouse caret/selection, IME, clipboard,
+        // and any key that wasn't a captured .kbd typing cell.
         if let Some(sw) = self.scratch.iter_mut().find(|s| s.window.id() == id) {
             let resp = sw.state.on_window_event(&sw.window, &event);
             if resp.repaint {
@@ -2883,6 +2990,28 @@ const DELETE_CODES: &[u8] = &[83, 90, 95];
 /// command and so IS captured.)
 fn is_typing_cell(xpl: &str) -> bool {
     xpl.trim_start().starts_with("insert \"")
+}
+
+/// The literal text a typing cell (`insert "…"`) inserts, with `\"` and `\\` unescaped. `None` if it
+/// isn't a well-formed typing cell. Used by the scratchpad to type the keyboard file's layer into its
+/// egui box instead of running the `insert` verb against the main document.
+fn typing_cell_text(xpl: &str) -> Option<String> {
+    let s = xpl.trim_start().strip_prefix("insert \"")?;
+    let mut out = String::new();
+    let mut esc = false;
+    for c in s.chars() {
+        if esc {
+            out.push(c); // \" → ", \\ → \, best-effort for any other \x
+            esc = false;
+        } else if c == '\\' {
+            esc = true;
+        } else if c == '"' {
+            return Some(out); // closing quote
+        } else {
+            out.push(c);
+        }
+    }
+    None // unterminated
 }
 
 /// The command text BEFORE a trailing `ENTER` verb in a resolved binding — so a chain like
