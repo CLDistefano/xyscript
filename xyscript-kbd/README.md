@@ -4,7 +4,8 @@ A Rust prototype of the XyScript keyboard layer described in
 `../keyboard-layer-design.md`. It implements the data-driven `.KBD` modifier
 model `(bitmask, key_code) -> assignment`, wires it end-to-end through
 non-exclusive OS interception on all three target platforms, and is verified
-against the real reference file `../CLD4R.KBD`.
+against the reference keyboard `CLD4R.KBD` (the XyScript-native UTF-8 fixture at
+the crate root; the original XyWrite binary is kept at `reference/CLD4R.xyw.KBD`).
 
 This directly addresses the design's **§12 recommended first experiment**: prove
 the app can intercept clean, distinguishable down/up events — for the keys users
@@ -47,7 +48,7 @@ cargo build
 cargo test                       # headless engine tests (all platforms)
 
 # Headless, no keyboard needed:
-cargo run -- check --kbd ../CLD4R.KBD          # parse + validate + summarize
+cargo run -- check --kbd CLD4R.KBD             # parse + validate + summarize
 cargo run -- demo  --kbd kbd/xyscript-internal.kbd   # scripted events through the resolver
 
 # Live interception (needs a real keyboard + permissions):

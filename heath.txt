@@ -1,7 +1,0 @@
-|X curl https://tgftp.nws.noaa.gov/data/observations/metar/decoded/KJFK.TXT||set x1=$XO;set w1=lines($x1);set weath1="";for l1 in $w1;if index($l1, "ob: ")==0 break;set weath1=$weath1.$l1."\n";ef|The weather at JFK is:
-
-|$weath1|
-
-|X curl https://tgftp.nws.noaa.gov/data/observations/metar/decoded/EGLL.TXT||set x2=$XO;set w2=lines($x2);set weath2="";for l2 in $w2;if index($l2, "ob: ")==0 break;set weath2=$weath2.$l2."\n";ef;|The weather at Heathrow is:
-
-|$weath2|
