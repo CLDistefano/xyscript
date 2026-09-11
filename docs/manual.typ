@@ -397,6 +397,40 @@ you can flick a reference file in beside your work and back out without leaving 
 Output* tab can take a pane too — #raw("SW/V") / #raw("SW/H") — so a build's output sits right next to
 the code that produced it.]
 
+== Scratchpad windows
+
+Sometimes you want a place to *park* text — a few lines you have cut and are not ready to drop back in,
+a snippet pulled from another file, a running list of notes — without cluttering your document or
+spending a tab on it. #raw("SCRATCH") opens a *scratchpad*: a small, free-floating window that is
+nothing but a plain read / write text box. It has no file and no #raw("SAVE"); it is scratch space,
+pure and simple.
+
+Each #raw("SCRATCH") opens another, so several can float at once — move and resize them freely, or drag
+one onto a second monitor to keep it beside your work. Typing in a scratchpad uses the ordinary editing
+keys (arrows, #kbd("Home") / #kbd("End"), #kbd("Ctrl+C") / #kbd("Ctrl+V") / #kbd("Ctrl+Z")) and the
+system clipboard, so text moves easily between a scratchpad and your document. It is a plain box,
+though: your keyboard file and XPL verbs drive the main window, not the scratchpad.
+
+Two switches save a step:
+
+- #raw("SCRATCH/V") opens a new scratchpad and drops the *clipboard* straight into it — handy right
+  after a cut or copy.
+- #raw("SCRATCHCLOSE/V") closes the current scratchpad and inserts its text into the active document at
+  the cursor — the natural way to move a parked draft into your file.
+
+Close a scratchpad with its window's close button, or with #raw("SCRATCHCLOSE") (which closes the one
+you used most recently). Closing discards the text — there is no save — but the contents of the last
+scratchpad you closed are always kept in #raw("$SCRATCHTEXT"), so a stray close is never fatal.
+
+#tip("Recovering a closed scratchpad")[The text of the last scratchpad you closed lives in
+#raw("$SCRATCHTEXT"). Click into your document and type #raw("INSERT $SCRATCHTEXT") to bring it back.]
+
+Colour a scratchpad to set it apart from your document: #raw("SCRATCHFGCOLOR") and #raw("SCRATCHBGCOLOR")
+set the text and background — as #raw("R G B"), or with #raw("/HSL"); the #raw("SCRATCHFGCOLORS") /
+#raw("SCRATCHBGCOLORS") forms open a colour picker. A bare verb or #raw("... default") clears it back to
+the theme. Both persist with #raw("SAVECFG") and read back via #raw("$SCRATCHFGCOLOR") /
+#raw("$SCRATCHBGCOLOR").
+
 == The text window
 
 The editing area behaves the way you expect from a modern editor: arrow keys and Home / End / Page Up /
