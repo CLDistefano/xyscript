@@ -2647,7 +2647,7 @@ the #raw("grammars") folder beside the program:
   [#raw("toml.xpl")], [TOML], [#raw(".toml")],
   [#raw("typst.xpl")], [Typst], [#raw(".typ")],
   [#raw("xpl.xpl")], [XPL (XyScript's own)], [#raw(".xpl .pm .pgm .cfg .lib")],
-  [#raw("xywrite.xpl")], [XyWrite], [#raw(".xy3 .xy4")],
+  [#raw("xywrite.xpl")], [XyWrite], [#raw(".xy .xy3 .xy4")],
 )
 
 Load the one you want with #raw("RUN"), then open your file:
