@@ -6260,6 +6260,45 @@ impl GuiApp {
     fn txt_font_style(&self) -> FontStyle {
         self.editor.txt_font_style()
     }
+    // ---- Scratchpad windows (floating read/write text boxes; managed in runtime.rs) ----
+    /// Drain pending `SCRATCH` open requests — one entry per window, holding its initial text (empty,
+    /// or the clipboard for `SCRATCH/V`). Runtime-polled.
+    pub(crate) fn take_scratch_open_queue(&mut self) -> Vec<String> {
+        self.editor.host_mut().take_scratch_open_queue()
+    }
+    /// Drain the `SCRATCHCLOSE` request (close the most-recently-focused scratchpad). `Some(true)` =
+    /// also insert its text into the active tab at the caret (`SCRATCHCLOSE/V`). Runtime-polled.
+    pub(crate) fn take_scratch_close_request(&mut self) -> Option<bool> {
+        self.editor.host_mut().take_scratch_close_request()
+    }
+    /// Stash a closing scratchpad's text into `$SCRATCHTEXT` (the recovery hatch after a stray close).
+    pub(crate) fn set_scratch_text(&mut self, text: String) {
+        self.editor.host_mut().set_scratch_text(text);
+    }
+    /// Insert a closing scratchpad's text into the active tab at the caret (`SCRATCHCLOSE/V`).
+    /// Recorded (undoable), like typing/paste. Forces the DOCUMENT as the target first — the verb is
+    /// issued from the command line, so a plain insert would otherwise land in the cmline.
+    pub(crate) fn insert_scratch_at_caret(&mut self, text: &str) {
+        self.editor.host_mut().focus_document();
+        self.editor.insert_literal(text);
+    }
+    /// Scratchpad font: the editor canvas font (`EDFAMILY`/`EDSTYLE`/`EDFONT`); `None` family ⇒ egui default.
+    pub(crate) fn scratch_font_family(&self) -> Option<String> {
+        self.editor_family()
+    }
+    pub(crate) fn scratch_font_style(&self) -> FontStyle {
+        self.editor.editor_font_style()
+    }
+    pub(crate) fn scratch_font_size(&self) -> f32 {
+        self.editor.editor_font()
+    }
+    /// Scratchpad window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`); `None` = egui's theme default.
+    pub(crate) fn scratch_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.editor.host().scratch_fg_color()
+    }
+    pub(crate) fn scratch_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.editor.host().scratch_bg_color()
+    }
     /// The editor canvas font family for cosmic `Attrs`: the user's `EDFAMILY` choice if set,
     /// else the GUI's resolved default monospace (`None` ⇒ cosmic's generic `Monospace`).
     fn editor_family(&self) -> Option<String> {
@@ -8330,6 +8369,9 @@ impl GuiApp {
             ColorTarget::PathBg => {
                 self.editor.host().path_bg_color().unwrap_or(self.editor.ui_bg_color())
             }
+            // Scratchpad colours default to egui's light theme (dark text on a near-white ground).
+            ColorTarget::ScratchFg => self.editor.host().scratch_fg_color().unwrap_or((30, 30, 30)),
+            ColorTarget::ScratchBg => self.editor.host().scratch_bg_color().unwrap_or((250, 250, 250)),
             ColorTarget::MarkFg => {
                 self.editor.host().mark_fg_color().unwrap_or((216, 118, 42)) // bookmark orange
             }

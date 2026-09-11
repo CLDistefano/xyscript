@@ -90,6 +90,10 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Search / replace-all (self-delimiting; B=backward, A=absolute suffixes).
     // CI/CIA = XyWrite synonyms for CH/CHA.
     "SE", "SEB", "SEA", "SEBA", "CH", "CHA", "CI", "CIA", "FIND",
+    // Floating scratchpad windows: open one / close the most-recently-focused one ($SCRATCHTEXT).
+    "SCRATCH", "SCRATCHCLOSE",
+    // Scratchpad window colours + their pickers (SCRATCHFGCOLOR/SCRATCHBGCOLOR, …S = picker).
+    "SCRATCHFGCOLOR", "SCRATCHBGCOLOR", "SCRATCHFGCOLORS", "SCRATCHBGCOLORS",
     // Interactive change-verify.
     "CV", "CVA",
     // Counts (B8): word / character count of the selection or whole document.

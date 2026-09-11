@@ -332,6 +332,14 @@ pub enum EditorOp {
     /// Request the GUI's non-modal Find/Replace dialog (`FIND`). The GUI drains it and opens the
     /// dialog; headless hosts just record the request (it does nothing without a GUI).
     OpenFind,
+    /// `SCRATCH` — open a new floating scratchpad window (a plain read/write text box for parking
+    /// text; no file, no save). Each call opens another; the GUI drains the request and creates the
+    /// window. `paste` (`SCRATCH/V`) prefills it with the clipboard. Headless hosts just record it.
+    OpenScratch { paste: bool },
+    /// `SCRATCHCLOSE` — close the most-recently-focused scratchpad window (its text is stashed into
+    /// `$SCRATCHTEXT` first). `insert` (`SCRATCHCLOSE/V`) also inserts that text into the active tab
+    /// at the caret. No-op if none is open.
+    CloseScratch { insert: bool },
     /// `SH`/`SHELL` — open + focus the Console tab (creating it and writing a prompt if needed), and
     /// show it in the strip. `show: false` (`SH off`) hides the Console tab instead.
     OpenConsole { show: bool },
@@ -661,6 +669,12 @@ pub enum EditorOp {
     SetPathColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the `$CWD` path-display fg (`PAFGCOLORS`) or bg (`PABGCOLORS`).
     OpenPathColorPicker { fg: bool },
+    /// Set the scratchpad-window foreground (`fg = true`, `SCRATCHFGCOLOR`) or background
+    /// (`fg = false`, `SCRATCHBGCOLOR`) colour. `None` = default (egui's theme). `$SCRATCHFGCOLOR`/
+    /// `$SCRATCHBGCOLOR`.
+    SetScratchColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for the scratchpad fg (`SCRATCHFGCOLORS`) or bg (`SCRATCHBGCOLORS`).
+    OpenScratchColorPicker { fg: bool },
     /// Turn syntax highlighting on/off for the active document (`HIGHLIGHT
     /// on|off`). Off by default (a quiet screen).
     SetHighlight(bool),

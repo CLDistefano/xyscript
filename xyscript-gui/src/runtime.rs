@@ -283,6 +283,27 @@ struct FindWindow {
     repaint_at: Option<Instant>,
 }
 
+/// A floating `SCRATCH` window: a plain read/write text box for parking text while working on the
+/// main document. No file, no save — closing it discards the text (after stashing it into
+/// `$SCRATCHTEXT`). Its own egui `Context`, winit input `State`, and wgpu `Painter`, plus the owned
+/// text buffer. The runtime keeps a `Vec` of these, so several can be open at once. Editing is
+/// egui's built-in multiline `TextEdit` (caret, selection, mouse, system clipboard, undo) — no
+/// XyScript keymap or verbs run inside it, matching the "nothing else" brief.
+struct ScratchWindow {
+    window: Arc<Window>,
+    ctx: egui::Context,
+    state: egui_winit::State,
+    painter: Painter,
+    /// The parked text — owned here and edited in place by the egui `TextEdit`.
+    text: String,
+    /// One-shot: focus the text box on the first frame so the user can type immediately.
+    focus_pending: bool,
+    /// The `EDFAMILY`+`EDSTYLE` installed into this window's egui context (`None` = egui default).
+    /// Compared each frame so we only `set_fonts` on a change.
+    applied_family: Option<(String, xyscript_app::host::FontStyle)>,
+    repaint_at: Option<Instant>,
+}
+
 struct Handler {
     app: GuiApp,
     key: Option<KeyCap>,
@@ -327,10 +348,17 @@ struct Handler {
     /// Whether the OS title bar is currently shown on the main window. Synced to `TITLEBAR`/
     /// `$TITLEBAR` each loop so a toggle applies live via `set_decorations`.
     decorations: bool,
-    /// Ids of OUR windows (main / TXT / DIR-W / Find) that currently hold OS focus. Non-empty ⇒ some
-    /// XyScript window is active, so `DIMONBLUR` should NOT dim the main window (only a switch to
-    /// ANOTHER app dims it). Updated on every `Focused` event.
+    /// Ids of OUR windows (main / TXT / DIR-W / Find / scratchpads) that currently hold OS focus.
+    /// Non-empty ⇒ some XyScript window is active, so `DIMONBLUR` should NOT dim the main window (only
+    /// a switch to ANOTHER app dims it). Updated on every `Focused` event.
     focused_windows: HashSet<WindowId>,
+    /// Floating `SCRATCH` windows — plain read/write text boxes for parking text. A collection (unlike
+    /// the single TXT/DIR/FIND windows) so several can be open simultaneously. Session-only.
+    scratch: Vec<ScratchWindow>,
+    /// Monotonic counter for scratchpad titles (`Scratch 1`, `Scratch 2`, …); never reused this session.
+    next_scratch_num: u32,
+    /// The most-recently-focused scratchpad (the target of `SCRATCHCLOSE`); cleared as windows close.
+    scratch_focus: Option<WindowId>,
 }
 
 impl Handler {
@@ -360,6 +388,9 @@ impl Handler {
             mods: winit::keyboard::ModifiersState::empty(),
             decorations: true,
             focused_windows: HashSet::new(),
+            scratch: Vec::new(),
+            next_scratch_num: 0,
+            scratch_focus: None,
         }
     }
 
@@ -1664,6 +1695,230 @@ impl Handler {
         }
     }
 
+    // ---- Scratchpad windows (SCRATCH / SCRATCHCLOSE / $SCRATCHTEXT) --------------------------------
+
+    /// Reconcile scratchpad windows with the app's pending requests each loop: open one window per
+    /// queued `SCRATCH`, and honor a `SCRATCHCLOSE`. Needs the `ActiveEventLoop` (window creation).
+    fn sync_scratch(&mut self, event_loop: &ActiveEventLoop) {
+        for init in self.app.take_scratch_open_queue() {
+            self.open_scratch_window(event_loop, init);
+        }
+        if let Some(insert) = self.app.take_scratch_close_request() {
+            // Close the most-recently-focused scratchpad, else the last opened.
+            let target = self
+                .scratch_focus
+                .filter(|id| self.scratch.iter().any(|s| s.window.id() == *id))
+                .or_else(|| self.scratch.last().map(|s| s.window.id()));
+            if let Some(id) = target {
+                self.close_scratch_window(id, insert);
+            }
+        }
+    }
+
+    /// Open one new floating scratchpad window, prefilled with `init` (empty, or the clipboard for
+    /// `SCRATCH/V`). Session-only, cascaded from the main window's corner so several don't stack
+    /// exactly; no geometry persistence (they're ephemeral parking spots).
+    fn open_scratch_window(&mut self, event_loop: &ActiveEventLoop, init: String) {
+        let scale = self.window.as_ref().map(|w| w.scale_factor()).unwrap_or(1.0);
+        self.next_scratch_num = self.next_scratch_num.saturating_add(1);
+        let n = self.next_scratch_num;
+        let logical = LogicalSize::new(500.0, 600.0);
+        // Cascade: 8 steps of ~24pt before wrapping back, offset from the main window's top-left.
+        let pos = self.window.as_ref().and_then(|main| {
+            let mp = main.outer_position().ok()?;
+            let off = (40.0 * scale) as i32 + ((n as i32 - 1) % 8) * (24.0 * scale) as i32;
+            Some(PhysicalPosition::new(mp.x + off, mp.y + off))
+        });
+        let attrs = Window::default_attributes()
+            .with_title(format!("Scratch {n}"))
+            .with_inner_size(logical)
+            .with_window_icon(window_icon());
+        let window = Arc::new(event_loop.create_window(attrs).expect("create SCRATCH window"));
+        if let Some(p) = pos {
+            window.set_outer_position(p);
+        }
+        let ctx = egui::Context::default();
+        ctx.set_theme(egui::ThemePreference::Light);
+        let state = egui_winit::State::new(
+            ctx.clone(),
+            ViewportId::ROOT,
+            event_loop,
+            Some(window.scale_factor() as f32),
+            None,
+            None,
+        );
+        let mut painter = pollster::block_on(Painter::new(
+            ctx.clone(),
+            wgpu_config(),
+            false,
+            RendererOptions::default(),
+        ));
+        pollster::block_on(painter.set_window(ViewportId::ROOT, Some(window.clone())))
+            .expect("set SCRATCH wgpu window");
+        window.focus_window();
+        window.request_redraw();
+        self.scratch.push(ScratchWindow {
+            window,
+            ctx,
+            state,
+            painter,
+            text: init,
+            focus_pending: true,
+            applied_family: None,
+            repaint_at: None,
+        });
+    }
+
+    /// Render one scratchpad frame: a full-window multiline `TextEdit` bound to its owned text.
+    fn redraw_scratch(&mut self, id: WindowId) {
+        let Some(idx) = self.scratch.iter().position(|s| s.window.id() == id) else {
+            return;
+        };
+        // Install the editor font (`EDFAMILY`/`EDSTYLE`) on change — mapped into egui's Monospace slot,
+        // which the TextEdit renders with; `None` falls back to egui's default.
+        let want = self
+            .app
+            .scratch_font_family()
+            .filter(|s| !s.is_empty())
+            .map(|f| (f, self.app.scratch_font_style()));
+        let size = self.app.scratch_font_size().max(6.0);
+        // Optional `SCRATCHFGCOLOR`/`SCRATCHBGCOLOR` (`None` = egui's light-theme default).
+        let fg = self.app.scratch_fg_color().map(|(r, g, b)| egui::Color32::from_rgb(r, g, b));
+        let bg = self
+            .app
+            .scratch_bg_color()
+            .map(|(r, g, b)| egui::Color32::from_rgb(r, g, b))
+            .unwrap_or_else(|| egui::Visuals::light().panel_fill);
+        // Take the window OUT so the render closure can own its `text` without borrowing `self`.
+        let mut sw = self.scratch.remove(idx);
+        // Background: set it every frame (reset to the theme default when the knob is cleared). Both
+        // `panel_fill` (the window clear colour, for the margin) AND `extreme_bg_color` (the multiline
+        // TextEdit's own fill) must change, or the text box paints its default white over the clear.
+        sw.ctx.global_style_mut(|s| {
+            s.visuals.panel_fill = bg;
+            s.visuals.extreme_bg_color = bg;
+        });
+        if want != sw.applied_family {
+            match &want {
+                Some((fam, st)) => {
+                    crate::apply_egui_family(
+                        &sw.ctx,
+                        self.app.font_db(),
+                        fam,
+                        &[egui::FontFamily::Monospace],
+                        st.bold(),
+                        st.italic(),
+                    );
+                }
+                None => sw.ctx.set_fonts(egui::FontDefinitions::default()),
+            }
+            sw.applied_family = want;
+        }
+        let raw_input = sw.state.take_egui_input(&sw.window);
+        let focus_now = std::mem::take(&mut sw.focus_pending);
+        let ctx = sw.ctx.clone();
+        let text = &mut sw.text;
+        let full_output = ctx.run_ui(raw_input, |ui| {
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let mut edit = egui::TextEdit::multiline(text)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::FontId::new(size, egui::FontFamily::Monospace));
+                    if let Some(c) = fg {
+                        edit = edit.text_color(c);
+                    }
+                    let resp = ui.add_sized(ui.available_size(), edit);
+                    if focus_now {
+                        resp.request_focus();
+                    }
+                });
+        });
+        sw.state
+            .handle_platform_output(&sw.window, full_output.platform_output);
+        let ppp = ctx.pixels_per_point();
+        let prims = ctx.tessellate(full_output.shapes, ppp);
+        let clear = egui::Rgba::from(ctx.global_style().visuals.panel_fill).to_array();
+        sw.painter.paint_and_update_textures(
+            ViewportId::ROOT,
+            ppp,
+            clear,
+            &prims,
+            &full_output.textures_delta,
+            vec![],
+        );
+        let delay = full_output
+            .viewport_output
+            .get(&ViewportId::ROOT)
+            .map(|v| v.repaint_delay)
+            .unwrap_or(std::time::Duration::MAX);
+        sw.repaint_at = if delay.is_zero() {
+            sw.window.request_redraw();
+            None
+        } else if delay < std::time::Duration::MAX {
+            Some(Instant::now() + delay)
+        } else {
+            None
+        };
+        // Put it back where it was (nothing else mutated the Vec during the render).
+        self.scratch.insert(idx, sw);
+    }
+
+    /// Close one scratchpad: stash its text into `$SCRATCHTEXT` (and, when `insert`, drop it into the
+    /// active tab at the caret — `SCRATCHCLOSE/V`), then drop the window (and its surface).
+    fn close_scratch_window(&mut self, id: WindowId, insert: bool) {
+        if let Some(idx) = self.scratch.iter().position(|s| s.window.id() == id) {
+            let sw = self.scratch.remove(idx);
+            self.app.set_scratch_text(sw.text.clone());
+            if insert {
+                self.app.insert_scratch_at_caret(&sw.text);
+                self.request_redraw(); // the main document changed
+            }
+            if self.scratch_focus == Some(id) {
+                self.scratch_focus = None;
+            }
+            self.focused_windows.remove(&id);
+        }
+    }
+
+    fn scratch_window_event(&mut self, id: WindowId, event: WindowEvent) {
+        match &event {
+            WindowEvent::CloseRequested => {
+                // The title-bar X discards (stash into `$SCRATCHTEXT`) — no insert.
+                self.close_scratch_window(id, false);
+                return;
+            }
+            WindowEvent::RedrawRequested => {
+                self.redraw_scratch(id);
+                return;
+            }
+            WindowEvent::Resized(size) => {
+                if let (Some(w), Some(h)) =
+                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+                {
+                    if let Some(sw) = self.scratch.iter_mut().find(|s| s.window.id() == id) {
+                        sw.painter.on_window_resized(ViewportId::ROOT, w, h);
+                    }
+                }
+                return;
+            }
+            WindowEvent::Focused(true) => {
+                self.scratch_focus = Some(id);
+                // fall through to egui
+            }
+            _ => {}
+        }
+        // Forward everything else (typing, mouse caret/selection, IME, clipboard) straight to egui —
+        // no XyScript keymap interception here (the scratchpad is a plain box).
+        if let Some(sw) = self.scratch.iter_mut().find(|s| s.window.id() == id) {
+            let resp = sw.state.on_window_event(&sw.window, &event);
+            if resp.repaint {
+                sw.window.request_redraw();
+            }
+        }
+    }
+
     fn find_window_event(&mut self, event: WindowEvent) {
         match &event {
             WindowEvent::CloseRequested => {
@@ -2275,6 +2530,7 @@ impl ApplicationHandler for Handler {
             ]
             .into_iter()
             .flatten()
+            .chain(self.scratch.iter().map(|s| s.window.id()))
             .collect();
             self.focused_windows.retain(|id| valid.contains(id));
             self.app.set_app_focus(!self.focused_windows.is_empty());
@@ -2293,6 +2549,11 @@ impl ApplicationHandler for Handler {
         // Events for the separate Find/Replace window go to its own handler.
         if self.find.as_ref().is_some_and(|f| f.window.id() == id) {
             self.find_window_event(event);
+            return;
+        }
+        // Events for a floating scratchpad window go to its own handler.
+        if self.scratch.iter().any(|s| s.window.id() == id) {
+            self.scratch_window_event(id, event);
             return;
         }
         match &event {
@@ -2540,7 +2801,10 @@ impl ApplicationHandler for Handler {
         self.sync_dir(event_loop);
         // Open/close the Find/Replace window to match whether the dialog is open (needs the event loop).
         self.sync_find(event_loop);
-        // The earliest scheduled repaint across the main + TXT + DIR + FIND windows drives the wait.
+        // Open/close floating scratchpad windows to match `SCRATCH`/`SCRATCHCLOSE` (needs the event loop).
+        self.sync_scratch(event_loop);
+        // The earliest scheduled repaint across the main + TXT + DIR + FIND + scratchpad windows drives
+        // the wait.
         let next = [
             self.repaint_at,
             self.txt.as_ref().and_then(|t| t.repaint_at),
@@ -2549,6 +2813,7 @@ impl ApplicationHandler for Handler {
         ]
         .into_iter()
         .flatten()
+        .chain(self.scratch.iter().filter_map(|s| s.repaint_at))
         .min();
         match next {
             Some(t) if Instant::now() >= t => {
@@ -2565,6 +2830,12 @@ impl ApplicationHandler for Handler {
                 if let Some(fw) = self.find.as_mut() {
                     fw.repaint_at = None;
                     fw.window.request_redraw();
+                }
+                for sw in self.scratch.iter_mut() {
+                    if sw.repaint_at.is_some_and(|t| Instant::now() >= t) {
+                        sw.repaint_at = None;
+                        sw.window.request_redraw();
+                    }
                 }
                 event_loop.set_control_flow(ControlFlow::Wait);
             }

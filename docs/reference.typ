@@ -533,6 +533,7 @@ Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") 
 / #cmd("TABBGCOLOR", "TABBGCOLORS") / #cmd("TABXCOLOR", "TABXCOLORS") / #cmd("PANECOLOR", "PANECOLORS"): the tab background / close-× / focused-pane border color.
 / #cmd("TXTFGCOLOR", "TXTFGCOLORS") / #cmd("TXTBGCOLOR", "TXTBGCOLORS") / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `TXT` and `DIR/W` window text / background colors.
 / #cmd("PAPLACE") / #cmd("PATHLEN") / #cmd("PAFGCOLOR", "PAFGCOLORS") / #cmd("PABGCOLOR", "PABGCOLORS"): where the `$CWD` path shows / its max width / its text and background color.
+/ #cmd("SCRATCHFGCOLOR", "SCRATCHFGCOLORS") / #cmd("SCRATCHBGCOLOR", "SCRATCHBGCOLORS"): the scratchpad window's text / background color (see #cmd("SCRATCH")).
 / #cmd("THEME"): apply a built-in light or dark color scheme, or activate a theme file by path.
 
 == Fonts and spacing
@@ -634,6 +635,7 @@ The routines in the bundled #raw("xyscript.lib") are catalogued at the end of th
 / #cmd("MSGHFGCOLOR") / #cmd("MSGBGCOLOR") / #cmd("MSGOKFGCOLOR") / #cmd("MSGOKBGCOLOR") (pickers #cmd("MSGHFGCOLORS") / #cmd("MSGBGCOLORS") / #cmd("MSGOKFGCOLORS") / #cmd("MSGOKBGCOLORS")): colour the #cmd("MSG") box — the "Message" header text / the box background / the OK button's text / its background. `<r g b>` (`/HSL`), bare or `… default` clears (theme). Saved by `SAVECFG`.
 / #cmd("PR"): print to the status line or script output.
 / #cmd("INPUT") / #cmd("READKEY", "RK") / #cmd("PICK", "CHOOSE"): read a typed line / a single keystroke / a list choice into a variable.
+/ #cmd("SCRATCH") / #cmd("SCRATCHCLOSE"): open a floating scratchpad window (a plain read/write text box for parking text — no file, no save) / close the most-recently-focused one. Each `SCRATCH` opens another, so several can float at once. `SCRATCH/V` prefills the new one with the clipboard; `SCRATCHCLOSE/V` inserts the closing one's text into the active tab at the caret. Closing (its X, or `SCRATCHCLOSE`) discards the text after stashing it in #sv("SCRATCHTEXT"). Colour a scratchpad with #cmd("SCRATCHFGCOLOR") / #cmd("SCRATCHBGCOLOR").
 
 == Date and time
 
@@ -951,6 +953,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SEPCOLOR", "SEPCOLORS"): the separator color `R G B` (`/HSL`; `…S` opens a picker).
 / #cmd("SET"): assign a variable — target `x` or `$x`; supports `+= -= *= /= ^=`.
 / #cmd("SF"): save and close all buffers. #cmd("SL"): save every named, modified buffer.
+/ #cmd("SCRATCH") / #cmd("SCRATCHCLOSE"): open a floating scratchpad window — a plain read/write text box for parking text, with no file and no save (egui editing: caret, selection, mouse, system clipboard, undo). Each `SCRATCH` opens another, so several can float at once; #cmd("SCRATCHCLOSE") closes the most-recently-focused one. `SCRATCH/V` prefills the new scratchpad with the clipboard; `SCRATCHCLOSE/V` inserts the closing scratchpad's text into the active tab at the caret. Closing (its window X, or `SCRATCHCLOSE`) discards the text after stashing it in #sv("SCRATCHTEXT") — the recovery hatch. Colours: #cmd("SCRATCHFGCOLOR") / #cmd("SCRATCHBGCOLOR"). GUI-only; a no-op on a headless host.
+/ #cmd("SCRATCHFGCOLOR", "SCRATCHFGCOLORS") / #cmd("SCRATCHBGCOLOR", "SCRATCHBGCOLORS"): the scratchpad window's text / background colour — `<verb> <r g b>` (`/HSL`; `…S` opens a picker); bare or `… default` clears it (back to egui's theme). Read back via #sv("SCRATCHFGCOLOR") / #sv("SCRATCHBGCOLOR"); persists in the config.
 / #cmd("SORT"): reorder the selected lines (`/F:n` skip, `/N:n` take key characters).
 / #cmd("SRANDOM"): `SRANDOM <seed>` — seed the generator behind the #func("RANDOM") function, so the sequence it produces repeats. Left unseeded, `RANDOM` starts from an entropy-based value that differs each run.
 / #cmd("SUB", "ENDSUB", "ES"): define a routine, ending at `ENDSUB`/`ES`.
@@ -1281,6 +1285,8 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 / #sv("JOBS") / #sv("LJ"): the number of running background jobs / the id of the last one launched.
 / #sv("LS"): the text of the last status-line message.
 / #sv("CB") / #sv("XB"): the clipboard's contents / the deletion buffer's contents.
+/ #sv("SCRATCHTEXT"): the text of the most-recently-closed scratchpad window (empty until one closes) — the recovery hatch for #cmd("SCRATCH").
+/ #sv("SCRATCHFGCOLOR") / #sv("SCRATCHBGCOLOR"): the scratchpad window's text / background colour (`r g b`, or empty when default).
 
 == Scripting
 
@@ -1454,6 +1460,8 @@ Every special variable in one list, for quick lookup.
 / #sv("ANSICOLOR"): `1` if Console output is ANSI-coloured, `0` if shown raw (`ANSICOLOR`).
 / #sv("SL"): selected character count.
 / #sv("SMTPURL"): SMTP submission URL for sending.
+/ #sv("SCRATCHTEXT"): text of the most-recently-closed scratchpad window (empty until one closes). See #cmd("SCRATCH").
+/ #sv("SCRATCHFGCOLOR") / #sv("SCRATCHBGCOLOR"): the scratchpad window's text / background colour (`r g b`, or empty = default).
 / #sv("RUNSUM"): the cursor-addition running total (`CLRSUM`/`ADDSUM`/`PUTSUM`), formatted with `DECIMALS`.
 / #sv("SW"): *Console* tab visible.
 / #sv("TABACTIVE"): active-tab color.

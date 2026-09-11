@@ -1674,6 +1674,8 @@ pub enum ColorTarget {
     BalPairs,
     PathFg,
     PathBg,
+    ScratchFg,
+    ScratchBg,
     MarkFg,
     MarkBg,
     LineNumFg,
@@ -1718,6 +1720,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => "Matched-bracket highlight colour".into(),
             ColorTarget::PathFg => "$CWD path text colour".into(),
             ColorTarget::PathBg => "$CWD path background colour".into(),
+            ColorTarget::ScratchFg => "Scratchpad text colour".into(),
+            ColorTarget::ScratchBg => "Scratchpad background colour".into(),
             ColorTarget::MarkFg => "Bookmark gutter dot colour".into(),
             ColorTarget::MarkBg => "Bookmark gutter background colour".into(),
             ColorTarget::LineNumFg => "Line-number gutter text colour".into(),
@@ -1761,6 +1765,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => return format!("BALPAIRSCOLOR {r} {g} {b}"),
             ColorTarget::PathFg => "PAFGCOLOR",
             ColorTarget::PathBg => "PABGCOLOR",
+            ColorTarget::ScratchFg => "SCRATCHFGCOLOR",
+            ColorTarget::ScratchBg => "SCRATCHBGCOLOR",
             ColorTarget::MarkFg => "MARKFGCOLOR",
             ColorTarget::MarkBg => "MARKBGCOLOR",
             ColorTarget::LineNumFg => "LNFGCOLOR",
@@ -2391,6 +2397,14 @@ pub struct AppHost {
     /// `FIND` requested the GUI's Find/Replace dialog; the GUI drains this and opens it.
     find_requested: bool,
     grep_dialog_requested: bool,
+    /// `SCRATCH` open requests not yet drained by the GUI — one entry per window, holding its initial
+    /// text (empty, or the clipboard contents for `SCRATCH/V`).
+    scratch_open_queue: Vec<String>,
+    /// `SCRATCHCLOSE` requested closing the most-recently-focused scratchpad; the GUI drains this.
+    /// `Some(true)` = also insert its text into the active tab at the caret (`SCRATCHCLOSE/V`).
+    scratch_close_requested: Option<bool>,
+    /// Full text of the most-recently-closed scratchpad window (`$SCRATCHTEXT`); empty until one closes.
+    scratch_text: String,
     /// Number of replacements made by the most recent `CH`/`CV` (`$CC`).
     change_count: i64,
     /// Active interactive change-verify walk, if any (`CV`/`CVA`).
@@ -2911,6 +2925,10 @@ pub struct AppHost {
     // dimmed UI text, the bg is transparent. `$PAFGCOLOR`/`$PABGCOLOR`.
     path_fg_color: Option<(u8, u8, u8)>,
     path_bg_color: Option<(u8, u8, u8)>,
+    // Scratchpad-window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`). `None` = egui's theme default
+    // (light background, dark text). `$SCRATCHFGCOLOR`/`$SCRATCHBGCOLOR`.
+    scratch_fg_color: Option<(u8, u8, u8)>,
+    scratch_bg_color: Option<(u8, u8, u8)>,
     // `TXT` dialog text/background colours (`TXTFGCOLOR`/`TXTBGCOLOR`). `$TXTFGCOLOR`/`$TXTBGCOLOR`.
     txt_fg_color: (u8, u8, u8),
     txt_bg_color: (u8, u8, u8),
@@ -3061,6 +3079,9 @@ impl AppHost {
             open_requested: None,
             find_requested: false,
             grep_dialog_requested: false,
+            scratch_open_queue: Vec::new(),
+            scratch_close_requested: None,
+            scratch_text: String::new(),
             reveal_center: false,
             font_picker_request: None,
             color_picker_request: None,
@@ -3180,6 +3201,8 @@ impl AppHost {
             tab_x_color: None,
             path_fg_color: None,
             path_bg_color: None,
+            scratch_fg_color: None,
+            scratch_bg_color: None,
             tab_hover_bg: None,
             tab_inactive_bg: None,
             txt_fg_color: DEF_TXT_FG_COLOR,
@@ -3501,6 +3524,14 @@ impl AppHost {
     }
     pub fn path_bg_color(&self) -> Option<(u8, u8, u8)> {
         self.path_bg_color
+    }
+    /// Scratchpad-window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`). `None` = egui's theme default.
+    /// The GUI applies them to each scratchpad window's text / background.
+    pub fn scratch_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.scratch_fg_color
+    }
+    pub fn scratch_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.scratch_bg_color
     }
     /// `TXT` dialog text/background colours (read by the GUI's TXT window). See `EditorOp::SetColor`.
     pub fn txt_fg_color(&self) -> (u8, u8, u8) {
@@ -3932,6 +3963,23 @@ impl AppHost {
         std::mem::take(&mut self.find_requested)
     }
 
+    /// Consume the pending `SCRATCH` open requests — one entry per window, each carrying its initial
+    /// text (empty, or the clipboard for `SCRATCH/V`). The GUI drains this every frame.
+    pub fn take_scratch_open_queue(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.scratch_open_queue)
+    }
+
+    /// Consume the `SCRATCHCLOSE` request (close the most-recently-focused scratchpad). `Some(true)`
+    /// means also insert its text into the active tab at the caret (`SCRATCHCLOSE/V`). GUI-drained.
+    pub fn take_scratch_close_request(&mut self) -> Option<bool> {
+        std::mem::take(&mut self.scratch_close_requested)
+    }
+
+    /// Record the text of a scratchpad window as it closes, so `$SCRATCHTEXT` can recover it.
+    pub fn set_scratch_text(&mut self, text: String) {
+        self.scratch_text = text;
+    }
+
     /// Consume the "open the GREP dialog" request (set by a bare `GREP`). The GUI drains it each frame.
     pub fn take_grep_dialog_request(&mut self) -> bool {
         std::mem::take(&mut self.grep_dialog_requested)
@@ -4111,6 +4159,13 @@ impl AppHost {
     fn set_focus(&mut self, t: Target) {
         self.target = t;
         self.input_focus = t;
+    }
+
+    /// Direct editing (`InsertText`/`TypeText`) at the ACTIVE DOCUMENT's caret rather than wherever the
+    /// input focus happens to be (e.g. the command line). Used by `SCRATCHCLOSE/V`, which inserts a
+    /// closing scratchpad's text into the document even though the command was issued from the cmline.
+    pub fn focus_document(&mut self) {
+        self.set_focus(Target::Document);
     }
 
     pub fn set_active(&mut self, i: usize) {
@@ -8781,6 +8836,8 @@ impl AppHost {
         // `$CWD` path-display colours — emit only when set (defaults: dimmed UI text / transparent).
         put_opt_color(&mut s, "$CWD path text colour -- R G B, 0-255", "PAFGCOLOR", self.path_fg_color);
         put_opt_color(&mut s, "$CWD path background colour -- R G B, 0-255", "PABGCOLOR", self.path_bg_color);
+        put_opt_color(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
+        put_opt_color(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
         let (r, g, b) = self.txt_fg_color;
         put(&mut s, "TXT dialog text colour -- R G B, 0-255", format!("TXTFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.txt_bg_color;
@@ -10522,6 +10579,16 @@ impl Host for AppHost {
                 self.find_requested = true;
                 return Ok(Value::str(""));
             }
+            EditorOp::OpenScratch { paste } => {
+                // `/V` prefills the window with the clipboard ($CB, kept synced with the OS clipboard).
+                let init = if paste { self.clipboard.clone() } else { String::new() };
+                self.scratch_open_queue.push(init);
+                return Ok(Value::str(""));
+            }
+            EditorOp::CloseScratch { insert } => {
+                self.scratch_close_requested = Some(insert);
+                return Ok(Value::str(""));
+            }
             EditorOp::OpenConsole { show } => {
                 if show {
                     let idx = self.shell_output_doc_index();
@@ -12111,6 +12178,23 @@ impl Host for AppHost {
                     Some(if fg { ColorTarget::PathFg } else { ColorTarget::PathBg });
                 return Ok(Value::str(""));
             }
+            EditorOp::SetScratchColor { fg, color } => {
+                if fg {
+                    self.scratch_fg_color = color;
+                } else {
+                    self.scratch_bg_color = color;
+                }
+                let what = if fg { "text" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("scratchpad {what} colour = {r} {g} {b}"),
+                    None => format!("scratchpad {what} colour = (default)"),
+                }));
+            }
+            EditorOp::OpenScratchColorPicker { fg } => {
+                self.color_picker_request =
+                    Some(if fg { ColorTarget::ScratchFg } else { ColorTarget::ScratchBg });
+                return Ok(Value::str(""));
+            }
             EditorOp::SetStatusLineTop(v) => {
                 self.status_line_top = v;
             }
@@ -12836,6 +12920,8 @@ impl Host for AppHost {
             "LNS" => Some(Value::Int(if self.line_numbers { 1 } else { 0 })),
             "GC" => Some(Value::Int(if self.gui_cmline { 1 } else { 0 })),
             "SW" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
+            // Full text of the most-recently-closed scratchpad window (empty until one closes).
+            "SCRATCHTEXT" => Some(Value::str(self.scratch_text.clone())),
             // `$SH` now reports whether the Console tab is shown (the SH pane it once meant is gone).
             "SH" => Some(Value::Int(if self.shell_output_visible { 1 } else { 0 })),
             "SHPROMPT" => Some(Value::str(self.console_prompt.clone())),
@@ -12958,6 +13044,14 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "PABGCOLOR" => Some(Value::str(match self.path_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "SCRATCHFGCOLOR" => Some(Value::str(match self.scratch_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "SCRATCHBGCOLOR" => Some(Value::str(match self.scratch_bg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
             })),

@@ -89,6 +89,9 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "PANES", "PANE", "PANECOLOR",
     // clipboard / deletion buffer
     "CB", "XB",
+    // scratchpad: full text of the most-recently-closed scratchpad window (empty until one closes) +
+    // the scratchpad window's fg/bg colours (empty = egui default)
+    "SCRATCHTEXT", "SCRATCHFGCOLOR", "SCRATCHBGCOLOR",
     // host/UI
     "OS", "UIFONT", "UISCALE", "EDFONT", "EDFAMILY", "UIFAMILY", "TXTFAMILY", "EDSTYLE", "UISTYLE", "TXTSTYLE", "TXTFONT", "TXTSCALE", "LSP", "OFL", "OFR", "FGCOLOR", "BGCOLOR", "UIFGCOLOR",
     "UIBGCOLOR", "CRCOLOR", "CMCRCOLOR", "SEPCOLOR", "TABXCOLOR", "TXTFGCOLOR", "TXTBGCOLOR", "SELBGCOLOR", "SELFGCOLOR",

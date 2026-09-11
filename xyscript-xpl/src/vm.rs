@@ -1898,6 +1898,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenFind)?;
                 Ok(Flow::Next)
             }
+            // `SCRATCH` — open a new floating scratchpad window (plain read/write text box for parking
+            // text; no file, no save). Each call opens another. `SCRATCHCLOSE` closes the most-recently
+            // focused one (its text lands in `$SCRATCHTEXT`). GUI-only; a no-op on a headless host.
+            "SCRATCH" => {
+                // `/V` prefills the new scratchpad with the clipboard contents.
+                let paste = vswitches.iter().any(|s| s.eq_ignore_ascii_case("V"));
+                self.host_op(EditorOp::OpenScratch { paste })?;
+                Ok(Flow::Next)
+            }
+            "SCRATCHCLOSE" => {
+                // `/V` also inserts the closing scratchpad's text into the active tab at the caret.
+                let insert = vswitches.iter().any(|s| s.eq_ignore_ascii_case("V"));
+                self.host_op(EditorOp::CloseScratch { insert })?;
+                Ok(Flow::Next)
+            }
             // `READ <file>` — open an EXISTING file in a read-only tab (locked against edits);
             // toggle the lock off later with `RO`. A missing file is a trappable error. `/NV` skips
             // the "already open?" prompt and opens a fresh read-only tab.
@@ -2686,6 +2701,24 @@ impl Vm<'_, '_> {
             }
             "PAFGCOLORS" | "PABGCOLORS" => {
                 self.host_op(EditorOp::OpenPathColorPicker { fg: base == "PAFGCOLORS" })?;
+                Ok(Flow::Next)
+            }
+            // `SCRATCHFGCOLOR`/`SCRATCHBGCOLOR <r g b>` — the scratchpad window's text/background
+            // colour (`/HSL`); bare or `… default` clears it (back to egui's theme). The `…S` forms
+            // open the picker. `$SCRATCHFGCOLOR`/`$SCRATCHBGCOLOR`.
+            "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetScratchColor { fg: base == "SCRATCHFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
+            "SCRATCHFGCOLORS" | "SCRATCHBGCOLORS" => {
+                self.host_op(EditorOp::OpenScratchColorPicker { fg: base == "SCRATCHFGCOLORS" })?;
                 Ok(Flow::Next)
             }
             // `TABBGCOLORS <state>` — pop the GUI colour-picker for that tab-title state.
@@ -5661,11 +5694,13 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
         | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR"
-        | "LNFGCOLOR" | "LNBGCOLOR"
+        | "LNFGCOLOR" | "LNBGCOLOR" | "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR"
         | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
+        "SCRATCH" => &["V"], // `/V` — prefill the new scratchpad with the clipboard
+        "SCRATCHCLOSE" => &["V"], // `/V` — also insert the closing scratchpad's text at the caret
         "AB" => &["V"], // `/V` — verify (ask to save) before closing
         "ABD" => &["V"], // `/V` — verify (confirm) before deleting + closing
         "QUIT" | "QQ" => &["NV"], // `/NV` — quit without the save prompts
