@@ -1858,7 +1858,7 @@ mod menu_tests {
     /// Ink bands (contiguous rows carrying text) in a rendered canvas, top→bottom, as `(top, height)`
     /// in pixels. A "text" row is one with enough pixels that differ meaningfully from the background;
     /// blank inter-line gaps split the bands. Used to measure the ACTUAL rendered height of each text
-    /// line from the pixels — the ground truth the layout-level GLYPHS diagnostic can't see.
+    /// line from the pixels — the ground truth the layout geometry alone can't confirm.
     fn ink_bands(rgba: &[u8], w: usize, h: usize, bg: (u8, u8, u8)) -> Vec<(usize, usize)> {
         let differs = |i: usize| {
             let (dr, dg, db) = (
