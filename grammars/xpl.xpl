@@ -34,6 +34,7 @@ HLRULE number  "\b[0-9][0-9_]*\.?[0-9_]*\b"
 HLRULE keyword "(?i)\b(ifnot|if|elseif|else|endif|ei|while|endwhile|ew|for|endfor|ef|to|in|step|switch|case|default|endswitch|esw|sub|endsub|es|capture|endcapture|ec|break|continue|goto|return|exitall|exit|ex1|ex|set|local|clear|and|or|not)\b"
 # HLCOLOR keyword 170 40 180
 # Built-in expression functions — the complete set (mirrors FUNCTION_NAMES in expr.rs). Longer names
-# precede the shorter ones they contain (sinh|sin, sqrt|sq, splits|split, iterp|iter, atan2|atanh|atan).
-HLRULE function "(?i)\b(len|upper|lower|strip|lstrip|rstrip|trimleft|trimright|substr|left|right|index|contains|replace|splits|split|join|chars|words|lines|chr|asc|isdec|ishex|isint|isfloat|isalpha|isalnum|isascii|isutf8|isupper|islower|istitle|isspace|isprint|ispunct|iterp|iter|push|pop|slice|sort|var|sel|abs|int|sqrt|sq|cube|fac|exp|ln|log|pow|base|hex|sinh|sin|cosh|cos|tanh|tan|asinh|asin|acosh|acos|atan2|atanh|atan|pi|e|random|key|getpath|exists|isdir|isfile|readfile|rf|date|time)\b"
+# precede the shorter ones they contain (sinh|sin, sqrt|sq, splits|split, iterp|iter, atan2|atanh|atan,
+# and the date* names before date).
+HLRULE function "(?i)\b(len|upper|lower|reverse|strip|lstrip|rstrip|trimleft|trimright|substr|left|right|index|contains|replace|splits|split|join|chars|words|lines|chr|asc|format|isdec|ishex|isint|isfloat|isalpha|isalnum|isascii|isutf8|isupper|islower|istitle|isspace|isprint|ispunct|iterp|iter|push|pop|slice|sort|var|sel|abs|int|sqrt|sq|cube|fac|exp|ln|log|pow|base|hex|sinh|sin|cosh|cos|tanh|tan|asinh|asin|acosh|acos|atan2|atanh|atan|pi|e|random|key|getkey|getpath|exists|isdir|isfile|readfile|rf|datediff|dateadd|dateparse|date2jdn|jdn2date|date|dow|today|leap|daysinmonth|dayofyear|isdate|time)\b"
 # HLCOLOR function 150 150 50

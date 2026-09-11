@@ -11755,6 +11755,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         }
     }
 
+    /// Guard: `grammars/xpl.xpl` claims its `function` rule "mirrors FUNCTION_NAMES" and its `keyword`
+    /// rule tracks the control-flow keywords — so every `FUNCTION_NAMES` entry must appear in the
+    /// function alternation and every `CONTROL_KEYWORDS` entry in the keyword alternation. Adding a new
+    /// expression function or control keyword in the code then FORCES updating the grammar (the function
+    /// rule silently drifted 14 names behind once). Extras (loop words `to`/`in`/`step`, `exit*`,
+    /// `and`/`or`/`not`) are fine — we only check for OMISSIONS.
+    #[test]
+    fn xpl_grammar_covers_all_functions_and_keywords() {
+        use xyscript_xpl::{CONTROL_KEYWORDS, FUNCTION_NAMES};
+        let src = include_str!("../../grammars/xpl.xpl").to_ascii_lowercase();
+        // Each name sits in an `(?i)\b(a|b|c)\b` alternation, so it's delimited by `|`, `(`, or `)`.
+        let listed = |name: &str| {
+            let n = name.to_ascii_lowercase();
+            src.contains(&format!("|{n}|"))
+                || src.contains(&format!("({n}|"))
+                || src.contains(&format!("|{n})"))
+        };
+        let missing_fns: Vec<&str> = FUNCTION_NAMES.iter().copied().filter(|n| !listed(n)).collect();
+        let missing_kws: Vec<&str> = CONTROL_KEYWORDS.iter().copied().filter(|n| !listed(n)).collect();
+        assert!(missing_fns.is_empty(), "grammars/xpl.xpl function rule omits: {missing_fns:?}");
+        assert!(missing_kws.is_empty(), "grammars/xpl.xpl keyword rule omits: {missing_kws:?}");
+    }
+
     #[test]
     fn typst_grammar_highlights_its_own_constructs() {
         use crate::highlight::TokenKind;
