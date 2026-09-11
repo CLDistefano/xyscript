@@ -14,12 +14,17 @@
 # order with FIRST-MATCH-WINS, so list the "claiming" rules (comments, strings)
 # BEFORE keywords/numbers — once a span is coloured a later rule can't recolour it.
 #
-# `<kind>` is any name. The built-ins (keyword/string/comment/number/…) come pre-
-# themed; colour any kind yourself with `HLCOLOR <kind> <r g b>` (see HLKINDS).
+# `<kind>` is any name. The built-ins (keyword/string/comment/number/…) come pre-themed
+# and follow THEME light/dark automatically. To recolour one, UNCOMMENT its `# HLCOLOR`
+# line below and edit the RGB (shown here at the light-theme default); see HLKINDS.
 
 HLLANG rust .rs
 
 HLRULE comment "//.*$"
+# HLCOLOR comment 30 150 160
 HLRULE string  "\"[^\"]*\""
+# HLCOLOR string 40 150 70
 HLRULE keyword "\b(as|async|await|break|const|continue|crate|dyn|else|enum|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|trait|type|unsafe|use|where|while)\b"
+# HLCOLOR keyword 170 40 180
 HLRULE number  "\b[0-9][0-9_]*\b"
+# HLCOLOR number 200 60 60

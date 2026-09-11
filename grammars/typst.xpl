@@ -17,33 +17,40 @@
 # the span-claiming literals (comments, strings, raw), then the rest.
 #
 # `<kind>` is any name. The built-ins (heading/keyword/string/comment/number/strong/…)
-# come pre-themed; a custom kind (here, `math`) is coloured explicitly at the bottom.
-# Recolour any kind yourself with `HLCOLOR <kind> <r g b>` (see HLKINDS).
+# follow THEME light/dark; to recolour one, UNCOMMENT its `# HLCOLOR` line and edit the RGB
+# (shown at the light-theme default). A custom kind (here `math`) has no theme default, so it
+# carries a live HLCOLOR. See HLKINDS.
 
 HLLANG typst .typ
 
 # Whole-line markup heading: "= Title", "== Section", … (claimed first so the rest of the
 # heading line isn't recoloured by the inline rules below).
 HLRULE heading  "^\s*=+\s.*$"
+# HLCOLOR heading 30 150 160
 
 # Span-claiming literals first.
 HLRULE comment  "//.*$"
+# HLCOLOR comment 30 150 160
 HLRULE string   "\"[^\"]*\""
+# HLCOLOR string 40 150 70
 HLRULE code     "`[^`]*`"
+# HLCOLOR code 40 150 70
 
 # Code mode: a '#' sigil introduces a keyword, function call, or variable reference
 # (#let, #set, #show, #import, #table, #figure, …). This is the most Typst-distinctive mark.
 HLRULE keyword  "#[A-Za-z][A-Za-z0-9_-]*"
+# HLCOLOR keyword 170 40 180
 
-# Inline math: $ … $  (custom kind — coloured at the bottom).
+# Inline math: $ … $  — a custom kind (no theme default), so it carries a LIVE colour.
 HLRULE math     "\$[^$]*\$"
+HLCOLOR math 30 130 90
 
 # Emphasis markers.
 HLRULE strong   "\*[^*]+\*"
+# HLCOLOR strong 30 30 30
 HLRULE emphasis "_[^_]+_"
+# HLCOLOR emphasis 30 30 30
 
 # Numbers (covers the leading digits of lengths like 2cm / 12pt too).
 HLRULE number   "\b[0-9]+(\.[0-9]+)?\b"
-
-# `math` is a custom kind, so give it a colour (the built-ins above are already themed).
-HLCOLOR math 30 130 90
+# HLCOLOR number 200 60 60
