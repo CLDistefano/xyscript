@@ -2638,6 +2638,8 @@ the #raw("grammars") folder beside the program:
   stroke: 0.5pt + luma(200),
   table.header([*Script*], [*Language*], [*Extensions*]),
   [#raw("rust.xpl")], [Rust], [#raw(".rs")],
+  [#raw("cpp.xpl")], [C / C++], [#raw(".c .h .cpp .cc .cxx .hpp .hh .hxx")],
+  [#raw("zig.xpl")], [Zig], [#raw(".zig")],
   [#raw("python.xpl")], [Python], [#raw(".py .pyw")],
   [#raw("javascript.xpl")], [JavaScript / TypeScript], [#raw(".js .mjs .cjs .ts .jsx .tsx")],
   [#raw("html.xpl")], [HTML], [#raw(".html .htm .xhtml")],
