@@ -16,6 +16,7 @@ A file is always just text on disk, openable in any other editor. XyScript under
 - **Multiple search facilities** — Find, Grep, bookmarks, and word/phrase highlighting
 - **Auto-replace** for inserting boilerplate and fixing typos on the fly
 - **Writer's View** for distraction-free editing
+- **Scratchpad windows** — floating, no-save text panes for parking notes and snippets alongside your document
 - **Syntax highlighting** — user-customizable and extensible
 - **Multi-cursor / multi-selection** editing
 - **Coding aids** — auto-indent, bracket matching, auto-close brackets and quotes
