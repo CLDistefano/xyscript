@@ -2199,7 +2199,6 @@ The routines, by what they do:
 / #raw("fnu"): jump to the next URL in the text.
 / #raw("GetIP"): show the current IP address.
 / #raw("checkwebupdate"), #raw("getETag"): detect when a web page has changed, via its ETag.
-/ #raw("xysupdate"): check for a XyScript update.
 / #raw("xysweb"): open the XyScript web page.
 
 === Panes and appearance
@@ -2208,6 +2207,8 @@ The routines, by what they do:
 / #raw("panezoom"): zoom the current pane to fill the window, keeping the split.
 / #raw("togs"): a menu of interface toggles.
 / #raw("inspect"): inspect and adjust the Appearance settings.
+/ #raw("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR")).
+/ #raw("colornames"): open a reference list of named colours with their RGB values.
 
 === Dates and the calendar
 

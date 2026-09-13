@@ -1,4 +1,4 @@
-## XPL Library file ##
+## XPL Library file, by C.L.Distefano
 ## Set user variables in user-variables.xpl
 ## `RUN user-variables.xpl` in startup.xpl
 ## Command `LISTLIB` to list library routines
@@ -9,7 +9,13 @@ SUB kbd
 	# DOC: Show the 104-key keyboard chart
 	# Locate `keyboard.png` in the docs/ subfolder beside xyscript.exe
 	LOCAL cmnd
-	SET cmnd = "start ".$XSDIR.$DC."docs".$DC."keyboard.png"
+	IF $OS == "windows"
+		SET cmnd = "start ".$XSDIR.$DC."docs".$DC."keyboard.png"
+	ELSE IF $OS == "linux"
+		set cmnd = "xdg-open ".$fnm
+	ELSE
+		set cmnd = "open ".$fnm
+	EI
 	X/NV $cmnd
 ENDSUB
 
@@ -188,7 +194,8 @@ ENDSUB
 
 SUB dfb
 	# DOC: Operate on text from cursor position to bottom of file
-	# DOC: Usage: DFB <c1[;c2;...]>  e.g.: DFB DN: delete to bottom of file
+	# DOC: Usage: DFB <command1[;command2;...]>
+	# DOC: E.g.: DFB DN  (Select from cursor to bottom of file, then delete the selection)
 	quiet
 	if not $1 exit
 	local cmnd
@@ -200,7 +207,8 @@ ENDSUB
 
 SUB dft
 	# DOC: Operate on text from cursor position to top of file
-	# DOC: Usage: DFT <command>  e.g.: DFT DN: delete to top of file
+	# DOC: Usage: DFT <command1[;command2;...]>
+	# DOC: E.g.: DFT DN  (Select from cursor to top of file, then delete the selection)
 	quiet
 	if not $1 exit
 	local cmnd
@@ -736,9 +744,9 @@ ENDSUB
 SUB checkwebupdate
 	# DOC: Check if a website has been updated
 	# DOC: Usage: CHECKWEBUPDATE <url> <file_with_current_ETag>
-	# DOC: <file_with_current_ETag> is createdd if it does not already exist
+	# DOC: <file_with_current_ETag> is created if it does not already exist
 	quiet
-	local cmnd etag1 etag2 fnm out url
+	local cmnd etag1 etag2 fnm out
 	set etag1 = ""
 	if not $2 return $etag1
 	set url = $1
@@ -751,9 +759,9 @@ SUB checkwebupdate
 	ei
 	set etag2 = readfile($fnm)
 	if $etag1 != $etag2
-		wf $fnm $etag2
+		wf $fnm $etag1
 		msg /T:5 $url has changed!
-		BC X/NV start $($url))
+		BC X/NV start $url
 	else
 		pr $url has not been updated.
 	ei
@@ -860,15 +868,6 @@ SUB url
 	ELSE			
 		PR No URL supplied
 	EI
-ENDSUB
-
-SUB xysupdate
-	# DOC: Check for xyscript.zip update
-	quiet
-	local fnm url
-	set url = "https://ammaze.net/xywwweb/dls/xyscript.zip"
-	set fnm = $XSDIR.$DC."xyscript.zip-etag.txt"
-	call CheckWebUpdate $url $fnm
 ENDSUB
 
 SUB xysweb
@@ -994,10 +993,11 @@ SUB scancode
 	# DOC: Get scan code for pressed key
 	LOCAL k
 	:a
-	PR Press a key
+	PR Press a key - Esc quits
 	RK k
-	MSG You pressed $k (scan code: $SC)
-	IF $SC != 1 GOTO :a
+	MSG /t:3 Scan code: $SCC
+	IF $SCC != 1; PR; GOTO :a; EI
+	PR Quitting...; WAIT 1000
 ENDSUB
 
 SUB v3
@@ -1028,6 +1028,7 @@ SUB ProcExists
 	# DOC: Report whether named process exists (Windows)
 	# DOC: Usage: ProcExists "process_name"; IF $proc_out;
 	# DOC: PR $proc_out; ELSE; PR No; EI
+	# DOC: Requires pexists.exe (Windows)
 	LOCAL ret pgm pnm
 	IF NOT $1 EXIT
 	SET pgm = $U2Extras . $DC . "pexists.exe"
@@ -1068,10 +1069,12 @@ ENDSUB
 
 SUB togs
 	# DOC: User Interface toggles
-	quiet
+	quiet off
 	local ans
+	if $1; set ans = upper($1); goto :b; ei
 	:a
-	rk ans "  Toggles (Esc quits)\n  -------------------\n  <L>ine numbers\n  <N>ewlines\n  <W>hitespace\n  <M>enu bar\n  <T>itle bar"
+	rk ans "  Toggles (Esc quits)\n  -------------------\n  <L>ine numbers\n  <N>ewlines\n  <W>hitespace\n  <M>enu bar\n  <T>itle bar\n  <S>pelling\n  <G>rammar"
+	:b
 	switch $(UPPER($ans))
 		case "L"
 			tln
@@ -1083,6 +1086,10 @@ SUB togs
 			tmb
 		case "T"
 			titlebar
+		case "S"
+			if $SPELLING; sp off; else; sp on; ei
+		case "G"
+			if $GRAMMAR; gr off; else; gr on; ei
 	esw
 ENDSUB
 
@@ -1584,6 +1591,7 @@ SUB clone
 ENDSUB
 
 SUB cloned_start_script
+	# DOC: Helper script for `CLONE` (q.v.)
 	local pth scr
 	if not $TempDir set TempDir = $XSDIR . $DC . "_tmp"
 	if not exists($TempDir) X/nv mkdir $TempDir
@@ -1593,6 +1601,83 @@ SUB cloned_start_script
 	set scr=$scr."run cloned.ldtx".$NL."run cloned.ldpm".$NL
 	set scr=$scr."loadvars cloned.vars".$NL."run cloned-cwd.xpl".$NL
 	wf $pth $scr
+ENDSUB
+
+SUB colors
+	# DOC: Change color settings on the fly
+	# DOC: Usage: COLORS <setting> <n>
+	# DOC: Default setting: BGCOLOR; n: increment/decrement value
+	# DOC: E.g.:  COLORS UIBGCOLOR 5
+	# DOC: Then follow the prompts:
+	# DOC: ↑ Lighter ↓ Darker
+	# DOC: ← More Red → More Blue
+	# DOC: shift← Less Green shift→ More Green
+	# DOC: Home: Revert to original color
+	# DOC: Esc: Set current color and exit script
+	# quiet
+	local str cstr incr rgb rgb_array
+	if not $1; set str = "bgcolor"; else; set str = $1; ei
+	set incr = 1
+	if isdec($str); set incr = $str; set str = "bgcolor"; ei
+	if isdec($2) set incr = $2
+	set cstr = "$".$str
+	runcode set rgb = $cstr
+	set rgb_array = split($rgb, " ")
+	while 1
+		rk k  > Setting: $(upper($str)) <$NL ↑ Lighter ↓ Darker$NL ← More Red $NL → More Blue $NL shift← Less Green$NL shift→ More Green$NL Home: Revert original color$NL Esc: Set current color and exit script$NL
+		switch $SC
+			case 1             # Esc
+				set cstr = $str." ".$rgb_array[0]." ".$rgb_array[1]." ".$rgb_array[2]
+				clip $(upper($cstr))
+				pr Copied: $(upper($cstr))
+				return
+			case 71, 92        # Home
+				set cstr = $str . " ". $rgb
+				runcode $cstr
+				continue
+			case 72, 100       # Up
+				set $rgb_array[0] += $incr
+				set $rgb_array[1] += $incr
+				set $rgb_array[2] += $incr
+			case 80, 102       # Down
+				set $rgb_array[0] -= $incr
+				set $rgb_array[1] -= $incr
+				set $rgb_array[2] -= $incr
+			case 75, 101       # Left
+				if $SCC > $SC
+					set $rgb_array[1] -= $incr
+				else
+					set $rgb_array[0] += $incr
+				ei
+			case 77, 103       # Right
+				if $SCC > $SC
+					set $rgb_array[1] += $incr
+				else
+					set $rgb_array[2] += $incr
+				ei
+			default
+				nop
+		endswitch
+		for n = 0 to 2
+			if $rgb_array[$n] < 0 set $rgb_array[$n] = 0
+			if $rgb_array[$n] > 255 set $rgb_array[$n] = 255		
+		ef
+		runcode $str $rgb_array[0] $rgb_array[1] $rgb_array[2]		
+	endwhile
+ENDSUB
+
+SUB colornames
+	# DOC: Display a comprehensive list of colors with RGB values
+	# DOC: Source file: ./examples/color-names.lst
+	ca/nv $XSDIR/examples/color-names.lst	
+	tf
+	while not $FE
+		el
+		se/r /\"\d{1,3} \d{1,3} \d{1,3}\"/
+		if not $error mda/b $(trimright(trimleft($SE, 1), 1))
+		ld
+	ew
+	tf
 ENDSUB
 
 SUB GetIP

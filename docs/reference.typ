@@ -1596,7 +1596,6 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("GetIP"): show the current IP address.
 / #lib("checkwebupdate"): detect when a web page has changed, comparing its ETag against a saved copy.
 / #lib("getETag"): fetch a web page's ETag (helper for #raw("checkwebupdate")).
-/ #lib("xysupdate"): check for a XyScript update.
 / #lib("xysweb"): open the XyScript web page.
 
 == Panes and appearance
@@ -1605,6 +1604,8 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("panezoom"): zoom the current pane to fill the window, keeping the split.
 / #lib("togs"): a menu of interface toggles.
 / #lib("inspect"): inspect and adjust the Appearance settings.
+/ #lib("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR"); an increment argument, e.g. #raw("colors UIBGCOLOR 5")).
+/ #lib("colornames"): open a reference list of named colours with their RGB values (from #raw("examples/color-names.lst")).
 
 == Dates and the calendar
 
@@ -1621,6 +1622,7 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("ProcExists"): report whether a named process is running (Windows).
 / #lib("arg2"): pass the line under the cursor as an argument to a command.
 / #lib("clone"): open a second instance with the same configuration.
+/ #lib("cloned_start_script"): build the startup script for #raw("clone") (helper, not called directly).
 
 == Small utilities
 
@@ -1654,10 +1656,13 @@ Every bundled routine, alphabetical.
 / #lib("checkwebupdate"): detect when a web page has changed, comparing its ETag against a saved copy.
 / #lib("chkcmnt"): check an XPL script for malformed comments.
 / #lib("clone"): open a second instance with the same configuration.
+/ #lib("cloned_start_script"): build the startup script for #raw("clone") (helper, not called directly).
 / #lib("closedn"): regularize blank-line spacing to n (default 2), over the file or selection.
 / #lib("closeup"): reduce runs of blank lines to at most n (default 2), over the file or selection.
 / #lib("cmd"): start a shell session (Windows or Linux).
 / #lib("cmnt"): add or remove comment markers on the defined block (default #raw("#"); #raw("cmnt semi") uses #raw(";")).
+/ #lib("colornames"): open a reference list of named colours with their RGB values (from #raw("examples/color-names.lst")).
+/ #lib("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR"); an increment argument, e.g. #raw("colors UIBGCOLOR 5")).
 
 == D
 
@@ -1777,6 +1782,5 @@ Every bundled routine, alphabetical.
 / #lib("xe"): open the file in external editor 1 (#raw("$ExternalEditor")).
 / #lib("xe2"): open the file in external editor 2 (#raw("$ExternalEditor2")).
 / #lib("xe3"): open the file in external editor 3 (#raw("$ExternalEditor3")).
-/ #lib("xysupdate"): check for a XyScript update.
 / #lib("xysweb"): open the XyScript web page.
 
