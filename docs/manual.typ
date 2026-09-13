@@ -3038,32 +3038,6 @@ What ships today:
 keyboard add-ons, input methods, one-off tools, and background scripts. If XyScript does not yet do some
 thing you want, the odds are good you can teach it.]
 
-== The templates directory
-
-Where #raw("examples/") shows off XPL, #raw("templates/") gives you starting points for *documents*.
-Open one, replace the fields at the top, and export with #raw("TOPDF") (or preview live with #raw("PV")).
-Each is a real, rendering document, not a fragment.
-
-Every template comes in a Typst version (#raw(".typ")), and the ones that read naturally as Markdown
-come in a GitHub-Flavored version (#raw(".md")) as well. The choice is about how much control you want:
-a #raw(".typ") file styles its own page down to the millimetre — centred letterheads, aligned header
-blocks, tables with right-aligned totals — while a #raw(".md") file is plainer and quicker to type, and
-takes its page from your *Preview / PDF page setup* (#raw("PVPAPER"), #raw("PVMARGIN"), #raw("PVFAMILY"),
-and the rest). See *Appendix D* for the difference in full.
-
-/ #raw("business-letter"): a business letter — centred letterhead, date, inside address, and a closing.
-  (#raw(".typ"), #raw(".md"))
-/ #raw("memo"): an interoffice memo — a masthead and a #raw("TO") / #raw("FROM") / #raw("DATE") /
-  #raw("RE") header block over the body. (#raw(".typ"), #raw(".md"))
-/ #raw("invoice"): an invoice — sender and bill-to blocks, a line-item table, and subtotal / tax / total
-  that add themselves up from the item list you edit. (#raw(".typ") — money columns need the alignment
-  and arithmetic that Typst provides.)
-/ #raw("todo"): a to-do list. The #raw(".md") version uses GFM task lists (#raw("- [ ]") and
-  #raw("- [x]")) you can tick in the preview; the #raw(".typ") version groups items under headings.
-  (#raw(".typ"), #raw(".md"))
-/ #raw("report.typ"): a longer starter document — a title block, numbered headings, a note component,
-  math, and a results table — and a tour of the Typst features you are most likely to reach for.
-
 = Appendix D — Markdown and Typst Support
 
 XyScript renders a document as either GitHub-Flavored Markdown or Typst markup, for the live preview and
@@ -3087,3 +3061,29 @@ it live.
 Typst is a full typesetting language in its own right, with its own extensive documentation. This
 manual only notes that XyScript can render and export it; for the complete reference to Typst's markup,
 functions, and styling, see #link("https://typst.app/docs/").
+
+== The templates directory
+
+Where #raw("examples/") shows off XPL, #raw("templates/") gives you starting points for *documents*.
+Open one, replace the fields at the top, and export with #raw("TOPDF") (or preview live with #raw("PV")).
+Each is a real, rendering document, not a fragment.
+
+Every template comes in a Typst version (#raw(".typ")), and the ones that read naturally as Markdown
+come in a GitHub-Flavored version (#raw(".md")) as well. The choice is the one this appendix draws: a
+#raw(".typ") file styles its own page down to the millimetre — centred letterheads, aligned header
+blocks, tables with right-aligned totals — while a #raw(".md") file is plainer and quicker to type, and
+takes its page from your *Preview / PDF page setup* (#raw("PVPAPER"), #raw("PVMARGIN"), #raw("PVFAMILY"),
+and the rest).
+
+/ #raw("business-letter"): a business letter — centred letterhead, date, inside address, and a closing.
+  (#raw(".typ"), #raw(".md"))
+/ #raw("memo"): an interoffice memo — a masthead and a #raw("TO") / #raw("FROM") / #raw("DATE") /
+  #raw("RE") header block over the body. (#raw(".typ"), #raw(".md"))
+/ #raw("invoice"): an invoice — sender and bill-to blocks, a line-item table, and subtotal / tax / total
+  that add themselves up from the item list you edit. (#raw(".typ") — money columns need the alignment
+  and arithmetic that Typst provides.)
+/ #raw("todo"): a to-do list. The #raw(".md") version uses GFM task lists (#raw("- [ ]") and
+  #raw("- [x]")) you can tick in the preview; the #raw(".typ") version groups items under headings.
+  (#raw(".typ"), #raw(".md"))
+/ #raw("report.typ"): a longer starter document — a title block, numbered headings, a note component,
+  math, and a results table — and a tour of the Typst features you are most likely to reach for.
