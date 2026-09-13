@@ -202,3 +202,7 @@ jobs:
         with:
           files: "*.zip"
           fail_on_unmatched_files: true
+          # Auto-populate the release body with GitHub's generated notes (commits / merged PRs and new
+          # contributors since the previous tag). Any body edited by hand afterwards is preserved on a
+          # re-run — action-gh-release does not overwrite an existing non-empty release body.
+          generate_release_notes: true
