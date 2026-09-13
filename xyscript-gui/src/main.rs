@@ -764,55 +764,96 @@ fn no_selection_context_menu(
     }
 }
 
-/// Auto-assign an accelerator letter to each node in one menu level: the first ASCII-alphanumeric
-/// char of its label not already claimed by a sibling (case-insensitive). Returns, per node, the
-/// BYTE index of the assigned char in the label — or `None` (separator, or every letter taken).
-/// Deduping per level guarantees each accelerator is unambiguous within its menu (e.g. the top
-/// level's `Search`→S forces `Settings`→e). No label edits needed; the chosen letter is underlined
-/// at render time and matched by [`accel_match`].
-fn level_accels(list: &[MenuNode]) -> Vec<Option<usize>> {
-    let mut used: Vec<char> = Vec::new();
-    let mut out = Vec::with_capacity(list.len());
-    for node in list {
-        let label = match node {
-            MenuNode::Item { label, .. } | MenuNode::Sub { label, .. } => label.as_str(),
-            MenuNode::Sep => {
-                out.push(None);
-                continue;
+/// Split a raw menu label into its DISPLAY text and an OPTIONAL explicit accelerator letter. A single
+/// `&` immediately before an ASCII-alphanumeric char (Windows-style) marks that char as the menu's
+/// mnemonic; the `&` is dropped for display and `&&` renders as a literal `&`. The mnemonic char is
+/// returned lowercased. Because labels come through `tr()`, a translation can place its own `&` to
+/// pick a per-language mnemonic. Only the FIRST `&<char>` counts; later `&` are literal.
+fn split_mnemonic(raw: &str) -> (String, Option<char>) {
+    let mut out = String::with_capacity(raw.len());
+    let mut mnem = None;
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '&' {
+            match chars.peek() {
+                Some('&') => {
+                    out.push('&');
+                    chars.next();
+                }
+                Some(&n) if mnem.is_none() && n.is_ascii_alphanumeric() => {
+                    mnem = Some(n.to_ascii_lowercase()); // the char itself is pushed next iteration
+                }
+                _ => out.push('&'),
             }
-        };
-        let mut assigned = None;
-        for (bi, ch) in label.char_indices() {
+        } else {
+            out.push(c);
+        }
+    }
+    (out, mnem)
+}
+
+/// Assign an accelerator LETTER to each node in one menu level. An explicit `&`-marked mnemonic
+/// (see [`split_mnemonic`]) claims its letter first; then each remaining node auto-takes the first
+/// ASCII-alphanumeric char of its display label not already claimed by a sibling (case-insensitive).
+/// Returns, per node, the assigned lowercase letter — or `None` (separator, or every letter taken).
+/// Deduping per level keeps each accelerator unambiguous within its menu (e.g. the top level's
+/// `Search`→s forces the unmarked `Settings`→e; a `&`-mark overrides that). Matched by [`accel_match`]
+/// and underlined at render time by [`accel_label`].
+fn level_accels(list: &[MenuNode]) -> Vec<Option<char>> {
+    let parsed: Vec<(String, Option<char>)> =
+        list.iter().map(|n| split_mnemonic(n.label())).collect();
+    let mut used: Vec<char> = Vec::new();
+    let mut out = vec![None; list.len()];
+    // Pass 1: explicit `&` mnemonics claim their letter first (a taken letter is skipped).
+    for (i, (_disp, mnem)) in parsed.iter().enumerate() {
+        if list[i].is_sep() {
+            continue;
+        }
+        if let Some(m) = mnem {
+            if !used.contains(m) {
+                used.push(*m);
+                out[i] = Some(*m);
+            }
+        }
+    }
+    // Pass 2: auto-assign the first free alnum char for everything else.
+    for (i, (disp, _)) in parsed.iter().enumerate() {
+        if list[i].is_sep() || out[i].is_some() {
+            continue;
+        }
+        for ch in disp.chars() {
             if ch.is_ascii_alphanumeric() {
                 let lc = ch.to_ascii_lowercase();
                 if !used.contains(&lc) {
                     used.push(lc);
-                    assigned = Some(bi);
+                    out[i] = Some(lc);
                     break;
                 }
             }
         }
-        out.push(assigned);
     }
     out
 }
 
-/// Index of the node in `list` whose accelerator letter is `ch` (case-insensitive), given the
-/// level's `accels` (from [`level_accels`]). `None` if no item claims that letter.
-fn accel_match(list: &[MenuNode], accels: &[Option<usize>], ch: char) -> Option<usize> {
+/// Index of the node whose accelerator letter is `ch` (case-insensitive), given the level's `accels`
+/// (from [`level_accels`]). `None` if no item claims that letter.
+fn accel_match(accels: &[Option<char>], ch: char) -> Option<usize> {
     let lc = ch.to_ascii_lowercase();
-    accels.iter().enumerate().find_map(|(i, &a)| {
-        let bi = a?;
-        let accel_ch = list[i].label()[bi..].chars().next()?;
-        (accel_ch.to_ascii_lowercase() == lc).then_some(i)
-    })
+    accels.iter().position(|&a| a == Some(lc))
 }
 
 /// A menu label as egui text with its accelerator character underlined (or plain when `accel` is
-/// `None`). Built as a `LayoutJob` so a single char carries the underline; colour/font match the
-/// surrounding chrome (`override_text_color` from the user's `UIFGCOLOR`).
-fn accel_label(ui: &egui::Ui, label: &str, accel: Option<usize>) -> egui::WidgetText {
-    let Some(bi) = accel else { return label.into() };
+/// `None`). The `&` mnemonic marker is stripped for display. Built as a `LayoutJob` so a single char
+/// carries the underline; colour/font match the surrounding chrome (`override_text_color` from the
+/// user's `UIFGCOLOR`).
+fn accel_label(ui: &egui::Ui, raw_label: &str, accel: Option<char>) -> egui::WidgetText {
+    let (label, _) = split_mnemonic(raw_label);
+    let Some(ac) = accel else { return label.into() };
+    // Underline the FIRST case-insensitive occurrence of the accelerator letter in the display text.
+    let Some(bi) = label.char_indices().find(|(_, c)| c.to_ascii_lowercase() == ac).map(|(i, _)| i)
+    else {
+        return label.into();
+    };
     let ch_len = label[bi..].chars().next().map(|c| c.len_utf8()).unwrap_or(0);
     if ch_len == 0 {
         return label.into();
@@ -1243,15 +1284,32 @@ mod menu_tests {
         // through to its next free letter (mirrors the real top bar's Search/Settings collision).
         let list = vec![m_sub("Search", vec![]), m_sub("Settings", vec![])];
         let ac = level_accels(&list);
-        assert_eq!(ac, vec![Some(0), Some(1)], "Search→S(0), Settings→e(1)");
+        assert_eq!(ac, vec![Some('s'), Some('e')], "Search→s, Settings→e (S taken)");
         // Matching is case-insensitive and honours the dedup.
-        assert_eq!(accel_match(&list, &ac, 's'), Some(0));
-        assert_eq!(accel_match(&list, &ac, 'S'), Some(0));
-        assert_eq!(accel_match(&list, &ac, 'e'), Some(1)); // Settings' assigned letter
-        assert_eq!(accel_match(&list, &ac, 'z'), None);
+        assert_eq!(accel_match(&ac, 's'), Some(0));
+        assert_eq!(accel_match(&ac, 'S'), Some(0));
+        assert_eq!(accel_match(&ac, 'e'), Some(1)); // Settings' auto letter
+        assert_eq!(accel_match(&ac, 'z'), None);
         // Separators claim no letter and get no accelerator.
         let list2 = vec![m_item("New", "NEW"), MenuNode::Sep, m_item("Quit", "QUIT")];
-        assert_eq!(level_accels(&list2), vec![Some(0), None, Some(0)]);
+        assert_eq!(level_accels(&list2), vec![Some('n'), None, Some('q')]);
+    }
+
+    #[test]
+    fn explicit_ampersand_mnemonic_claims_its_letter() {
+        // `split_mnemonic` strips the marker and reports the chosen letter; `&&` is a literal `&`.
+        assert_eq!(split_mnemonic("Settings"), ("Settings".into(), None));
+        assert_eq!(split_mnemonic("Setti&ngs"), ("Settings".into(), Some('n')));
+        assert_eq!(split_mnemonic("&File"), ("File".into(), Some('f')));
+        assert_eq!(split_mnemonic("Black && white"), ("Black & white".into(), None));
+        // An explicit mnemonic wins over the auto letter and claims it before its siblings do:
+        // Search still takes 's', but Settings is pinned to 'n' rather than the auto 'e'.
+        let list = vec![m_sub("Search", vec![]), m_sub("Setti&ngs", vec![])];
+        let ac = level_accels(&list);
+        assert_eq!(ac, vec![Some('s'), Some('n')]);
+        assert_eq!(accel_match(&ac, 'n'), Some(1));
+        // The display label (what the bar shows) has no `&`.
+        assert_eq!(split_mnemonic(list[1].label()).0, "Settings");
     }
 
     #[test]
@@ -1750,9 +1808,15 @@ mod menu_tests {
         fn walk(nodes: &[MenuNode], out: &mut Vec<(String, usize)>) {
             for n in nodes {
                 match n {
-                    MenuNode::Item { label, .. } => out.push((label.clone(), label.chars().count())),
+                    MenuNode::Item { label, .. } => {
+                        let d = split_mnemonic(label).0;
+                        let n = d.chars().count();
+                        out.push((d, n));
+                    }
                     MenuNode::Sub { label, children } => {
-                        out.push((label.clone(), label.chars().count() + 5));
+                        let d = split_mnemonic(label).0;
+                        let n = d.chars().count() + 5;
+                        out.push((d, n));
                         walk(children, out);
                     }
                     MenuNode::Sep => {}
@@ -7713,7 +7777,9 @@ impl GuiApp {
                 // Opens the keymap's chart (all modifier tables) in a scrollable TXT modal.
                 m_item(self.tr("menu.tools.keyboard_chart", "Keyboard chart"), "KBCHART"),
             ]),
-            m_sub(self.tr("menubar.settings", "Settings"), vec![
+            // `&n` pins the accelerator to Alt+N: File/Edit/Search/Tools already claim S, E, T, so the
+            // auto-assigner would otherwise land Settings on the unintuitive 'i'. (See `split_mnemonic`.)
+            m_sub(self.tr("menubar.settings", "Setti&ngs"), vec![
                 m_sub(self.tr("menu.settings.appearance", "Appearance"), vec![
                     // `THEME` — a coordinated colour scheme: the two built-ins, or any theme file
                     // (a SAVECFG-format colour preset) chosen from disk and run to activate it.
@@ -8107,7 +8173,7 @@ impl GuiApp {
         let tree = self.menu_tree();
         let Some(level) = nav.level(&tree) else { return };
         let accels = level_accels(level);
-        let Some(idx) = accel_match(level, &accels, ch) else { return };
+        let Some(idx) = accel_match(&accels, ch) else { return };
         let mut nav = nav;
         if let Some(last) = nav.path.last_mut() {
             *last = idx;
@@ -8123,9 +8189,27 @@ impl GuiApp {
         let tree = self.menu_tree();
         let accels = level_accels(&tree);
         if let Some(ch) = letter.chars().next() {
-            if let Some(idx) = accel_match(&tree, &accels, ch) {
+            if let Some(idx) = accel_match(&accels, ch) {
                 self.menu_nav = Some(MenuNav::open(&tree, idx));
             }
+        }
+    }
+
+    /// Index of the top-level menu whose accelerator letter matches `ch` (case-insensitive), or
+    /// `None`. Used by the `Alt`+letter mnemonics to decide whether to claim the keystroke.
+    fn top_accel_index(&self, ch: char) -> Option<usize> {
+        accel_match(&level_accels(&self.menu_tree()), ch)
+    }
+
+    /// Open the top-level menu at `idx` (the `Alt`+letter mnemonic path, after `top_accel_index`).
+    fn open_top_menu(&mut self, idx: usize) {
+        self.menu_nav = Some(MenuNav::open(&self.menu_tree(), idx));
+    }
+
+    /// Open the menu bar at its first menu — the F10 / Ctrl+F2 "focus the menu bar" entry point.
+    fn focus_menu_bar(&mut self) {
+        if self.menu_nav.is_none() {
+            self.menu_nav = Some(MenuNav::open(&self.menu_tree(), 0));
         }
     }
 

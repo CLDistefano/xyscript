@@ -555,6 +555,44 @@ impl Handler {
             self.request_redraw();
             return true; // consumed — don't run the verb or forward to egui
         }
+        // ---- Keyboard access to the menu bar (platform accelerators) --------------------------------
+        // Open the menu bar from the keyboard the way each desktop does — but WITHOUT stealing a chord
+        // the user has bound: we act only when this exact (modifier, key) combo is UNBOUND in the
+        // keymap, so a user binding always wins. (The menu, once open, is modal and handled earlier at
+        // `menu_active()`, so this only fires from the editor.)
+        //   • Windows / Linux: Alt+<letter> opens the top menu whose underlined letter matches.
+        //   • Every platform: F10 or Ctrl+F2 focuses (opens) the menu bar — and these are the ONLY menu
+        //     keys on macOS, where Option+<letter> is reserved for typing special characters.
+        if matches!(ev.state, ElementState::Pressed) && !self.app.menu_active() {
+            let bound = self.key.as_ref().is_some_and(|k| {
+                k.resolver.keymap.resolve(k.resolver.state.current_bitmask(), code).is_some()
+            });
+            if !bound {
+                let focus_bar = matches!(ev.logical_key, Key::Named(NamedKey::F10))
+                    || (self.mods.control_key()
+                        && matches!(ev.logical_key, Key::Named(NamedKey::F2)));
+                if focus_bar {
+                    self.app.focus_menu_bar();
+                    self.request_redraw();
+                    return true;
+                }
+                // Alt+<letter> mnemonic — not on macOS (Option+<letter> types special characters).
+                #[cfg(not(target_os = "macos"))]
+                if self.mods.alt_key() && !self.mods.control_key() {
+                    if let Key::Character(s) = &ev.logical_key {
+                        if let Some(ch) =
+                            s.chars().next().filter(|c| c.is_ascii_alphanumeric())
+                        {
+                            if let Some(idx) = self.app.top_accel_index(ch) {
+                                self.app.open_top_menu(idx);
+                                self.request_redraw();
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let consumed = {
             let Some(key) = self.key.as_mut() else {
                 return false;

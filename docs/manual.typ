@@ -335,6 +335,12 @@ without the mouse, run #raw("MENU") (bind it to a key for a mouse-free bar). Eac
 _underlined accelerator letter_: #raw("MENU \"f\"") opens File directly, and while a menu is open, typing
 an item's accelerator letter jumps to and runs it.
 
+The usual platform shortcuts also work out of the box, and they defer to your keyboard file — each fires
+only when you have not bound that key combination yourself. On Windows and Linux, #kbd("Alt") + a menu's
+underlined letter opens it (#kbd("Alt+F") for File, #kbd("Alt+N") for Settings). On every platform,
+#kbd("F10") or #kbd("Ctrl+F2") opens the bar at the first menu; on macOS these are the way in, since
+#kbd("Option") + a letter is reserved there for typing special characters.
+
 / File: New, Open, Open read-only, Revert, Save, Save As, Save Selection As, Save All, Export PDF,
   Close, Quit. Every one has a CMline verb (covered in *Files, Tabs, and Directories*).
 / Edit: Undo / Redo; the system clipboard (Cut, Copy, Append, Prepend, Paste); Select All and Delete;
