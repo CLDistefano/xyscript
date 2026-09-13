@@ -3384,6 +3384,44 @@ impl Vm<'_, '_> {
                 self.host_op(op)?;
                 Ok(Flow::Next)
             }
+            // `PVJUSTIFY on|off` — justify Preview/`TOPDF` body text (bare reports).
+            "PVJUSTIFY" => {
+                match args.trim().to_ascii_lowercase().as_str() {
+                    "" => *self.ctx.status = Some(format!("PVJUSTIFY: {}", self.special_str("PVJUSTIFY"))),
+                    "on" => self.host_op(EditorOp::SetPreviewJustify(true))?,
+                    "off" => self.host_op(EditorOp::SetPreviewJustify(false))?,
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "PVJUSTIFY: expected on or off, got {other:?}"
+                        )))
+                    }
+                }
+                Ok(Flow::Next)
+            }
+            // First-line indent + page header/footer. Bare reports; an argument sets it (""/`off`
+            // clears). Header/footer use `raw_args` so `{tokens}` and `$` survive verbatim.
+            "PVINDENT" => {
+                if args.trim().is_empty() {
+                    *self.ctx.status = Some(format!("PVINDENT: {}", self.special_str("PVINDENT")));
+                    return Ok(Flow::Next);
+                }
+                self.host_op(EditorOp::SetPreviewIndent(args.trim().to_string()))?;
+                Ok(Flow::Next)
+            }
+            "PVHEADER" | "PVFOOTER" => {
+                if raw_args.trim().is_empty() {
+                    *self.ctx.status = Some(format!("{base}: {}", self.special_str(base)));
+                    return Ok(Flow::Next);
+                }
+                let text = raw_args.trim().to_string();
+                let op = if base == "PVHEADER" {
+                    EditorOp::SetPreviewHeader(text)
+                } else {
+                    EditorOp::SetPreviewFooter(text)
+                };
+                self.host_op(op)?;
+                Ok(Flow::Next)
+            }
             "PVFONTS" => {
                 self.host_op(EditorOp::PreviewFontPicker)?;
                 Ok(Flow::Next)

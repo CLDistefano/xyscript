@@ -7419,6 +7419,7 @@ impl GuiApp {
         let ps_on = ed.special_str("PS") == "1";
         let trusted = ed.trusted();
         let hlauto_on = ed.special_str("HLAUTO") == "1";
+        let pv_justify_on = ed.special_str("PVJUSTIFY") == "1";
         let autocfg_on = !ed.special_str("CFA").is_empty();
         let doctype = ed.special_str("DOCTYPE");
         let hex_on = ed.hex_view();
@@ -7839,6 +7840,20 @@ impl GuiApp {
                             m_item(self.tr("menu.settings.preview.position.tl", "Top left"), "PVPAGEPOS top-left"),
                             m_item(self.tr("menu.settings.preview.position.tr", "Top right"), "PVPAGEPOS top-right"),
                         ]),
+                    ]),
+                    m_tog(self.tr("menu.settings.preview.justify", "Justify text"), pv_justify_on, if pv_justify_on { "PVJUSTIFY off" } else { "PVJUSTIFY on" }),
+                    m_sub(self.tr("menu.settings.preview.indent", "First-line indent"), vec![
+                        m_item(self.tr("menu.settings.preview.indent.none", "None"), "PVINDENT off"),
+                        m_item("1em", "PVINDENT 1em"),
+                        m_item("1.5em", "PVINDENT 1.5em"),
+                        m_item("2em", "PVINDENT 2em"),
+                        m_stage(self.tr("menu.settings.preview.indent.custom", "Custom…"), "PVINDENT "),
+                    ]),
+                    m_sub(self.tr("menu.settings.preview.header_footer", "Header / footer"), vec![
+                        m_stage(self.tr("menu.settings.preview.header", "Header…"), "PVHEADER "),
+                        m_stage(self.tr("menu.settings.preview.footer", "Footer…"), "PVFOOTER "),
+                        m_item(self.tr("menu.settings.preview.header.off", "Clear header"), "PVHEADER off"),
+                        m_item(self.tr("menu.settings.preview.footer.off", "Clear footer"), "PVFOOTER off"),
                     ]),
                 ]),
                 m_sub(self.tr("menu.settings.syntax", "Syntax highlighting"), vec![

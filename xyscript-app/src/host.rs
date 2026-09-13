@@ -2977,6 +2977,14 @@ pub struct AppHost {
     /// `$PVPAGENUM`/`$PVPAGEPOS`; SaveCfg.
     preview_page_num: Option<String>,
     preview_page_align: String,
+    /// Preview/`TOPDF` body justification (`PVJUSTIFY on|off`, default on) and first-line paragraph
+    /// indent (`PVINDENT` — a length, or `None` for none). `$PVJUSTIFY`/`$PVINDENT`; SaveCfg.
+    preview_justify: bool,
+    preview_indent: Option<String>,
+    /// Preview/`TOPDF` page header / footer templates (`PVHEADER`/`PVFOOTER`; `None` = none). `|`
+    /// splits left/center/right; tokens `{date}`/`{file}`/`{page}`/`{pages}`. `$PVHEADER`/`$PVFOOTER`.
+    preview_header: Option<String>,
+    preview_footer: Option<String>,
 }
 
 // Factory defaults for the GUI sizing knobs (B16 / `UIRESET`). `editor_font`/`leading` match
@@ -3246,6 +3254,10 @@ impl AppHost {
             preview_spacing: None,
             preview_page_num: None,
             preview_page_align: "bottom-center".to_string(),
+            preview_justify: true,
+            preview_indent: None,
+            preview_header: None,
+            preview_footer: None,
             preview_font_family: None,
             preview_font_size: None,
             preview_code_family: None,
@@ -3349,6 +3361,11 @@ impl AppHost {
             spacing: self.preview_spacing.clone(),
             page_num: self.preview_page_num.clone(),
             page_align: self.preview_page_align.clone(),
+            justify: self.preview_justify,
+            indent: self.preview_indent.clone(),
+            header: self.preview_header.clone(),
+            footer: self.preview_footer.clone(),
+            doc_name: self.active_file_name(),
         }
     }
     /// UI-chrome font family (`UIFAMILY`), or `None` for egui's built-in default.
@@ -9051,6 +9068,26 @@ impl AppHost {
         } else if full {
             put(&mut s, "Preview/TOPDF page-number position (e.g. bottom-center, top-right)", "PVPAGEPOS bottom-center".to_string());
         }
+        if !self.preview_justify {
+            put(&mut s, "Preview/TOPDF justify body text", "PVJUSTIFY off".to_string());
+        } else if full {
+            put(&mut s, "Preview/TOPDF justify body text (on/off)", "PVJUSTIFY on".to_string());
+        }
+        match &self.preview_indent {
+            Some(ind) => put(&mut s, "Preview/TOPDF first-line paragraph indent", format!("PVINDENT {ind}")),
+            None if full => put(&mut s, "Preview/TOPDF first-line paragraph indent ('off' = none)", "PVINDENT off".to_string()),
+            None => {}
+        }
+        match &self.preview_header {
+            Some(t) => put(&mut s, "Preview/TOPDF page header ('|' = left/center/right; {date} {file} {page} {pages})", format!("PVHEADER {t}")),
+            None if full => put(&mut s, "Preview/TOPDF page header ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", "PVHEADER off".to_string()),
+            None => {}
+        }
+        match &self.preview_footer {
+            Some(t) => put(&mut s, "Preview/TOPDF page footer ('|' = left/center/right; {date} {file} {page} {pages})", format!("PVFOOTER {t}")),
+            None if full => put(&mut s, "Preview/TOPDF page footer ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", "PVFOOTER off".to_string()),
+            None => {}
+        }
         put(&mut s, "Line spacing, percent of the editor font", format!("LSP {}", self.leading));
         put(&mut s, "Left margin (offset), character columns", format!("OFL {}", self.margin_left as i64));
         put(&mut s, "Right margin (offset), character columns", format!("OFR {}", self.margin_right as i64));
@@ -12625,6 +12662,50 @@ impl Host for AppHost {
                 self.preview_page_align = pos.clone();
                 return Ok(Value::str(format!("page-number position: {pos}")));
             }
+            EditorOp::SetPreviewJustify(on) => {
+                self.preview_justify = on;
+                return Ok(Value::str(format!("justify: {}", if on { "on" } else { "off" })));
+            }
+            EditorOp::SetPreviewIndent(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("default") || t.eq_ignore_ascii_case("off") {
+                    self.preview_indent = None;
+                    return Ok(Value::str("first-line indent: none"));
+                }
+                let norm = crate::pdf::normalize_par_len(t)
+                    .map_err(|e| XplError::trappable(format!("PVINDENT: {e}")))?;
+                self.preview_indent = Some(norm.clone());
+                return Ok(Value::str(format!("first-line indent: {norm}")));
+            }
+            EditorOp::SetPreviewHeader(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("off") {
+                    self.preview_header = None;
+                    return Ok(Value::str("header: off"));
+                }
+                // Allow a quoted template (spaces / `;`-free) — strip one surrounding pair.
+                let text = if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
+                    &t[1..t.len() - 1]
+                } else {
+                    t
+                };
+                self.preview_header = Some(text.to_string());
+                return Ok(Value::str(format!("header: {text}")));
+            }
+            EditorOp::SetPreviewFooter(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("off") {
+                    self.preview_footer = None;
+                    return Ok(Value::str("footer: off"));
+                }
+                let text = if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
+                    &t[1..t.len() - 1]
+                } else {
+                    t
+                };
+                self.preview_footer = Some(text.to_string());
+                return Ok(Value::str(format!("footer: {text}")));
+            }
             EditorOp::SetCmlineCaretShape(shape) => {
                 self.cmline_caret_shape = shape;
                 return Ok(Value::str(format!("command-line caret shape: {}", shape.name())));
@@ -13103,6 +13184,10 @@ impl Host for AppHost {
             "PVSPACING" => Some(Value::str(self.preview_spacing.clone().unwrap_or_default())),
             "PVPAGENUM" => Some(Value::str(self.preview_page_num.clone().unwrap_or_default())),
             "PVPAGEPOS" => Some(Value::str(self.preview_page_align.clone())),
+            "PVJUSTIFY" => Some(Value::Int(if self.preview_justify { 1 } else { 0 })),
+            "PVINDENT" => Some(Value::str(self.preview_indent.clone().unwrap_or_default())),
+            "PVHEADER" => Some(Value::str(self.preview_header.clone().unwrap_or_default())),
+            "PVFOOTER" => Some(Value::str(self.preview_footer.clone().unwrap_or_default())),
             "LSP" => Some(Value::Float(self.leading as f64)),
             // `$OF` reads the left margin (compat); `$OFL`/`$OFR` the explicit sides.
             "OF" | "OFL" => Some(Value::Int(self.margin_left as i64)),
@@ -14673,6 +14758,33 @@ mod tests {
         assert_eq!(f.page_align, "bottom-right");
         h.editor_op(EditorOp::SetPreviewPageNumber("off".into())).unwrap();
         assert_eq!(h.special("PVPAGENUM"), Some(Value::str("")));
+    }
+
+    #[test]
+    fn pv_justify_indent_header_footer_set_read_and_feed_the_render() {
+        use super::{AppHost, EditorOp};
+        use xyscript_xpl::{Host, Value};
+        let mut h = AppHost::new();
+        // Defaults: justify on, no indent, no header/footer.
+        assert_eq!(h.special("PVJUSTIFY"), Some(Value::Int(1)));
+        assert_eq!(h.special("PVINDENT"), Some(Value::str("")));
+        assert_eq!(h.special("PVHEADER"), Some(Value::str("")));
+        h.editor_op(EditorOp::SetPreviewJustify(false)).unwrap();
+        assert_eq!(h.special("PVJUSTIFY"), Some(Value::Int(0)));
+        h.editor_op(EditorOp::SetPreviewIndent("2".into())).unwrap(); // bare → em
+        assert_eq!(h.special("PVINDENT"), Some(Value::str("2em")));
+        h.editor_op(EditorOp::SetPreviewIndent("off".into())).unwrap();
+        assert_eq!(h.special("PVINDENT"), Some(Value::str("")));
+        h.editor_op(EditorOp::SetPreviewHeader("\"{file} | {date}\"".into())).unwrap();
+        assert_eq!(h.special("PVHEADER"), Some(Value::str("{file} | {date}"))); // quotes stripped
+        h.editor_op(EditorOp::SetPreviewFooter("|{page}|".into())).unwrap();
+        // The render config carries the choices.
+        let f = h.preview_fonts();
+        assert!(!f.justify);
+        assert_eq!(f.header.as_deref(), Some("{file} | {date}"));
+        assert_eq!(f.footer.as_deref(), Some("|{page}|"));
+        h.editor_op(EditorOp::SetPreviewHeader("off".into())).unwrap();
+        assert_eq!(h.special("PVHEADER"), Some(Value::str("")));
     }
 
     #[test]

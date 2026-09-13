@@ -102,6 +102,16 @@ pub struct PreviewFonts {
     /// Page-number position as a friendly token (`bottom-center`, `top-right`, …), mapped to a Typst
     /// alignment in [`gfm_preamble`]. Only used when `page_num` is `Some`.
     pub page_align: String,
+    /// Justify body text — `#set par(justify: …)`. Default `true`.
+    pub justify: bool,
+    /// First-line paragraph indent — `#set par(first-line-indent: …)`. `None` = none.
+    pub indent: Option<String>,
+    /// Optional page header / footer templates — `#set page(header/footer: …)`. `|`-separated
+    /// left/center/right segments; the tokens `{date}` `{file}` `{page}` `{pages}` expand. `None` = none.
+    pub header: Option<String>,
+    pub footer: Option<String>,
+    /// The active document's display name, for the `{file}` token in a header/footer. `None` = untitled.
+    pub doc_name: Option<String>,
 }
 
 impl Default for PreviewFonts {
@@ -116,6 +126,11 @@ impl Default for PreviewFonts {
             spacing: None,
             page_num: None,
             page_align: "bottom-center".to_string(),
+            justify: true,
+            indent: None,
+            header: None,
+            footer: None,
+            doc_name: None,
         }
     }
 }
@@ -273,6 +288,47 @@ fn page_align_typst(friendly: &str) -> String {
     format!("{horiz} + {vert}")
 }
 
+/// Render a header/footer template to Typst header/footer CONTENT (goes inside `[…]`). `|` splits it
+/// into left/center/right segments joined by `#h(1fr)`; the tokens `{date}`/`{file}`/`{page}`/`{pages}`
+/// expand to Typst code, and all literal text is escaped so it can never inject markup. `{file}` uses
+/// `doc_name` (else "untitled"). An unknown `{token}` is left as literal text.
+fn render_header_footer(template: &str, doc_name: Option<&str>) -> String {
+    template
+        .split('|')
+        .map(|seg| render_hf_segment(seg, doc_name))
+        .collect::<Vec<_>>()
+        .join(" #h(1fr) ")
+}
+
+fn render_hf_segment(seg: &str, doc_name: Option<&str>) -> String {
+    use crate::typst_esc::escape_text;
+    let mut out = String::new();
+    let mut rest = seg;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&escape_text(&rest[..open]));
+        rest = &rest[open..];
+        if let Some(close) = rest.find('}') {
+            let tok = rest[1..close].trim().to_ascii_lowercase();
+            match tok.as_str() {
+                "date" => out.push_str(
+                    "#datetime.today().display(\"[month repr:long] [day padding:none], [year]\")",
+                ),
+                "file" => out.push_str(&escape_text(doc_name.unwrap_or("untitled"))),
+                "page" => out.push_str("#context here().page()"),
+                "pages" => out.push_str("#context counter(page).final().first()"),
+                _ => out.push_str(&escape_text(&rest[..=close])), // unknown → keep literal "{…}"
+            }
+            rest = &rest[close + 1..];
+        } else {
+            // Unterminated "{" — emit the remainder literally.
+            out.push_str(&escape_text(rest));
+            rest = "";
+        }
+    }
+    out.push_str(&escape_text(rest));
+    out
+}
+
 /// System font database, scanned **once** (a rescan per preview keystroke would be far too slow) and
 /// reused across every render. Lets the Preview/`TOPDF` path resolve a user-chosen family name to the
 /// face bytes handed to Typst. Self-contained here so it also works headless (`--run` `TOPDF`).
@@ -418,9 +474,20 @@ fn gfm_preamble(fonts: &PreviewFonts) -> (String, Vec<Vec<u8>>) {
             page_align_typst(&fonts.page_align)
         ));
     }
+    // Optional page header / footer (a custom footer supersedes the auto page number at that edge —
+    // put a {page} token in it to keep the number).
+    if let Some(h) = &fonts.header {
+        page.push_str(&format!(", header: [{}]", render_header_footer(h, fonts.doc_name.as_deref())));
+    }
+    if let Some(f) = &fonts.footer {
+        page.push_str(&format!(", footer: [{}]", render_header_footer(f, fonts.doc_name.as_deref())));
+    }
     let mut pre = format!("#set page({page})\n");
-    // `#set par(...)`: justify plus the optional line-spacing / paragraph-spacing overrides.
-    let mut par = String::from("justify: true");
+    // `#set par(...)`: justify, optional first-line indent, and the line-/paragraph-spacing overrides.
+    let mut par = format!("justify: {}", fonts.justify);
+    if let Some(ind) = &fonts.indent {
+        par.push_str(&format!(", first-line-indent: {ind}"));
+    }
     if let Some(l) = &fonts.leading {
         par.push_str(&format!(", leading: {l}"));
     }
@@ -808,6 +875,47 @@ mod tests {
         assert_eq!(normalize_par_len("1.5").unwrap(), "1.5em"); // bare → em
         assert_eq!(normalize_par_len("12pt").unwrap(), "12pt");
         assert!(normalize_par_len("1parsec").is_err());
+    }
+
+    #[test]
+    fn justify_indent_and_header_footer_emit_the_expected_rules() {
+        // Justify off + first-line indent fold into `#set par`.
+        let (p, _) =
+            gfm_preamble(&PreviewFonts { justify: false, indent: Some("1.5em".into()), ..dflt() });
+        assert!(p.contains("#set par(justify: false, first-line-indent: 1.5em)"), "{p}");
+        // Header: `|`-segments joined by #h(1fr), {file} filled, {date} → a datetime call.
+        let (p, _) = gfm_preamble(&PreviewFonts {
+            header: Some("{file}|Draft|{date}".into()),
+            doc_name: Some("report.md".into()),
+            ..dflt()
+        });
+        assert!(p.contains("header: [report.md #h(1fr) Draft #h(1fr) #datetime.today()"), "{p}");
+        // Footer: {page}/{pages} → context page counters; a leading/trailing `|` centers via #h(1fr).
+        let (p, _) = gfm_preamble(&PreviewFonts { footer: Some("|{page} of {pages}|".into()), ..dflt() });
+        assert!(
+            p.contains("footer: [ #h(1fr) #context here().page() of #context counter(page).final().first() #h(1fr) ]"),
+            "{p}"
+        );
+        // A `#` in header text is escaped, not injected as code.
+        let (p, _) = gfm_preamble(&PreviewFonts { header: Some("a #b".into()), ..dflt() });
+        assert!(!p.contains("header: [a #b]"), "raw # should be escaped: {p}");
+    }
+
+    #[test]
+    fn header_footer_tokens_compile_to_a_valid_pdf() {
+        // End-to-end proof the {date}/{file}/{page}/{pages} Typst expands and compiles.
+        let md = "# Title\n\nSome body text spread over a couple of lines to fill a page.\n";
+        let fonts = PreviewFonts {
+            header: Some("{file}|Draft|{date}".into()),
+            footer: Some("|Page {page} of {pages}|".into()),
+            doc_name: Some("report.md".into()),
+            justify: false,
+            indent: Some("1em".into()),
+            ..dflt()
+        };
+        let pdf = gfm_to_pdf(md, dot(), &fonts, None).expect("header/footer GFM should compile");
+        assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
+        assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
     }
 
     #[test]

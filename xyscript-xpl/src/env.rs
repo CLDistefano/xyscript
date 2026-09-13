@@ -103,6 +103,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "PVFAMILY", "PVSIZE", "PVCODE",
     "PVMARGIN", "PVMARGINL", "PVMARGINR", "PVMARGINT", "PVMARGINB",
     "PVPAPER", "PVLEADING", "PVSPACING", "PVPAGENUM", "PVPAGEPOS",
+    "PVJUSTIFY", "PVINDENT", "PVHEADER", "PVFOOTER",
     // counters C1..C9 — peek the current value (no advance), rendered without the decorator
     "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9",
     // email (send config + IMAP receive config; masked password reads "set"/"not set")

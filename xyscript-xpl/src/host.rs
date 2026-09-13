@@ -844,6 +844,15 @@ pub enum EditorOp {
     /// Preview/`TOPDF` page-number position (`PVPAGEPOS` — a friendly token like `bottom-center`).
     /// `$PVPAGEPOS`.
     SetPreviewPageAlign(String),
+    /// Preview/`TOPDF` body justification (`PVJUSTIFY on|off`). `$PVJUSTIFY`.
+    SetPreviewJustify(bool),
+    /// Preview/`TOPDF` first-line paragraph indent (`PVINDENT` — a length, or ""/`off`/`default` = none).
+    /// `$PVINDENT`.
+    SetPreviewIndent(String),
+    /// Preview/`TOPDF` page header / footer template (`PVHEADER`/`PVFOOTER`; ""/`off` = none).
+    /// `$PVHEADER`/`$PVFOOTER`.
+    SetPreviewHeader(String),
+    SetPreviewFooter(String),
     /// Set the command-line caret shape (`CMCRSHAPE`). Read back via `$CMCRSHAPE`.
     SetCmlineCaretShape(CaretShape),
     /// Set where the command line is drawn (`CMPLACE top|bottom|hidden`). Read back via `$CMPLACE`.
