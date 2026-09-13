@@ -12004,6 +12004,28 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn shipped_and_baked_internal_kbd_are_identical() {
+        // Mirror of the same guard in xyscript-gui, so the main-workspace `cargo test` also catches it.
+        // The startup keymap exists as two physical copies: the one the exe BAKES
+        // (xyscript-kbd/kbd/xyscript-internal.kbd) and the loose copy shipped in releases / deployed to
+        // the runtime folder (packaging/runtime/xyscript-internal.kbd). They must stay identical so
+        // `LOADKBD xyscript-internal.kbd` matches the built-in default — they have drifted before. The
+        // baked copy is the source of truth: copy it over the packaging one to fix. Line endings are
+        // normalized (the loose copy is CRLF on a Windows checkout via autocrlf, the baked one LF) — the
+        // invariant is identical content, not bytes.
+        const BAKED_KBD: &str = include_str!("../../xyscript-kbd/kbd/xyscript-internal.kbd");
+        const PACKAGED_KBD: &str = include_str!("../../packaging/runtime/xyscript-internal.kbd");
+        let norm = |s: &str| s.replace("\r\n", "\n");
+        assert_eq!(
+            norm(BAKED_KBD),
+            norm(PACKAGED_KBD),
+            "xyscript-kbd/kbd/xyscript-internal.kbd (baked into the exe) and \
+             packaging/runtime/xyscript-internal.kbd (the shipped loose copy) have diverged. \
+             The baked copy is the source of truth: copy it over the packaging one."
+        );
+    }
+
+    #[test]
     fn shipped_templates_compile() {
         // Every starter template in templates/ must render through the real engine — a .typ as
         // authored Typst, a .md through the GFM path (so a broken template can't reach a tester).
