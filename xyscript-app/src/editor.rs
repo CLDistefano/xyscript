@@ -11757,6 +11757,51 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         }
     }
 
+    /// SaveCfg (which serializes via `config_script(false, …)`) must capture every customized
+    /// Preview/PDF page-setup knob so it round-trips. Asserts each appears in the minimal config.
+    #[test]
+    fn savecfg_captures_the_preview_page_setup_settings() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("PVPAPER legal");
+        e.run_command("PVLEADING 1.5");
+        e.run_command("PVSPACING 2em");
+        e.run_command("PVPAGENUM \"Page 1\"");
+        e.run_command("PVPAGEPOS bottom-right");
+        e.run_command("PVJUSTIFY off");
+        e.run_command("PVINDENT 1em");
+        e.run_command("PVHEADER \"{file}||{date}\"");
+        e.run_command("PVFOOTER \"|{page} of {pages}|\"");
+        let cfg = e.host().config_script(false, false); // exactly what SAVECFG writes (minimal)
+        for want in [
+            "PVPAPER legal",
+            "PVLEADING 1.5em",
+            "PVSPACING 2em",
+            "PVPAGENUM Page 1",
+            "PVPAGEPOS bottom-right",
+            "PVJUSTIFY off",
+            "PVINDENT 1em",
+            "PVHEADER {file}||{date}",
+            "PVFOOTER |{page} of {pages}|",
+        ] {
+            assert!(cfg.contains(want), "SAVECFG dropped {want:?}\n---\n{cfg}");
+        }
+        // Defaults are written too (like PVMARGIN) — visible in every SAVECFG, not only when changed.
+        let dflt = Editor::new(typing_keymap()).host().config_script(false, false);
+        for want in [
+            "PVPAPER letter",
+            "PVLEADING default",
+            "PVSPACING default",
+            "PVPAGENUM off",
+            "PVPAGEPOS bottom-center",
+            "PVJUSTIFY on",
+            "PVINDENT off",
+            "PVHEADER off",
+            "PVFOOTER off",
+        ] {
+            assert!(dflt.contains(want), "SAVECFG omits default {want:?}\n---\n{dflt}");
+        }
+    }
+
     /// Guard: `grammars/xpl.xpl` claims its `function` rule "mirrors FUNCTION_NAMES" and its `keyword`
     /// rule tracks the control-flow keywords — so every `FUNCTION_NAMES` entry must appear in the
     /// function alternation and every `CONTROL_KEYWORDS` entry in the keyword alternation. Adding a new

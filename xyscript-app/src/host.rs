@@ -9041,53 +9041,19 @@ impl AppHost {
         put(&mut s, "Preview/TOPDF page margin -- right", format!("PVMARGINR {}", m.right));
         put(&mut s, "Preview/TOPDF page margin -- top", format!("PVMARGINT {}", m.top));
         put(&mut s, "Preview/TOPDF page margin -- bottom", format!("PVMARGINB {}", m.bottom));
-        // Preview/TOPDF page format, spacing, and page numbering (all optional — emitted when set,
-        // and, in a full config, at their default form so the knob is discoverable).
-        if self.preview_paper != "letter" {
-            put(&mut s, "Preview/TOPDF page format", format!("PVPAPER {}", self.preview_paper));
-        } else if full {
-            put(&mut s, "Preview/TOPDF page format (letter/legal/tabloid/a4/a5/a6)", "PVPAPER letter".to_string());
-        }
-        match &self.preview_leading {
-            Some(l) => put(&mut s, "Preview/TOPDF line spacing (em/pt/cm/mm/in)", format!("PVLEADING {l}")),
-            None if full => put(&mut s, "Preview/TOPDF line spacing ('default' = Typst 0.65em)", "PVLEADING default".to_string()),
-            None => {}
-        }
-        match &self.preview_spacing {
-            Some(sp) => put(&mut s, "Preview/TOPDF extra space between paragraphs", format!("PVSPACING {sp}")),
-            None if full => put(&mut s, "Preview/TOPDF extra space between paragraphs ('default' = Typst 1.2em)", "PVSPACING default".to_string()),
-            None => {}
-        }
-        match &self.preview_page_num {
-            Some(pat) => put(&mut s, "Preview/TOPDF page numbers (pattern; 'off' = none)", format!("PVPAGENUM {pat}")),
-            None if full => put(&mut s, "Preview/TOPDF page numbers (pattern like '1', 'Page 1', '1 of 1'; 'off' = none)", "PVPAGENUM off".to_string()),
-            None => {}
-        }
-        if self.preview_page_align != "bottom-center" {
-            put(&mut s, "Preview/TOPDF page-number position", format!("PVPAGEPOS {}", self.preview_page_align));
-        } else if full {
-            put(&mut s, "Preview/TOPDF page-number position (e.g. bottom-center, top-right)", "PVPAGEPOS bottom-center".to_string());
-        }
-        if !self.preview_justify {
-            put(&mut s, "Preview/TOPDF justify body text", "PVJUSTIFY off".to_string());
-        } else if full {
-            put(&mut s, "Preview/TOPDF justify body text (on/off)", "PVJUSTIFY on".to_string());
-        }
-        match &self.preview_indent {
-            Some(ind) => put(&mut s, "Preview/TOPDF first-line paragraph indent", format!("PVINDENT {ind}")),
-            None if full => put(&mut s, "Preview/TOPDF first-line paragraph indent ('off' = none)", "PVINDENT off".to_string()),
-            None => {}
-        }
-        match &self.preview_header {
-            Some(t) => put(&mut s, "Preview/TOPDF page header ('|' = left/center/right; {date} {file} {page} {pages})", format!("PVHEADER {t}")),
-            None if full => put(&mut s, "Preview/TOPDF page header ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", "PVHEADER off".to_string()),
-            None => {}
-        }
-        match &self.preview_footer {
-            Some(t) => put(&mut s, "Preview/TOPDF page footer ('|' = left/center/right; {date} {file} {page} {pages})", format!("PVFOOTER {t}")),
-            None if full => put(&mut s, "Preview/TOPDF page footer ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", "PVFOOTER off".to_string()),
-            None => {}
-        }
+        // Preview/TOPDF page format, spacing, and page numbering. Emitted UNCONDITIONALLY (like the
+        // page margins above), so the settings are visible in every saved config even at their
+        // defaults. A `None` optional writes its no-op form (`default`/`off`), which reloads as a no-op.
+        let or = |o: &Option<String>, dflt: &str| o.clone().unwrap_or_else(|| dflt.to_string());
+        put(&mut s, "Preview/TOPDF page format (letter/legal/tabloid/a4/a5/a6)", format!("PVPAPER {}", self.preview_paper));
+        put(&mut s, "Preview/TOPDF line spacing (em/pt/cm/mm/in; 'default' = Typst 0.65em)", format!("PVLEADING {}", or(&self.preview_leading, "default")));
+        put(&mut s, "Preview/TOPDF extra space between paragraphs ('default' = Typst 1.2em)", format!("PVSPACING {}", or(&self.preview_spacing, "default")));
+        put(&mut s, "Preview/TOPDF page numbers (pattern like '1', 'Page 1', '1 of 1'; 'off' = none)", format!("PVPAGENUM {}", or(&self.preview_page_num, "off")));
+        put(&mut s, "Preview/TOPDF page-number position (e.g. bottom-center, top-right)", format!("PVPAGEPOS {}", self.preview_page_align));
+        put(&mut s, "Preview/TOPDF justify body text (on/off)", format!("PVJUSTIFY {}", if self.preview_justify { "on" } else { "off" }));
+        put(&mut s, "Preview/TOPDF first-line paragraph indent ('off' = none)", format!("PVINDENT {}", or(&self.preview_indent, "off")));
+        put(&mut s, "Preview/TOPDF page header ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", format!("PVHEADER {}", or(&self.preview_header, "off")));
+        put(&mut s, "Preview/TOPDF page footer ('|' = left/center/right; {date} {file} {page} {pages}; 'off' = none)", format!("PVFOOTER {}", or(&self.preview_footer, "off")));
         put(&mut s, "Line spacing, percent of the editor font", format!("LSP {}", self.leading));
         put(&mut s, "Left margin (offset), character columns", format!("OFL {}", self.margin_left as i64));
         put(&mut s, "Right margin (offset), character columns", format!("OFR {}", self.margin_right as i64));
