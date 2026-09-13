@@ -3366,6 +3366,24 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetPvMargin { side, value: args.trim().to_string() })?;
                 Ok(Flow::Next)
             }
+            // Preview/`TOPDF` page format, spacing, and page numbering. Each bare verb reports the
+            // current value; with an argument it sets it. GFM/HTML only (authored Typst self-styles).
+            "PVPAPER" | "PVLEADING" | "PVSPACING" | "PVPAGENUM" | "PVPAGEPOS" => {
+                if args.trim().is_empty() {
+                    *self.ctx.status = Some(format!("{base}: {}", self.special_str(base)));
+                    return Ok(Flow::Next);
+                }
+                let arg = args.trim().to_string();
+                let op = match base {
+                    "PVPAPER" => EditorOp::SetPreviewPaper(arg),
+                    "PVLEADING" => EditorOp::SetPreviewLeading(arg),
+                    "PVSPACING" => EditorOp::SetPreviewSpacing(arg),
+                    "PVPAGENUM" => EditorOp::SetPreviewPageNumber(arg),
+                    _ => EditorOp::SetPreviewPageAlign(arg),
+                };
+                self.host_op(op)?;
+                Ok(Flow::Next)
+            }
             "PVFONTS" => {
                 self.host_op(EditorOp::PreviewFontPicker)?;
                 Ok(Flow::Next)

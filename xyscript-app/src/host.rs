@@ -2965,6 +2965,18 @@ pub struct AppHost {
     /// GFM Preview/`TOPDF` page margins (`PVMARGIN`/`PVMARGINL/R/T/B`) — each a validated Typst length
     /// string (default `"1in"`). `$PVMARGIN*`; SaveCfg. Authored-Typst docs set their own page.
     preview_margins: crate::pdf::PageMargins,
+    /// Preview/`TOPDF` page format (`PVPAPER`) — a friendly token letter/legal/tabloid/a4/a5/a6.
+    /// Default `"letter"`. `$PVPAPER`; SaveCfg.
+    preview_paper: String,
+    /// Preview/`TOPDF` line spacing (`PVLEADING`) and paragraph spacing (`PVSPACING`) — validated Typst
+    /// lengths, or `None` for Typst's defaults (0.65em / 1.2em). `$PVLEADING`/`$PVSPACING`; SaveCfg.
+    preview_leading: Option<String>,
+    preview_spacing: Option<String>,
+    /// Preview/`TOPDF` page numbering (`PVPAGENUM` — a numbering pattern like `1`, `Page 1`, `1 of 1`;
+    /// `None` = off) and its position (`PVPAGEPOS` — a friendly token, default `"bottom-center"`).
+    /// `$PVPAGENUM`/`$PVPAGEPOS`; SaveCfg.
+    preview_page_num: Option<String>,
+    preview_page_align: String,
 }
 
 // Factory defaults for the GUI sizing knobs (B16 / `UIRESET`). `editor_font`/`leading` match
@@ -3229,6 +3241,11 @@ impl AppHost {
                 nanos ^ 0x9E37_79B9_7F4A_7C15
             }),
             preview_margins: crate::pdf::PageMargins::default(),
+            preview_paper: "letter".to_string(),
+            preview_leading: None,
+            preview_spacing: None,
+            preview_page_num: None,
+            preview_page_align: "bottom-center".to_string(),
             preview_font_family: None,
             preview_font_size: None,
             preview_code_family: None,
@@ -3327,6 +3344,11 @@ impl AppHost {
             size: self.preview_font_size,
             code: self.preview_code_family.clone(),
             margins: self.preview_margins.clone(),
+            paper: self.preview_paper.clone(),
+            leading: self.preview_leading.clone(),
+            spacing: self.preview_spacing.clone(),
+            page_num: self.preview_page_num.clone(),
+            page_align: self.preview_page_align.clone(),
         }
     }
     /// UI-chrome font family (`UIFAMILY`), or `None` for egui's built-in default.
@@ -9002,6 +9024,33 @@ impl AppHost {
         put(&mut s, "Preview/TOPDF page margin -- right", format!("PVMARGINR {}", m.right));
         put(&mut s, "Preview/TOPDF page margin -- top", format!("PVMARGINT {}", m.top));
         put(&mut s, "Preview/TOPDF page margin -- bottom", format!("PVMARGINB {}", m.bottom));
+        // Preview/TOPDF page format, spacing, and page numbering (all optional — emitted when set,
+        // and, in a full config, at their default form so the knob is discoverable).
+        if self.preview_paper != "letter" {
+            put(&mut s, "Preview/TOPDF page format", format!("PVPAPER {}", self.preview_paper));
+        } else if full {
+            put(&mut s, "Preview/TOPDF page format (letter/legal/tabloid/a4/a5/a6)", "PVPAPER letter".to_string());
+        }
+        match &self.preview_leading {
+            Some(l) => put(&mut s, "Preview/TOPDF line spacing (em/pt/cm/mm/in)", format!("PVLEADING {l}")),
+            None if full => put(&mut s, "Preview/TOPDF line spacing ('default' = Typst 0.65em)", "PVLEADING default".to_string()),
+            None => {}
+        }
+        match &self.preview_spacing {
+            Some(sp) => put(&mut s, "Preview/TOPDF extra space between paragraphs", format!("PVSPACING {sp}")),
+            None if full => put(&mut s, "Preview/TOPDF extra space between paragraphs ('default' = Typst 1.2em)", "PVSPACING default".to_string()),
+            None => {}
+        }
+        match &self.preview_page_num {
+            Some(pat) => put(&mut s, "Preview/TOPDF page numbers (pattern; 'off' = none)", format!("PVPAGENUM {pat}")),
+            None if full => put(&mut s, "Preview/TOPDF page numbers (pattern like '1', 'Page 1', '1 of 1'; 'off' = none)", "PVPAGENUM off".to_string()),
+            None => {}
+        }
+        if self.preview_page_align != "bottom-center" {
+            put(&mut s, "Preview/TOPDF page-number position", format!("PVPAGEPOS {}", self.preview_page_align));
+        } else if full {
+            put(&mut s, "Preview/TOPDF page-number position (e.g. bottom-center, top-right)", "PVPAGEPOS bottom-center".to_string());
+        }
         put(&mut s, "Line spacing, percent of the editor font", format!("LSP {}", self.leading));
         put(&mut s, "Left margin (offset), character columns", format!("OFL {}", self.margin_left as i64));
         put(&mut s, "Right margin (offset), character columns", format!("OFR {}", self.margin_right as i64));
@@ -12527,6 +12576,55 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(format!("{which}: {norm}")));
             }
+            EditorOp::SetPreviewPaper(v) => {
+                let paper = crate::pdf::canon_paper(&v)
+                    .map_err(|e| XplError::trappable(format!("PVPAPER: {e}")))?;
+                self.preview_paper = paper.clone();
+                return Ok(Value::str(format!("page format: {paper}")));
+            }
+            EditorOp::SetPreviewLeading(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    self.preview_leading = None;
+                    return Ok(Value::str("line spacing: default"));
+                }
+                let norm = crate::pdf::normalize_par_len(t)
+                    .map_err(|e| XplError::trappable(format!("PVLEADING: {e}")))?;
+                self.preview_leading = Some(norm.clone());
+                return Ok(Value::str(format!("line spacing: {norm}")));
+            }
+            EditorOp::SetPreviewSpacing(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    self.preview_spacing = None;
+                    return Ok(Value::str("paragraph spacing: default"));
+                }
+                let norm = crate::pdf::normalize_par_len(t)
+                    .map_err(|e| XplError::trappable(format!("PVSPACING: {e}")))?;
+                self.preview_spacing = Some(norm.clone());
+                return Ok(Value::str(format!("paragraph spacing: {norm}")));
+            }
+            EditorOp::SetPreviewPageNumber(v) => {
+                let t = v.trim();
+                if t.is_empty() || t.eq_ignore_ascii_case("off") {
+                    self.preview_page_num = None;
+                    return Ok(Value::str("page numbers: off"));
+                }
+                // Allow a quoted pattern (`PVPAGENUM "Page 1"`) — strip one surrounding pair.
+                let pat = if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
+                    &t[1..t.len() - 1]
+                } else {
+                    t
+                };
+                self.preview_page_num = Some(pat.to_string());
+                return Ok(Value::str(format!("page numbers: {pat}")));
+            }
+            EditorOp::SetPreviewPageAlign(v) => {
+                let pos = crate::pdf::canon_page_align(&v)
+                    .map_err(|e| XplError::trappable(format!("PVPAGEPOS: {e}")))?;
+                self.preview_page_align = pos.clone();
+                return Ok(Value::str(format!("page-number position: {pos}")));
+            }
             EditorOp::SetCmlineCaretShape(shape) => {
                 self.cmline_caret_shape = shape;
                 return Ok(Value::str(format!("command-line caret shape: {}", shape.name())));
@@ -13000,6 +13098,11 @@ impl Host for AppHost {
             "PVMARGINR" => Some(Value::str(self.preview_margins.right.clone())),
             "PVMARGINT" => Some(Value::str(self.preview_margins.top.clone())),
             "PVMARGINB" => Some(Value::str(self.preview_margins.bottom.clone())),
+            "PVPAPER" => Some(Value::str(self.preview_paper.clone())),
+            "PVLEADING" => Some(Value::str(self.preview_leading.clone().unwrap_or_default())),
+            "PVSPACING" => Some(Value::str(self.preview_spacing.clone().unwrap_or_default())),
+            "PVPAGENUM" => Some(Value::str(self.preview_page_num.clone().unwrap_or_default())),
+            "PVPAGEPOS" => Some(Value::str(self.preview_page_align.clone())),
             "LSP" => Some(Value::Float(self.leading as f64)),
             // `$OF` reads the left margin (compat); `$OFL`/`$OFR` the explicit sides.
             "OF" | "OFL" => Some(Value::Int(self.margin_left as i64)),
@@ -14533,6 +14636,43 @@ mod tests {
         // A bad unit is a trappable error and leaves the value unchanged.
         assert!(h.editor_op(EditorOp::SetPvMargin { side: PvMarginSide::Left, value: "3 furlongs".into() }).is_err());
         assert_eq!(h.special("PVMARGINL"), Some(Value::str("2.5cm")));
+    }
+
+    #[test]
+    fn pv_paper_spacing_and_page_numbers_set_read_and_feed_the_render() {
+        use super::{AppHost, EditorOp};
+        use xyscript_xpl::{Host, Value};
+        let mut h = AppHost::new();
+        // Defaults.
+        assert_eq!(h.special("PVPAPER"), Some(Value::str("letter")));
+        assert_eq!(h.special("PVLEADING"), Some(Value::str(""))); // unset = Typst default
+        assert_eq!(h.special("PVPAGENUM"), Some(Value::str(""))); // off
+        assert_eq!(h.special("PVPAGEPOS"), Some(Value::str("bottom-center")));
+        // Paper canonicalizes ("A4" → "a4"); a bad one is trappable and leaves it unchanged.
+        h.editor_op(EditorOp::SetPreviewPaper("Legal".into())).unwrap();
+        assert_eq!(h.special("PVPAPER"), Some(Value::str("legal")));
+        assert!(h.editor_op(EditorOp::SetPreviewPaper("foolscap".into())).is_err());
+        assert_eq!(h.special("PVPAPER"), Some(Value::str("legal")));
+        // Spacing: bare number → em; "default" clears.
+        h.editor_op(EditorOp::SetPreviewLeading("1.5".into())).unwrap();
+        assert_eq!(h.special("PVLEADING"), Some(Value::str("1.5em")));
+        h.editor_op(EditorOp::SetPreviewSpacing("2em".into())).unwrap();
+        assert_eq!(h.special("PVSPACING"), Some(Value::str("2em")));
+        h.editor_op(EditorOp::SetPreviewLeading("default".into())).unwrap();
+        assert_eq!(h.special("PVLEADING"), Some(Value::str("")));
+        // Page numbers: pattern (quotes stripped) + position; "off" clears.
+        h.editor_op(EditorOp::SetPreviewPageNumber("\"Page 1\"".into())).unwrap();
+        assert_eq!(h.special("PVPAGENUM"), Some(Value::str("Page 1")));
+        h.editor_op(EditorOp::SetPreviewPageAlign("br".into())).unwrap();
+        assert_eq!(h.special("PVPAGEPOS"), Some(Value::str("bottom-right")));
+        // The render config carries the choices.
+        let f = h.preview_fonts();
+        assert_eq!(f.paper, "legal");
+        assert_eq!(f.spacing.as_deref(), Some("2em"));
+        assert_eq!(f.page_num.as_deref(), Some("Page 1"));
+        assert_eq!(f.page_align, "bottom-right");
+        h.editor_op(EditorOp::SetPreviewPageNumber("off".into())).unwrap();
+        assert_eq!(h.special("PVPAGENUM"), Some(Value::str("")));
     }
 
     #[test]

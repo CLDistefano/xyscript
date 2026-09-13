@@ -7800,6 +7800,47 @@ impl GuiApp {
                     m_item(self.tr("menu.settings.appearance.reset_ui", "Reset UI sizing"), "UIRESET"),
                     m_item(self.tr("menu.settings.appearance.reset_dw", "Reset directory window"), "DWRESET"),
                 ]),
+                m_sub(self.tr("menu.settings.preview", "Preview / PDF page setup"), vec![
+                    m_sub(self.tr("menu.settings.preview.paper", "Page format"), vec![
+                        m_item(self.tr("menu.settings.preview.paper.letter", "Letter"), "PVPAPER letter"),
+                        m_item(self.tr("menu.settings.preview.paper.legal", "Legal"), "PVPAPER legal"),
+                        m_item(self.tr("menu.settings.preview.paper.tabloid", "Tabloid"), "PVPAPER tabloid"),
+                        m_item("A4", "PVPAPER a4"),
+                        m_item("A5", "PVPAPER a5"),
+                        m_item("A6", "PVPAPER a6"),
+                    ]),
+                    m_sub(self.tr("menu.settings.preview.line_spacing", "Line spacing"), vec![
+                        m_item(self.tr("menu.settings.preview.spacing.default", "Default"), "PVLEADING default"),
+                        m_item("1em", "PVLEADING 1em"),
+                        m_item("1.5em", "PVLEADING 1.5em"),
+                        m_item("2em", "PVLEADING 2em"),
+                        m_stage(self.tr("menu.settings.preview.spacing.custom", "Custom…"), "PVLEADING "),
+                    ]),
+                    m_sub(self.tr("menu.settings.preview.para_spacing", "Paragraph spacing"), vec![
+                        m_item(self.tr("menu.settings.preview.spacing.default", "Default"), "PVSPACING default"),
+                        m_item("1em", "PVSPACING 1em"),
+                        m_item("1.5em", "PVSPACING 1.5em"),
+                        m_item("2em", "PVSPACING 2em"),
+                        m_stage(self.tr("menu.settings.preview.spacing.custom", "Custom…"), "PVSPACING "),
+                    ]),
+                    m_sub(self.tr("menu.settings.preview.page_numbers", "Page numbers"), vec![
+                        m_item(self.tr("menu.settings.preview.page_numbers.off", "Off"), "PVPAGENUM off"),
+                        m_item(self.tr("menu.settings.preview.page_numbers.plain", "Plain (1)"), "PVPAGENUM 1"),
+                        m_item(self.tr("menu.settings.preview.page_numbers.page_n", "Page 1"), "PVPAGENUM \"Page 1\""),
+                        m_item(self.tr("menu.settings.preview.page_numbers.dashes", "Dashes (— 1 —)"), "PVPAGENUM \"— 1 —\""),
+                        m_item(self.tr("menu.settings.preview.page_numbers.x_of_n", "N of M"), "PVPAGENUM \"1 of 1\""),
+                        m_stage(self.tr("menu.settings.preview.page_numbers.custom", "Custom…"), "PVPAGENUM "),
+                        MenuNode::Sep,
+                        m_sub(self.tr("menu.settings.preview.position", "Position"), vec![
+                            m_item(self.tr("menu.settings.preview.position.bc", "Bottom center"), "PVPAGEPOS bottom-center"),
+                            m_item(self.tr("menu.settings.preview.position.bl", "Bottom left"), "PVPAGEPOS bottom-left"),
+                            m_item(self.tr("menu.settings.preview.position.br", "Bottom right"), "PVPAGEPOS bottom-right"),
+                            m_item(self.tr("menu.settings.preview.position.tc", "Top center"), "PVPAGEPOS top-center"),
+                            m_item(self.tr("menu.settings.preview.position.tl", "Top left"), "PVPAGEPOS top-left"),
+                            m_item(self.tr("menu.settings.preview.position.tr", "Top right"), "PVPAGEPOS top-right"),
+                        ]),
+                    ]),
+                ]),
                 m_sub(self.tr("menu.settings.syntax", "Syntax highlighting"), vec![
                     // One colour-picker entry per themeable token kind — `HLCOLORS <kind>` (the bare
                     // verb needs a kind, so a single item did nothing). Built from the live kind list.

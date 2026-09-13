@@ -78,7 +78,7 @@ fn root_of(dir: &Path) -> Option<PathBuf> {
 /// live Preview pane and the `TOPDF` export (both go through [`compile_gfm`]). Every field is
 /// `None` by default, i.e. Typst's built-ins (Libertinus for prose, a bundled mono for `raw`).
 /// Authored-Typst documents ignore this — they style themselves (see [`compile_typst`]).
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct PreviewFonts {
     /// Body typeface family name (`#set text(font: …)`); `None` = Typst default.
     pub family: Option<String>,
@@ -89,6 +89,35 @@ pub struct PreviewFonts {
     /// Page margins (`#set page(margin: …)`). Each side is a validated Typst length string (see
     /// [`normalize_length`]). Defaults to 1 inch all around.
     pub margins: PageMargins,
+    /// Page format as a friendly token (`letter`/`legal`/`tabloid`/`a4`/`a5`/`a6`), mapped to a Typst
+    /// `paper` name in [`gfm_preamble`]. Default `letter`.
+    pub paper: String,
+    /// Line spacing — `#set par(leading: …)`. `None` = Typst's default (0.65em).
+    pub leading: Option<String>,
+    /// Extra space between paragraphs — `#set par(spacing: …)`. `None` = Typst's default (1.2em).
+    pub spacing: Option<String>,
+    /// Page-number pattern (`#set page(numbering: …)`) — e.g. `1`, `— 1 —`, `Page 1`, `1 of 1`.
+    /// `None` = no page numbers.
+    pub page_num: Option<String>,
+    /// Page-number position as a friendly token (`bottom-center`, `top-right`, …), mapped to a Typst
+    /// alignment in [`gfm_preamble`]. Only used when `page_num` is `Some`.
+    pub page_align: String,
+}
+
+impl Default for PreviewFonts {
+    fn default() -> Self {
+        PreviewFonts {
+            family: None,
+            size: None,
+            code: None,
+            margins: PageMargins::default(),
+            paper: "letter".to_string(),
+            leading: None,
+            spacing: None,
+            page_num: None,
+            page_align: "bottom-center".to_string(),
+        }
+    }
 }
 
 /// The four page margins for GFM rendering, each a validated Typst length string (`"1in"`, `"2.5cm"`,
@@ -135,12 +164,114 @@ pub fn normalize_length(s: &str) -> Result<String, String> {
     Ok(format!("{n}{unit}"))
 }
 
-/// Base rendering config prepended to every GFM body: justified text, blue links. The page margin is
-/// emitted separately in [`gfm_preamble`] (it's user-configurable via `PVMARGIN*`).
-const PREAMBLE: &str = "\
-#set par(justify: true)
-#show link: set text(fill: blue)
-";
+/// Validate + canonicalize a paper name to a friendly token (`letter`/`legal`/`tabloid`/`a4`/`a5`/`a6`).
+/// `Err(msg)` for anything else. [`paper_typst`] maps the token to the Typst `paper:` name.
+pub fn canon_paper(s: &str) -> Result<String, String> {
+    let t = s.trim().to_ascii_lowercase();
+    let canon = match t.as_str() {
+        "letter" | "us-letter" | "usletter" => "letter",
+        "legal" | "us-legal" | "uslegal" => "legal",
+        "tabloid" | "us-tabloid" | "ledger" => "tabloid",
+        "a4" => "a4",
+        "a5" => "a5",
+        "a6" => "a6",
+        _ => return Err(format!("unknown paper {s:?} (use letter, legal, tabloid, a4, a5, or a6)")),
+    };
+    Ok(canon.to_string())
+}
+
+/// Map a friendly paper token (from [`canon_paper`]) to the Typst `paper:` name.
+fn paper_typst(friendly: &str) -> &'static str {
+    match friendly {
+        "legal" => "us-legal",
+        "tabloid" => "us-tabloid",
+        "a4" => "a4",
+        "a5" => "a5",
+        "a6" => "a6",
+        _ => "us-letter", // "letter" and any unexpected value fall back to Letter
+    }
+}
+
+/// Validate + normalize a paragraph length (line spacing / paragraph spacing): a non-negative number
+/// with an optional unit — `em` (the default for a bare number), `pt`, `cm`, `mm`, or `in`. Returns a
+/// clean `"<n><unit>"` safe to embed, or `Err(msg)`.
+pub fn normalize_par_len(s: &str) -> Result<String, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err("expected a length like 1.5em, 12pt, 0.4cm (bare number = em)".into());
+    }
+    let split = t.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(t.len());
+    let (num_str, unit_str) = t.split_at(split);
+    let num: f64 = num_str.trim().parse().map_err(|_| format!("bad number in {t:?}"))?;
+    if !num.is_finite() || num < 0.0 {
+        return Err(format!("length must be ≥ 0 (got {t:?})"));
+    }
+    let unit = match unit_str.trim().to_ascii_lowercase().as_str() {
+        "" | "em" => "em",
+        "pt" | "point" | "points" => "pt",
+        "cm" => "cm",
+        "mm" => "mm",
+        "in" | "inch" | "inches" | "\"" => "in",
+        other => return Err(format!("unknown unit {other:?} (use em, pt, cm, mm, or in)")),
+    };
+    let n = if num.fract() == 0.0 { format!("{}", num as i64) } else { format!("{num}") };
+    Ok(format!("{n}{unit}"))
+}
+
+/// Validate + canonicalize a page-number position to a friendly `"<vertical>-<horizontal>"` token,
+/// e.g. `bottom-center`, `top-right`. Accepts words or initials in either order (`br`, `bottom right`,
+/// `right-bottom`, `center`, …); missing halves default to `bottom` / `center`. [`page_align_typst`]
+/// maps it to a Typst alignment.
+pub fn canon_page_align(s: &str) -> Result<String, String> {
+    // Classify one token as a vertical and/or horizontal choice.
+    fn axis(tok: &str) -> Result<(Option<&'static str>, Option<&'static str>), String> {
+        Ok(match tok {
+            "top" | "t" => (Some("top"), None),
+            "bottom" | "bot" | "b" => (Some("bottom"), None),
+            "left" | "l" => (None, Some("left")),
+            "right" | "r" => (None, Some("right")),
+            "center" | "centre" | "c" | "middle" | "m" => (None, Some("center")),
+            other => {
+                return Err(format!(
+                    "unknown position {other:?} (use top/bottom + left/center/right)"
+                ))
+            }
+        })
+    }
+    let (mut vert, mut horiz) = (None, None);
+    let lower = s.trim().to_ascii_lowercase();
+    for tok in lower.split(|c: char| !c.is_ascii_alphanumeric()) {
+        if tok.is_empty() {
+            continue;
+        }
+        // A 2-letter combo like "br"/"tl" is a vertical+horizontal pair; else a single word/initial.
+        let parts: Vec<&str> = if tok.len() == 2
+            && matches!(&tok[0..1], "t" | "b")
+            && matches!(&tok[1..2], "l" | "c" | "r")
+        {
+            vec![&tok[0..1], &tok[1..2]]
+        } else {
+            vec![tok]
+        };
+        for p in parts {
+            let (v, h) = axis(p)?;
+            if v.is_some() {
+                vert = v;
+            }
+            if h.is_some() {
+                horiz = h;
+            }
+        }
+    }
+    Ok(format!("{}-{}", vert.unwrap_or("bottom"), horiz.unwrap_or("center")))
+}
+
+/// Map a friendly page-align token (from [`canon_page_align`]) to a Typst `number-align` value
+/// (`horizontal + vertical`).
+fn page_align_typst(friendly: &str) -> String {
+    let (vert, horiz) = friendly.split_once('-').unwrap_or(("bottom", "center"));
+    format!("{horiz} + {vert}")
+}
 
 /// System font database, scanned **once** (a rescan per preview keystroke would be far too slow) and
 /// reused across every render. Lets the Preview/`TOPDF` path resolve a user-chosen family name to the
@@ -271,12 +402,33 @@ fn typst_str(s: &str) -> String {
 /// fields leave Typst's defaults in place.
 fn gfm_preamble(fonts: &PreviewFonts) -> (String, Vec<Vec<u8>>) {
     let m = &fonts.margins;
-    // Page margins first (each side is a pre-validated Typst length), then the base rules.
-    let mut pre = format!(
-        "#set page(margin: (left: {}, right: {}, top: {}, bottom: {}))\n",
-        m.left, m.right, m.top, m.bottom
+    // `#set page(...)`: paper, margins (each side a pre-validated length), and optional page numbering.
+    let mut page = format!(
+        "paper: \"{}\", margin: (left: {}, right: {}, top: {}, bottom: {})",
+        paper_typst(&fonts.paper),
+        m.left,
+        m.right,
+        m.top,
+        m.bottom
     );
-    pre.push_str(PREAMBLE);
+    if let Some(pat) = &fonts.page_num {
+        page.push_str(&format!(
+            ", numbering: \"{}\", number-align: {}",
+            typst_str(pat),
+            page_align_typst(&fonts.page_align)
+        ));
+    }
+    let mut pre = format!("#set page({page})\n");
+    // `#set par(...)`: justify plus the optional line-spacing / paragraph-spacing overrides.
+    let mut par = String::from("justify: true");
+    if let Some(l) = &fonts.leading {
+        par.push_str(&format!(", leading: {l}"));
+    }
+    if let Some(sp) = &fonts.spacing {
+        par.push_str(&format!(", spacing: {sp}"));
+    }
+    pre.push_str(&format!("#set par({par})\n"));
+    pre.push_str("#show link: set text(fill: blue)\n");
     let mut blobs: Vec<Vec<u8>> = Vec::new();
     match (&fonts.family, fonts.size) {
         (Some(f), Some(sz)) => {
@@ -584,10 +736,12 @@ mod tests {
 
     #[test]
     fn page_margins_emit_the_set_page_rule() {
-        // Default = 1 inch all around.
+        // Default = US Letter, 1 inch all around.
         let (p, _) = gfm_preamble(&dflt());
         assert!(
-            p.contains("#set page(margin: (left: 1in, right: 1in, top: 1in, bottom: 1in))"),
+            p.contains(
+                "#set page(paper: \"us-letter\", margin: (left: 1in, right: 1in, top: 1in, bottom: 1in))"
+            ),
             "{p}"
         );
         // Custom per-side.
@@ -602,9 +756,58 @@ mod tests {
         };
         let (p, _) = gfm_preamble(&fonts);
         assert!(
-            p.contains("#set page(margin: (left: 2cm, right: 2cm, top: 1.5in, bottom: 18pt))"),
+            p.contains(
+                "#set page(paper: \"us-letter\", margin: (left: 2cm, right: 2cm, top: 1.5in, bottom: 18pt))"
+            ),
             "{p}"
         );
+    }
+
+    #[test]
+    fn paper_leading_spacing_and_page_numbers_emit_the_expected_rules() {
+        // Paper mapping (friendly → Typst name).
+        let (p, _) = gfm_preamble(&PreviewFonts { paper: "legal".into(), ..dflt() });
+        assert!(p.contains("#set page(paper: \"us-legal\","), "{p}");
+        let (p, _) = gfm_preamble(&PreviewFonts { paper: "tabloid".into(), ..dflt() });
+        assert!(p.contains("paper: \"us-tabloid\""), "{p}");
+        let (p, _) = gfm_preamble(&PreviewFonts { paper: "a4".into(), ..dflt() });
+        assert!(p.contains("paper: \"a4\""), "{p}");
+        // Line spacing + paragraph spacing fold into `#set par`.
+        let (p, _) = gfm_preamble(&PreviewFonts {
+            leading: Some("1.5em".into()),
+            spacing: Some("2em".into()),
+            ..dflt()
+        });
+        assert!(p.contains("#set par(justify: true, leading: 1.5em, spacing: 2em)"), "{p}");
+        // Default = no leading/spacing overrides, no numbering.
+        let (p, _) = gfm_preamble(&dflt());
+        assert!(p.contains("#set par(justify: true)"), "{p}");
+        assert!(!p.contains("numbering:"), "{p}");
+        // Page numbers: pattern + position → numbering + number-align.
+        let (p, _) = gfm_preamble(&PreviewFonts {
+            page_num: Some("Page 1".into()),
+            page_align: "top-right".into(),
+            ..dflt()
+        });
+        assert!(p.contains("numbering: \"Page 1\", number-align: right + top"), "{p}");
+        // A quote in the pattern is escaped, not injected.
+        let (p, _) = gfm_preamble(&PreviewFonts { page_num: Some("a\"b".into()), ..dflt() });
+        assert!(p.contains("\\\""), "pattern quote should be escaped: {p}");
+    }
+
+    #[test]
+    fn paper_and_position_validators_canonicalize_and_reject() {
+        assert_eq!(canon_paper("Letter").unwrap(), "letter");
+        assert_eq!(canon_paper("us-legal").unwrap(), "legal");
+        assert_eq!(canon_paper("A4").unwrap(), "a4");
+        assert!(canon_paper("foolscap").is_err());
+        assert_eq!(canon_page_align("br").unwrap(), "bottom-right");
+        assert_eq!(canon_page_align("top center").unwrap(), "top-center");
+        assert_eq!(canon_page_align("right").unwrap(), "bottom-right"); // vertical defaults to bottom
+        assert!(canon_page_align("sideways").is_err());
+        assert_eq!(normalize_par_len("1.5").unwrap(), "1.5em"); // bare → em
+        assert_eq!(normalize_par_len("12pt").unwrap(), "12pt");
+        assert!(normalize_par_len("1parsec").is_err());
     }
 
     #[test]

@@ -11763,6 +11763,25 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     /// expression function or control keyword in the code then FORCES updating the grammar (the function
     /// rule silently drifted 14 names behind once). Extras (loop words `to`/`in`/`step`, `exit*`,
     /// `and`/`or`/`not`) are fine — we only check for OMISSIONS.
+    /// The Preview page-setup verbs round-trip through the full command path (splitter → VM → host),
+    /// including a quoted page-number pattern (as the Settings menu issues it) and the `$PV…` reads.
+    #[test]
+    fn preview_page_setup_verbs_round_trip_through_run_command() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("PVPAPER legal");
+        e.run_command("PVLEADING 1.5");
+        e.run_command("PVPAGENUM \"Page 1\""); // exactly what the menu runs
+        e.run_command("PVPAGEPOS bottom-right");
+        assert_eq!(e.special_str("PVPAPER"), "legal");
+        assert_eq!(e.special_str("PVLEADING"), "1.5em"); // bare number → em
+        assert_eq!(e.special_str("PVPAGENUM"), "Page 1"); // surrounding quotes stripped
+        assert_eq!(e.special_str("PVPAGEPOS"), "bottom-right");
+        // A bad paper sets $ERROR (trappable) and leaves the prior value unchanged.
+        e.run_command("PVPAPER foolscap");
+        assert_ne!(e.special_str("ERROR"), "0");
+        assert_eq!(e.special_str("PVPAPER"), "legal");
+    }
+
     #[test]
     fn xpl_grammar_covers_all_functions_and_keywords() {
         use xyscript_xpl::{CONTROL_KEYWORDS, FUNCTION_NAMES};

@@ -830,6 +830,20 @@ pub enum EditorOp {
     /// margin(s); `value` is the raw length text (validated + normalized by the host). Read back via
     /// `$PVMARGIN`/`$PVMARGINL/R/T/B`.
     SetPvMargin { side: PvMarginSide, value: String },
+    /// Preview/`TOPDF` page format (`PVPAPER` — letter/legal/tabloid/a4/a5/a6). `$PVPAPER`.
+    SetPreviewPaper(String),
+    /// Preview/`TOPDF` line spacing (`PVLEADING`) — a length, or ""/`default` for Typst's default.
+    /// `$PVLEADING`.
+    SetPreviewLeading(String),
+    /// Preview/`TOPDF` extra space between paragraphs (`PVSPACING`) — a length, or ""/`default`.
+    /// `$PVSPACING`.
+    SetPreviewSpacing(String),
+    /// Preview/`TOPDF` page-number pattern (`PVPAGENUM` — e.g. `1`, `Page 1`, `1 of 1`; ""/`off` = no
+    /// numbering). `$PVPAGENUM`.
+    SetPreviewPageNumber(String),
+    /// Preview/`TOPDF` page-number position (`PVPAGEPOS` — a friendly token like `bottom-center`).
+    /// `$PVPAGEPOS`.
+    SetPreviewPageAlign(String),
     /// Set the command-line caret shape (`CMCRSHAPE`). Read back via `$CMCRSHAPE`.
     SetCmlineCaretShape(CaretShape),
     /// Set where the command line is drawn (`CMPLACE top|bottom|hidden`). Read back via `$CMPLACE`.

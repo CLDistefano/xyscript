@@ -161,6 +161,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Markdown Preview / TOPDF fonts (PV…): body family/size + code family + pickers.
     "PVFAMILY", "PVSIZE", "PVCODE", "PVFONTS", "PVCODES",
     "PVMARGIN", "PVMARGINL", "PVMARGINR", "PVMARGINT", "PVMARGINB", // Preview/TOPDF page margins
+    "PVPAPER", "PVLEADING", "PVSPACING", "PVPAGENUM", "PVPAGEPOS", // Preview/TOPDF page format + numbering
     // Colours: editor canvas (FG/BG) + UI chrome (UIFG/UIBG) + caret colour/shape.
     "FGCOLOR", "MDA", "BGCOLOR", "UIFGCOLOR", "UIBGCOLOR", "CRCOLOR", "CMCRCOLOR", "SEPCOLOR", "CRSHAPE", "CMCRSHAPE", "CMPLACE", "STATUSLINE",
     "CMBLANK", "SHOWONETAB", "CARETMOTION", "CARETADD", "CARETUP", "CARETDOWN", "CARETCOL", "CARETALL", "CARETNEXT", "CARETSKIP", "CARETPOP", "CARETPRIMARY", "CARETSPLIT", "CARETONE",
