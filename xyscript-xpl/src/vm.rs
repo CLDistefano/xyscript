@@ -3350,6 +3350,26 @@ impl Vm<'_, '_> {
                 })?;
                 Ok(Flow::Next)
             }
+            // `PVCODESIZE <n|default>` — the code (monospace) size in points; `default`/empty makes code
+            // inherit the body size again. `$PVCODESIZE`; SaveCfg.
+            "PVCODESIZE" => {
+                let a = args.trim();
+                let value = if a.is_empty() || a.eq_ignore_ascii_case("default") {
+                    0.0 // sentinel → clear to None (inherit the body size)
+                } else {
+                    a.parse::<f32>().map_err(|_| {
+                        XplError::trappable(format!(
+                            "PVCODESIZE: expected a number or 'default', got {a:?}"
+                        ))
+                    })?
+                };
+                self.host_op(EditorOp::SetUiSize {
+                    kind: UiSizeKind::PreviewCodeFont,
+                    value,
+                    relative: false,
+                })?;
+                Ok(Flow::Next)
+            }
             // `PVMARGIN <len>` sets all four Preview/`TOPDF` page margins; `PVMARGINL/R/T/B` set one
             // side. `<len>` = a number with an optional unit (`in` default, `cm`/`mm`/`pt`). Bare
             // reports the current value. `$PVMARGIN`/`$PVMARGINL/R/T/B`; SaveCfg.

@@ -1650,7 +1650,7 @@ is a GUI feature.)
 The look of *Markdown* rendering — in both the preview and the exported PDF — is adjustable. (HTML
 rendering uses the same settings; a document authored in *Typst* styles its own page and ignores them.)
 
-/ #raw("PVFAMILY <name>") / #raw("PVSIZE <points>") / #raw("PVCODE <name>"): the body typeface, the body size, and the monospace family used for #raw("`code`") and fenced blocks. Each takes #raw("default") to revert to the built-in.
+/ #raw("PVFAMILY <name>") / #raw("PVSIZE <points>") / #raw("PVCODE <name>") / #raw("PVCODESIZE <points>"): the body typeface, the body size, the monospace family used for #raw("`code`") and fenced blocks, and the code size. Each takes #raw("default") to revert — the fonts and body size to the built-in, and #raw("PVCODESIZE") to inheriting the body size (so code matches the body unless you set it, e.g. #raw("PVCODESIZE 9") for slightly smaller code).
 / #raw("PVPAPER <format>"): the page format — #raw("letter"), #raw("legal"), #raw("tabloid"), or #raw("a4") / #raw("a5") / #raw("a6"). The default is US Letter.
 / #raw("PVMARGIN <len>"): the page margins — one value sets all four sides, while #raw("PVMARGINL") / #raw("PVMARGINR") / #raw("PVMARGINT") / #raw("PVMARGINB") set them individually. A length is a number with an optional unit — #raw("in") (the default), #raw("cm"), #raw("mm"), or #raw("pt") — so #raw("PVMARGIN 1") is one inch and #raw("PVMARGIN 2.5cm") is metric.
 / #raw("PVLEADING <len>") / #raw("PVSPACING <len>"): the line spacing (space between lines) and the extra space between paragraphs. Here a bare number means #raw("em") (so #raw("PVLEADING 1.5") is 1.5 em); #raw("default") restores the built-in.

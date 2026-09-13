@@ -2962,6 +2962,9 @@ pub struct AppHost {
     preview_font_family: Option<String>,
     preview_font_size: Option<f32>,
     preview_code_family: Option<String>,
+    /// Code (monospace) size in points for Markdown Preview/`TOPDF` (`PVCODESIZE`). `None` = code
+    /// inherits the body size (`preview_font_size`); `Some` pins it independently. `$PVCODESIZE`; SaveCfg.
+    preview_code_size: Option<f32>,
     /// GFM Preview/`TOPDF` page margins (`PVMARGIN`/`PVMARGINL/R/T/B`) — each a validated Typst length
     /// string (default `"1in"`). `$PVMARGIN*`; SaveCfg. Authored-Typst docs set their own page.
     preview_margins: crate::pdf::PageMargins,
@@ -3261,6 +3264,7 @@ impl AppHost {
             preview_font_family: None,
             preview_font_size: None,
             preview_code_family: None,
+            preview_code_size: None,
             caret_shape: CaretShape::Bar,
             cmline_caret_shape: CaretShape::Bar,
             cmline_placement: CmlinePlacement::Top,
@@ -3349,12 +3353,18 @@ impl AppHost {
     pub fn preview_code_family(&self) -> Option<&str> {
         self.preview_code_family.as_deref()
     }
+    /// Code (monospace) size (pt) for Markdown Preview/`TOPDF` (`PVCODESIZE`), or `None` to inherit
+    /// the body size.
+    pub fn preview_code_size(&self) -> Option<f32> {
+        self.preview_code_size
+    }
     /// The bundled font choice for GFM rendering (Preview pane + `TOPDF`).
     pub fn preview_fonts(&self) -> crate::pdf::PreviewFonts {
         crate::pdf::PreviewFonts {
             family: self.preview_font_family.clone(),
             size: self.preview_font_size,
             code: self.preview_code_family.clone(),
+            code_size: self.preview_code_size,
             margins: self.preview_margins.clone(),
             paper: self.preview_paper.clone(),
             leading: self.preview_leading.clone(),
@@ -9034,6 +9044,11 @@ impl AppHost {
             None if full => put(&mut s, "Markdown Preview/TOPDF code font (PVCODE; 'default' = built-in)", "PVCODE default".to_string()),
             None => {}
         }
+        if let Some(pt) = self.preview_code_size {
+            put(&mut s, "Markdown Preview/TOPDF code size, points (PVCODESIZE)", format!("PVCODESIZE {pt}"));
+        } else {
+            put_tmpl(&mut s, "Markdown Preview/TOPDF code size, points (PVCODESIZE; default: inherit body size)", "PVCODESIZE 10");
+        }
         // Preview/TOPDF page margins (per side — emit all four so any mix round-trips). Each value is
         // a length (in/cm/mm/pt); a bare number means inches.
         let m = &self.preview_margins;
@@ -11933,6 +11948,21 @@ impl Host for AppHost {
                         self.preview_font_size = Some(v);
                         ("Preview/TOPDF font size", v)
                     }
+                    UiSizeKind::PreviewCodeFont => {
+                        // Like PreviewFont: `Option` (None = inherit the body size). `PVCODESIZE` sends
+                        // 0.0 for `default`/empty → clear; a relative change works off the effective
+                        // code size (the pinned value, else the body size, else the 11pt base).
+                        let base =
+                            self.preview_code_size.or(self.preview_font_size).unwrap_or(11.0);
+                        let v = if relative { base + value } else { value };
+                        if v <= 0.0 {
+                            self.preview_code_size = None;
+                            return Ok(Value::str("Preview/TOPDF code size = (inherit body size)"));
+                        }
+                        let v = v.clamp(4.0, 200.0);
+                        self.preview_code_size = Some(v);
+                        ("Preview/TOPDF code size", v)
+                    }
                 };
                 return Ok(Value::str(format!("{name} = {shown}")));
             }
@@ -13130,6 +13160,7 @@ impl Host for AppHost {
             "PVFAMILY" => Some(Value::str(self.preview_font_family.clone().unwrap_or_default())),
             "PVCODE" => Some(Value::str(self.preview_code_family.clone().unwrap_or_default())),
             "PVSIZE" => Some(Value::Float(self.preview_font_size.unwrap_or(0.0) as f64)),
+            "PVCODESIZE" => Some(Value::Float(self.preview_code_size.unwrap_or(0.0) as f64)),
             // Preview/TOPDF page margins. `$PVMARGIN` = the uniform value if all four sides match, else
             // the four "L R T B"; per-side reads each.
             "PVMARGIN" => {

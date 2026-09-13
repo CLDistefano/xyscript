@@ -6475,10 +6475,14 @@ impl GuiApp {
                 self.editor.preview_font_size().unwrap_or(11.0),
                 FontStyle::Normal,
             ),
-            // Preview/TOPDF code: family only (size/style irrelevant — dummy values).
+            // Preview/TOPDF code: family + size (no style). Size seeds from the pinned PVCODESIZE, else
+            // the effective body size (PVSIZE), else Typst's ~11 pt default.
             FontPickerKind::PreviewCode => (
                 self.editor.preview_code_family().map(str::to_string),
-                11.0,
+                self.editor
+                    .preview_code_size()
+                    .or_else(|| self.editor.preview_font_size())
+                    .unwrap_or(11.0),
                 FontStyle::Normal,
             ),
         };
@@ -6512,9 +6516,9 @@ impl GuiApp {
             FontPickerKind::PreviewBody => "Preview / PDF Body Font",
             FontPickerKind::PreviewCode => "Preview / PDF Code Font",
         };
-        // Preview fonts have no global style (markdown carries its own emphasis); the code font also
-        // has no size. Hide the controls that don't apply so the dialog isn't misleading.
-        let show_size = !matches!(picker.kind, FontPickerKind::PreviewCode);
+        // Preview fonts have no global style (markdown carries its own emphasis). Both preview pickers
+        // carry a size (body → PVSIZE, code → PVCODESIZE). Hide the controls that don't apply.
+        let show_size = true;
         let show_style =
             !matches!(picker.kind, FontPickerKind::PreviewBody | FontPickerKind::PreviewCode);
         let preview_size = picker.size;
@@ -6638,11 +6642,12 @@ impl GuiApp {
                     }
                     self.editor.run_command(&format!("PVSIZE {}", picker.size));
                 }
-                // Preview/TOPDF code: family only.
+                // Preview/TOPDF code: family + size (PVCODESIZE pins code independent of the body).
                 FontPickerKind::PreviewCode => {
                     if !picker.selected.is_empty() {
                         self.editor.run_command(&format!("PVCODE {}", picker.selected));
                     }
+                    self.editor.run_command(&format!("PVCODESIZE {}", picker.size));
                 }
                 _ => {
                     let (fam_verb, size_verb, style_verb) = match picker.kind {

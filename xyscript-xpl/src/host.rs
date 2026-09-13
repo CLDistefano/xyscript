@@ -1274,6 +1274,9 @@ pub enum UiSizeKind {
     /// `PVSIZE` — the Markdown Preview/`TOPDF` body text size in points (`None`/default = Typst's
     /// default). `$PVSIZE`.
     PreviewFont,
+    /// `PVCODESIZE` — the Markdown Preview/`TOPDF` code (monospace) size in points (`None`/default =
+    /// inherit the body size). `$PVCODESIZE`.
+    PreviewCodeFont,
 }
 
 /// Which colour a [`EditorOp::SetColor`] targets — the editor text canvas or the UI chrome.

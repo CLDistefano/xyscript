@@ -86,6 +86,10 @@ pub struct PreviewFonts {
     pub size: Option<f32>,
     /// Monospace family for `code` spans / fenced blocks (`#show raw: set text(font: …)`).
     pub code: Option<String>,
+    /// Code (monospace) size in points (`#show raw: set text(size: …)`). `None` = code inherits the
+    /// body size (`size` above, or Typst's default) — the historical behaviour; `Some` pins it so code
+    /// can be a different size from the body.
+    pub code_size: Option<f32>,
     /// Page margins (`#set page(margin: …)`). Each side is a validated Typst length string (see
     /// [`normalize_length`]). Defaults to 1 inch all around.
     pub margins: PageMargins,
@@ -120,6 +124,7 @@ impl Default for PreviewFonts {
             family: None,
             size: None,
             code: None,
+            code_size: None,
             margins: PageMargins::default(),
             paper: "letter".to_string(),
             leading: None,
@@ -508,8 +513,20 @@ fn gfm_preamble(fonts: &PreviewFonts) -> (String, Vec<Vec<u8>>) {
     if let Some(f) = &fonts.family {
         blobs.extend(family_font_bytes(f));
     }
+    // `#show raw: set text(...)` — the code font family and/or an explicit code size. When no size is
+    // set, code keeps inheriting the body size (`#set text(size:)` above); a size here pins it so code
+    // can differ from the body.
+    match (&fonts.code, fonts.code_size) {
+        (Some(c), Some(sz)) => {
+            pre.push_str(&format!("#show raw: set text(font: \"{}\", size: {sz}pt)\n", typst_str(c)))
+        }
+        (Some(c), None) => {
+            pre.push_str(&format!("#show raw: set text(font: \"{}\")\n", typst_str(c)))
+        }
+        (None, Some(sz)) => pre.push_str(&format!("#show raw: set text(size: {sz}pt)\n")),
+        (None, None) => {}
+    }
     if let Some(code) = &fonts.code {
-        pre.push_str(&format!("#show raw: set text(font: \"{}\")\n", typst_str(code)));
         blobs.extend(family_font_bytes(code));
     }
     pre.push('\n');
@@ -791,6 +808,17 @@ mod tests {
         // Code font → a raw show-rule.
         let (p, _) = gfm_preamble(&PreviewFonts { code: Some("Fira Code".into()), ..dflt() });
         assert!(p.contains("#show raw: set text(font: \"Fira Code\")"), "{p}");
+        // Code SIZE (PVCODESIZE): with a family → font + size together.
+        let (p, _) = gfm_preamble(&PreviewFonts {
+            code: Some("Fira Code".into()),
+            code_size: Some(9.0),
+            ..dflt()
+        });
+        assert!(p.contains("#show raw: set text(font: \"Fira Code\", size: 9pt)"), "{p}");
+        // Code size with NO code family → a size-only raw show-rule (code differs from body size).
+        let (p, _) = gfm_preamble(&PreviewFonts { code_size: Some(8.5), ..dflt() });
+        assert!(p.contains("#show raw: set text(size: 8.5pt)"), "{p}");
+        assert!(!p.contains("font:"), "size-only code rule must not name a font: {p}");
         // Default = no text/raw overrides at all.
         let (p, blobs) = gfm_preamble(&dflt());
         assert!(!p.contains("#set text(font"), "{p}");

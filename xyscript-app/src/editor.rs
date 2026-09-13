@@ -892,6 +892,11 @@ impl Editor {
     pub fn preview_code_family(&self) -> Option<&str> {
         self.host.preview_code_family()
     }
+    /// Markdown Preview/`TOPDF` code (monospace) size in points (`PVCODESIZE`), or `None` to inherit
+    /// the body size.
+    pub fn preview_code_size(&self) -> Option<f32> {
+        self.host.preview_code_size()
+    }
     /// Active syntax-highlight colour for a token kind, or `None` to draw it in `fg_color`
     /// (`HLCOLOR`/`HLRESET`). The GUI rasters tokens with this.
     pub fn highlight_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
@@ -4663,22 +4668,28 @@ mod tests {
         e.run_command("PVFAMILY Georgia");
         e.run_command("PVSIZE 13");
         e.run_command("PVCODE Consolas");
+        e.run_command("PVCODESIZE 9");
         assert_eq!(e.host().preview_font_family(), Some("Georgia"));
         assert_eq!(e.host().preview_font_size(), Some(13.0));
         assert_eq!(e.host().preview_code_family(), Some("Consolas"));
-        // SaveCfg writes the three verbs so the choice restores on load.
+        assert_eq!(e.host().preview_code_size(), Some(9.0));
+        assert_eq!(e.special_str("PVCODESIZE"), "9"); // $PVCODESIZE reads back
+        // SaveCfg writes the verbs so the choice restores on load.
         e.run_command("SAVECFG cfg.cfg");
         let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
         assert!(cfg.contains("PVFAMILY Georgia"), "cfg: {cfg}");
         assert!(cfg.contains("PVSIZE 13"), "cfg: {cfg}");
         assert!(cfg.contains("PVCODE Consolas"), "cfg: {cfg}");
-        // `default` reverts each to Typst's built-in (None).
+        assert!(cfg.contains("PVCODESIZE 9"), "cfg: {cfg}");
+        // `default` reverts each to its unset state (None); code size reverts to inheriting the body.
         e.run_command("PVFAMILY default");
         e.run_command("PVSIZE default");
         e.run_command("PVCODE default");
+        e.run_command("PVCODESIZE default");
         assert_eq!(e.host().preview_font_family(), None);
         assert_eq!(e.host().preview_font_size(), None);
         assert_eq!(e.host().preview_code_family(), None);
+        assert_eq!(e.host().preview_code_size(), None);
     }
 
     #[test]
