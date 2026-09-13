@@ -1631,16 +1631,23 @@ you watch the formatted result take shape while you write. A bare #raw("PV") tog
 #raw("PV on") / #raw("PV off") set it explicitly, and #raw("$PV") reads whether it is open. (The preview
 is a GUI feature.)
 
-== Fonts and margins
+== Page setup and fonts
 
-The look of *Markdown* rendering — in both the preview and the exported PDF — is adjustable:
+The look of *Markdown* rendering — in both the preview and the exported PDF — is adjustable. (HTML
+rendering uses the same settings; a document authored in *Typst* styles its own page and ignores them.)
 
 / #raw("PVFAMILY <name>") / #raw("PVSIZE <points>") / #raw("PVCODE <name>"): the body typeface, the body size, and the monospace family used for #raw("`code`") and fenced blocks. Each takes #raw("default") to revert to the built-in.
+/ #raw("PVPAPER <format>"): the page format — #raw("letter"), #raw("legal"), #raw("tabloid"), or #raw("a4") / #raw("a5") / #raw("a6"). The default is US Letter.
 / #raw("PVMARGIN <len>"): the page margins — one value sets all four sides, while #raw("PVMARGINL") / #raw("PVMARGINR") / #raw("PVMARGINT") / #raw("PVMARGINB") set them individually. A length is a number with an optional unit — #raw("in") (the default), #raw("cm"), #raw("mm"), or #raw("pt") — so #raw("PVMARGIN 1") is one inch and #raw("PVMARGIN 2.5cm") is metric.
+/ #raw("PVLEADING <len>") / #raw("PVSPACING <len>"): the line spacing (space between lines) and the extra space between paragraphs. Here a bare number means #raw("em") (so #raw("PVLEADING 1.5") is 1.5 em); #raw("default") restores the built-in.
+/ #raw("PVJUSTIFY on|off") / #raw("PVINDENT <len>"): justify the body text (on by default), and the first-line indent of each paragraph (#raw("off") for none).
+/ #raw("PVPAGENUM <pattern>") / #raw("PVPAGEPOS <position>"): page numbers. The pattern's #raw("1") is the page number — #raw("PVPAGENUM 1"), #raw("PVPAGENUM \"Page 1\""), or #raw("PVPAGENUM \"1 of 1\"") (a second #raw("1") becomes the total page count); #raw("PVPAGENUM off") turns them off. The position is a vertical (#raw("top") / #raw("bottom")) with a horizontal (#raw("left") / #raw("center") / #raw("right")) — for example #raw("PVPAGEPOS bottom-right").
+/ #raw("PVHEADER <template>") / #raw("PVFOOTER <template>"): a line of text across the top / bottom of every page. A #raw("|") splits the template into left, center, and right segments, and the tokens #raw("{date}"), #raw("{file}"), #raw("{page}"), and #raw("{pages}") expand to the date, the file name, and the current / total page number — so #raw("PVFOOTER \"|{page} of {pages}|\"") centres "3 of 12". Use #raw("off") to remove it. (A footer replaces the automatic #raw("PVPAGENUM") number at the bottom; keep the number by putting a #raw("{page}") token in the footer.)
 
-#raw("PVFONTS") and #raw("PVCODES") open font pickers for the body and code fonts — GUI shortcuts for the
-verbs above. All of these persist in your configuration, and only installed fonts are used (Typst falls
-back otherwise). A document authored in *Typst* styles its own page and ignores these settings.
+#raw("PVFONTS") and #raw("PVCODES") open font pickers for the body and code fonts, and the
+*Settings ▸ Preview / PDF page setup* menu gathers the page-format, spacing, page-number, and
+header/footer choices in one place. All of these persist in your configuration, and only installed
+fonts are used (Typst falls back otherwise).
 
 == Exporting to PDF
 
