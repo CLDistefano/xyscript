@@ -8665,6 +8665,34 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn point_and_shoot_theme_loads_the_theme_file_under_the_caret() {
+        let base = std::env::temp_dir().join(format!("xyscript-pns-theme-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        // A theme sets many colours; assert on BGCOLOR (global canvas — not selection-aware, unlike
+        // FGCOLOR, which would colour the SE match instead of the global foreground).
+        std::fs::write(base.join("mytheme.cfg"), b"BGCOLOR 10 20 30\n").unwrap();
+
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("DIR");
+        assert!(e.active_is_dir_listing(), "DIR opened a listing tab");
+        assert_ne!(e.special_str("BGCOLOR"), "10 20 30", "theme not applied yet");
+
+        // Caret on the theme row, then bare THEME (no argument) — point-and-shoot loads THAT file.
+        e.run_command("SE /mytheme/");
+        assert!(e.host().point_and_shoot_file().is_some_and(|p| p.ends_with("mytheme.cfg")));
+        e.run_command("THEME");
+        assert_eq!(e.special_str("BGCOLOR"), "10 20 30", "the theme under the caret applied");
+
+        // Bare THEME off a listing still needs a name (point-and-shoot only fires on a listing entry).
+        e.run_command("NEW");
+        assert!(!e.active_is_dir_listing());
+        e.run_command("THEME");
+        assert_ne!(e.special_str("ERROR"), "0", "bare THEME on a normal buffer is a trappable error");
+    }
+
+    #[test]
     fn point_and_shoot_deletes_the_file_under_the_caret() {
         let base = std::env::temp_dir().join(format!("xyscript-pns-del-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);

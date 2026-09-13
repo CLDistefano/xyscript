@@ -50,7 +50,7 @@ const NO_ERROR_TOUCH: &[&str] = &[
 /// verbs that write the active buffer (`ST`, `SAAS`) are deliberately excluded.
 const POINT_AND_SHOOT_VERBS: &[&str] = &[
     "OPEN", "CA", "ED", "EDIT", "READ", "DEL", "ERNV", "RUN", "BEDIT", "LOADKBD", "LOADLIB",
-    "LOADAR", "LOADVARS", "LANG", "NEW", "NE",
+    "LOADAR", "LOADVARS", "LANG", "NEW", "NE", "THEME",
 ];
 
 /// Single-path file verbs: the whole (trimmed) argument is one filesystem path. A user may wrap it
@@ -62,7 +62,7 @@ const POINT_AND_SHOOT_VERBS: &[&str] = &[
 const SINGLE_PATH_VERBS: &[&str] = &[
     "OPEN", "CA", "ED", "EDIT", "READ", "NEW", "NE", "SAVE", "SA", "ST", "SAAS", "SAVEAS", "SAD",
     "MERGE", "ME", "BEDIT", "BCLOSE", "DEL", "ERNV", "CD", "PRINTEX", "LOADKBD", "LOADLIB", "ADDLIB",
-    "LOADAR", "SAVEAR", "LOADVARS", "SAVEVARS", "LOADCFG", "SAVECFG", "LANG",
+    "LOADAR", "SAVEAR", "LOADVARS", "SAVEVARS", "LOADCFG", "SAVECFG", "LANG", "THEME",
 ];
 
 /// Instruction budget for one cooperative-preemption slice. The foreground editor runs scripts
@@ -2736,10 +2736,12 @@ impl Vm<'_, '_> {
             // editor, OR the path to a theme file (a SAVECFG-format colour preset), which is run
             // to activate the theme (the LOADCFG path: resolved against `$CWD`, then executed).
             "THEME" => {
+                // A bare THEME while the caret sits on a file in a DIR listing loaded that file (via
+                // POINT_AND_SHOOT_VERBS filling `args` above); otherwise a name/path is required.
                 let name = args.trim();
                 if name.is_empty() {
                     return Err(XplError::trappable(
-                        "THEME: a name is required (light|dark|<theme-file>)",
+                        "THEME: a name is required (light|dark|<theme-file>, or point at one in a directory listing)",
                     ));
                 }
                 match name.to_ascii_lowercase().as_str() {
