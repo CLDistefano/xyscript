@@ -82,6 +82,7 @@
   - Auto-replace for inserting boilerplate and correcting typos on the fly
   - Built-in dark and light themes, plus an expandable collection of user-defined color schemes
   - Writer's View for distraction-free editing
+  - Scratchpad windows for parking notes and snippets alongside the editing pane
   - Syntax highlighting, user-customizable and extensible
   - Multi-cursor/multi-selection editing
   - Code writing aids including auto-indent, bracket-matching, auto-close brackets and quotes
@@ -112,7 +113,7 @@
   #v(6pt)
   Carl L. Distefano \
   New York City \
-  8 September 2026
+  September 2026
 ]
 
 #pagebreak()
