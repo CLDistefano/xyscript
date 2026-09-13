@@ -285,7 +285,12 @@ impl<'s> Emitter<'s> {
                 _ => out.push_str(&escape_text(t)),
             },
             NodeValue::SoftBreak => out.push(' '),
-            NodeValue::LineBreak => out.push_str("#linebreak()"),
+            // Trailing space is load-bearing: `#linebreak()` returns content, so if the next line
+            // begins with `(`/`[`/`{` glued to the `)` (e.g. a hard break before a line like
+            // `(555) 555-0100`), Typst reads `#linebreak()(…)` as a chained call on that content and
+            // fails with "expected function, found content". A space returns to markup mode; it
+            // collapses at the start of the new line, so rendering is unchanged.
+            NodeValue::LineBreak => out.push_str("#linebreak() "),
 
             NodeValue::Emph => self.wrap(node, out, "#emph[", "]"),
             NodeValue::Strong => self.wrap(node, out, "#strong[", "]"),
@@ -399,7 +404,7 @@ impl<'s> Emitter<'s> {
             let compact: String =
                 h.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
             if compact == "<br>" || compact == "<br/>" {
-                out.push_str("#linebreak()");
+                out.push_str("#linebreak() "); // trailing space: see the block LineBreak arm
             } else {
                 out.push_str(&escape_text(h));
             }
@@ -470,15 +475,31 @@ mod tests {
     fn inline_br_becomes_a_linebreak() {
         // `<br>` is a void element, so it's self-contained even inline → a hard line break, in any
         // spelling. (Block `<br>` on its own line already worked via the HTML-block path.)
-        assert_eq!(to_typst("a<br>b"), "a#linebreak()b");
-        assert_eq!(to_typst("a<br/>b"), "a#linebreak()b");
-        assert_eq!(to_typst("a<br />b"), "a#linebreak()b");
-        assert_eq!(to_typst("a<BR>b"), "a#linebreak()b");
+        assert_eq!(to_typst("a<br>b"), "a#linebreak() b");
+        assert_eq!(to_typst("a<br/>b"), "a#linebreak() b");
+        assert_eq!(to_typst("a<br />b"), "a#linebreak() b");
+        assert_eq!(to_typst("a<BR>b"), "a#linebreak() b");
         // Other inline HTML (paired tags, not convertible in isolation) is still left as escaped text.
         assert!(
             !to_typst("a<span>x</span>b").contains("#linebreak()"),
             "non-<br> inline HTML must not be turned into a break"
         );
+    }
+
+    #[test]
+    fn hard_break_before_a_parenthetical_line_compiles() {
+        // A GFM hard break emits `#linebreak()`, which returns content; a following line glued to
+        // the `)` and starting with `(`/`[`/`{` would otherwise read as a chained call and fail to
+        // compile ("expected function, found content"). The emitted trailing space prevents that.
+        for src in ["a\\\n(b)", "a<br>(b)", "a\\\n[b]", "a\\\n{b}"] {
+            let body = to_typst(src);
+            assert!(body.contains("#linebreak() "), "expected spaced linebreak in {body:?}");
+            assert!(
+                crate::pdf::gfm_to_pdf(src, std::path::Path::new("."), &crate::pdf::PreviewFonts::default(), None)
+                    .is_ok(),
+                "hard break before a parenthetical line must compile: {src:?}"
+            );
+        }
     }
 
     #[test]

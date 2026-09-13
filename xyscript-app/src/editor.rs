@@ -12004,6 +12004,36 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn shipped_templates_compile() {
+        // Every starter template in templates/ must render through the real engine — a .typ as
+        // authored Typst, a .md through the GFM path (so a broken template can't reach a tester).
+        let dir = std::path::Path::new("templates");
+        let fonts = crate::PreviewFonts::default();
+        let typ: &[(&str, &str)] = &[
+            ("business-letter.typ", include_str!("../../templates/business-letter.typ")),
+            ("memo.typ", include_str!("../../templates/memo.typ")),
+            ("invoice.typ", include_str!("../../templates/invoice.typ")),
+            ("todo.typ", include_str!("../../templates/todo.typ")),
+            ("report.typ", include_str!("../../templates/report.typ")),
+        ];
+        let md: &[(&str, &str)] = &[
+            ("business-letter.md", include_str!("../../templates/business-letter.md")),
+            ("memo.md", include_str!("../../templates/memo.md")),
+            ("todo.md", include_str!("../../templates/todo.md")),
+        ];
+        for (name, src) in typ {
+            let pdf = crate::typst_to_pdf(src, dir, None)
+                .unwrap_or_else(|e| panic!("templates/{name} must compile:\n{e}"));
+            assert!(pdf.starts_with(b"%PDF-"), "templates/{name}");
+        }
+        for (name, src) in md {
+            let pdf = crate::gfm_to_pdf(src, dir, &fonts, None)
+                .unwrap_or_else(|e| panic!("templates/{name} must render:\n{e}"));
+            assert!(pdf.starts_with(b"%PDF-"), "templates/{name}");
+        }
+    }
+
+    #[test]
     fn reference_documents_only_real_items() {
         use xyscript_xpl::{BUILTIN_VERBS, CONTROL_KEYWORDS, FUNCTION_NAMES, SPECIAL_NAMES};
         let verbs: std::collections::HashSet<&str> =

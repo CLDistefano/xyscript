@@ -101,7 +101,9 @@ fn emit_element(
             }
         }
 
-        "br" => out.push_str("#linebreak()"),
+        // Trailing space is load-bearing — see the LineBreak arm in `crate::gfm`: without it a
+        // following `(`/`[`/`{` glued to the `)` reads as a chained call and fails to compile.
+        "br" => out.push_str("#linebreak() "),
         "hr" => out.push_str("#line(length: 100%)\n\n"),
 
         "strong" | "b" => wrap(node, out, "#strong[", "]", in_link),
@@ -416,7 +418,7 @@ mod tests {
         assert_eq!(to_typst("<p><strong>a</strong> <em>b</em></p>"), "#strong[a] #emph[b]");
         assert_eq!(to_typst("<p><del>gone</del> <u>up</u></p>"), "#strike[gone] #underline[up]");
         assert_eq!(to_typst("<p>H<sub>2</sub>O e<sup>x</sup></p>"), "H#sub[2]O e#super[x]");
-        assert_eq!(to_typst("<p>a<br>b</p>"), "a#linebreak()b");
+        assert_eq!(to_typst("<p>a<br>b</p>"), "a#linebreak() b");
         assert_eq!(to_typst("<hr>"), "#line(length: 100%)");
     }
 
