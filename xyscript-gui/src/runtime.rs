@@ -564,10 +564,18 @@ impl Handler {
         //   • Every platform: F10 or Ctrl+F2 focuses (opens) the menu bar — and these are the ONLY menu
         //     keys on macOS, where Option+<letter> is reserved for typing special characters.
         if matches!(ev.state, ElementState::Pressed) && !self.app.menu_active() {
-            let bound = self.key.as_ref().is_some_and(|k| {
-                k.resolver.keymap.resolve(k.resolver.state.current_bitmask(), code).is_some()
+            // A chord defers to the keymap only when it runs a COMMAND (an XPL assignment). `KF`
+            // (pass the key to the OS) and an unbound cell do NOT, so either one frees the chord for a
+            // menu accelerator: a keymap can opt a chord out of its binder layer with `KF` to get the
+            // Alt+<letter> menu behaviour — while that same `KF` still passes Option+<letter> through
+            // for special-character input on macOS (where the Alt path below is compiled out).
+            let runs_command = self.key.as_ref().is_some_and(|k| {
+                matches!(
+                    k.resolver.keymap.resolve(k.resolver.state.current_bitmask(), code),
+                    Some(xyscript_kbd::Assignment::Xpl(_))
+                )
             });
-            if !bound {
+            if !runs_command {
                 let focus_bar = matches!(ev.logical_key, Key::Named(NamedKey::F10))
                     || (self.mods.control_key()
                         && matches!(ev.logical_key, Key::Named(NamedKey::F2)));

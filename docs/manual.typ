@@ -336,10 +336,17 @@ _underlined accelerator letter_: #raw("MENU \"f\"") opens File directly, and whi
 an item's accelerator letter jumps to and runs it.
 
 The usual platform shortcuts also work out of the box, and they defer to your keyboard file — each fires
-only when you have not bound that key combination yourself. On Windows and Linux, #kbd("Alt") + a menu's
-underlined letter opens it (#kbd("Alt+F") for File, #kbd("Alt+N") for Settings). On every platform,
-#kbd("F10") or #kbd("Ctrl+F2") opens the bar at the first menu; on macOS these are the way in, since
-#kbd("Option") + a letter is reserved there for typing special characters.
+only when you have not bound that key combination to a _command_ (a #raw("KF") pass-through cell, or no
+binding, leaves it free for the menu). On Windows and Linux, #kbd("Alt") + a menu's underlined letter
+opens it (#kbd("Alt+F") for File, #kbd("Alt+N") for Settings). On every platform, #kbd("F10") or
+#kbd("Ctrl+F2") opens the bar at the first menu; on macOS these are the way in, since #kbd("Option") + a
+letter is reserved there for typing special characters.
+
+#tip("Alt+letter is XyScript's binder layer")[XyScript's own #kbd("Alt") + letter runs the text binders
+(#raw("@F"), #raw("@E"), …), so it would otherwise collide with the menu accelerators. The shipped
+keyboard file resolves this by setting the eight accelerator letters (#raw("F E S V D T N H")) to
+#raw("KF"), which frees them for the menus. If you want #kbd("Alt+F") to run a binder or command instead,
+bind it in your own #raw(".kbd") — a command binding always wins over the menu.]
 
 / File: New, Open, Open read-only, Revert, Save, Save As, Save Selection As, Save All, Export PDF,
   Close, Quit. Every one has a CMline verb (covered in *Files, Tabs, and Directories*).

@@ -396,6 +396,9 @@ shift+caps Right     :103=CMH;XC
 shift+caps Enter     :104=ENTER
 ;
 TABLE=ALT+CAPS,ALT
+; NOTE: Alt+F/E/S/V/D/T/N/H are the menu-bar accelerators (Alt+<underlined letter> opens that menu on
+; Windows/Linux). Those letters are set to KF here (pass-through) rather than an @X binder so the menu
+; opens; the app claims the chord only when it is KF or unbound. Alt+S is kept as SW (Shell Output).
 alt+caps,alt Esc       :1=ES
 ;Comment               ;2=@1
 alt+caps,alt 1         :2=IF $SE;LDPM X;ELSE;PR No text selection.;EI
@@ -415,9 +418,9 @@ alt+caps,alt Backspace :14=RW
 alt+caps,alt Tab       :15=NOP
 alt+caps,alt Q         :16=@Q
 alt+caps,alt W         :17=@W
-alt+caps,alt E         :18=@E
+alt+caps,alt E         :18=KF
 alt+caps,alt R         :19=@R
-alt+caps,alt T         :20=@T
+alt+caps,alt T         :20=KF
 alt+caps,alt Y         :21=@Y
 ;Comment               ;;22=@U
 alt+caps,alt U         :22=CC
@@ -431,10 +434,10 @@ alt+caps,alt           :29=NOP
 alt+caps,alt A         :30=@A
 ;Comment               ;;31=@S
 alt+caps,alt S         :31=SW
-alt+caps,alt D         :32=@D
-alt+caps,alt F         :33=@F
+alt+caps,alt D         :32=KF
+alt+caps,alt F         :33=KF
 alt+caps,alt G         :34=@G
-alt+caps,alt H         :35=@H
+alt+caps,alt H         :35=KF
 alt+caps,alt J         :36=@J
 alt+caps,alt K         :37=@K
 alt+caps,alt L         :38=@L
@@ -446,9 +449,9 @@ alt+caps,alt \         :43=NOP
 alt+caps,alt Z         :44=@Z
 alt+caps,alt X         :45=@X
 alt+caps,alt C         :46=NOP
-alt+caps,alt V         :47=@V
+alt+caps,alt V         :47=KF
 alt+caps,alt B         :48=@B
-alt+caps,alt N         :49=@N
+alt+caps,alt N         :49=KF
 alt+caps,alt M         :50=@M
 alt+caps,alt ,         :51=PW;RW
 alt+caps,alt .         :52=RW
