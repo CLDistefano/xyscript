@@ -7967,6 +7967,16 @@ impl GuiApp {
                         m_item("2em", "PVINDENT 2em"),
                         m_stage(self.tr("menu.settings.preview.indent.custom", "Custom…"), "PVINDENT "),
                     ]),
+                    // Code (monospace) size — `default` makes code follow the body size (PVSIZE); a value
+                    // pins it. The Preview / PDF *code* font picker also carries this size field.
+                    m_sub(self.tr("menu.settings.preview.code_size", "Code font size"), vec![
+                        m_item(self.tr("menu.settings.preview.code_size.default", "Default (match body)"), "PVCODESIZE default"),
+                        m_item("8 pt", "PVCODESIZE 8"),
+                        m_item("9 pt", "PVCODESIZE 9"),
+                        m_item("10 pt", "PVCODESIZE 10"),
+                        m_item("12 pt", "PVCODESIZE 12"),
+                        m_stage(self.tr("menu.settings.preview.code_size.custom", "Custom…"), "PVCODESIZE "),
+                    ]),
                     m_sub(self.tr("menu.settings.preview.header_footer", "Header / footer"), vec![
                         m_stage(self.tr("menu.settings.preview.header", "Header…"), "PVHEADER "),
                         m_stage(self.tr("menu.settings.preview.footer", "Footer…"), "PVFOOTER "),
