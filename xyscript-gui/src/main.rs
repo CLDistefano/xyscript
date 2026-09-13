@@ -1094,6 +1094,29 @@ fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
 mod menu_tests {
     use super::*;
 
+    /// There are two physical copies of the startup keymap: the one the exe BAKES
+    /// (`xyscript-kbd/kbd/xyscript-internal.kbd`, the `INTERNAL_KBD` const above) and the loose copy
+    /// shipped in releases and deployed to the runtime folder (`packaging/runtime/xyscript-internal.kbd`).
+    /// They must stay identical so `LOADKBD xyscript-internal.kbd` matches the built-in default — they
+    /// have drifted before. This fails the build if they diverge; the baked copy is the source of truth,
+    /// so copy it over the packaging one to fix. Line endings are normalized (the loose copy is CRLF on a
+    /// Windows checkout via autocrlf, the baked one LF) — the invariant is identical content, not bytes.
+    #[test]
+    fn shipped_and_baked_internal_kbd_are_identical() {
+        const PACKAGED_KBD: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../packaging/runtime/xyscript-internal.kbd"
+        ));
+        let norm = |s: &str| s.replace("\r\n", "\n");
+        assert_eq!(
+            norm(INTERNAL_KBD),
+            norm(PACKAGED_KBD),
+            "xyscript-kbd/kbd/xyscript-internal.kbd (baked into the exe) and \
+             packaging/runtime/xyscript-internal.kbd (the shipped loose copy) have diverged. \
+             The baked copy is the source of truth: copy it over the packaging one."
+        );
+    }
+
     #[test]
     fn gui_boots_with_cwd_at_the_exe_dir() {
         // Portable-folder model: a GUI boot defaults `$CWD` to the executable's own directory ($XSDIR),
