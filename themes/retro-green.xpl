@@ -75,6 +75,12 @@ TXTFGCOLOR $FGCOLOR
 # TXT dialog background colour — R G B, 0-255
 TXTBGCOLOR $BGCOLOR
 
+# Line-number gutter text colour -- R G B, 0-255
+LNFGCOLOR 70 70 70
+
+# Line-number gutter background colour -- R G B, 0-255
+LNBGCOLOR 20 20 20
+
 # EMPH emphasis text colour — R G B, 0-255
 EMPHFGCOLOR 130 150 150
 

@@ -81,6 +81,12 @@ EMPHFGCOLOR 222 210 210
 # EMPH emphasis background colour — R G B, 0-255
 EMPHBGCOLOR 0 0 180
 
+# Line-number gutter text colour -- R G B, 0-255
+LNFGCOLOR 70 70 70
+
+# Line-number gutter background colour -- R G B, 0-255
+LNBGCOLOR 20 20 20
+
 # Syntax-highlighting palette — derived from this theme's colours (token kind -> R G B)
 HLCOLOR heading 121 216 121
 HLCOLOR emphasis 176 169 141
