@@ -397,8 +397,9 @@ shift+caps Enter     :104=ENTER
 ;
 TABLE=ALT+CAPS,ALT
 ; NOTE: Alt+F/E/S/V/D/T/N/H are the menu-bar accelerators (Alt+<underlined letter> opens that menu on
-; Windows/Linux). Those letters are set to KF here (pass-through) rather than an @X binder so the menu
-; opens; the app claims the chord only when it is KF or unbound. Alt+S is kept as SW (Shell Output).
+; Windows/Linux). All eight are set to KF here (pass-through) rather than an @X binder so the menu opens;
+; the app claims the chord only when it is KF or unbound. (Freeing Alt+S dropped its old SW binding —
+; toggle the Shell Output window via the SW command or bind it to another key if you want it.)
 alt+caps,alt Esc       :1=ES
 ;Comment               ;2=@1
 alt+caps,alt 1         :2=IF $SE;LDPM X;ELSE;PR No text selection.;EI
@@ -433,7 +434,7 @@ alt+caps,alt Enter     :28=NOP
 alt+caps,alt           :29=NOP
 alt+caps,alt A         :30=@A
 ;Comment               ;;31=@S
-alt+caps,alt S         :31=SW
+alt+caps,alt S         :31=KF
 alt+caps,alt D         :32=KF
 alt+caps,alt F         :33=KF
 alt+caps,alt G         :34=@G
