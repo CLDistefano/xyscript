@@ -76,10 +76,10 @@ TXTFGCOLOR 52 24 11
 TXTBGCOLOR 200 180 150
 
 # Line-number gutter text colour -- R G B, 0-255
-LNFGCOLOR 70 70 70
+LNFGCOLOR 114 105 96
 
 # Line-number gutter background colour -- R G B, 0-255
-LNBGCOLOR 20 20 20
+LNBGCOLOR 184 166 138
 
 # EMPH emphasis text colour — R G B, 0-255
 EMPHFGCOLOR 230 210 150
