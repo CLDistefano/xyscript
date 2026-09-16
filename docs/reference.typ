@@ -425,6 +425,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 / #cmd("CH", "CHA", "CI", "CIA") / #cmd("CV", "CVA"): replace every match / with a prompt at each.
 / #cmd("FIND"): open the Find/Replace dialog.
 / #cmd("GREP") / #cmd("GJ"): recursively search a folder (default `$CWD`) for a pattern into a results tab / jump to the hit under the caret.
+/ #cmd("GREPBEFORE") / #cmd("GREPAFTER") / #cmd("GREPBLANK"): leading / trailing context lines around each `GREP` match, and a blank line between result groups.
 
 == Counting
 
@@ -802,7 +803,9 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("GOFILE", "GOF"): switch to an open tab whose full path contains the given text (case-insensitive) — `GOF report`. With several matches (or several copies of one file), each call moves to the *next* match, cycling; if the only match is the current tab it stays put. No match sets `$ERROR`.
 / #cmd("GOTO"): jump to a `:label` in the script.
 / #cmd("GREP"): `GREP <pattern> [path]` — ripgrep-style recursive search (respecting `.gitignore`, skipping hidden and binary files) into a read-only results tab, one `path:line:col: text` line per match. The search runs on a background thread and *streams* matches into the tab as it goes (so it never freezes on a big tree, and the status line shows a running count); running another `GREP` (or closing the tab) cancels an in-progress one. The optional second argument is a search root, resolved like a `DIR` filespec: a directory searches it (`GREP foo src`), a glob filters `$CWD` (`GREP foo *.rs`), and both together do both (`GREP foo src/*.rs`); with no path it searches `$CWD`. `/R` treats the pattern as a regular expression (else literal), `/I` case-insensitive, `/W` whole-word — the same flag letters as `SE`/`FIND`. Quote a pattern that contains spaces (`GREP "foo bar" src`). Matches are highlighted (via #cmd("EMPH")) in the results tab, and `GJ` carries that highlight onto the file it opens. Results are capped (currently 50000 hits). A *bare* `GREP` (no pattern) opens the GREP dialog (also `Search ▸ Grep…`) — an interactive form with the pattern, an optional folder/glob, and the `/R` / `/I` / `/W` flags as checkboxes; the companion to #cmd("FIND").
-/ #cmd("GJ"): jump from a `GREP` results tab to the match on the caret's line — opens the file (or switches to it if already open, no prompt), moves the caret to the match's `line:col`, and centres it. Point-and-shoot: put the caret on a result line and run `GJ`, or just press Enter or double-click the line (arrow keys still scroll the results).
+/ #cmd("GJ"): jump from a `GREP` results tab to the match on the caret's line — opens the file (or switches to it if already open, no prompt), moves the caret to the match's `line:col`, and centres it. Point-and-shoot: put the caret on a result line and run `GJ`, or just press Enter or double-click the line (arrow keys still scroll the results). A context line (see `GREPBEFORE`/`GREPAFTER`) is jumpable too; a blank separator line is not.
+/ #cmd("GREPBEFORE") / #cmd("GREPAFTER"): the number of leading / trailing *context* lines shown around each `GREP` match (like `grep -B` / `-A`), 0 = none (the default). `GREPBEFORE 2` shows the two lines before each hit; context lines render with `-` separators (`path-line- text`) rather than the match's `:`, and `GJ` still jumps to them. Bare reports the current value. Read as #sv("GREPBEFORE") / #sv("GREPAFTER"); persists in the config.
+/ #cmd("GREPBLANK"): `GREPBLANK 0|1` (or `on`/`off`) — insert a blank line between `GREP` result groups (between context blocks when context is on, or between individual matches when it isn't). Off by default. Bare reports the value; read as #sv("GREPBLANK"); persists in the config.
 / #cmd("GT"): move focus to the document text (the counterpart to `CMLINE`/`GH`).
 
 == H
@@ -1230,7 +1233,7 @@ Each reads `1` when the feature is on, `0` when off.
 / #sv("CMPLACE"): where the command line sits — `top`, `bottom`, or `hidden` (set with `CMPLACE`).
 / #sv("STATUSLINE"): where the status line sits — `top` (just under the command line) or `bottom` (set with `STATUSLINE`).
 / #sv("VR") / #sv("WS") / #sv("LNS"): visible paragraph marks / visible whitespace / the line-number gutter.
-/ #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`.
+/ #sv("PS"): persistent-selection mode. #sv("DIRNW"): open-in-new-tab mode for files picked from a listing. #sv("DIRWNW"): the same for the separate `DIR/W` window. #sv("DIRWCLOSE"): whether `DIR/W` closes once a file is opened. #sv("DIRSET"): the default DIR sort/filter/view switches. #sv("DIRRT"): reuse-the-listing-tab mode for `DIR`. #sv("GREPBEFORE") / #sv("GREPAFTER"): `GREP` leading / trailing context-line counts. #sv("GREPBLANK"): whether `GREP` puts a blank line between result groups (`1`/`0`).
 / #sv("HLAUTO"): auto-highlighting when a file is opened.
 / #sv("SH") / #sv("SW") / #sv("PV"): the Console tab / the Console tab (synonym) / the live preview pane visibility. #sv("SHPROMPT"): the Console prompt template.
 

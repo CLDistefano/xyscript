@@ -2300,10 +2300,11 @@ impl Document {
         self.grep.as_ref().map(|g| g.hits.len()).unwrap_or(0)
     }
 
-    /// The `GREP` hit on the caret's line, if this is a results listing.
+    /// The `GREP` hit on the caret's line, if this is a results listing — a `Match` or `Context`
+    /// line (both jumpable via `GJ`); a blank `Separator` line yields `None`.
     pub fn grep_hit_at_cursor(&self) -> Option<&crate::grep::GrepHit> {
         let grep = self.grep.as_ref()?;
-        grep.hits.get(self.buffer.cursor_line())
+        grep.hits.get(self.buffer.cursor_line()).filter(|h| h.kind != crate::grep::HitKind::Separator)
     }
 
     /// The listing's browser state, if this is a directory listing.

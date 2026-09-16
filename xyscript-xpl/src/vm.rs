@@ -3390,6 +3390,42 @@ impl Vm<'_, '_> {
             }
             // Preview/`TOPDF` page format, spacing, and page numbering. Each bare verb reports the
             // current value; with an argument it sets it. GFM/HTML only (authored Typst self-styles).
+            // `GREPBEFORE <n>` / `GREPAFTER <n>` — leading / trailing context lines for GREP results;
+            // `GREPBLANK 0|1` (or on|off) — a blank line between result groups. Bare reports the value.
+            "GREPBEFORE" | "GREPAFTER" => {
+                let a = args.trim();
+                if a.is_empty() {
+                    *self.ctx.status = Some(format!("{base}: {}", self.special_str(base)));
+                    return Ok(Flow::Next);
+                }
+                let n: usize = a.parse().map_err(|_| {
+                    XplError::trappable(format!("{base}: expected a line count (0 or more), got {a:?}"))
+                })?;
+                self.host_op(if base == "GREPBEFORE" {
+                    EditorOp::SetGrepBefore(n)
+                } else {
+                    EditorOp::SetGrepAfter(n)
+                })?;
+                Ok(Flow::Next)
+            }
+            "GREPBLANK" => {
+                let a = args.trim();
+                if a.is_empty() {
+                    *self.ctx.status = Some(format!("GREPBLANK: {}", self.special_str("GREPBLANK")));
+                    return Ok(Flow::Next);
+                }
+                let on = match a.to_ascii_lowercase().as_str() {
+                    "1" | "on" | "true" | "yes" => true,
+                    "0" | "off" | "false" | "no" => false,
+                    _ => {
+                        return Err(XplError::trappable(format!(
+                            "GREPBLANK: expected 0|1 (or on|off), got {a:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetGrepBlank(on))?;
+                Ok(Flow::Next)
+            }
             "PVPAPER" | "PVLEADING" | "PVSPACING" | "PVPAGENUM" | "PVPAGEPOS" => {
                 if args.trim().is_empty() {
                     *self.ctx.status = Some(format!("{base}: {}", self.special_str(base)));

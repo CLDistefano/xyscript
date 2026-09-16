@@ -1179,6 +1179,12 @@ Prefer a form to fill in? A bare #raw("GREP") (or #raw("Search ▸ Grep…")) po
 companion to Find with fields for the pattern and the folder/glob, and the same three options as
 checkboxes — and runs the search into a results tab just the same.
 
+For more of each hit's surroundings, ask for *context* lines: #raw("GREPBEFORE 2") shows the two lines
+before every match and #raw("GREPAFTER 2") the two after (like #raw("grep")'s #raw("-B") / #raw("-A"); 0,
+the default, shows none). Context lines are marked with #raw("-") instead of the match's #raw(":"), and #raw("GJ")
+jumps to them too. #raw("GREPBLANK 1") puts a blank line between result groups to space them out. All three
+persist in your configuration.
+
 Every match is highlighted (using the #raw("EMPH") emphasis) right in the results tab, so the hits are easy
 to scan. To open one, put the caret on its line and press #kbd("Enter") (or double-click it, or run #raw("GJ")) —
 it opens that file (or switches to it if it's already open, without asking), jumps the caret right onto

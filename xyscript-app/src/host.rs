@@ -2616,6 +2616,11 @@ pub struct AppHost {
     /// The in-flight streaming `GREP` search, if any (drained by `poll_grep`). At most one at a time —
     /// a new `GREP` cancels the previous.
     grep_job: Option<GrepJob>,
+    /// `GREPBEFORE` / `GREPAFTER` — leading / trailing context lines shown around each `GREP` match
+    /// (0 = none). `GREPBLANK` — insert a blank line between result groups. `$GREP*`; SaveCfg.
+    grep_before: usize,
+    grep_after: usize,
+    grep_blank: bool,
     /// The id of the most-recently-started background job (`X/BG` or `RUN/BG`); `0` = none yet.
     /// Read as `$LJ` so a script can `WAIT/J $LJ` on the job it just launched.
     last_job_id: u64,
@@ -3142,6 +3147,9 @@ impl AppHost {
             next_job_id: 1,
             last_job_id: 0,
             grep_job: None,
+            grep_before: 0,
+            grep_after: 0,
+            grep_blank: false,
             pending_returns: Vec::new(),
             command_history: Vec::new(),
             recently_closed: Vec::new(),
@@ -9096,6 +9104,9 @@ impl AppHost {
         put(&mut s, "Open a file from the DIR/W window in a new tab (on) or the active tab (off) -- DIRWNW", format!("DIRWNW {}", if self.dir_window_new_tab { "on" } else { "off" }));
         put(&mut s, "Close the DIR/W window after opening a file (on) or keep it open (off) -- DIRWCLOSE", format!("DIRWCLOSE {}", if self.dir_window_close_on_open { "on" } else { "off" }));
         put(&mut s, "Reuse an already-open DIR listing tab (on) or open a new one per DIR (off) -- DIRRT", format!("DIRRT {}", if self.dir_reuse { "on" } else { "off" }));
+        put(&mut s, "GREP leading context lines -- GREPBEFORE", format!("GREPBEFORE {}", self.grep_before));
+        put(&mut s, "GREP trailing context lines -- GREPAFTER", format!("GREPAFTER {}", self.grep_after));
+        put(&mut s, "Blank line between GREP result groups (on|off) -- GREPBLANK", format!("GREPBLANK {}", if self.grep_blank { "on" } else { "off" }));
         if !self.dir_defaults.is_empty() {
             put(&mut s, "Default DIR sort/filter/view switches -- DIRSET", format!("DIRSET {}", self.dir_defaults_string()));
         } else {
@@ -10058,10 +10069,13 @@ impl Host for AppHost {
                 {
                     let (cancel, base, pat, mask) =
                         (cancel.clone(), base.clone(), pattern.clone(), mask.clone());
+                    // Context/blank options (`GREPBEFORE`/`GREPAFTER`/`GREPBLANK`), captured for the worker.
+                    let (before, after, blank) = (self.grep_before, self.grep_after, self.grep_blank);
                     std::thread::spawn(move || {
                         let mut batch: Vec<crate::grep::GrepHit> = Vec::new();
                         let summary = crate::grep::search(
-                            &base, &pat, regex, case, whole, mask.as_deref(), GREP_CAP, &cancel,
+                            &base, &pat, regex, case, whole, mask.as_deref(), GREP_CAP, before,
+                            after, blank, &cancel,
                             |hit| {
                                 batch.push(hit);
                                 if batch.len() >= GREP_BATCH {
@@ -10085,6 +10099,18 @@ impl Host for AppHost {
             }
             EditorOp::GrepJump => {
                 return self.grep_jump();
+            }
+            EditorOp::SetGrepBefore(n) => {
+                self.grep_before = n;
+                return Ok(Value::str(format!("GREPBEFORE = {n}")));
+            }
+            EditorOp::SetGrepAfter(n) => {
+                self.grep_after = n;
+                return Ok(Value::str(format!("GREPAFTER = {n}")));
+            }
+            EditorOp::SetGrepBlank(on) => {
+                self.grep_blank = on;
+                return Ok(Value::str(format!("GREPBLANK = {}", if on { "on" } else { "off" })));
             }
             EditorOp::DirToString { path, opts } => {
                 // Same enumeration/filter/sort as `Dir`, but render to text (honouring `/B` etc.)
@@ -13089,6 +13115,9 @@ impl Host for AppHost {
             "WC" => Some(Value::Int(b.word_count() as i64)),
             // Replacement count from the most recent `CH` (replace-all).
             "CC" => Some(Value::Int(self.change_count)),
+            "GREPBEFORE" => Some(Value::Int(self.grep_before as i64)),
+            "GREPAFTER" => Some(Value::Int(self.grep_after as i64)),
+            "GREPBLANK" => Some(Value::Int(if self.grep_blank { 1 } else { 0 })),
             "PS" => Some(Value::Int(if self.persistent { 1 } else { 0 })),
             "DIRNW" => Some(Value::Int(if self.new_window { 1 } else { 0 })),
             "DIRWNW" => Some(Value::Int(if self.dir_window_new_tab { 1 } else { 0 })),

@@ -10034,6 +10034,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn grep_context_options_round_trip_and_persist() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.run_command("GREPBEFORE 3");
+        e.run_command("GREPAFTER 2");
+        e.run_command("GREPBLANK 1");
+        assert_eq!(e.special_str("GREPBEFORE"), "3");
+        assert_eq!(e.special_str("GREPAFTER"), "2");
+        assert_eq!(e.special_str("GREPBLANK"), "1"); // 1|0 (on|off also accepted)
+        // SaveCfg persists all three.
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("GREPBEFORE 3"), "cfg: {cfg}");
+        assert!(cfg.contains("GREPAFTER 2"), "cfg: {cfg}");
+        assert!(cfg.contains("GREPBLANK on"), "cfg: {cfg}");
+        // `on`/`off` spellings work; a bad count is trappable.
+        e.run_command("GREPBLANK off");
+        assert_eq!(e.special_str("GREPBLANK"), "0");
+        e.run_command("GREPBEFORE xyz");
+        assert_ne!(e.special_str("ERROR"), "0", "a non-numeric count is trappable");
+    }
+
+    #[test]
     fn unknown_command_suggests_near_matches() {
         let mut e = Editor::new(typing_keymap());
         e.run_command("CVV /a/b/"); // not a verb; one edit from CV

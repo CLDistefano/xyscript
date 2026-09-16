@@ -211,6 +211,12 @@ pub enum EditorOp {
     /// line (or switch to it if already open), jump to its `line:col`, and centre it. No-op message
     /// when the active buffer isn't a results listing / the caret isn't on a hit.
     GrepJump,
+    /// `GREPBEFORE <n>` / `GREPAFTER <n>` — set the leading / trailing context-line count for `GREP`
+    /// results (0 = none). `$GREPBEFORE` / `$GREPAFTER`; SaveCfg.
+    SetGrepBefore(usize),
+    SetGrepAfter(usize),
+    /// `GREPBLANK on|off` — insert a blank line between `GREP` result groups. `$GREPBLANK`; SaveCfg.
+    SetGrepBlank(bool),
     /// Like `Dir`, but instead of opening a listing buffer, RENDER the listing to text and return
     /// it as the op value — for `CAPTURE … DIR …`, which redirects the listing into a variable.
     DirToString { path: Option<String>, opts: DirOpts },
