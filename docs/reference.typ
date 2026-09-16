@@ -646,6 +646,7 @@ The routines in the bundled #raw("xyscript.lib") are catalogued at the end of th
 == Help
 
 / #cmd("HELP", "?"): look up reference help for a command, special, or function.
+/ #cmd("MAN"): open the user manual, or `MAN <topic>` to search it by section.
 / #cmd("KBCHART"): show the loaded keymap's chart — every modifier table and its key bindings — in a scrollable text box.
 
 == Email
@@ -809,6 +810,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("HOME", "EL"): move to the start of the line (`EL` is the "Express Left" name).
 / #cmd("HM"): move to the top of what's currently on screen.
 / #cmd("HELP", "?"): look up reference help for a command, special, or function — `HELP CV`, `HELP $CWD`, `HELP UPPER` — shown in a scrollable box. A bare `HELP` gives a short overview. When the name is *not* an exact entry, `HELP` searches every entry's name and description and lists all matches (a grep of the reference) — so `HELP indent` surfaces `PVINDENT`, `TAB`, `WRAPINDENT`, and the like; only when nothing matches does it fall back to "did you mean" near-name suggestions. `HELP/S <term>` forces that search even when `<term>` is itself an entry (`HELP/S TAB` lists every TAB-related command). The term is a case-insensitive *substring* normally, but a **regular expression** when it contains a regex metacharacter (one of `\ . ^ $ | [ ( { * + ? #`) — so `HELP ^PV` lists everything starting with `PV`, and `HELP col(ou)?r` matches both spellings. Same text as this reference, so it never drifts.
+/ #cmd("MAN"): the user-manual command — `HELP`'s prose companion. Bare `MAN` opens the manual (as *Help ▸ Manual* does); `MAN <topic>` searches the manual by *section* and lists the matches — each with its heading and a snippet of the surrounding text — in a scrollable box. `MAN scratchpad`, `MAN "page setup"`. The topic is a case-insensitive substring, or a **regular expression** when it holds a regex metacharacter (`\ . ^ $ | [ ( { * + ? #`), so `MAN ^Editing` lists sections whose heading starts with "Editing". (Where `HELP` searches the A–Z reference entries, `MAN` searches the narrative manual.)
 / #cmd("HIGHLIGHT"): turn syntax highlighting on or off for the active file's type.
 / #cmd("HEX"): `HEX on|off` (bare `HEX` = on) shows — and edits — the active document as a hex + text grid: an offset gutter, 16 bytes per row as hex pairs, and a text column (the bytes through the current encoding, non-printable as `.`). A per-document canvas view mode for binary files. *Navigate* by byte: ←/→ move ±1, ↑/↓ move one row (16 bytes), Home/End jump to the row edges, PgUp/PgDn a screen, a selection spans a byte range, and a click lands on the exact byte in whichever column you click. *Edit* in place (OVERWRITE by default, keeping file size and offsets stable): in the hex column type `0`–`9`/`a`–`f` — two digits compose a byte; `Tab` switches to the text column, where a typed character sets that byte through the active encoding. `Insert` adds a `00` byte, `Delete`/`Backspace` remove the byte at / before the caret (or the selection), and copy/cut/paste (byte-faithful) plus undo/redo all work; a genuine `RO` lock blocks editing. #sv("HEX") reads it.
 / #cmd("HLAUTO"): auto-enable highlighting whenever a recognized file is opened (`on`/`off`).
@@ -1529,7 +1531,6 @@ opens the file to read or adapt any of them. A few read user variables you set i
 == Help and information
 
 / #lib("kbd"): open the 104-key keyboard chart.
-/ #lib("man"): open the XyScript user manual.
 / #lib("ref"): open this command reference.
 / #lib("typst"): open the Typst documentation (path in #raw("$PDFreader")).
 / #lib("idkey"): press a key to see the command it is bound to.
@@ -1714,7 +1715,6 @@ Every bundled routine, alphabetical.
 
 == M
 
-/ #lib("man"): open the XyScript user manual.
 / #lib("max"): return the largest of a list of numbers.
 / #lib("minm"): return the smallest of a list of numbers.
 

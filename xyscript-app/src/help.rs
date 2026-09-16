@@ -263,7 +263,7 @@ fn kind_slot(k: Kind) -> usize {
 
 /// Reduce a Typst description to plain text: entry macros become their readable forms, code
 /// backticks are dropped, and the common backslash escapes are unescaped.
-fn clean(s: &str) -> String {
+pub(crate) fn clean(s: &str) -> String {
     let out = entry_re().replace_all(s, |c: &regex::Captures| {
         let names = quoted_args(&c[2]);
         match &c[1] {

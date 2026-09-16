@@ -2527,6 +2527,8 @@ pub struct AppHost {
     open_requested: Option<bool>,
     /// `EDFONTS`/`UIFONTS`/`TXTFONTS` asked for the GUI font-picker dialog; the GUI drains this.
     font_picker_request: Option<FontPickerKind>,
+    /// Bare `MAN` set this; the GUI polls `take_show_manual_request` and opens the manual.
+    show_manual_request: bool,
     /// `*COLORS`/`HLCOLORS <kind>` asked for the GUI colour-picker dialog; the GUI drains this.
     color_picker_request: Option<ColorTarget>,
     /// A pending `AB/V` save-prompt or `ABD` delete-confirm; the GUI shows it + sends the answer.
@@ -3107,6 +3109,7 @@ impl AppHost {
             scratch_text: String::new(),
             reveal_center: false,
             font_picker_request: None,
+            show_manual_request: false,
             color_picker_request: None,
             pending_close: None,
             pending_open: None,
@@ -4094,6 +4097,10 @@ impl AppHost {
     /// The font-picker dialog a `EDFONTS`/`UIFONTS`/`TXTFONTS` verb requested, if any; consumes it.
     pub fn take_font_picker_request(&mut self) -> Option<FontPickerKind> {
         self.font_picker_request.take()
+    }
+    /// Bare `MAN` requested the manual be opened (Help ▸ Manual). The GUI polls this each frame.
+    pub fn take_show_manual_request(&mut self) -> bool {
+        std::mem::take(&mut self.show_manual_request)
     }
     /// The colour-picker dialog a `*COLORS`/`HLCOLORS` verb requested, if any; consumes it.
     pub fn take_color_picker_request(&mut self) -> Option<ColorTarget> {
@@ -11880,6 +11887,10 @@ impl Host for AppHost {
                 self.font_picker_request = Some(FontPickerKind::PreviewCode);
                 return Ok(Value::str(""));
             }
+            EditorOp::ShowManual => {
+                self.show_manual_request = true;
+                return Ok(Value::str(""));
+            }
             EditorOp::SetUiSize { kind, value, relative } => {
                 // `relative` (the verb's arg began with an explicit +/-): add `value` to the knob's
                 // current value; otherwise `value` replaces it. Each knob then clamps to its range
@@ -13726,6 +13737,37 @@ impl Host for AppHost {
             format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
         };
         HelpResponse { title: "Help".to_string(), body, not_found: true }
+    }
+
+    fn manual_search(&self, q: &str) -> HelpResponse {
+        const CAP: usize = 25; // sections listed before "…and N more"
+        const SNIPPET_CHARS: usize = 320; // context window per section (the dialog word-wraps)
+        let hits = crate::manual::search(q);
+        if hits.is_empty() {
+            return HelpResponse {
+                title: "Manual".to_string(),
+                body: format!("No manual sections match {q:?}. Type MAN for an overview."),
+                not_found: true,
+            };
+        }
+        let shown = hits.len().min(CAP);
+        let mut body = format!(
+            "{} manual section{} for {q:?}:\n",
+            hits.len(),
+            if hits.len() == 1 { "" } else { "s" }
+        );
+        for s in &hits[..shown] {
+            let snip = crate::manual::snippet(&s.body, q, SNIPPET_CHARS);
+            body.push_str(&format!("\n{}\n    {snip}", s.title));
+        }
+        if hits.len() > shown {
+            body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));
+        }
+        HelpResponse {
+            title: format!("Manual: {q:?} — {} section{}", hits.len(), if hits.len() == 1 { "" } else { "s" }),
+            body,
+            not_found: false,
+        }
     }
 
     fn selection_in(&self, n: i64) -> String {

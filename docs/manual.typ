@@ -149,7 +149,10 @@ leaving the keyboard, #raw("HELP <name>") (or #raw("?")) shows that entry in a b
 isn't an exact match, it lists everything whose name or description mentions it, so #raw("HELP indent")
 finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"); #raw("HELP/S <term>") forces that search.
 The term is matched as a substring, or as a *regular expression* if it contains a regex metacharacter
-(#raw("\\ . ^ $ | [ ( { * + ? #")) — so #raw("HELP ^PV") lists everything starting with #raw("PV").]
+(#raw("\\ . ^ $ | [ ( { * + ? #")) — so #raw("HELP ^PV") lists everything starting with #raw("PV").
+Its companion #raw("MAN") does the same for *this manual*: bare #raw("MAN") opens it, and
+#raw("MAN <topic>") searches it by section (#raw("MAN scratchpad")), with the same substring/regex
+rules — so #raw("HELP") finds the terse reference entry and #raw("MAN") the fuller explanation.]
 
 == Running XyScript
 
@@ -2160,7 +2163,6 @@ The routines, by what they do:
 === Help and information
 
 / #raw("kbd"): open the 104-key keyboard chart.
-/ #raw("man"): open this user manual.
 / #raw("ref"): open the command reference.
 / #raw("typst"): open the Typst documentation (#raw("$PDFreader")).
 / #raw("idkey"): press a key to see the command it is bound to.

@@ -6441,6 +6441,20 @@ impl GuiApp {
     }
 
     /// Open the font picker for `kind`, seeding it with the current family + size for that target.
+    /// Open the user manual (Help ▸ Manual, and bare `MAN`): write the embedded manual to a temp
+    /// `.typ` and open it (typst DOCTYPE, so it previews/exports); reopening reuses the tab.
+    fn open_manual(&mut self) {
+        let path = std::env::temp_dir().join("xyscript-manual.typ");
+        match std::fs::write(&path, MANUAL_TYP) {
+            Ok(()) => {
+                let r = self.editor.open(&path.to_string_lossy());
+                self.reset_view();
+                self.note(r);
+            }
+            Err(e) => self.note(Err(format!("could not open the manual: {e}"))),
+        }
+    }
+
     fn open_font_picker(&mut self, kind: FontPickerKind) {
         // The editor canvas + DIR/W listing + Preview CODE font are monospaced (column-aligned /
         // code), so their pickers list monospaced families only.
@@ -8915,6 +8929,10 @@ impl GuiApp {
         if let Some(kind) = self.editor.take_font_picker_request() {
             self.open_font_picker(kind);
         }
+        // Bare `MAN` — open the user manual (same as Help ▸ Manual).
+        if self.editor.take_show_manual_request() {
+            self.open_manual();
+        }
         // Open the colour picker (`*COLORS`/`HLCOLORS`); the window itself renders near `ui()`'s end.
         if let Some(target) = self.editor.take_color_picker_request() {
             self.open_color_picker(target);
@@ -9255,19 +9273,7 @@ impl GuiApp {
                         Err(e) => self.note(Err(format!("could not open the reference: {e}"))),
                     }
                 }
-                Act::ShowManual => {
-                    // Same path as the reference: write the embedded manual to a temp `.typ` and open
-                    // it (typst DOCTYPE, so it previews/exports); reopening reuses the tab.
-                    let path = std::env::temp_dir().join("xyscript-manual.typ");
-                    match std::fs::write(&path, MANUAL_TYP) {
-                        Ok(()) => {
-                            let r = self.editor.open(&path.to_string_lossy());
-                            self.reset_view();
-                            self.note(r);
-                        }
-                        Err(e) => self.note(Err(format!("could not open the manual: {e}"))),
-                    }
-                }
+                Act::ShowManual => self.open_manual(),
             }
         }
 

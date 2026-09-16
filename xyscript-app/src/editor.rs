@@ -1274,6 +1274,10 @@ impl Editor {
     pub fn take_font_picker_request(&mut self) -> Option<crate::host::FontPickerKind> {
         self.host.take_font_picker_request()
     }
+    /// Whether bare `MAN` requested the manual be opened (Help ▸ Manual); consumes the flag.
+    pub fn take_show_manual_request(&mut self) -> bool {
+        self.host.take_show_manual_request()
+    }
     /// The colour-picker dialog a `*COLORS`/`HLCOLORS` verb requested, if any; consumes it.
     pub fn take_color_picker_request(&mut self) -> Option<crate::host::ColorTarget> {
         self.host.take_color_picker_request()
@@ -10002,6 +10006,31 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert!(title.as_deref().is_some_and(|t| t.contains("match")), "title: {title:?}");
         assert!(text.contains("PVSIZE") && text.contains("PVCODESIZE"), "regex PV.*SIZE: {text}");
         e.dismiss_text();
+    }
+
+    #[test]
+    fn man_searches_the_manual_and_bare_man_opens_it() {
+        let mut e = Editor::new(typing_keymap());
+        // `MAN <topic>` searches the manual by section and lists matches in a dialog.
+        e.run_command("MAN scratchpad");
+        let (title, text) = e.text_request().expect("MAN <topic> opens a search-list dialog");
+        assert!(title.as_deref().is_some_and(|t| t.contains("section")), "title: {title:?}");
+        assert!(text.to_lowercase().contains("scratchpad"), "should list the Scratchpad section: {text}");
+        e.dismiss_text();
+        // Regex topic: `^Editing` anchors to a section heading.
+        e.run_command("MAN ^Editing");
+        let (_, text) = e.text_request().expect("regex MAN opens a dialog");
+        assert!(text.contains("Editing"), "regex ^Editing: {text}");
+        e.dismiss_text();
+        // No matches → status line, no dialog, $ERROR set.
+        e.run_command("MAN zzzznotinmanual");
+        assert!(e.text_request().is_none(), "no matches → no dialog");
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        // Bare `MAN` requests that the GUI open the manual (a host flag the GUI polls).
+        e.run_command("MAN");
+        assert!(e.text_request().is_none(), "bare MAN opens the manual, not a dialog");
+        assert!(e.host_mut().take_show_manual_request(), "bare MAN sets the show-manual request");
     }
 
     #[test]

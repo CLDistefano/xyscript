@@ -40,7 +40,7 @@ use std::collections::BTreeMap;
 /// trappable failure. Folded names.
 const NO_ERROR_TOUCH: &[&str] = &[
     "CALL", "ENV", "SETERR", "CLERR", "QUIET",
-    "?", "ABOUT", "HELP", "COMMANDS", "LISTLIB", "LISTVAR", "LISTVARS", "HISTORY", "HI", "BUFLIST",
+    "?", "ABOUT", "HELP", "MAN", "COMMANDS", "LISTLIB", "LISTVAR", "LISTVARS", "HISTORY", "HI", "BUFLIST",
     "HLKINDS",
 ];
 
@@ -4770,6 +4770,34 @@ impl Vm<'_, '_> {
                 // `/S` forces the grep-like search over names + descriptions (vs an exact lookup).
                 let search = vswitches.iter().any(|s| s.eq_ignore_ascii_case("S"));
                 let resp = self.ctx.host.help((!q.is_empty()).then_some(q), search);
+                if self.is_capturing() {
+                    self.capture_push(&resp.body);
+                    return Ok(Flow::Next);
+                }
+                if resp.not_found {
+                    self.ctx.env.error = 1;
+                    *self.ctx.status = Some(resp.body);
+                    return Ok(Flow::Next);
+                }
+                self.suspend = Some(SuspendReason::ShowText {
+                    title: Some(resp.title),
+                    text: resp.body,
+                    columns: None,
+                    line_colors: None,
+                });
+                Ok(Flow::Suspend)
+            }
+            // `MAN [topic]` — the manual command. Bare `MAN` opens the user manual (Help ▸ Manual);
+            // `MAN <topic>` searches the manual by section and shows the matches in a TXT dialog (a
+            // metacharacter makes the topic a regex, like `HELP`). Capture-aware.
+            "MAN" => {
+                let q = raw_args.trim();
+                if q.is_empty() {
+                    // Bare: open the manual (a GUI action; headless no-op).
+                    self.host_op(EditorOp::ShowManual)?;
+                    return Ok(Flow::Next);
+                }
+                let resp = self.ctx.host.manual_search(q);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
                     return Ok(Flow::Next);

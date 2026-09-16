@@ -379,6 +379,9 @@ pub enum EditorOp {
     /// `PVCODES` — request the GUI's font-picker dialog for the Preview/`TOPDF` CODE font (monospace
     /// family). On OK the GUI applies `PVCODE`.
     PreviewCodePicker,
+    /// Bare `MAN` — request the GUI to open the user manual (same as Help ▸ Manual). Headless builds
+    /// have nowhere to show it, so it's a no-op there.
+    ShowManual,
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,
@@ -1742,6 +1745,18 @@ pub trait Host {
         HelpResponse {
             title: "Help".to_string(),
             body: "Help is not available in this build.".to_string(),
+            not_found: true,
+        }
+    }
+
+    /// `MAN <topic>` — search the user manual by section (the prose companion to [`Self::help`]).
+    /// Returns a formatted title + body listing the matching sections with a context snippet;
+    /// `not_found` when nothing matched (reported on the status line, like `HELP`). Bare `MAN` opens
+    /// the manual via `EditorOp::ShowManual` instead of calling this. Default: unavailable.
+    fn manual_search(&self, _query: &str) -> HelpResponse {
+        HelpResponse {
+            title: "Manual".to_string(),
+            body: "The manual is not available in this build.".to_string(),
             not_found: true,
         }
     }
