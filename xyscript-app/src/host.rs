@@ -13690,7 +13690,7 @@ impl Host for AppHost {
         }
         // `/S`, or an exact miss: grep names + descriptions and list every match in the dialog.
         const CAP: usize = 40; // max entries listed before "…and N more"
-        const SNIPPET_CHARS: usize = 220; // synopsis characters shown per hit (the dialog word-wraps)
+        const SNIPPET_CHARS: usize = 320; // synopsis characters shown per hit (the dialog word-wraps)
         let hits = crate::help::search(q);
         if !hits.is_empty() {
             let shown = hits.len().min(CAP);
