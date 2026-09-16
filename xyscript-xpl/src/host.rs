@@ -1064,6 +1064,7 @@ pub enum DocTypeReq {
     Gfm,
     Typst,
     Html,
+    Text,
 }
 
 /// Clipboard operation for [`EditorOp::Clip`] (the OS clipboard, `$CB`).

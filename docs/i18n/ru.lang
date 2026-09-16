@@ -125,6 +125,7 @@ menu.view.statusline.bottom = Снизу   # Bottom
 menu.document.doctype = Тип документа   # Document type
 menu.document.doctype.typst = Typst   # Typst
 menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.text = Обычный текст   # Plain text
 menu.document.doctype.auto = Автоматически (по расширению)   # Auto (by extension)
 menu.document.encoding = Кодировка текста   # Text encoding
 menu.document.encoding.display_as = Показывать как   # Display as

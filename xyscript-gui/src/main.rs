@@ -7733,6 +7733,7 @@ impl GuiApp {
                 m_sub(self.tr("menu.document.doctype", "Document type"), vec![
                     m_tog(self.tr("menu.document.doctype.typst", "Typst"), doctype == "typst", "DOCTYPE typst"),
                     m_tog(self.tr("menu.document.doctype.gfm", "GFM (Markdown)"), doctype == "gfm", "DOCTYPE gfm"),
+                    m_tog(self.tr("menu.document.doctype.text", "Plain text"), doctype == "text", "DOCTYPE text"),
                     m_item(self.tr("menu.document.doctype.auto", "Auto (by extension)"), "DOCTYPE auto"),
                 ]),
                 m_sub(self.tr("menu.document.encoding", "Text encoding"), vec![
@@ -10379,6 +10380,7 @@ impl GuiApp {
                 RenderKind::Typst => "preview — typst",
                 RenderKind::Gfm => "preview — gfm",
                 RenderKind::Html => "preview — html",
+                RenderKind::Text => "preview — text",
             });
             ui.separator();
             let pane_w = ui.available_size().x.max(50.0);
@@ -10424,6 +10426,10 @@ impl GuiApp {
                         }
                         RenderKind::Html => {
                             xyscript_app::html_to_image(&cur, &doc_dir, scale, &fonts)
+                        }
+                        RenderKind::Text => {
+                            // Plain text: verbatim, no Markdown interpretation; takes the PV font settings.
+                            xyscript_app::text_to_image(&cur, &doc_dir, scale, &fonts)
                         }
                     };
                     match res {

@@ -575,6 +575,39 @@ fn compile_gfm(
     compile_markup(format!("{preamble}{body}\n"), blobs, doc_dir)
 }
 
+/// Compile a PLAIN-TEXT document: the buffer rendered **verbatim** — every source newline becomes a
+/// hard line break and no Markdown/Typst syntax is interpreted (`#`, `*`, `=` … print literally) — with
+/// the SAME preamble (page setup + fonts) as GFM. This is the auto default for non-.md text files and
+/// the target of `DOCTYPE text`. See [`plain_text_body`] for the verbatim transform.
+fn compile_text(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<PagedDocument, String> {
+    let (preamble, blobs) = gfm_preamble(fonts);
+    compile_markup(format!("{preamble}{}\n", plain_text_body(source)), blobs, doc_dir)
+}
+
+/// Turn raw text into a Typst body that renders VERBATIM. Every source line is emitted with all Typst
+/// markup characters escaped (so nothing is interpreted), lines are joined with hard breaks (each source
+/// newline → one line break; a run of blank lines survives as blank lines), and leading indentation is
+/// preserved with non-breaking spaces because Typst trims leading whitespace (a tab ≈ 8). Long lines
+/// still wrap at the page margin — only *leading* runs are made non-breaking; interior space runs keep
+/// Typst's normal wrapping/collapse.
+fn plain_text_body(src: &str) -> String {
+    let mut out = String::new();
+    for (i, raw) in src.split('\n').enumerate() {
+        let line = raw.strip_suffix('\r').unwrap_or(raw); // tolerate CRLF buffers
+        if i > 0 {
+            // Trailing space is required: `#linebreak()` immediately followed by `(`/`[`/`{` parses as a
+            // chained call (see gfm.rs LineBreak).
+            out.push_str("#linebreak() ");
+        }
+        let indent_end = line.find(|c: char| c != ' ' && c != '\t').unwrap_or(line.len());
+        for c in line[..indent_end].chars() {
+            out.push_str(if c == '\t' { "~~~~~~~~" } else { "~" }); // ~ = Typst non-breaking space
+        }
+        out.push_str(&crate::typst_esc::escape_text(&line[indent_end..]));
+    }
+    out
+}
+
 /// Compile an HTML document the same way: [`crate::html`] translates it to a typst body, which gets
 /// the SAME preamble as GFM — the document's own `style`/`class` are ignored (a structural
 /// conversion), so the user's [`PreviewFonts`] choice governs its appearance just as it does for
@@ -666,6 +699,22 @@ pub fn gfm_to_image(
     styler: Option<&crate::gfm::Styler>,
 ) -> Result<(Vec<u8>, u32, u32), String> {
     to_raster(&compile_gfm(source, fonts, doc_dir, styler)?, scale)
+}
+
+/// Render a PLAIN-TEXT document to PDF bytes (verbatim, no Markdown interpretation), styled per `fonts`.
+/// Errors are returned as a message so the caller can surface them trappably.
+pub fn text_to_pdf(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
+    to_pdf_bytes(&compile_text(source, fonts, doc_dir)?)
+}
+
+/// Render a PLAIN-TEXT document (all pages, stacked) to a raster RGBA image — the GUI live-preview path.
+pub fn text_to_image(
+    source: &str,
+    doc_dir: &Path,
+    scale: f32,
+    fonts: &PreviewFonts,
+) -> Result<(Vec<u8>, u32, u32), String> {
+    to_raster(&compile_text(source, fonts, doc_dir)?, scale)
 }
 
 /// Render an HTML document to PDF bytes, styled per `fonts` (structural conversion — see
@@ -995,6 +1044,42 @@ mod tests {
         assert_eq!(w1, w2, "same page width");
         assert!(h2 > h1 + h1 / 2, "two pages ({h2}) should be ~twice one page ({h1})");
         assert_eq!(rgba.len(), (w2 * h2 * 4) as usize);
+    }
+
+    // ---- Plain text (verbatim, no Markdown interpretation) --------------------
+
+    #[test]
+    fn plain_text_body_preserves_newlines_and_indentation() {
+        // Each source newline → a hard break; leading indent → non-breaking spaces; a blank line survives.
+        let body = plain_text_body("first\n\n    indented\nlast");
+        assert_eq!(body.matches("#linebreak() ").count(), 3, "3 newlines → 3 breaks: {body}");
+        assert!(body.contains("~~~~"), "leading spaces → nbsp: {body}");
+        assert!(body.contains("indented") && body.contains("first") && body.contains("last"));
+    }
+
+    #[test]
+    fn plain_text_does_not_interpret_markdown_and_compiles() {
+        // A leading `#`, `*`, `=`, `-` must print literally (escaped), not become a heading/list/etc.,
+        // and the tricky metacharacters must not inject Typst — end-to-end proof it compiles.
+        let txt = "# not a heading\n* not a bullet\n= not typst\nloose $ # * < @ chars\n";
+        let pdf = text_to_pdf(txt, dot(), &dflt()).expect("plain text should compile");
+        assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
+        // The `#` survives as literal text (escaped), never as a Typst code sigil.
+        let body = plain_text_body(txt);
+        assert!(!body.contains("#linebreak() #"), "a line's leading # must be escaped, not raw: {body}");
+    }
+
+    #[test]
+    fn renders_plain_text_to_a_raster_image() {
+        let (rgba, w, h) = text_to_image("line one\nline two\n", dot(), 1.0, &dflt()).expect("image");
+        assert!(w > 0 && h > 0);
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+        assert!(rgba.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn empty_plain_text_still_compiles() {
+        assert!(text_to_pdf("", dot(), &dflt()).expect("empty text").starts_with(b"%PDF-"));
     }
 
     // ---- Typst-as-input (Phase 0): the buffer IS typst markup -----------------

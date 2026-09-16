@@ -120,6 +120,7 @@ menu.view.statusline.bottom = [Ɓòţţòɱ ··]   # Bottom
 menu.document.doctype = [Đòçùɱèñţ ţýþè ·····]   # Document type
 menu.document.doctype.typst = [Ţýþšţ ··]   # Typst
 menu.document.doctype.gfm = [ĜƑⱮ (Ɱàŕķđòŵñ) ······]   # GFM (Markdown)
+menu.document.doctype.text = [Þĺàìñ ţèẋţ ····]   # Plain text
 menu.document.doctype.auto = [Àùţò (ƀý èẋţèñšìòñ) ········]   # Auto (by extension)
 menu.document.encoding = [Ţèẋţ èñçòđìñĝ ·····]   # Text encoding
 menu.document.encoding.display_as = [Đìšþĺàý àš ····]   # Display as

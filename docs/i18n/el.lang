@@ -121,6 +121,7 @@ menu.view.statusline.bottom = Κάτω   # Bottom
 menu.document.doctype = Τύπος εγγράφου   # Document type
 menu.document.doctype.typst = Typst   # Typst
 menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.text = Απλό κείμενο   # Plain text
 menu.document.doctype.auto = Αυτόματα (κατά επέκταση)   # Auto (by extension)
 menu.document.encoding = Κωδικοποίηση κειμένου   # Text encoding
 menu.document.encoding.display_as = Εμφάνιση ως   # Display as

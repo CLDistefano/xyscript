@@ -373,6 +373,9 @@ pub enum RenderKind {
     Gfm,
     Typst,
     Html,
+    /// Plain text: the buffer rendered verbatim (each newline a hard line break), with **no** Markdown
+    /// interpretation. The auto default for non-`.md` text files; forced by `DOCTYPE text`.
+    Text,
 }
 
 impl RenderKind {
@@ -382,6 +385,7 @@ impl RenderKind {
             RenderKind::Gfm => "gfm",
             RenderKind::Typst => "typst",
             RenderKind::Html => "html",
+            RenderKind::Text => "text",
         }
     }
 }
@@ -913,15 +917,20 @@ impl Document {
     }
 
     /// The effective render kind for `TOPDF`/preview: the `DOCTYPE` override if set, else by file
-    /// extension (`.typ` → Typst, `.html`/`.htm`/`.xhtml` → HTML, everything else → GFM).
+    /// extension (`.md`/`.markdown` → GFM, `.typ` → Typst, `.html`/`.htm`/`.xhtml` → HTML, everything
+    /// else → plain Text).
     pub fn render_kind(&self) -> RenderKind {
         self.render_override.unwrap_or_else(|| self.render_kind_from_ext())
     }
 
-    /// The extension-driven render kind (ignores any override): `.typ` → Typst, `.html`/`.htm`/
-    /// `.xhtml` → Html, else GFM.
+    /// The extension-driven render kind (ignores any override): `.md`/`.markdown` → Gfm, `.typ` →
+    /// Typst, `.html`/`.htm`/`.xhtml` → Html, everything else (`.txt`, `.log`, `.rs`, no extension, …)
+    /// → plain Text (rendered verbatim, no Markdown interpretation).
     fn render_kind_from_ext(&self) -> RenderKind {
         match self.path.as_deref().and_then(|p| p.extension()).and_then(|e| e.to_str()) {
+            Some(e) if e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown") => {
+                RenderKind::Gfm
+            }
             Some(e) if e.eq_ignore_ascii_case("typ") => RenderKind::Typst,
             Some(e)
                 if e.eq_ignore_ascii_case("html")
@@ -930,7 +939,7 @@ impl Document {
             {
                 RenderKind::Html
             }
-            _ => RenderKind::Gfm,
+            _ => RenderKind::Text,
         }
     }
 
@@ -3591,13 +3600,20 @@ mod tests {
 
     #[test]
     fn render_kind_by_extension_and_override() {
-        // No path → GFM; `.typ` → Typst; other extensions → GFM.
+        // No path → plain Text; `.md`/`.markdown` → GFM; `.typ` → Typst; other extensions → Text.
         let mut d = Document::new();
-        assert_eq!(d.render_kind(), RenderKind::Gfm);
+        assert_eq!(d.render_kind(), RenderKind::Text);
         d.set_path(PathBuf::from("notes.typ"));
         assert_eq!(d.render_kind(), RenderKind::Typst);
         d.set_path(PathBuf::from("notes.md"));
         assert_eq!(d.render_kind(), RenderKind::Gfm);
+        d.set_path(PathBuf::from("notes.markdown"));
+        assert_eq!(d.render_kind(), RenderKind::Gfm);
+        // A non-Markdown text extension (and an extensionless file) → plain Text, NOT GFM.
+        d.set_path(PathBuf::from("notes.txt"));
+        assert_eq!(d.render_kind(), RenderKind::Text);
+        d.set_path(PathBuf::from("README"));
+        assert_eq!(d.render_kind(), RenderKind::Text);
         // `.html`/`.htm`/`.xhtml` route to the HTML converter, case-insensitively.
         d.set_path(PathBuf::from("page.html"));
         assert_eq!(d.render_kind(), RenderKind::Html);

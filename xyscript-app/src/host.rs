@@ -6138,9 +6138,11 @@ impl AppHost {
     fn lint_flavor(&self) -> crate::lint::Flavor {
         match self.docs[self.active].render_kind() {
             crate::document::RenderKind::Typst => crate::lint::Flavor::Typst,
-            crate::document::RenderKind::Gfm | crate::document::RenderKind::Html => {
-                crate::lint::Flavor::Markdown
-            }
+            // Plain text is pure prose; Markdown's parser checks prose (skipping any markup it sees),
+            // which is exactly right for a buffer with no markup at all.
+            crate::document::RenderKind::Gfm
+            | crate::document::RenderKind::Html
+            | crate::document::RenderKind::Text => crate::lint::Flavor::Markdown,
         }
     }
 
@@ -7283,6 +7285,7 @@ impl AppHost {
                 "gfm" => Some(crate::document::RenderKind::Gfm),
                 "typst" => Some(crate::document::RenderKind::Typst),
                 "html" => Some(crate::document::RenderKind::Html),
+                "text" => Some(crate::document::RenderKind::Text),
                 _ => None,
             });
             let len = doc.buffer().len();
@@ -11625,6 +11628,9 @@ impl Host for AppHost {
                     crate::document::RenderKind::Html => {
                         crate::pdf::html_to_pdf(&source, &doc_dir, &self.preview_fonts())
                     }
+                    crate::document::RenderKind::Text => {
+                        crate::pdf::text_to_pdf(&source, &doc_dir, &self.preview_fonts())
+                    }
                 }
                 .map_err(XplError::trappable)?;
                 self.write_doc_bytes(&path.to_string_lossy(), &pdf)?;
@@ -11643,6 +11649,7 @@ impl Host for AppHost {
                     DocTypeReq::Gfm => doc.set_render_override(Some(RenderKind::Gfm)),
                     DocTypeReq::Typst => doc.set_render_override(Some(RenderKind::Typst)),
                     DocTypeReq::Html => doc.set_render_override(Some(RenderKind::Html)),
+                    DocTypeReq::Text => doc.set_render_override(Some(RenderKind::Text)),
                 }
                 let kind = self.docs[self.active].render_kind().as_str();
                 let how = if matches!(req, DocTypeReq::Query | DocTypeReq::Auto) {

@@ -216,8 +216,8 @@ Click in the text window and type a few lines:
 
 That is just text. If you would like to see it rendered, XyScript can treat the document as Markdown:
 turn on the preview pane (the *View* menu, or the #raw("PV") command) to see the formatted version
-beside the source. The document type is yours to choose with #raw("DOCTYPE") — GFM, Typst, or
-automatic by file extension.
+beside the source. The document type is yours to choose with #raw("DOCTYPE") — GFM, Typst, plain
+text, or automatic by file extension.
 
 === B. Save it
 
@@ -1642,15 +1642,18 @@ treat the document as *markup*; the third fills a *template*.
 
 == Choosing how a document renders
 
-Two markup languages are supported, and #raw("DOCTYPE") picks which one the preview and PDF use:
+Two markup languages are supported — plus a plain-text mode for everything else — and #raw("DOCTYPE")
+picks which one the preview and PDF use:
 
 / #raw("DOCTYPE gfm"): GitHub-Flavored *Markdown* — quick formatted notes with headings, lists, tables, and code.
 / #raw("DOCTYPE typst"): *Typst* markup — the full typesetting language, for fine layout, precise control, and mathematics. (This manual is a Typst document, rendered by XyScript itself.)
-/ #raw("DOCTYPE auto"): decide by the file's extension — a #raw(".typ") file is Typst, anything else is Markdown.
+/ #raw("DOCTYPE text"): *plain text* — the buffer typeset verbatim. Every line break in the file is a line break in the PDF (no trailing #raw("\\") needed, as it would be in Markdown), and no Markdown syntax is interpreted: a leading #raw("#"), #raw("*"), or #raw("-") prints as itself. Long lines still wrap at the margin and leading indentation is kept. This is the mode for a #raw(".txt"), a log, or a source file you want printed as-is.
+/ #raw("DOCTYPE auto"): decide by the file's extension — #raw(".md")/#raw(".markdown") are Markdown, a #raw(".typ") file is Typst, #raw(".html")/#raw(".htm")/#raw(".xhtml") are HTML, and everything else is plain text.
 
 #raw("$DOCTYPE") reports the effective choice, and *Document ▸ Document type* sets it from the menu.
-Reach for Markdown when you just want readable formatting; reach for Typst when you need control. The
-full catalog of Markdown constructs XyScript renders is in *Appendix D*.
+Reach for Markdown when you want readable formatting, Typst when you need control, and plain text when
+you want the file printed exactly as typed. The full catalog of Markdown constructs XyScript renders is
+in *Appendix D*.
 
 == The live preview
 

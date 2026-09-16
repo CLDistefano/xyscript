@@ -11689,12 +11689,14 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     fn doctype_routes_topdf_and_reads_back() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
-        // A scratch buffer (no path) defaults to gfm; DOCTYPE forces, auto restores extension-driven.
+        // A scratch buffer (no path) defaults to plain text; DOCTYPE forces, auto restores extension-driven.
         e.run_command("PR $DOCTYPE");
-        assert_eq!(e.output().last().map(String::as_str), Some("gfm"));
+        assert_eq!(e.output().last().map(String::as_str), Some("text"));
         e.run_command("DOCTYPE typst\nPR $DOCTYPE");
         assert_eq!(e.output().last().map(String::as_str), Some("typst"));
         e.run_command("DOCTYPE auto\nPR $DOCTYPE");
+        assert_eq!(e.output().last().map(String::as_str), Some("text"));
+        e.run_command("DOCTYPE gfm\nPR $DOCTYPE");
         assert_eq!(e.output().last().map(String::as_str), Some("gfm"));
 
         // Routing proof: `#nope_fn()` is a typst compile error but harmless escaped text as GFM.

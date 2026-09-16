@@ -121,6 +121,7 @@ menu.view.statusline.bottom = Lent   # Bottom
 menu.document.doctype = Dokumentumtípus   # Document type
 menu.document.doctype.typst = Typst   # Typst
 menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.text = Egyszerű szöveg   # Plain text
 menu.document.doctype.auto = Automatikus (kiterjesztés szerint)   # Auto (by extension)
 menu.document.encoding = Szövegkódolás   # Text encoding
 menu.document.encoding.display_as = Megjelenítés mint   # Display as

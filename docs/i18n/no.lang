@@ -121,6 +121,7 @@ menu.view.statusline.bottom = Nederst   # Bottom
 menu.document.doctype = Dokumenttype   # Document type
 menu.document.doctype.typst = Typst   # Typst
 menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.text = Ren tekst   # Plain text
 menu.document.doctype.auto = Automatisk (etter filtype)   # Auto (by extension)
 menu.document.encoding = Tegnkoding   # Text encoding
 menu.document.encoding.display_as = Vis som   # Display as

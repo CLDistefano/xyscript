@@ -2281,7 +2281,7 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetDecimals(dp))?;
                 Ok(Flow::Next)
             }
-            // `DOCTYPE [typst|gfm|html|auto]` — how the active doc renders to PDF/preview. Bare =
+            // `DOCTYPE [typst|gfm|html|text|auto]` — how the active doc renders to PDF/preview. Bare =
             // report the effective kind; `auto` clears the override (decide by extension). `$DOCTYPE`
             // reads it.
             "DOCTYPE" => {
@@ -2291,9 +2291,10 @@ impl Vm<'_, '_> {
                     "gfm" => DocTypeReq::Gfm,
                     "typst" => DocTypeReq::Typst,
                     "html" => DocTypeReq::Html,
+                    "text" => DocTypeReq::Text,
                     other => {
                         return Err(XplError::trappable(format!(
-                            "DOCTYPE: expected typst, gfm, html, or auto, got {other:?}"
+                            "DOCTYPE: expected typst, gfm, html, text, or auto, got {other:?}"
                         )))
                     }
                 };

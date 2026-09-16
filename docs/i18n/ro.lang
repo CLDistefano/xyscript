@@ -125,6 +125,7 @@ menu.view.statusline.bottom = Jos   # Bottom
 menu.document.doctype = Tip de document   # Document type
 menu.document.doctype.typst = Typst   # Typst
 menu.document.doctype.gfm = GFM (Markdown)   # GFM (Markdown)
+menu.document.doctype.text = Text simplu   # Plain text
 menu.document.doctype.auto = Automat (după extensie)   # Auto (by extension)
 menu.document.encoding = Codificare text   # Text encoding
 menu.document.encoding.display_as = Afișează ca   # Display as

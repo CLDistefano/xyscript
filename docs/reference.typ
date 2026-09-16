@@ -559,9 +559,18 @@ Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") 
 == Markdown, HTML, and Typst preview and export
 
 A document is rendered by its `DOCTYPE`: Markdown (GFM) and HTML are each translated to
-typst markup and typeset by XyScript's own renderer, while an authored `.typ` document is
-compiled as-is. Under `auto` the extension picks: `.typ` → typst, `.html` / `.htm` /
-`.xhtml` → HTML, everything else → Markdown.
+typst markup and typeset by XyScript's own renderer, an authored `.typ` document is
+compiled as-is, and a plain-text document is typeset verbatim. Under `auto` the extension
+picks: `.md` / `.markdown` → Markdown, `.typ` → typst, `.html` / `.htm` / `.xhtml` → HTML,
+and everything else (`.txt`, `.log`, source files, no extension, …) → plain text.
+
+Plain text is rendered *literally*: every line break in the buffer is a line break in the
+output — you do not append `\` to force one, as you would in Markdown — and no Markdown
+syntax is interpreted, so a leading `#`, `*`, or `-` prints as itself rather than becoming
+a heading or a list. Long lines still wrap at the margin, and leading indentation is
+preserved. Plain text uses the same page setup and `PV*` fonts as the Markdown renderer.
+Force it on any file with `DOCTYPE text`; conversely `DOCTYPE gfm` renders a `.txt` as
+Markdown.
 
 HTML is converted *structurally*. Headings, paragraphs, bold/italic, lists, blockquotes,
 links, images, tables, and `<pre>` code blocks become their typst equivalents; `<script>`,
@@ -577,7 +586,7 @@ Raw HTML written *inline* in a line of Markdown (`a <b>word</b> here`) is still 
 text — Markdown hands those to us as separate opening and closing fragments, with no
 self-contained element to convert.
 
-/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `auto`).
+/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `text` / `auto`).
 / #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE") / #cmd("PVCODESIZE") / #cmd("PVFONTS") / #cmd("PVCODES"): the body / code fonts (family and size) for the Markdown and HTML renderers, and their pickers. An authored typst document sets its own fonts instead.
 / #cmd("PVMARGIN") / #cmd("PVMARGINL") / #cmd("PVMARGINR") / #cmd("PVMARGINT") / #cmd("PVMARGINB"): the page margins for the Markdown and HTML renderers — all sides / left / right / top / bottom.
 / #cmd("PVPAPER") / #cmd("PVLEADING") / #cmd("PVSPACING") / #cmd("PVPAGENUM") / #cmd("PVPAGEPOS"): the page format (letter/legal/tabloid/a4/a5/a6), line spacing, extra space between paragraphs, and page numbers (pattern + position) for the Markdown and HTML renderers.
@@ -772,7 +781,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("DIRWCLOSE"): `DIRWCLOSE on|off` — whether the `DIR/W` window CLOSES once you open a file from it (`on`), or stays open so you can carry on picking (`off`, the default — how `DIR/W` has always behaved). Independent of #cmd("DIRWNW"), which chooses the TAB the file lands in; the two answer different questions. Descending into a subdirectory never closes the window — only opening a file does.
 / #cmd("DIRSET"): `DIRSET <switches>` — the default sort/filter/view switches applied to a `DIR`/`LS` that doesn't override them, e.g. `DIRSET /OD/R` to sort every listing by date, reversed. A command switch overrides the default with the SAME leading letter: `DIR /ON` replaces the `/OD` order; `DIR /AH` adds a filter and leaves the order default in place (for `/A`, any command `/A…` replaces the whole `/A` default). Because `/R` (reverse) has no "off" form, a command `/O` order ALSO cancels a default `/R` — otherwise `DIRSET /OD/R` would force reverse onto every listing with no way back to ascending; type `/R` yourself (`DIR /ON/R`) to reverse explicitly. Only the how-it-looks switches are allowed — `/O` (order), `/A` (attributes/filter), `/R` (reverse), `/S` (recurse), `/B` (bare); the where-it-opens switches (`/W`, `/H`, `/V`) are rejected, but the defaults still apply to a `DIR/W` or split-pane listing. `DIRSET off` (or `none`/`clear`) clears it; bare `DIRSET` reports the current value. Read back via #sv("DIRSET"); persists in the config.
 / #cmd("DIRRT"): `DIRRT on|off` — whether a `DIR` reuses an already-open listing tab (`on`) instead of spawning a new one each time (`off`, the default).
-/ #cmd("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, `html`, or `auto`; bare reports the effective kind. Under `auto` the extension decides: `.typ` is typst, `.html`/`.htm`/`.xhtml` are HTML, everything else is GFM. HTML is converted *structurally* — headings, lists, tables, links, and code become their typst equivalents, while `class`, `style`, and stylesheets are ignored, so a page laid out with CSS renders as readable content rather than as a copy of the page.
+/ #cmd("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, `html`, `text`, or `auto`; bare reports the effective kind. Under `auto` the extension decides: `.md`/`.markdown` are GFM, `.typ` is typst, `.html`/`.htm`/`.xhtml` are HTML, and everything else is plain text. Plain text is typeset verbatim — every buffer newline is a line break (no trailing `\` needed) and Markdown syntax is not interpreted (a leading `#` or `*` prints literally); long lines still wrap and leading indentation is kept. HTML is converted *structurally* — headings, lists, tables, links, and code become their typst equivalents, while `class`, `style`, and stylesheets are ignored, so a page laid out with CSS renders as readable content rather than as a copy of the page.
 / #cmd("DWFGCOLOR", "DWFGCOLORS") / #cmd("DWBGCOLOR", "DWBGCOLORS"): the `DIR/W` window's text / background color (`…S` opens a picker; unset inherits the editor).
 / #cmd("DWFAMILY") / #cmd("DWSTYLE") / #cmd("DWFONT", "DWFONTS") / #cmd("DWSCALE"): the `DIR/W` window's font family / style / size / zoom. #cmd("DWRESET"): clear all `DW…` overrides.
 
@@ -1220,7 +1229,7 @@ plain alphabetical index.
 / #sv("TC") / #sv("CT"): the number of open tabs / the active tab's index (1-based).
 / #sv("TX"): `1` if the focus is in the document text, `0` if it's on the command line.
 / #sv("TB"): the tab width in spaces.
-/ #sv("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, or `html`.
+/ #sv("DOCTYPE"): how the document renders to PDF — `typst`, `gfm`, `html`, or `text`.
 / #sv("AU"): the autosave interval in seconds (`0` = off).
 / #sv("DECIMALS"): the fixed number of decimal places floats display with (or `off`).
 / #sv("AR"): the full path of the file most recently loaded with `LoadAR` (empty if none).
@@ -1388,7 +1397,7 @@ Every special variable in one list, for quick lookup.
 / #sv("DIRRT"): reuse the listing tab for `DIR`.
 / #sv("DN"): selection end offset.
 / #sv("DOC"): the entire text of the active buffer.
-/ #sv("DOCTYPE"): PDF render kind (typst/gfm/html).
+/ #sv("DOCTYPE"): PDF render kind (typst/gfm/html/text).
 / #sv("DP"): directory-listing path + mask.
 / #sv("DR"): file under the listing caret.
 / #sv("DS"): selection start offset.
