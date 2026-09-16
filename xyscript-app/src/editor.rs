@@ -11329,6 +11329,26 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn savecfg_records_scratch_colors_even_at_default() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        // Unset scratchpad colours are now written to SAVECFG (as the runnable `… default`), so the
+        // knob is visible even at its default — not only in the full shipped default.cfg.
+        assert!(cfg.contains("SCRATCHFGCOLOR default"), "cfg: {cfg}");
+        assert!(cfg.contains("SCRATCHBGCOLOR default"), "cfg: {cfg}");
+        // A customized value writes RGB; the other stays `default`. Both LOADCFG cleanly (round-trip).
+        e.run_command("SCRATCHFGCOLOR 10 20 30");
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("SCRATCHFGCOLOR 10 20 30"), "cfg: {cfg}");
+        assert!(cfg.contains("SCRATCHBGCOLOR default"), "cfg: {cfg}");
+        e.run_command("SCRATCHFGCOLOR default");
+        assert_eq!(e.host().scratch_fg_color(), None);
+    }
+
+    #[test]
     fn savecfg_loadcfg_round_trips_appearance() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

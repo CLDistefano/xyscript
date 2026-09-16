@@ -8826,6 +8826,14 @@ impl AppHost {
                 None => {}
             }
         };
+        // Like `put_opt_color`, but an unset value ALWAYS emits `<verb> default` — so the setting is
+        // recorded in `SAVECFG` (minimal), not only in the full shipped default.cfg. Used where the
+        // default is worth surfacing to the user. (Full-mode output is identical to `put_opt_color`.)
+        let put_opt_color_always =
+            |s: &mut String, comment: &str, verb: &str, c: Option<(u8, u8, u8)>| match c {
+                Some((r, g, b)) => put(s, comment, format!("{verb} {r} {g} {b}")),
+                None => put(s, comment, format!("{verb} default")),
+            };
         // A COMMENTED template line — shown only in `full` mode, for a setting whose verb has no
         // no-op reset form (so we can't emit a runnable default). Documents the knob; inert on load.
         let put_tmpl = |s: &mut String, comment: &str, line: &str| {
@@ -8900,8 +8908,10 @@ impl AppHost {
         // `$CWD` path-display colours — emit only when set (defaults: dimmed UI text / transparent).
         put_opt_color(&mut s, "$CWD path text colour -- R G B, 0-255", "PAFGCOLOR", self.path_fg_color);
         put_opt_color(&mut s, "$CWD path background colour -- R G B, 0-255", "PABGCOLOR", self.path_bg_color);
-        put_opt_color(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
-        put_opt_color(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
+        // Scratchpad colours always emit (incl. `… default`) so they're visible in SAVECFG, not only
+        // the full default.cfg. (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR` accept `default`, so this round-trips.)
+        put_opt_color_always(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
+        put_opt_color_always(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
         let (r, g, b) = self.txt_fg_color;
         put(&mut s, "TXT dialog text colour -- R G B, 0-255", format!("TXTFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.txt_bg_color;
