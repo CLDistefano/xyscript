@@ -13689,7 +13689,8 @@ impl Host for AppHost {
             }
         }
         // `/S`, or an exact miss: grep names + descriptions and list every match in the dialog.
-        const CAP: usize = 40;
+        const CAP: usize = 40; // max entries listed before "…and N more"
+        const SNIPPET_CHARS: usize = 220; // synopsis characters shown per hit (the dialog word-wraps)
         let hits = crate::help::search(q);
         if !hits.is_empty() {
             let shown = hits.len().min(CAP);
@@ -13701,8 +13702,8 @@ impl Host for AppHost {
             for e in &hits[..shown] {
                 // One line of names + kind, then an indented one-line snippet of the synopsis.
                 let flat: String = e.synopsis.split_whitespace().collect::<Vec<_>>().join(" ");
-                let snip: String = flat.chars().take(90).collect();
-                let ell = if flat.chars().count() > 90 { "…" } else { "" };
+                let snip: String = flat.chars().take(SNIPPET_CHARS).collect();
+                let ell = if flat.chars().count() > SNIPPET_CHARS { "…" } else { "" };
                 body.push_str(&format!("\n{}  ({})\n    {snip}{ell}", e.names.join(" / "), e.kind.label()));
             }
             if hits.len() > shown {
