@@ -13741,7 +13741,7 @@ impl Host for AppHost {
 
     fn manual_search(&self, q: &str) -> HelpResponse {
         const CAP: usize = 25; // sections listed before "…and N more"
-        const SNIPPET_CHARS: usize = 320; // context window per section (the dialog word-wraps)
+        const SNIPPET_CHARS: usize = 600; // context window per section (the dialog word-wraps)
         let hits = crate::manual::search(q);
         if hits.is_empty() {
             return HelpResponse {
