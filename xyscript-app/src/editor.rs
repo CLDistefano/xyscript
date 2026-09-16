@@ -9994,6 +9994,14 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         // A term with no matches anywhere still falls back to did-you-mean (no dialog).
         e.run_command("HELP zzzznope");
         assert!(e.text_request().is_none(), "no matches → status-line fallback, no dialog");
+        // A regex metacharacter switches to regex search. `PV.*SIZE` matches PVSIZE and PVCODESIZE by
+        // NAME — and proves it's a real regex, since the literal string "PV.*SIZE" is nowhere in the
+        // reference (a substring search would find nothing).
+        e.run_command("HELP PV.*SIZE");
+        let (title, text) = e.text_request().expect("a regex query opens the search-list dialog");
+        assert!(title.as_deref().is_some_and(|t| t.contains("match")), "title: {title:?}");
+        assert!(text.contains("PVSIZE") && text.contains("PVCODESIZE"), "regex PV.*SIZE: {text}");
+        e.dismiss_text();
     }
 
     #[test]

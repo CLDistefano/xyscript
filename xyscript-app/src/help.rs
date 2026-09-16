@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 /// The reference, embedded so `HELP` works on any install.
 const REFERENCE_TYP: &str =
@@ -345,23 +345,54 @@ pub fn suggest(name: &str, max: usize) -> Vec<String> {
     scored.into_iter().take(max).map(|(_, k)| k.to_string()).collect()
 }
 
-/// Every help entry whose name(s) OR synopsis contain `query` (case-insensitive substring) — the
-/// grep-like `HELP` fallback and `HELP/S`. NAME matches come first (more relevant), then
-/// description-only matches; each group keeps reference order. A leading `$` / trailing `()` on the
-/// query is ignored so `HELP/S $color` and `HELP/S color` behave alike. Returns all matches (the
-/// caller caps the display).
+/// Regex metacharacters that switch [`search`] from substring to regex mode when the query contains
+/// one. (`#` is here per the documented set even though the `regex` crate treats it as a literal
+/// outside verbose mode — matching on it then behaves like a substring, which is harmless.)
+const REGEX_META: &[char] = &['\\', '.', '^', '$', '|', '[', '(', '{', '*', '+', '?', '#'];
+
+/// Every help entry whose name(s) OR synopsis match `query` — the grep-like `HELP` fallback and
+/// `HELP/S`. If the query contains a regex metacharacter (`REGEX_META`) it is treated as a
+/// case-insensitive **regular expression**; otherwise it is a case-insensitive **substring** (with a
+/// leading `$` / trailing `()` ignored, so `HELP/S $color` and `HELP/S color` behave alike). A query
+/// that looks like a regex but fails to compile falls back to a literal substring search. NAME
+/// matches come first (more relevant), then description-only matches; each group keeps reference
+/// order. Returns all matches (the caller caps the display).
 pub fn search(query: &str) -> Vec<HelpEntry> {
-    let q = query.trim().trim_start_matches('$').trim_end_matches("()").to_ascii_lowercase();
-    if q.is_empty() {
+    let raw = query.trim();
+    if raw.is_empty() {
         return Vec::new();
     }
-    let idx = index();
+    // Regex mode when a metacharacter is present AND the pattern compiles; else substring.
+    let re = raw
+        .contains(|c| REGEX_META.contains(&c))
+        .then(|| RegexBuilder::new(raw).case_insensitive(true).build().ok())
+        .flatten();
+    let entries = &index().entries;
     let (mut name_hits, mut desc_hits) = (Vec::new(), Vec::new());
-    for e in &idx.entries {
-        if e.names.iter().any(|n| n.to_ascii_lowercase().contains(&q)) {
-            name_hits.push(e.clone());
-        } else if e.synopsis.to_ascii_lowercase().contains(&q) {
-            desc_hits.push(e.clone());
+    match &re {
+        // Regex: match names / synopsis directly (case-insensitive built in).
+        Some(re) => {
+            for e in entries {
+                if e.names.iter().any(|n| re.is_match(n)) {
+                    name_hits.push(e.clone());
+                } else if re.is_match(&e.synopsis) {
+                    desc_hits.push(e.clone());
+                }
+            }
+        }
+        // Substring: a leading `$` / trailing `()` is ignored, case-insensitive.
+        None => {
+            let q = raw.trim_start_matches('$').trim_end_matches("()").to_ascii_lowercase();
+            if q.is_empty() {
+                return Vec::new(); // a `$`/`()`-only query has nothing left to match
+            }
+            for e in entries {
+                if e.names.iter().any(|n| n.to_ascii_lowercase().contains(&q)) {
+                    name_hits.push(e.clone());
+                } else if e.synopsis.to_ascii_lowercase().contains(&q) {
+                    desc_hits.push(e.clone());
+                }
+            }
         }
     }
     name_hits.append(&mut desc_hits);

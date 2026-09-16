@@ -147,7 +147,9 @@ special variable, checked against the code automatically. When you want to learn
 read here; when you want to look up *exactly* what a verb takes, go there. For a single item without
 leaving the keyboard, #raw("HELP <name>") (or #raw("?")) shows that entry in a box — and when the name
 isn't an exact match, it lists everything whose name or description mentions it, so #raw("HELP indent")
-finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"); #raw("HELP/S <term>") forces that search.]
+finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"); #raw("HELP/S <term>") forces that search.
+The term is matched as a substring, or as a *regular expression* if it contains a regex metacharacter
+(#raw("\\ . ^ $ | [ ( { * + ? #")) — so #raw("HELP ^PV") lists everything starting with #raw("PV").]
 
 == Running XyScript
 
