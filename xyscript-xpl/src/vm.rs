@@ -4767,7 +4767,9 @@ impl Vm<'_, '_> {
                 // Take the name RAW (not `$`-substituted), so `HELP $CWD` looks up the *special*
                 // rather than substituting its value, and `HELP UPPER` works without a leading `$`.
                 let q = raw_args.trim();
-                let resp = self.ctx.host.help((!q.is_empty()).then_some(q));
+                // `/S` forces the grep-like search over names + descriptions (vs an exact lookup).
+                let search = vswitches.iter().any(|s| s.eq_ignore_ascii_case("S"));
+                let resp = self.ctx.host.help((!q.is_empty()).then_some(q), search);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
                     return Ok(Flow::Next);
@@ -5746,6 +5748,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         return Ok(());
     }
     let valid: &[&str] = match base {
+        "HELP" | "?" => &["S"], // `/S` — grep names + descriptions instead of an exact lookup
         "QUIET" => &["NV"],
         "SAVE" | "SA" => &["NV"], // `/NV` — overwrite an existing copy target without confirming
         "ST" => &["NV"], // `/NV` — `ST/NV <path>` overwrites without confirming

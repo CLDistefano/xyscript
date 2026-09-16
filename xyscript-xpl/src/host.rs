@@ -1735,8 +1735,10 @@ pub trait Host {
     /// `HELP [name]` — look up reference help for a command, `$special`, or function. The app owns
     /// the reference text and returns a formatted title + body; `query = None` is the overview.
     /// `not_found` is true when no entry matched (the verb reports it on the status line, with
-    /// suggestions, instead of opening a modal). Default: help is unavailable.
-    fn help(&self, _query: Option<&str>) -> HelpResponse {
+    /// suggestions, instead of opening a modal). `search` (the `/S` flag) forces the grep-like
+    /// search over names + descriptions instead of an exact lookup; an exact lookup that misses
+    /// also falls back to that search. Default: help is unavailable.
+    fn help(&self, _query: Option<&str>, _search: bool) -> HelpResponse {
         HelpResponse {
             title: "Help".to_string(),
             body: "Help is not available in this build.".to_string(),

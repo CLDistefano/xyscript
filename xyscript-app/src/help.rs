@@ -345,6 +345,29 @@ pub fn suggest(name: &str, max: usize) -> Vec<String> {
     scored.into_iter().take(max).map(|(_, k)| k.to_string()).collect()
 }
 
+/// Every help entry whose name(s) OR synopsis contain `query` (case-insensitive substring) — the
+/// grep-like `HELP` fallback and `HELP/S`. NAME matches come first (more relevant), then
+/// description-only matches; each group keeps reference order. A leading `$` / trailing `()` on the
+/// query is ignored so `HELP/S $color` and `HELP/S color` behave alike. Returns all matches (the
+/// caller caps the display).
+pub fn search(query: &str) -> Vec<HelpEntry> {
+    let q = query.trim().trim_start_matches('$').trim_end_matches("()").to_ascii_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let idx = index();
+    let (mut name_hits, mut desc_hits) = (Vec::new(), Vec::new());
+    for e in &idx.entries {
+        if e.names.iter().any(|n| n.to_ascii_lowercase().contains(&q)) {
+            name_hits.push(e.clone());
+        } else if e.synopsis.to_ascii_lowercase().contains(&q) {
+            desc_hits.push(e.clone());
+        }
+    }
+    name_hits.append(&mut desc_hits);
+    name_hits
+}
+
 /// A short overview shown by a bare `HELP` (no argument).
 pub fn overview() -> String {
     let [c, s, f, l] = index().counts;

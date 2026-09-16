@@ -144,7 +144,10 @@ to the operating system shell.
 #tip("Two books in one shelf")[This manual is the *guided tour*. Its companion, the *XyScript
 Reference* (#raw("Help ▸ Reference")), is the exhaustive A–Z catalog of every command, function, and
 special variable, checked against the code automatically. When you want to learn *how* to do something,
-read here; when you want to look up *exactly* what a verb takes, go there.]
+read here; when you want to look up *exactly* what a verb takes, go there. For a single item without
+leaving the keyboard, #raw("HELP <name>") (or #raw("?")) shows that entry in a box — and when the name
+isn't an exact match, it lists everything whose name or description mentions it, so #raw("HELP indent")
+finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"); #raw("HELP/S <term>") forces that search.]
 
 == Running XyScript
 

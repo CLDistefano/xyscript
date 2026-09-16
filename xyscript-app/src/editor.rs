@@ -9969,10 +9969,31 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     #[test]
     fn help_unknown_name_reports_suggestions_without_a_dialog() {
         let mut e = Editor::new(typing_keymap());
-        e.run_command("HELP CVV"); // a near-miss for CV/CVA
+        e.run_command("HELP CVV"); // a near-miss for CV/CVA, and no substring matches → did-you-mean
         assert!(e.text_request().is_none(), "no dialog for an unknown name");
         e.run_command("PR $ERROR");
         assert_eq!(e.output().last().map(String::as_str), Some("1"), "unknown HELP sets $ERROR");
+    }
+
+    #[test]
+    fn help_greps_names_and_descriptions_on_miss_and_with_the_s_flag() {
+        let mut e = Editor::new(typing_keymap());
+        // A name that isn't a literal entry but appears across many: `HELP indent` lists matches in a
+        // dialog (grep of names + descriptions) rather than "did you mean".
+        e.run_command("HELP indent");
+        let (title, text) = e.text_request().expect("a miss with substring matches opens a list dialog");
+        assert!(title.as_deref().is_some_and(|t| t.contains("match")), "title: {title:?}");
+        assert!(text.contains("PVINDENT"), "should list PVINDENT among matches: {text}");
+        e.dismiss_text();
+        // `/S` forces the search even when the term IS a literal entry: `HELP/S TAB` lists every
+        // TAB-related entry (TABSPACES, TABINDENT, …), not just the one TAB command.
+        e.run_command("HELP/S TAB");
+        let (_, text) = e.text_request().expect("/S always opens the search-list dialog");
+        assert!(text.contains("TABSPACES"), "search should surface related entries: {text}");
+        e.dismiss_text();
+        // A term with no matches anywhere still falls back to did-you-mean (no dialog).
+        e.run_command("HELP zzzznope");
+        assert!(e.text_request().is_none(), "no matches → status-line fallback, no dialog");
     }
 
     #[test]

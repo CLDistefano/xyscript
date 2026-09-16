@@ -13669,31 +13669,62 @@ impl Host for AppHost {
         Some(entry.path.to_string_lossy().into_owned())
     }
 
-    fn help(&self, query: Option<&str>) -> HelpResponse {
-        match query {
+    fn help(&self, query: Option<&str>, search: bool) -> HelpResponse {
+        let Some(q) = query else {
             // Bare `HELP` — a short overview.
-            None => HelpResponse {
+            return HelpResponse {
                 title: "Help".to_string(),
                 body: crate::help::overview(),
                 not_found: false,
-            },
-            Some(q) => match crate::help::lookup(q) {
-                Some(e) => HelpResponse {
+            };
+        };
+        // Exact lookup first (unless `/S` forces the search). A hit shows that one entry.
+        if !search {
+            if let Some(e) = crate::help::lookup(q) {
+                return HelpResponse {
                     title: format!("Help: {}", e.names.join(" / ")),
                     body: format!("{}  ({})\n\n{}", e.names.join("  /  "), e.kind.label(), e.synopsis),
                     not_found: false,
-                },
-                None => {
-                    let near = crate::help::suggest(q, 5);
-                    let body = if near.is_empty() {
-                        format!("No help entry for {q:?}. Type HELP for an overview.")
-                    } else {
-                        format!("No help entry for {q:?} — did you mean: {}?", near.join(", "))
-                    };
-                    HelpResponse { title: "Help".to_string(), body, not_found: true }
-                }
-            },
+                };
+            }
         }
+        // `/S`, or an exact miss: grep names + descriptions and list every match in the dialog.
+        const CAP: usize = 40;
+        let hits = crate::help::search(q);
+        if !hits.is_empty() {
+            let shown = hits.len().min(CAP);
+            let mut body = format!(
+                "{} match{} for {q:?}:\n",
+                hits.len(),
+                if hits.len() == 1 { "" } else { "es" }
+            );
+            for e in &hits[..shown] {
+                // One line of names + kind, then an indented one-line snippet of the synopsis.
+                let flat: String = e.synopsis.split_whitespace().collect::<Vec<_>>().join(" ");
+                let snip: String = flat.chars().take(90).collect();
+                let ell = if flat.chars().count() > 90 { "…" } else { "" };
+                body.push_str(&format!("\n{}  ({})\n    {snip}{ell}", e.names.join(" / "), e.kind.label()));
+            }
+            if hits.len() > shown {
+                body.push_str(&format!(
+                    "\n\n…and {} more — narrow the search term.",
+                    hits.len() - shown
+                ));
+            }
+            return HelpResponse {
+                title: format!("Help: {q:?} — {} match{}", hits.len(), if hits.len() == 1 { "" } else { "es" }),
+                body,
+                not_found: false,
+            };
+        }
+        // Nothing matched at all → near-name suggestions (typo help) / overview, on the status line.
+        let near = crate::help::suggest(q, 5);
+        let body = if near.is_empty() {
+            format!("No help matches for {q:?}. Type HELP for an overview.")
+        } else {
+            format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
+        };
+        HelpResponse { title: "Help".to_string(), body, not_found: true }
     }
 
     fn selection_in(&self, n: i64) -> String {
