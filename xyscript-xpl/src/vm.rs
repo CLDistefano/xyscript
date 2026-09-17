@@ -2503,6 +2503,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::ToPdf(arg))?;
                 Ok(Flow::Next)
             }
+            // `FPRINT <source> [<output>]` — TOPDF a file that isn't open, by its own type (extension),
+            // with the current Preview settings. Paths with spaces are quoted (like COPY/RENAME).
+            "FPRINT" => {
+                let toks = split_path_tokens(&args);
+                let (source, output) = match toks.as_slice() {
+                    [src] => (src.clone(), None),
+                    [src, out] => (src.clone(), Some(out.clone())),
+                    _ => {
+                        return Err(XplError::trappable(
+                            "FPRINT: expected <source> [<output>] (quote paths with spaces)".to_string(),
+                        ))
+                    }
+                };
+                self.host_op(EditorOp::FilePrint { source, output })?;
+                Ok(Flow::Next)
+            }
             "WORDCOUNT" => {
                 if !args.trim().is_empty() {
                     return Err(XplError::trappable("WORDCOUNT: takes no arguments".to_string()));

@@ -586,7 +586,7 @@ Raw HTML written *inline* in a line of Markdown (`a <b>word</b> here`) is still 
 text — Markdown hands those to us as separate opening and closing fragments, with no
 self-contained element to convert.
 
-/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `text` / `auto`).
+/ #cmd("PREVIEW", "PV"): show/hide the live PDF preview pane. #cmd("TOPDF", "PRINT"): export to PDF. #cmd("FPRINT"): export a file that isn't open to PDF. #cmd("DOCTYPE"): how the document renders (`typst` / `gfm` / `html` / `text` / `auto`).
 / #cmd("PVFAMILY") / #cmd("PVSIZE") / #cmd("PVCODE") / #cmd("PVCODESIZE") / #cmd("PVFONTS") / #cmd("PVCODES"): the body / code fonts (family and size) for the Markdown and HTML renderers, and their pickers. An authored typst document sets its own fonts instead.
 / #cmd("PVMARGIN") / #cmd("PVMARGINL") / #cmd("PVMARGINR") / #cmd("PVMARGINT") / #cmd("PVMARGINB"): the page margins for the Markdown and HTML renderers — all sides / left / right / top / bottom.
 / #cmd("PVPAPER") / #cmd("PVLEADING") / #cmd("PVSPACING") / #cmd("PVPAGENUM") / #cmd("PVPAGEPOS"): the page format (letter/legal/tabloid/a4/a5/a6), line spacing, extra space between paragraphs, and page numbers (pattern + position) for the Markdown and HTML renderers.
@@ -1022,6 +1022,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("TABBGCOLOR", "TABBGCOLORS"): a GUI tab's background color for a state — `TABBGCOLOR <active|hover|inactive> <r g b>` (`…S` opens a picker).
 / #cmd("TABXCOLOR", "TABXCOLORS"): the tab close-× glyph color — `TABXCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `TABXCOLOR default` resets it to the UI foreground.
 / #cmd("TOPDF", "PRINT"): export the document to PDF, rendered per its `DOCTYPE` (`TOPDF <path>`, or bare derives the name). For a Markdown/GFM #emph[or authored-Typst] document, any #cmd("MDA") styling (colours + bold/italic/underline/reverse) is woven into the output, so it prints as it appears on screen. In an authored-Typst document the styling wraps only prose, leaving your own Typst markup (headings, `#`-calls, math, code) untouched.
+/ #cmd("FPRINT"): `FPRINT <source> [<output>]` — export a file that is #emph[not] open to PDF, exactly as #cmd("TOPDF") would if it were the active document: rendered by the SOURCE file's own type (its extension picks Markdown / Typst / HTML / plain text) with the current Preview/`TOPDF` settings (fonts, margins, page setup). `#image`/`#read` in the source resolve against the source's own directory. `<output>` names the PDF (relative paths resolve against `$CWD`); bare derives `<source>.pdf`. No tab is opened or changed, and no #cmd("MDA") styling is applied (the file has none loaded) — for batch-printing files you don't want to open. Quote paths that contain spaces.
 / #cmd("TRUST"): enable or disable shell-out — `TRUST 1` / `TRUST 0`.
 / #cmd("TXT"): show a scrollable text dialog (`/T:"title"`).
 / #cmd("TXTFGCOLOR", "TXTFGCOLORS") / #cmd("TXTBGCOLOR", "TXTBGCOLORS"): the `TXT` window's text / background color (`/HSL`; `…S` opens a picker).

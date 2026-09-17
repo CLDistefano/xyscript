@@ -391,6 +391,27 @@ impl RenderKind {
             RenderKind::Text => "text",
         }
     }
+
+    /// The AUTO (extension-driven) render kind for a file path — ignoring any `DOCTYPE` override:
+    /// `.md`/`.markdown` → Gfm, `.typ` → Typst, `.html`/`.htm`/`.xhtml` → Html, everything else
+    /// (incl. no extension) → plain Text. Used by [`Document::render_kind`] and by `FPRINT`, which
+    /// renders a file that isn't open by its own type.
+    pub fn from_path(path: &std::path::Path) -> RenderKind {
+        match path.extension().and_then(|e| e.to_str()) {
+            Some(e) if e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown") => {
+                RenderKind::Gfm
+            }
+            Some(e) if e.eq_ignore_ascii_case("typ") => RenderKind::Typst,
+            Some(e)
+                if e.eq_ignore_ascii_case("html")
+                    || e.eq_ignore_ascii_case("htm")
+                    || e.eq_ignore_ascii_case("xhtml") =>
+            {
+                RenderKind::Html
+            }
+            _ => RenderKind::Text,
+        }
+    }
 }
 
 impl Clone for Document {
@@ -932,20 +953,7 @@ impl Document {
     /// Typst, `.html`/`.htm`/`.xhtml` → Html, everything else (`.txt`, `.log`, `.rs`, no extension, …)
     /// → plain Text (rendered verbatim, no Markdown interpretation).
     fn render_kind_from_ext(&self) -> RenderKind {
-        match self.path.as_deref().and_then(|p| p.extension()).and_then(|e| e.to_str()) {
-            Some(e) if e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown") => {
-                RenderKind::Gfm
-            }
-            Some(e) if e.eq_ignore_ascii_case("typ") => RenderKind::Typst,
-            Some(e)
-                if e.eq_ignore_ascii_case("html")
-                    || e.eq_ignore_ascii_case("htm")
-                    || e.eq_ignore_ascii_case("xhtml") =>
-            {
-                RenderKind::Html
-            }
-            _ => RenderKind::Text,
-        }
+        self.path.as_deref().map(RenderKind::from_path).unwrap_or(RenderKind::Text)
     }
 
     /// Set (or clear, with `None` = auto) the `DOCTYPE` render-kind override.

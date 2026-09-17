@@ -11638,6 +11638,46 @@ impl Host for AppHost {
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 return Ok(Value::str(format!("exported {name}")));
             }
+            EditorOp::FilePrint { source, output } => {
+                // Render a file that isn't open, exactly as `TOPDF` would if it were the active doc:
+                // by the SOURCE file's own type (extension → render kind) with the current Preview
+                // settings. `#image`/`#read` resolve against the source's own directory. No MDA styling
+                // (nothing is loaded), and no tab is opened or disturbed.
+                let raw = PathBuf::from(&source); // the name as typed — governs kind + derived output
+                let src_path = self.resolve_path(&source); // absolute — for #image resolution
+                let text = self.read_file(&source)?; // decoded text; honours $CWD + the cloud guard
+                let kind = crate::document::RenderKind::from_path(&raw);
+                let doc_dir =
+                    src_path.parent().map(Path::to_path_buf).unwrap_or_else(|| self.cwd.clone());
+                let pdf = match kind {
+                    crate::document::RenderKind::Typst => {
+                        crate::pdf::typst_to_pdf(&text, &doc_dir, None)
+                    }
+                    crate::document::RenderKind::Gfm => {
+                        crate::pdf::gfm_to_pdf(&text, &doc_dir, &self.preview_fonts(), None)
+                    }
+                    crate::document::RenderKind::Html => {
+                        crate::pdf::html_to_pdf(&text, &doc_dir, &self.preview_fonts())
+                    }
+                    crate::document::RenderKind::Text => {
+                        crate::pdf::text_to_pdf(&text, &doc_dir, &self.preview_fonts())
+                    }
+                }
+                .map_err(XplError::trappable)?;
+                // Output: the given path (relative → $CWD, like every file op), else `<source>.pdf`
+                // derived from the name as typed (so a relative source yields a relative PDF).
+                let out = match output {
+                    Some(o) if !o.trim().is_empty() => o,
+                    _ => raw.with_extension("pdf").to_string_lossy().into_owned(),
+                };
+                self.write_doc_bytes(&out, &pdf)?;
+                let out_name = self
+                    .resolve_path(&out)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| out.clone());
+                return Ok(Value::str(format!("printed as {} \u{2192} {out_name}", kind.as_str())));
+            }
             EditorOp::DocType(req) => {
                 use crate::document::RenderKind;
                 let doc = &mut self.docs[self.active];

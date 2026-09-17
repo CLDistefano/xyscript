@@ -939,6 +939,11 @@ pub enum EditorOp {
     /// Render the active document (as GFM) to a typeset PDF (`TOPDF`/`PRINT
     /// [path]`). `None` = derive the path from the document's name.
     ToPdf(Option<String>),
+    /// `FPRINT <source> [<output>]` — render a file that ISN'T open to a PDF, exactly as `TOPDF` would
+    /// if it were the active document: by the source file's own type (extension → render kind) with the
+    /// current Preview/`TOPDF` settings. `output` `None` = derive `<source>.pdf`. No `MDA` styling
+    /// (the file has none loaded).
+    FilePrint { source: String, output: Option<String> },
     /// Report the word count of the selection (or whole document if none) to the status
     /// line (`WORDCOUNT`).
     WordCount,

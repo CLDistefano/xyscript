@@ -11822,6 +11822,49 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn fprint_renders_a_file_that_is_not_open() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("notes.md".into(), "# Title\n\nSome **text**.\n".into());
+        let tabs_before = e.buffer_count();
+
+        // Explicit output path.
+        e.run_command("FPRINT notes.md out.pdf");
+        assert!(e.last_error().is_none(), "err: {:?}", e.last_error());
+        assert!(
+            e.host_mut().files.get("out.pdf").cloned().unwrap_or_default().starts_with("%PDF-"),
+            "out.pdf is not a PDF"
+        );
+        // FPRINT must NOT open the source (no new tab, no tab switch).
+        assert_eq!(e.buffer_count(), tabs_before, "FPRINT must not open the source file");
+        assert!(e.active_path().is_none(), "the active tab is unchanged (still the Untitled scratch)");
+
+        // Bare output derives <source>.pdf.
+        e.run_command("FPRINT notes.md");
+        assert!(e.host_mut().files.contains_key("notes.pdf"), "derived notes.pdf not written");
+
+        // Rendered by the SOURCE file's own type: `RenderKind::from_path` picks plain Text for a .txt
+        // (not GFM), and FPRINT produces a valid PDF for it.
+        assert_eq!(
+            crate::document::RenderKind::from_path(std::path::Path::new("log.txt")),
+            crate::document::RenderKind::Text
+        );
+        e.host_mut().files.insert("log.txt".into(), "line one\nline two\n".into());
+        e.run_command("FPRINT log.txt log.pdf");
+        assert!(
+            e.host_mut().files.get("log.pdf").cloned().unwrap_or_default().starts_with("%PDF-"),
+            "log.pdf is not a PDF"
+        );
+
+        // A missing source is a trappable error → $ERROR set non-zero (the file-not-found class),
+        // nothing written.
+        e.run_command("FPRINT nope.md");
+        e.run_command("PR $ERROR");
+        assert_ne!(e.output().last().map(String::as_str), Some("0"), "FPRINT of a missing file sets $ERROR");
+        assert!(!e.host_mut().files.contains_key("nope.pdf"), "no PDF written for a missing source");
+    }
+
+    #[test]
     fn doctype_routes_topdf_and_reads_back() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
