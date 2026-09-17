@@ -8822,17 +8822,12 @@ impl AppHost {
         };
         // An OPTIONAL colour knob (`None` = follows the theme): its `r g b` when set; in `full` mode
         // its no-op `<VERB> default` when unset; nothing when unset and not `full`.
-        let put_opt_color = |s: &mut String, comment: &str, verb: &str, c: Option<(u8, u8, u8)>| {
-            match c {
-                Some((r, g, b)) => put(s, comment, format!("{verb} {r} {g} {b}")),
-                None if full => put(s, comment, format!("{verb} default")),
-                None => {}
-            }
-        };
-        // Like `put_opt_color`, but an unset value ALWAYS emits `<verb> default` — so the setting is
-        // recorded in `SAVECFG` (minimal), not only in the full shipped default.cfg. Used where the
-        // default is worth surfacing to the user. (Full-mode output is identical to `put_opt_color`.)
-        let put_opt_color_always =
+        // An OPTIONAL colour: emit `<verb> r g b` when set, else `<verb> default` (which reloads to the
+        // unset/theme-following state). Emitted in BOTH minimal (`SAVECFG`) and full modes, so every
+        // colour knob — including the ones that follow the editor/theme when unset — is visible and
+        // discoverable in a saved config, and every emitted line round-trips. Every colour verb used
+        // here accepts `default`.
+        let put_opt_color =
             |s: &mut String, comment: &str, verb: &str, c: Option<(u8, u8, u8)>| match c {
                 Some((r, g, b)) => put(s, comment, format!("{verb} {r} {g} {b}")),
                 None => put(s, comment, format!("{verb} default")),
@@ -8908,13 +8903,11 @@ impl AppHost {
         }
         // Tab close-× colour — emit only when set (default follows the UI foreground).
         put_opt_color(&mut s, "Tab close-× colour -- R G B, 0-255", "TABXCOLOR", self.tab_x_color);
-        // `$CWD` path-display colours — emit only when set (defaults: dimmed UI text / transparent).
+        // `$CWD` path-display colours (defaults: dimmed UI text / transparent — `default` restores them).
         put_opt_color(&mut s, "$CWD path text colour -- R G B, 0-255", "PAFGCOLOR", self.path_fg_color);
         put_opt_color(&mut s, "$CWD path background colour -- R G B, 0-255", "PABGCOLOR", self.path_bg_color);
-        // Scratchpad colours always emit (incl. `… default`) so they're visible in SAVECFG, not only
-        // the full default.cfg. (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR` accept `default`, so this round-trips.)
-        put_opt_color_always(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
-        put_opt_color_always(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
+        put_opt_color(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
+        put_opt_color(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
         let (r, g, b) = self.txt_fg_color;
         put(&mut s, "TXT dialog text colour -- R G B, 0-255", format!("TXTFGCOLOR {r} {g} {b}"));
         let (r, g, b) = self.txt_bg_color;

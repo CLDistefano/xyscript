@@ -5036,6 +5036,22 @@ mod tests {
             saved,
             "a saved config must reload to the same config (fixed point)"
         );
+
+        // Minimal mode (what SAVECFG actually writes) must ALSO be a fixed point. Every optional
+        // colour now emits `<verb> default` even when unset (the sweep), so this reloads those lines
+        // too and proves they all round-trip.
+        let saved_min = e.host().config_script(false, false);
+        assert!(saved_min.contains("MARKFGCOLOR default"), "minimal SAVECFG should list unset colours");
+        let mut fresh_min = ed();
+        fresh_min.host_mut().virtual_fs = true;
+        fresh_min.host_mut().write_file("min.cfg", &saved_min).unwrap();
+        fresh_min.run_command("LOADCFG min.cfg");
+        assert!(fresh_min.last_error().is_none(), "minimal round-trip cfg errored: {:?}", fresh_min.last_error());
+        assert_eq!(
+            fresh_min.host().config_script(false, false),
+            saved_min,
+            "a minimal SAVECFG must reload to the same config (fixed point)"
+        );
     }
 
     #[test]
