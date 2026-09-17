@@ -13760,7 +13760,6 @@ impl Host for AppHost {
         }
         // `/S`, or an exact miss: grep names + descriptions and list every match in the dialog.
         const CAP: usize = 40; // max entries listed before "…and N more"
-        const SNIPPET_CHARS: usize = 320; // synopsis characters shown per hit (the dialog word-wraps)
         let hits = crate::help::search(q);
         if !hits.is_empty() {
             let shown = hits.len().min(CAP);
@@ -13770,11 +13769,10 @@ impl Host for AppHost {
                 if hits.len() == 1 { "" } else { "es" }
             );
             for e in &hits[..shown] {
-                // One line of names + kind, then an indented one-line snippet of the synopsis.
+                // One line of names + kind, then the entry's FULL synopsis (flattened to one line — the
+                // dialog word-wraps). No character cap / trailing `…`: a result reads as complete text.
                 let flat: String = e.synopsis.split_whitespace().collect::<Vec<_>>().join(" ");
-                let snip: String = flat.chars().take(SNIPPET_CHARS).collect();
-                let ell = if flat.chars().count() > SNIPPET_CHARS { "…" } else { "" };
-                body.push_str(&format!("\n{}  ({})\n    {snip}{ell}", e.names.join(" / "), e.kind.label()));
+                body.push_str(&format!("\n{}  ({})\n    {flat}", e.names.join(" / "), e.kind.label()));
             }
             if hits.len() > shown {
                 body.push_str(&format!(
@@ -13800,7 +13798,6 @@ impl Host for AppHost {
 
     fn manual_search(&self, q: &str) -> HelpResponse {
         const CAP: usize = 25; // sections listed before "…and N more"
-        const SNIPPET_CHARS: usize = 600; // context window per section (the dialog word-wraps)
         let hits = crate::manual::search(q);
         if hits.is_empty() {
             return HelpResponse {
@@ -13816,8 +13813,9 @@ impl Host for AppHost {
             if hits.len() == 1 { "" } else { "s" }
         );
         for s in &hits[..shown] {
-            let snip = crate::manual::snippet(&s.body, q, SNIPPET_CHARS);
-            body.push_str(&format!("\n{}\n    {snip}", s.title));
+            // The whole section body (Typst reduced to plain text; the dialog word-wraps). No context
+            // window / `…`: a result is the complete section, snapped to no mid-text ellipsis.
+            body.push_str(&format!("\n{}\n    {}", s.title, s.body));
         }
         if hits.len() > shown {
             body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));

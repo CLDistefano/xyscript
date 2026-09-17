@@ -1,7 +1,8 @@
 //! MAN — search the user manual (`manual.typ`) by section: the prose companion to `HELP`'s
 //! reference search. The manual is narrative, not entry-structured, so the unit of search is a
 //! SECTION (a heading and the text under it). `search` greps section titles + bodies with the same
-//! substring/regex rules as [`crate::help::search`]; the app lists matches with a context snippet.
+//! substring/regex rules as [`crate::help::search`]; the app lists each match as its heading plus the
+//! full section body (no truncated excerpt / ellipsis).
 //!
 //! Like the help index, this parses the embedded `manual.typ` at runtime (cached), so it can't drift
 //! from the shipped manual and needs no build step.
@@ -157,55 +158,6 @@ pub fn search(query: &str) -> Vec<&'static Section> {
     title_hits
 }
 
-/// A `~width`-char snippet of `body` centered on the first match of `query`, with `…` where text is
-/// dropped. Falls back to the head of the body (a title-only match, or a regex that matched only the
-/// title). Snaps to char boundaries; prefers to start/end at a space so words aren't cut mid-way.
-pub fn snippet(body: &str, query: &str, width: usize) -> String {
-    if body.is_empty() {
-        return String::new();
-    }
-    // Byte offset of the first match (regex or case-insensitive substring), else 0 (head of body).
-    let raw = query.trim();
-    let start_match = if raw.contains(|c| REGEX_META.contains(&c)) {
-        RegexBuilder::new(raw)
-            .case_insensitive(true)
-            .build()
-            .ok()
-            .and_then(|re| re.find(body).map(|m| m.start()))
-    } else {
-        let (lb, lq) = (body.to_ascii_lowercase(), raw.to_ascii_lowercase());
-        lb.find(&lq)
-    }
-    .unwrap_or(0);
-    let chars: Vec<(usize, char)> = body.char_indices().collect();
-    let total = chars.len();
-    // The match position as a CHAR index.
-    let match_ci = chars.iter().position(|&(b, _)| b >= start_match).unwrap_or(0);
-    // Center the window on the match, clamped to the body.
-    let half = width / 2;
-    let mut lo = match_ci.saturating_sub(half);
-    let mut hi = (lo + width).min(total);
-    lo = hi.saturating_sub(width).min(lo);
-    // Prefer to begin/end on a word boundary near the cut.
-    if lo > 0 {
-        if let Some(off) = chars[lo..hi].iter().position(|&(_, c)| c == ' ') {
-            lo += off + 1;
-        }
-    }
-    if hi < total {
-        if let Some(off) = chars[lo..hi].iter().rposition(|&(_, c)| c == ' ') {
-            hi = lo + off;
-        }
-    }
-    let text: String = chars[lo..hi].iter().map(|&(_, c)| c).collect();
-    format!(
-        "{}{}{}",
-        if lo > 0 { "…" } else { "" },
-        text.trim(),
-        if hi < total { "…" } else { "" }
-    )
-}
-
 /// A short overview for bare-argument callers that want text (the GUI opens the manual instead).
 pub fn overview() -> String {
     format!(
@@ -246,13 +198,5 @@ mod tests {
         let _ = search("op(en");
         // Nonsense → nothing.
         assert!(search("zzzznotawordxyz").is_empty());
-    }
-
-    #[test]
-    fn snippet_centers_on_the_match() {
-        let body = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron";
-        let s = snippet(body, "epsilon", 30);
-        assert!(s.contains("epsilon"), "snippet should include the match: {s}");
-        assert!(s.starts_with('…'), "a mid-body match elides the head: {s}");
     }
 }
