@@ -393,6 +393,10 @@ pub enum EditorOp {
     /// `EMPH` (`None` = no highlight). A non-modal document tab (smooth scrolling), not a dialog; the
     /// tab keeps a fixed "Help" name so both `HELP` and `MAN` reuse the same recognizable tab.
     ShowResults { text: String, emphasis: Option<(String, bool)> },
+    /// `REFPDF` (`manual = false`) / `MANPDF` (`manual = true`) — open the shipped reference / user-
+    /// manual PDF in the OS default PDF application. The file is sought in `$XSDIR/docs` first, then
+    /// `$XSDIR`. Headless builds still resolve + launch it (the OS opens the reader).
+    OpenDocPdf { manual: bool },
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,

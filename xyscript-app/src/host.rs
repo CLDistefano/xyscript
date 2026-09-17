@@ -11965,6 +11965,28 @@ impl Host for AppHost {
                 self.set_focus(Target::Document); // land the caret in the results for scrolling
                 return Ok(Value::str(""));
             }
+            EditorOp::OpenDocPdf { manual } => {
+                // `REFPDF`/`MANPDF` — open the shipped reference/manual PDF in the OS default app. Look
+                // in `$XSDIR/docs` first (the repo layout), then `$XSDIR` (the deployed-alongside-the-exe
+                // layout). `$XSDIR` is the running executable's directory.
+                let name = if manual { "manual.pdf" } else { "reference.pdf" };
+                let dir = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                    .ok_or_else(|| XplError::trappable("cannot locate the program directory ($XSDIR)"))?;
+                let candidates = [dir.join("docs").join(name), dir.join(name)];
+                let Some(path) = candidates.iter().find(|p| p.exists()) else {
+                    return Err(XplError::trappable(format!(
+                        "{name} not found in {}\\docs or {}",
+                        dir.display(),
+                        dir.display()
+                    )));
+                };
+                match open_in_os(path) {
+                    Ok(()) => return Ok(Value::str(format!("opened {name}"))),
+                    Err(e) => return Err(XplError::trappable(format!("could not open {name}: {e}"))),
+                }
+            }
             EditorOp::SetUiSize { kind, value, relative } => {
                 // `relative` (the verb's arg began with an explicit +/-): add `value` to the knob's
                 // current value; otherwise `value` replaces it. Each knob then clamps to its range

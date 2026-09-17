@@ -2173,7 +2173,6 @@ The routines, by what they do:
 === Help and information
 
 / #raw("kbd"): open the 104-key keyboard chart.
-/ #raw("ref"): open the command reference.
 / #raw("typst"): open the Typst documentation (#raw("$PDFreader")).
 / #raw("idkey"): press a key to see the command it is bound to.
 / #raw("scancode"): show the scan code of a pressed key.

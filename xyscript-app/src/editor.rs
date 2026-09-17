@@ -10138,6 +10138,37 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn ref_is_a_synonym_for_help() {
+        let mut e = Editor::new(typing_keymap());
+        // `REF` is the reference command — a synonym for `HELP` (as `MAN` is for the manual).
+        e.run_command("REF CV");
+        assert!(e.active_is_help_listing(), "REF opens the Help results tab, like HELP");
+        assert!(e.document().text().contains("change-with-verify"), "REF CV shows the CV entry");
+    }
+
+    #[test]
+    fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
+        let mut e = Editor::new(typing_keymap());
+        // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a
+        // trappable not-found error that NAMES the file — proving the `$XSDIR/docs`-then-`$XSDIR` lookup
+        // ran (and nothing was launched). A real install has the PDF and opens it in the default app.
+        e.run_command("REFPDF");
+        e.run_command("PR $LS");
+        assert!(
+            e.output().last().is_some_and(|s| s.contains("reference.pdf")),
+            "REFPDF reports a missing reference.pdf on the status line: {:?}",
+            e.output().last()
+        );
+        e.run_command("MANPDF");
+        e.run_command("PR $LS");
+        assert!(
+            e.output().last().is_some_and(|s| s.contains("manual.pdf")),
+            "MANPDF reports a missing manual.pdf on the status line: {:?}",
+            e.output().last()
+        );
+    }
+
+    #[test]
     fn grep_context_options_round_trip_and_persist() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

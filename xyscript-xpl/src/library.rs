@@ -56,7 +56,7 @@ pub struct Routine {
 pub const BUILTIN_VERBS: &[&str] = &[
     "LOADKBD", "CLEARKBD", "SAVEKBD", "KBDDOC", "INSERT", "WRITE", "WR", "WRITELN", "WRL", "PUT", "WRITEFILE", "WF", "PRINTEX", "MERGE", "ME", "PR", "MSG", "MESSAGE", "CHECK", "SPELLING", "SP", "GRAMMAR", "GR", "SPELLNEXT", "SPELLPREV", "GRAMMARNEXT", "GRAMMARPREV", "LINTFIX", "DIALECT", "SPELLENGINE", "SPELLDICT", "SPELLBIN", "LEARN", "UNLEARN", "SV", "SETERR", "CLERR", "QUIET",
     "NOP", "CALL", "EXIT", "EX", "EXITALL", "EX1", "LOADLIB", "ADDLIB", "RELOADLIB",
-    "UNLOADLIB", "SAVELIB", "LISTLIB", "LISTSPECIALS", "KBCHART", "RUN", "RUNCODE", "HELP", "?", "MAN", "MENU",
+    "UNLOADLIB", "SAVELIB", "LISTLIB", "LISTSPECIALS", "KBCHART", "RUN", "RUNCODE", "HELP", "?", "REF", "MAN", "REFPDF", "MANPDF", "MENU",
     // Rich motion (B2): word / sentence / paragraph / line-start + char/line
     // synonyms + JMP + viewport (page / screen-edge) + wrap-aware char (CL/CR/LL/LR).
     "NW", "PW", "NS", "PS", "NP", "PP", "NL", "PL", "NC", "PC", "LU", "LD", "JMP",

@@ -655,8 +655,9 @@ The routines in the bundled #raw("xyscript.lib") are catalogued at the end of th
 
 == Help
 
-/ #cmd("HELP", "?"): look up reference help for a command, special, or function.
+/ #cmd("HELP", "?", "REF"): look up reference help for a command, special, or function (`REF` is a synonym).
 / #cmd("MAN"): open the user manual, or `MAN <topic>` to search it by section.
+/ #cmd("REFPDF") / #cmd("MANPDF"): open the reference / user-manual PDF in the default PDF app.
 / #cmd("KBCHART"): show the loaded keymap's chart — every modifier table and its key bindings — in a scrollable text box.
 
 == Email
@@ -821,8 +822,10 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("HOME", "EL"): move to the start of the line (`EL` is the "Express Left" name).
 / #cmd("HM"): move to the top of what's currently on screen.
-/ #cmd("HELP", "?"): look up reference help for a command, special, or function — `HELP CV`, `HELP $CWD`, `HELP UPPER`. Results open in a read-only *tab* (normal scrolling, wrapping, copy — not a modal). `HELP <term>` searches every entry's name and description and lists all matches, with any *exact* entry promoted to the top: `HELP CV` leads with the CV entry, then everything else that mentions "CV"; `HELP indent` surfaces `PVINDENT`, `TAB`, `WRAPINDENT`, and the like. A bare `HELP` gives a short overview; when nothing matches, it falls back to "did you mean" near-name suggestions on the status line. (`HELP/S` is an accepted alias — searching is now the only behaviour, so the flag is a no-op.) The term is a case-insensitive *substring* normally, but a **regular expression** when it contains a regex metacharacter (one of `\ . ^ $ | [ ( { * + ? #`) — so `HELP ^PV` lists everything starting with `PV`, and `HELP col(ou)?r` matches both spellings. Each occurrence of the term in the results is highlighted (like `EMPH`), extended to the whole word it sits in — so `HELP push` highlights `pushed`, `pushes`, and `pushing`. Same text as this reference, so it never drifts.
+/ #cmd("HELP", "?", "REF"): look up reference help for a command, special, or function — `HELP CV`, `HELP $CWD`, `HELP UPPER`. (`REF` is a synonym for `HELP`, the counterpart to `MAN` for the manual.) Results open in a read-only *tab* (normal scrolling, wrapping, copy — not a modal). `HELP <term>` searches every entry's name and description and lists all matches, with any *exact* entry promoted to the top: `HELP CV` leads with the CV entry, then everything else that mentions "CV"; `HELP indent` surfaces `PVINDENT`, `TAB`, `WRAPINDENT`, and the like. A bare `HELP` gives a short overview; when nothing matches, it falls back to "did you mean" near-name suggestions on the status line. (`HELP/S` is an accepted alias — searching is now the only behaviour, so the flag is a no-op.) The term is a case-insensitive *substring* normally, but a **regular expression** when it contains a regex metacharacter (one of `\ . ^ $ | [ ( { * + ? #`) — so `HELP ^PV` lists everything starting with `PV`, and `HELP col(ou)?r` matches both spellings. Each occurrence of the term in the results is highlighted (like `EMPH`), extended to the whole word it sits in — so `HELP push` highlights `pushed`, `pushes`, and `pushing`. Same text as this reference, so it never drifts.
 / #cmd("MAN"): the user-manual command — `HELP`'s prose companion. Bare `MAN` opens the manual (as *Help ▸ Manual* does); `MAN <topic>` searches the manual by *section* and lists the matches — each with its heading and the full section text (no truncated excerpt) — in a read-only *tab*, like `HELP`. `MAN scratchpad`, `MAN "page setup"`. The topic is a case-insensitive substring, or a **regular expression** when it holds a regex metacharacter (`\ . ^ $ | [ ( { * + ? #`), so `MAN ^Editing` lists sections whose heading starts with "Editing". Each occurrence of the topic in the results is highlighted (like `EMPH`), extended to the whole word. (Where `HELP` searches the A–Z reference entries, `MAN` searches the narrative manual.)
+/ #cmd("REFPDF"): open the shipped command-reference PDF (`reference.pdf`) in the operating system's default PDF application. The file is looked for first in `$XSDIR\docs`, then next to the executable in `$XSDIR`; if it's in neither, `REFPDF` reports that on the status line. (This is the typeset PDF of *this* reference — richer than the in-app `HELP`/`REF` text lookup.)
+/ #cmd("MANPDF"): open the shipped user-manual PDF (`manual.pdf`) in the default PDF application — same `$XSDIR\docs`-then-`$XSDIR` lookup as `REFPDF`. The narrative companion to `REFPDF`, and the printable form of what `MAN` searches.
 / #cmd("HIGHLIGHT"): turn syntax highlighting on or off for the active file's type.
 / #cmd("HEX"): `HEX on|off` (bare `HEX` = on) shows — and edits — the active document as a hex + text grid: an offset gutter, 16 bytes per row as hex pairs, and a text column (the bytes through the current encoding, non-printable as `.`). A per-document canvas view mode for binary files. *Navigate* by byte: ←/→ move ±1, ↑/↓ move one row (16 bytes), Home/End jump to the row edges, PgUp/PgDn a screen, a selection spans a byte range, and a click lands on the exact byte in whichever column you click. *Edit* in place (OVERWRITE by default, keeping file size and offsets stable): in the hex column type `0`–`9`/`a`–`f` — two digits compose a byte; `Tab` switches to the text column, where a typed character sets that byte through the active encoding. `Insert` adds a `00` byte, `Delete`/`Backspace` remove the byte at / before the caret (or the selection), and copy/cut/paste (byte-faithful) plus undo/redo all work; a genuine `RO` lock blocks editing. #sv("HEX") reads it.
 / #cmd("HLAUTO"): auto-enable highlighting whenever a recognized file is opened (`on`/`off`).
@@ -1543,7 +1546,6 @@ opens the file to read or adapt any of them. A few read user variables you set i
 == Help and information
 
 / #lib("kbd"): open the 104-key keyboard chart.
-/ #lib("ref"): open this command reference.
 / #lib("typst"): open the Typst documentation (path in #raw("$PDFreader")).
 / #lib("idkey"): press a key to see the command it is bound to.
 / #lib("scancode"): show the scan code of a pressed key.
@@ -1757,7 +1759,6 @@ Every bundled routine, alphabetical.
 
 == R
 
-/ #lib("ref"): open this command reference.
 / #lib("renas"): rename the current file and reopen it under the new name.
 
 == S

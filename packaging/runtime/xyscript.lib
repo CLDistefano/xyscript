@@ -19,14 +19,6 @@ SUB kbd
 	X/NV $cmnd
 ENDSUB
 
-SUB ref
-	# DOC: View XyScript command reference
-	# UserVar: $PDFreader
-	LOCAL fnm
-	SET fnm = $XSDIR.$DC."docs".$DC."reference.pdf"
-	PDFread $fnm
-ENDSUB
-
 SUB typst
 	# DOC: View Typst documentation
 	# DOC: UserVar: $PDFreader

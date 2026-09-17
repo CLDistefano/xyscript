@@ -40,7 +40,7 @@ use std::collections::BTreeMap;
 /// trappable failure. Folded names.
 const NO_ERROR_TOUCH: &[&str] = &[
     "CALL", "ENV", "SETERR", "CLERR", "QUIET",
-    "?", "ABOUT", "HELP", "MAN", "COMMANDS", "LISTLIB", "LISTVAR", "LISTVARS", "HISTORY", "HI", "BUFLIST",
+    "?", "ABOUT", "HELP", "REF", "MAN", "COMMANDS", "LISTLIB", "LISTVAR", "LISTVARS", "HISTORY", "HI", "BUFLIST",
     "HLKINDS",
 ];
 
@@ -4821,7 +4821,8 @@ impl Vm<'_, '_> {
             // function and show it in a scrollable TXT dialog (or feed it to a CAPTURE variable).
             // A bare `HELP` shows a short overview; an unknown name reports suggestions on the
             // status line (and sets `$ERROR`) rather than opening an empty dialog.
-            "HELP" | "?" => {
+            "HELP" | "?" | "REF" => {
+                // `REF` is a synonym for `HELP` (the reference command, as `MAN` is for the manual).
                 // Take the name RAW (not `$`-substituted), so `HELP $CWD` looks up the *special*
                 // rather than substituting its value, and `HELP UPPER` works without a leading `$`.
                 let q = raw_args.trim();
@@ -4863,6 +4864,12 @@ impl Vm<'_, '_> {
                 }
                 // Show the results in the shared read-only Help tab (smooth scrolling), highlighting the term.
                 self.host_op(EditorOp::ShowResults { text: resp.body, emphasis: resp.emphasis })?;
+                Ok(Flow::Next)
+            }
+            // `REFPDF` / `MANPDF` — open the reference / user-manual PDF in the OS default PDF app.
+            // The file is looked up in `$XSDIR/docs` first, then `$XSDIR` (see `EditorOp::OpenDocPdf`).
+            "REFPDF" | "MANPDF" => {
+                self.host_op(EditorOp::OpenDocPdf { manual: base == "MANPDF" })?;
                 Ok(Flow::Next)
             }
             "KBCHART" => {
@@ -5826,7 +5833,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         return Ok(());
     }
     let valid: &[&str] = match base {
-        "HELP" | "?" => &["S"], // `/S` — grep names + descriptions instead of an exact lookup
+        "HELP" | "?" | "REF" => &["S"], // `/S` — accepted no-op alias (HELP/REF always search now)
         "QUIET" => &["NV"],
         "SAVE" | "SA" => &["NV"], // `/NV` — overwrite an existing copy target without confirming
         "ST" => &["NV"], // `/NV` — `ST/NV <path>` overwrites without confirming
