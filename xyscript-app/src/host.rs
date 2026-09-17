@@ -13746,15 +13746,18 @@ impl Host for AppHost {
                 title: "Help".to_string(),
                 body: crate::help::overview(),
                 not_found: false,
+                emphasis: None,
             };
         };
-        // Exact lookup first (unless `/S` forces the search). A hit shows that one entry.
+        // Exact lookup first (unless `/S` forces the search). A hit shows that one entry (no
+        // emphasis — a single entry isn't a search-results list).
         if !search {
             if let Some(e) = crate::help::lookup(q) {
                 return HelpResponse {
                     title: format!("Help: {}", e.names.join(" / ")),
                     body: format!("{}  ({})\n\n{}", e.names.join("  /  "), e.kind.label(), e.synopsis),
                     not_found: false,
+                    emphasis: None,
                 };
             }
         }
@@ -13784,6 +13787,7 @@ impl Host for AppHost {
                 title: format!("Help: {q:?} — {} match{}", hits.len(), if hits.len() == 1 { "" } else { "es" }),
                 body,
                 not_found: false,
+                emphasis: crate::help::result_emphasis(q),
             };
         }
         // Nothing matched at all → near-name suggestions (typo help) / overview, on the status line.
@@ -13793,7 +13797,7 @@ impl Host for AppHost {
         } else {
             format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
         };
-        HelpResponse { title: "Help".to_string(), body, not_found: true }
+        HelpResponse { title: "Help".to_string(), body, not_found: true, emphasis: None }
     }
 
     fn manual_search(&self, q: &str) -> HelpResponse {
@@ -13804,6 +13808,7 @@ impl Host for AppHost {
                 title: "Manual".to_string(),
                 body: format!("No manual sections match {q:?}. Type MAN for an overview."),
                 not_found: true,
+                emphasis: None,
             };
         }
         let shown = hits.len().min(CAP);
@@ -13824,6 +13829,7 @@ impl Host for AppHost {
             title: format!("Manual: {q:?} — {} section{}", hits.len(), if hits.len() == 1 { "" } else { "s" }),
             body,
             not_found: false,
+            emphasis: crate::help::result_emphasis(q),
         }
     }
 

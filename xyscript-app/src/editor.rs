@@ -968,6 +968,23 @@ impl Editor {
         self.interp.line_colors_request()
     }
 
+    /// Per-line byte spans to EMPHasize in the parked TXT dialog's body (aligned with the
+    /// [`text_request`](Self::text_request) lines) — the `HELP`/`MAN` search-term highlight. `None`
+    /// when no dialog is parked or it carries no emphasis; an inner `Vec` is empty when that line has
+    /// no match. The VM holds the `(phrase, regex)`; this crate owns the regex engine, so the spans
+    /// are computed here (case-insensitive; matches never cross a newline).
+    pub fn text_emphasis_spans(&self) -> Option<Vec<Vec<(usize, usize)>>> {
+        let (_, text) = self.interp.text_request()?;
+        let (phrase, regex) = self.interp.text_emphasis()?;
+        let pattern = if regex { phrase } else { format!(r"\b{}\b", regex::escape(&phrase)) };
+        let re = regex::RegexBuilder::new(&pattern).case_insensitive(true).build().ok()?;
+        Some(
+            text.lines()
+                .map(|line| re.find_iter(line).map(|m| (m.start(), m.end())).collect())
+                .collect(),
+        )
+    }
+
     /// Dismiss the `TXT` modal dialog (Esc / ×), resuming the paused script.
     pub fn dismiss_text(&mut self) {
         if self.interp.text_request().is_none() {
@@ -10086,6 +10103,39 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command("MAN");
         assert!(e.text_request().is_none(), "bare MAN opens the manual, not a dialog");
         assert!(e.host_mut().take_show_manual_request(), "bare MAN sets the show-manual request");
+    }
+
+    #[test]
+    fn help_and_man_results_emphasize_whole_words_of_the_term() {
+        let mut e = Editor::new(typing_keymap());
+        // HELP/S emphasizes the term extended to whole words: every highlighted span contains "save"
+        // (so `saves`/`saved`/… light up whole), and at least one occurrence is found.
+        e.run_command("HELP/S save");
+        let (_, text) = e.text_request().expect("HELP/S opens a dialog");
+        let spans = e.text_emphasis_spans().expect("HELP/S results carry emphasis");
+        let lines: Vec<&str> = text.lines().collect();
+        let mut hits = 0;
+        for (i, per_line) in spans.iter().enumerate() {
+            for &(a, b) in per_line {
+                hits += 1;
+                assert!(
+                    lines[i][a..b].to_lowercase().contains("save"),
+                    "emphasized span {:?} should contain the term",
+                    &lines[i][a..b]
+                );
+            }
+        }
+        assert!(hits > 0, "expected at least one emphasized occurrence of the term");
+        e.dismiss_text();
+        // An exact single-entry lookup carries NO emphasis (it isn't a results list).
+        e.run_command("HELP SAVE");
+        assert!(e.text_request().is_some(), "exact lookup opens a dialog");
+        assert!(e.text_emphasis_spans().is_none(), "exact lookup should not emphasize");
+        e.dismiss_text();
+        // MAN results emphasize too.
+        e.run_command("MAN scratchpad");
+        assert!(e.text_request().is_some(), "MAN opens a dialog");
+        assert!(e.text_emphasis_spans().is_some(), "MAN results carry emphasis");
     }
 
     #[test]

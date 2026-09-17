@@ -978,6 +978,12 @@ impl Handler {
         // Optional per-line label colours (currently only `HLKINDS`): each kind's name drawn in its
         // own colour, so the list previews the theme.
         let line_colors = self.app.txt_line_colors();
+        // Optional per-line EMPHasis spans (the `HELP`/`MAN` search-term highlight): matched byte ranges
+        // in each line, painted with the EMPH colours so it matches in-document `EMPH`.
+        let emphasis_spans = self.app.txt_emphasis_spans();
+        let (emph_fg_rgb, emph_bg_rgb) = self.app.emph_colors();
+        let emph_fg = egui::Color32::from_rgb(emph_fg_rgb.0, emph_fg_rgb.1, emph_fg_rgb.2);
+        let emph_bg = egui::Color32::from_rgb(emph_bg_rgb.0, emph_bg_rgb.1, emph_bg_rgb.2);
         // User-configurable text size (`TXTFONT`, pt), window zoom (`TXTSCALE`), and colours
         // (`TXTFGCOLOR`/`TXTBGCOLOR`).
         let txt_font = self.app.txt_font();
@@ -1106,31 +1112,64 @@ impl Handler {
                         for (i, line) in text.lines().enumerate() {
                             // Render empty lines as a space so every row keeps a uniform height.
                             let shown = if line.is_empty() { " " } else { line };
+                            // EMPHasis (HELP/MAN search-term highlight) takes precedence: paint each
+                            // matched byte span with the EMPH fg/bg, the rest in the normal colour.
+                            // (HLKINDS colours and emphasis never co-occur on the same dialog.)
+                            let emph = emphasis_spans
+                                .as_ref()
+                                .and_then(|s| s.get(i))
+                                .filter(|v| !v.is_empty());
                             // A per-line label colour (HLKINDS): draw the leading label (up to the
                             // first space) in that colour and the rest — the R G B triplet — in the
                             // normal text colour, so the list previews the theme while staying legible.
                             let kind_col =
                                 line_colors.as_ref().and_then(|c| c.get(i).copied().flatten());
-                            let label: egui::WidgetText = match kind_col {
-                                Some((r, g, b)) => {
-                                    use egui::text::{LayoutJob, TextFormat};
-                                    let font = egui::FontId::monospace(txt_font);
-                                    let split =
-                                        shown.find(char::is_whitespace).unwrap_or(shown.len());
-                                    let mut job = LayoutJob::default();
-                                    job.append(
-                                        &shown[..split],
-                                        0.0,
-                                        TextFormat::simple(font.clone(), egui::Color32::from_rgb(r, g, b)),
-                                    );
-                                    job.append(&shown[split..], 0.0, TextFormat::simple(font, txt_fg));
-                                    job.into()
+                            let label: egui::WidgetText = if let Some(spans) = emph {
+                                use egui::text::{LayoutJob, TextFormat};
+                                let font = egui::FontId::monospace(txt_font);
+                                let mut job = LayoutJob::default();
+                                let mut pos = 0usize;
+                                for &(a, b) in spans {
+                                    // Guard: in-range, ordered, on this line (find_iter yields sorted,
+                                    // non-overlapping, char-boundary spans, but stay defensive).
+                                    let (a, b) = (a.min(shown.len()), b.min(shown.len()));
+                                    if a < pos || a >= b {
+                                        continue;
+                                    }
+                                    if pos < a {
+                                        job.append(&shown[pos..a], 0.0, TextFormat::simple(font.clone(), txt_fg));
+                                    }
+                                    let mut fmt = TextFormat::simple(font.clone(), emph_fg);
+                                    fmt.background = emph_bg;
+                                    job.append(&shown[a..b], 0.0, fmt);
+                                    pos = b;
                                 }
-                                None => egui::RichText::new(shown)
-                                    .monospace()
-                                    .size(txt_font)
-                                    .color(txt_fg)
-                                    .into(),
+                                if pos < shown.len() {
+                                    job.append(&shown[pos..], 0.0, TextFormat::simple(font, txt_fg));
+                                }
+                                job.into()
+                            } else {
+                                match kind_col {
+                                    Some((r, g, b)) => {
+                                        use egui::text::{LayoutJob, TextFormat};
+                                        let font = egui::FontId::monospace(txt_font);
+                                        let split =
+                                            shown.find(char::is_whitespace).unwrap_or(shown.len());
+                                        let mut job = LayoutJob::default();
+                                        job.append(
+                                            &shown[..split],
+                                            0.0,
+                                            TextFormat::simple(font.clone(), egui::Color32::from_rgb(r, g, b)),
+                                        );
+                                        job.append(&shown[split..], 0.0, TextFormat::simple(font, txt_fg));
+                                        job.into()
+                                    }
+                                    None => egui::RichText::new(shown)
+                                        .monospace()
+                                        .size(txt_font)
+                                        .color(txt_fg)
+                                        .into(),
+                                }
                             };
                             let row = ui.selectable_label(i == sel, label);
                             let h = row.rect.height();

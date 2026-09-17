@@ -308,6 +308,16 @@ impl Interpreter {
         }
     }
 
+    /// The `(phrase, regex)` to EMPHasize within a parked `ShowText`'s `text` — the `HELP`/`MAN`
+    /// search-term highlight. `None` when no dialog is parked or it carries no emphasis. The app turns
+    /// this into per-line match spans (it owns the `regex` engine); see `Editor::text_emphasis_spans`.
+    pub fn text_emphasis(&self) -> Option<(String, bool)> {
+        match self.suspended.last().map(|s| &s.reason) {
+            Some(SuspendReason::ShowText { emphasis, .. }) => emphasis.clone(),
+            _ => None,
+        }
+    }
+
     /// The text of a parked bare-`MSG` modal box, if a script is on one. The editor resumes via
     /// [`resume_wait`](Self::resume_wait) when the user dismisses it. (`MSG/T:` toasts don't park.)
     pub fn message_request(&self) -> Option<String> {
@@ -829,6 +839,9 @@ enum SuspendReason {
         columns: Option<Vec<(String, String)>>,
         /// Optional per-line label colours (one per line of `text`; `None` = default) — `HLKINDS`.
         line_colors: Option<Vec<Option<(u8, u8, u8)>>>,
+        /// Optional `(phrase, regex)` to EMPHasize within `text` — the search term for a `HELP`/`MAN`
+        /// results dialog. The GUI paints each match; see [`Interp::text_emphasis_spans`].
+        emphasis: Option<(String, bool)>,
     },
     /// Bare `MSG <text>` — a MODAL message box: the script pauses until the user dismisses it
     /// (OK / Esc / ×), then resumes (no value). `MSG/T:<secs>` does NOT use this — it's a
@@ -1699,8 +1712,13 @@ impl Vm<'_, '_> {
                     self.capture_push(&text);
                     return Ok(Flow::Next);
                 }
-                self.suspend =
-                    Some(SuspendReason::ShowText { title, text, columns: None, line_colors: None });
+                self.suspend = Some(SuspendReason::ShowText {
+                    title,
+                    text,
+                    columns: None,
+                    line_colors: None,
+                    emphasis: None,
+                });
                 Ok(Flow::Suspend)
             }
             "TRUST" => {
@@ -3791,6 +3809,7 @@ impl Vm<'_, '_> {
                     text,
                     columns: None,
                     line_colors,
+                    emphasis: None,
                 });
                 Ok(Flow::Suspend)
             }
@@ -4838,6 +4857,7 @@ impl Vm<'_, '_> {
                     text: resp.body,
                     columns: None,
                     line_colors: None,
+                    emphasis: resp.emphasis,
                 });
                 Ok(Flow::Suspend)
             }
@@ -4866,6 +4886,7 @@ impl Vm<'_, '_> {
                     text: resp.body,
                     columns: None,
                     line_colors: None,
+                    emphasis: resp.emphasis,
                 });
                 Ok(Flow::Suspend)
             }
@@ -4882,6 +4903,7 @@ impl Vm<'_, '_> {
                     text,
                     columns: None,
                     line_colors: None,
+                    emphasis: None,
                 });
                 Ok(Flow::Suspend)
             }
@@ -4898,6 +4920,7 @@ impl Vm<'_, '_> {
                     text,
                     columns: Some(self.ctx.library.listing_columns()),
                     line_colors: None,
+                    emphasis: None,
                 });
                 Ok(Flow::Suspend)
             }

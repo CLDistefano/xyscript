@@ -350,6 +350,26 @@ pub fn suggest(name: &str, max: usize) -> Vec<String> {
 /// outside verbose mode — matching on it then behaves like a substring, which is harmless.)
 const REGEX_META: &[char] = &['\\', '.', '^', '$', '|', '[', '(', '{', '*', '+', '?', '#'];
 
+/// The `(phrase, regex)` used to EMPHasize a search term in the HELP/MAN results dialog. Always regex
+/// mode (`EMPH/R` semantics): a query that is itself a regex (holds a metacharacter) highlights its own
+/// matches; a plain term is escaped and wrapped in `\w*…\w*` so the WHOLE word it sits in lights up —
+/// so `push` highlights `pushed`, `pushes`, `pushing`, and so on. `None` for an empty term (a leading
+/// `$` / trailing `()` is ignored first, matching how `search` normalizes a substring query).
+pub(crate) fn result_emphasis(query: &str) -> Option<(String, bool)> {
+    let raw = query.trim();
+    let raw = raw.strip_prefix('$').unwrap_or(raw);
+    let raw = raw.strip_suffix("()").unwrap_or(raw).trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let phrase = if raw.contains(|c| REGEX_META.contains(&c)) {
+        raw.to_string()
+    } else {
+        format!(r"\w*{}\w*", regex::escape(raw))
+    };
+    Some((phrase, true))
+}
+
 /// Every help entry whose name(s) OR synopsis match `query` — the grep-like `HELP` fallback and
 /// `HELP/S`. If the query contains a regex metacharacter (`REGEX_META`) it is treated as a
 /// case-insensitive **regular expression**; otherwise it is a case-insensitive **substring** (with a
@@ -504,6 +524,25 @@ mod tests {
         let missing: Vec<&String> =
             required.iter().filter(|n| lookup(n).map(|e| e.kind) != Some(Kind::Library)).collect();
         assert!(missing.is_empty(), "HELP can't resolve {} library routine(s): {missing:?}", missing.len());
+    }
+
+    #[test]
+    fn result_emphasis_builds_a_whole_word_regex() {
+        // A plain term → whole-word regex (EMPH/R semantics), so it lights up longer words.
+        let (p, rx) = result_emphasis("push").unwrap();
+        assert!(rx, "emphasis is always regex mode");
+        assert_eq!(p, r"\w*push\w*");
+        let re = Regex::new(&p).unwrap();
+        for w in ["push", "pushed", "pushes", "pushing", "repush"] {
+            assert_eq!(re.find(w).map(|m| m.as_str()), Some(w), "{w} should whole-word match");
+        }
+        // A regex term passes through unchanged (it highlights its own matches).
+        assert_eq!(result_emphasis("^PV").unwrap().0, "^PV");
+        // A leading `$` / trailing `()` is ignored (matches how the search normalizes); empty → None.
+        assert_eq!(result_emphasis("$cwd").unwrap().0, r"\w*cwd\w*");
+        assert_eq!(result_emphasis("UPPER()").unwrap().0, r"\w*UPPER\w*");
+        assert!(result_emphasis("   ").is_none());
+        assert!(result_emphasis("$").is_none());
     }
 
     #[test]

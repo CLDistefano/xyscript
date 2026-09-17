@@ -1613,6 +1613,9 @@ pub struct HelpResponse {
     pub title: String,
     pub body: String,
     pub not_found: bool,
+    /// `(phrase, regex)` to EMPHasize in `body` when shown in the TXT dialog — the search term as a
+    /// whole-word regex. `None` = no highlight (bare overview, exact single-entry lookup, or a miss).
+    pub emphasis: Option<(String, bool)>,
 }
 
 /// The correction choices for the language issue at the caret (`LINTFIX`): the document `span` (rope
@@ -1757,11 +1760,12 @@ pub trait Host {
             title: "Help".to_string(),
             body: "Help is not available in this build.".to_string(),
             not_found: true,
+            emphasis: None,
         }
     }
 
     /// `MAN <topic>` — search the user manual by section (the prose companion to [`Self::help`]).
-    /// Returns a formatted title + body listing the matching sections with a context snippet;
+    /// Returns a formatted title + body listing the matching sections with their full text;
     /// `not_found` when nothing matched (reported on the status line, like `HELP`). Bare `MAN` opens
     /// the manual via `EditorOp::ShowManual` instead of calling this. Default: unavailable.
     fn manual_search(&self, _query: &str) -> HelpResponse {
@@ -1769,6 +1773,7 @@ pub trait Host {
             title: "Manual".to_string(),
             body: "The manual is not available in this build.".to_string(),
             not_found: true,
+            emphasis: None,
         }
     }
 
