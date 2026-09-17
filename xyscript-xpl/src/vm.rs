@@ -4837,12 +4837,8 @@ impl Vm<'_, '_> {
                     *self.ctx.status = Some(resp.body);
                     return Ok(Flow::Next);
                 }
-                // Show the results in a read-only document tab (smooth scrolling), highlighting the term.
-                self.host_op(EditorOp::ShowResults {
-                    label: resp.title,
-                    text: resp.body,
-                    emphasis: resp.emphasis,
-                })?;
+                // Show the results in the shared read-only Help tab (smooth scrolling), highlighting the term.
+                self.host_op(EditorOp::ShowResults { text: resp.body, emphasis: resp.emphasis })?;
                 Ok(Flow::Next)
             }
             // `MAN [topic]` — the manual command. Bare `MAN` opens the user manual (Help ▸ Manual);
@@ -4865,12 +4861,8 @@ impl Vm<'_, '_> {
                     *self.ctx.status = Some(resp.body);
                     return Ok(Flow::Next);
                 }
-                // Show the results in a read-only document tab (smooth scrolling), highlighting the term.
-                self.host_op(EditorOp::ShowResults {
-                    label: resp.title,
-                    text: resp.body,
-                    emphasis: resp.emphasis,
-                })?;
+                // Show the results in the shared read-only Help tab (smooth scrolling), highlighting the term.
+                self.host_op(EditorOp::ShowResults { text: resp.body, emphasis: resp.emphasis })?;
                 Ok(Flow::Next)
             }
             "KBCHART" => {

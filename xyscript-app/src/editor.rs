@@ -10112,6 +10112,32 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn help_and_man_share_one_results_tab() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("HELP CV");
+        assert!(e.active_is_help_listing());
+        // The shared results tab has a fixed "Help" name (not a per-query title), so HELP and MAN reuse
+        // one recognizable tab.
+        let tab_name = |e: &Editor| e.tabs().get(e.active_index()).map(|t| t.name.clone());
+        assert_eq!(tab_name(&e).as_deref(), Some("Help"), "the results tab is named 'Help'");
+        let n = e.buffer_count();
+        // MAN reuses the SAME results tab (no new tab); its results replace HELP's in place.
+        e.run_command("MAN scratchpad");
+        assert_eq!(e.buffer_count(), n, "MAN reuses the HELP results tab, not a second one");
+        assert_eq!(tab_name(&e).as_deref(), Some("Help"), "MAN keeps the same 'Help' tab name");
+        assert!(e.active_is_help_listing());
+        assert!(
+            e.document().text().to_lowercase().contains("scratchpad"),
+            "the shared tab now shows the MAN results: {}",
+            e.document().text()
+        );
+        // And back to HELP — still the one tab.
+        e.run_command("HELP TAB");
+        assert_eq!(e.buffer_count(), n, "HELP reuses the same results tab after MAN");
+        assert!(e.document().text().contains("TABSPACES"), "shared tab shows HELP results again");
+    }
+
+    #[test]
     fn grep_context_options_round_trip_and_persist() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

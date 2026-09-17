@@ -388,10 +388,11 @@ pub enum EditorOp {
     /// Bare `MAN` — request the GUI to open the user manual (same as Help ▸ Manual). Headless builds
     /// have nowhere to show it, so it's a no-op there.
     ShowManual,
-    /// Open (or reuse in place) the read-only `HELP`/`MAN` results tab: `label` titles the tab, `text`
-    /// is the pre-formatted results body, and `emphasis` `(phrase, regex)` highlights the search term
-    /// via `EMPH` (`None` = no highlight). A non-modal document tab (smooth scrolling), not a dialog.
-    ShowResults { label: String, text: String, emphasis: Option<(String, bool)> },
+    /// Open (or reuse in place) the single read-only `HELP`/`MAN` results tab: `text` is the
+    /// pre-formatted results body, and `emphasis` `(phrase, regex)` highlights the search term via
+    /// `EMPH` (`None` = no highlight). A non-modal document tab (smooth scrolling), not a dialog; the
+    /// tab keeps a fixed "Help" name so both `HELP` and `MAN` reuse the same recognizable tab.
+    ShowResults { text: String, emphasis: Option<(String, bool)> },
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,
@@ -1614,11 +1615,10 @@ pub enum Motion {
 /// the VM decides how to surface it (a `TXT` modal, a `CAPTURE` variable, or — when `not_found` —
 /// a status-line message).
 pub struct HelpResponse {
-    pub title: String,
     pub body: String,
     pub not_found: bool,
-    /// `(phrase, regex)` to EMPHasize in `body` when shown in the TXT dialog — the search term as a
-    /// whole-word regex. `None` = no highlight (bare overview, exact single-entry lookup, or a miss).
+    /// `(phrase, regex)` to EMPHasize in `body` when shown in the results tab — the search term as a
+    /// whole-word regex. `None` = no highlight (bare overview or a miss).
     pub emphasis: Option<(String, bool)>,
 }
 
@@ -1761,7 +1761,6 @@ pub trait Host {
     /// also falls back to that search. Default: help is unavailable.
     fn help(&self, _query: Option<&str>, _search: bool) -> HelpResponse {
         HelpResponse {
-            title: "Help".to_string(),
             body: "Help is not available in this build.".to_string(),
             not_found: true,
             emphasis: None,
@@ -1774,7 +1773,6 @@ pub trait Host {
     /// the manual via `EditorOp::ShowManual` instead of calling this. Default: unavailable.
     fn manual_search(&self, _query: &str) -> HelpResponse {
         HelpResponse {
-            title: "Manual".to_string(),
             body: "The manual is not available in this build.".to_string(),
             not_found: true,
             emphasis: None,

@@ -11940,23 +11940,25 @@ impl Host for AppHost {
                 self.show_manual_request = true;
                 return Ok(Value::str(""));
             }
-            EditorOp::ShowResults { label, text, emphasis } => {
-                // Open the results in a read-only DOCUMENT tab (smooth wrap-aware scrolling), reusing a
-                // prior HELP/MAN results tab in place so they don't accumulate. The search term is
-                // highlighted with EMPH (the same document renderer as GREP's results), so occurrences
-                // stand out; `None` clears any stale emphasis.
+            EditorOp::ShowResults { text, emphasis } => {
+                // Open the results in a read-only DOCUMENT tab (smooth wrap-aware scrolling). BOTH HELP
+                // and MAN reuse ONE tab — a fixed "Help" name, found by the `is_help_listing` marker —
+                // replacing its content in place so results never accumulate into extra tabs. The search
+                // term is highlighted with EMPH (the same document renderer as GREP's results); `None`
+                // clears any stale emphasis. The query context lives in the body's first line.
+                const HELP_TAB: &str = "Help";
                 let (phrase, regex) = match emphasis {
                     Some((p, r)) => (Some(p), r),
                     None => (None, false),
                 };
                 if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
-                    self.docs[i].open_help_listing(label, &text);
+                    self.docs[i].open_help_listing(HELP_TAB.to_string(), &text);
                     self.docs[i].set_emph(phrase, regex);
                     self.active = i;
                     self.sync_panes();
                 } else {
                     let mut doc = Document::new();
-                    doc.open_help_listing(label, &text);
+                    doc.open_help_listing(HELP_TAB.to_string(), &text);
                     doc.set_emph(phrase, regex);
                     self.add_or_reuse(doc);
                 }
@@ -13771,7 +13773,6 @@ impl Host for AppHost {
         let Some(q) = query else {
             // Bare `HELP` — a short overview.
             return HelpResponse {
-                title: "Help".to_string(),
                 body: crate::help::overview(),
                 not_found: false,
                 emphasis: None,
@@ -13806,12 +13807,7 @@ impl Host for AppHost {
                     hits.len() - shown
                 ));
             }
-            return HelpResponse {
-                title: format!("Help: {q:?} — {} match{}", hits.len(), if hits.len() == 1 { "" } else { "es" }),
-                body,
-                not_found: false,
-                emphasis: crate::help::result_emphasis(q),
-            };
+            return HelpResponse { body, not_found: false, emphasis: crate::help::result_emphasis(q) };
         }
         // Nothing matched at all → near-name suggestions (typo help) / overview, on the status line.
         let near = crate::help::suggest(q, 5);
@@ -13820,7 +13816,7 @@ impl Host for AppHost {
         } else {
             format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
         };
-        HelpResponse { title: "Help".to_string(), body, not_found: true, emphasis: None }
+        HelpResponse { body, not_found: true, emphasis: None }
     }
 
     fn manual_search(&self, q: &str) -> HelpResponse {
@@ -13828,7 +13824,6 @@ impl Host for AppHost {
         let hits = crate::manual::search(q);
         if hits.is_empty() {
             return HelpResponse {
-                title: "Manual".to_string(),
                 body: format!("No manual sections match {q:?}. Type MAN for an overview."),
                 not_found: true,
                 emphasis: None,
@@ -13848,12 +13843,7 @@ impl Host for AppHost {
         if hits.len() > shown {
             body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));
         }
-        HelpResponse {
-            title: format!("Manual: {q:?} — {} section{}", hits.len(), if hits.len() == 1 { "" } else { "s" }),
-            body,
-            not_found: false,
-            emphasis: crate::help::result_emphasis(q),
-        }
+        HelpResponse { body, not_found: false, emphasis: crate::help::result_emphasis(q) }
     }
 
     fn selection_in(&self, n: i64) -> String {
