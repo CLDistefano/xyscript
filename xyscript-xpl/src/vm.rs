@@ -3086,16 +3086,20 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenConsole { show })?;
                 Ok(Flow::Next)
             }
-            // `SHPROMPT [<template>]` — the Console prompt (`$`-expanded); bare restores the default.
-            // Quote the template to keep a trailing space (`SHPROMPT "$CWD> "`), which most prompts want.
+            // `SHPROMPT [<template>]` — the Console prompt; bare restores the default. Uses `raw_args`
+            // (NOT the `$`-substituted `args`) so `$CWD` survives VERBATIM in the stored template and is
+            // expanded at render time (see `AppHost::expand_prompt`) — otherwise it would
+            // freeze to the directory that was current when the prompt was set (or when a config loaded).
+            // Quote the template to keep a leading/trailing space (`SHPROMPT "$CWD> "`), which most
+            // prompts want; an unquoted value is trimmed.
             "SHPROMPT" => {
-                let a = args.trim();
-                let tmpl = if a.is_empty() {
+                let r = raw_args.trim();
+                let tmpl = if r.is_empty() {
                     None
-                } else if a.len() >= 2 && a.starts_with('"') && a.ends_with('"') {
-                    Some(a[1..a.len() - 1].to_string())
+                } else if r.len() >= 2 && r.starts_with('"') && r.ends_with('"') {
+                    Some(r[1..r.len() - 1].to_string()) // inner verbatim — spaces preserved
                 } else {
-                    Some(a.to_string())
+                    Some(r.to_string())
                 };
                 self.host_op(EditorOp::SetConsolePrompt(tmpl))?;
                 Ok(Flow::Next)
@@ -3617,8 +3621,23 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::ModeColor { background, rgb })?;
                 Ok(Flow::Next)
             }
+            // `DWFGCOLOR`/`DWBGCOLOR <r g b>` — the DIR/W window's text/background colour (`/HSL`);
+            // bare or `… default` clears it so the window inherits the editor's colour. `…S` opens the
+            // picker. Kept separate from the RGB-only verbs below because it is an OPTION (unset =
+            // inherit), which lets `DWFGCOLOR default` round-trip from a saved config.
+            "DWFGCOLOR" | "DWBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetDwColor { fg: base == "DWFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
             "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR"
-            | "SEPCOLOR" | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR"
+            | "SEPCOLOR" | "TXTFGCOLOR" | "TXTBGCOLOR" | "SELBGCOLOR"
             | "SELFGCOLOR" | "FINDBGCOLOR" | "FINDFGCOLOR" | "SPELLCOLOR" | "GRAMMARCOLOR"
             | "PANECOLOR" => {
                 let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
@@ -3631,8 +3650,6 @@ impl Vm<'_, '_> {
                     "SEPCOLOR" => ColorGround::Separator,
                     "TXTFGCOLOR" => ColorGround::TxtFg,
                     "TXTBGCOLOR" => ColorGround::TxtBg,
-                    "DWFGCOLOR" => ColorGround::DwFg,
-                    "DWBGCOLOR" => ColorGround::DwBg,
                     "SELBGCOLOR" => ColorGround::SelBg,
                     "SELFGCOLOR" => ColorGround::SelFg,
                     "FINDBGCOLOR" => ColorGround::FindBg,

@@ -9053,8 +9053,8 @@ impl AppHost {
             None => {}
         }
         match self.dw_font_style {
-            Some(st) => put(&mut s, "DIR-window font style (DWSTYLE)", format!("DWSTYLE {}", st.keyword())),
-            None if full => put(&mut s, "DIR-window font style -- normal | bold | italic | bolditalic", "DWSTYLE normal".to_string()),
+            Some(st) => put(&mut s, "DIR-window font style -- default | normal | bold | italic | bolditalic", format!("DWSTYLE {}", st.keyword())),
+            None if full => put(&mut s, "DIR-window font style -- default | normal | bold | italic | bolditalic ('default' inherits the editor)", "DWSTYLE default".to_string()),
             None => {}
         }
         match &self.preview_font_family {
@@ -9106,7 +9106,7 @@ impl AppHost {
         put(&mut s, "Line-number gutter -- SLN on, CLN off", if self.line_numbers { "SLN" } else { "CLN" }.to_string());
         put(&mut s, "Pop-up command line -- SGC on, CGC off", if self.gui_cmline { "SGC" } else { "CGC" }.to_string());
         put(&mut s, "Shell-output tab visibility -- SW on/off", format!("SW {}", if self.shell_output_visible { "on" } else { "off" }));
-        put(&mut s, "Console prompt template (SHPROMPT; $-expanded, e.g. $CWD> )", format!("SHPROMPT {}", self.console_prompt));
+        put(&mut s, "Console prompt template (SHPROMPT; $CWD expands at display; quotes keep spaces)", format!("SHPROMPT \"{}\"", self.console_prompt));
         put(&mut s, "Colour Console output from ANSI codes -- on | off", format!("ANSICOLOR {}", if self.ansi_color { "on" } else { "off" }));
         put(&mut s, "Preview pane visibility -- PV on/off", format!("PV {}", if self.preview_visible { "on" } else { "off" }));
         put(&mut s, "Persistent selection -- SPS on, CPS off", if self.persistent { "SPS" } else { "CPS" }.to_string());
@@ -11885,11 +11885,19 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("DIR-window font family = {name}")));
             }
             EditorOp::SetDwFontStyle(s) => {
-                self.dw_font_style = Some(parse_font_style(&s)?);
-                return Ok(Value::str(format!(
-                    "DIR-window font style = {}",
-                    self.dw_font_style.unwrap_or_default().keyword()
-                )));
+                // `default` (or bare) = UNSET → inherit the editor's style; otherwise force a style.
+                // The `default` sentinel is what a saved config emits for the unset state, so it must
+                // round-trip back to `None` (not to `Some(Normal)`, which would force-normal and drift).
+                let t = s.trim();
+                self.dw_font_style = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_font_style(t)?)
+                };
+                return Ok(Value::str(match self.dw_font_style {
+                    Some(st) => format!("DIR-window font style = {}", st.keyword()),
+                    None => "DIR-window font style = (inherits editor)".to_string(),
+                }));
             }
             EditorOp::DwReset => {
                 self.dw_fg_color = None;
@@ -12324,6 +12332,18 @@ impl Host for AppHost {
                 return Ok(Value::str(match color {
                     Some((r, g, b)) => format!("scratchpad {what} colour = {r} {g} {b}"),
                     None => format!("scratchpad {what} colour = (default)"),
+                }));
+            }
+            EditorOp::SetDwColor { fg, color } => {
+                if fg {
+                    self.dw_fg_color = color;
+                } else {
+                    self.dw_bg_color = color;
+                }
+                let what = if fg { "text" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("DIR-window {what} colour = {r} {g} {b}"),
+                    None => format!("DIR-window {what} colour = (inherits editor)"),
                 }));
             }
             EditorOp::OpenScratchColorPicker { fg } => {

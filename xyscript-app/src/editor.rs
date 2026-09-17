@@ -5000,6 +5000,45 @@ mod tests {
     }
 
     #[test]
+    fn config_optional_defaults_do_not_abort_and_round_trip() {
+        // A saved config emits "unset = default" lines (`DWFGCOLOR/DWBGCOLOR default`, `DWSTYLE
+        // default`, `PV* default/off`). Historically `DWFGCOLOR`/`DWBGCOLOR` REJECTED `default`, so
+        // LOADCFG aborted at the first such line and every setting AFTER it silently never applied —
+        // invisible to the from-defaults no-op test above (unapplied lines are no-ops from defaults too).
+        // Guard both properties directly.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+
+        // (1) No abort: a `… default` line must not stop LATER settings from applying.
+        e.host_mut()
+            .write_file("probe.cfg", "DWFGCOLOR default\nDWBGCOLOR default\nGREPBEFORE 4\nSHPROMPT \"end> \"\n")
+            .unwrap();
+        e.run_command("LOADCFG probe.cfg");
+        assert!(e.last_error().is_none(), "probe cfg errored: {:?}", e.last_error());
+        assert_eq!(e.special_str("GREPBEFORE"), "4", "a setting after `DWFGCOLOR default` must still apply");
+        assert_eq!(e.special_str("SHPROMPT"), "end> ", "SHPROMPT keeps inner spaces and is not $-expanded");
+
+        // (2) A config of fully NON-default values must be a fixed point: load → re-emit unchanged.
+        // (Catches both an abort — later settings dropped — and any non-idempotent line.)
+        e.run_command(
+            "DWFGCOLOR 10 20 30\nDWBGCOLOR 40 50 60\nDWSTYLE bold\nSHPROMPT \"$CWD :: \"\n\
+             GREPBEFORE 2\nGREPAFTER 3\nGREPBLANK on\nPVMARGINL 2cm\nPVHEADER {file}|{date}\n",
+        );
+        assert!(e.last_error().is_none(), "setting non-defaults errored: {:?}", e.last_error());
+        let saved = e.host().config_script(true, false);
+        let mut fresh = ed();
+        fresh.host_mut().virtual_fs = true;
+        fresh.host_mut().write_file("saved.cfg", &saved).unwrap();
+        fresh.run_command("LOADCFG saved.cfg");
+        assert!(fresh.last_error().is_none(), "round-trip cfg errored: {:?}", fresh.last_error());
+        assert_eq!(
+            fresh.host().config_script(true, false),
+            saved,
+            "a saved config must reload to the same config (fixed point)"
+        );
+    }
+
+    #[test]
     fn lib_routine_returns_via_rv_when_loaded_before_the_calling_run() {
         // Real-world shape: the library is loaded at startup (one run), the routine is invoked in a
         // LATER command (another run). That later run compiles WITH the library, so the routine is a
@@ -10795,7 +10834,8 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command("PR <$SHPROMPT>");
         assert_eq!(e.output().last().map(String::as_str), Some("<ready> >"));
         e.run_command("SAVECFG cfg.xpl");
-        assert!(e.host_mut().files.get("cfg.xpl").cloned().unwrap().contains("SHPROMPT ready> "));
+        // Emitted quoted so the trailing space (and any `$CWD`) round-trips verbatim.
+        assert!(e.host_mut().files.get("cfg.xpl").cloned().unwrap().contains("SHPROMPT \"ready> \""));
     }
 
     #[test]

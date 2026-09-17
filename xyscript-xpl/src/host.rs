@@ -682,6 +682,10 @@ pub enum EditorOp {
     /// (`fg = false`, `SCRATCHBGCOLOR`) colour. `None` = default (egui's theme). `$SCRATCHFGCOLOR`/
     /// `$SCRATCHBGCOLOR`.
     SetScratchColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Set the `DIR/W`-window foreground (`fg = true`, `DWFGCOLOR`) or background (`fg = false`,
+    /// `DWBGCOLOR`) colour. `None` = unset, so the window inherits the editor's colour. `$DWFGCOLOR`/
+    /// `$DWBGCOLOR` report the *effective* (override-else-editor) colour.
+    SetDwColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the scratchpad fg (`SCRATCHFGCOLORS`) or bg (`SCRATCHBGCOLORS`).
     OpenScratchColorPicker { fg: bool },
     /// Turn syntax highlighting on/off for the active document (`HIGHLIGHT
