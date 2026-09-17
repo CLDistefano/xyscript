@@ -968,23 +968,6 @@ impl Editor {
         self.interp.line_colors_request()
     }
 
-    /// Per-line byte spans to EMPHasize in the parked TXT dialog's body (aligned with the
-    /// [`text_request`](Self::text_request) lines) — the `HELP`/`MAN` search-term highlight. `None`
-    /// when no dialog is parked or it carries no emphasis; an inner `Vec` is empty when that line has
-    /// no match. The VM holds the `(phrase, regex)`; this crate owns the regex engine, so the spans
-    /// are computed here (case-insensitive; matches never cross a newline).
-    pub fn text_emphasis_spans(&self) -> Option<Vec<Vec<(usize, usize)>>> {
-        let (_, text) = self.interp.text_request()?;
-        let (phrase, regex) = self.interp.text_emphasis()?;
-        let pattern = if regex { phrase } else { format!(r"\b{}\b", regex::escape(&phrase)) };
-        let re = regex::RegexBuilder::new(&pattern).case_insensitive(true).build().ok()?;
-        Some(
-            text.lines()
-                .map(|line| re.find_iter(line).map(|m| (m.start(), m.end())).collect())
-                .collect(),
-        )
-    }
-
     /// Dismiss the `TXT` modal dialog (Esc / ×), resuming the paused script.
     pub fn dismiss_text(&mut self) {
         if self.interp.text_request().is_none() {
@@ -1312,6 +1295,11 @@ impl Editor {
     /// Whether the active buffer is a `GREP` results listing.
     pub fn active_is_grep_listing(&self) -> bool {
         self.host.active_is_grep_listing()
+    }
+
+    /// Whether the active buffer is a `HELP`/`MAN` results listing (the reusable read-only tab).
+    pub fn active_is_help_listing(&self) -> bool {
+        self.host.active_is_help_listing()
     }
 
     /// A footer line for the active listing (base dir + live express-key), if any.
@@ -10026,116 +10014,101 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
-    fn help_verb_opens_a_txt_dialog_and_disambiguates() {
+    fn help_opens_a_results_tab_with_the_exact_entry_first() {
         let mut e = Editor::new(typing_keymap());
-        // `HELP CV` shows the command's entry in a scrollable dialog.
+        // `HELP CV` opens a read-only results TAB (not a modal), leading with the exact CV entry.
         e.run_command("HELP CV");
-        let (title, text) = e.text_request().expect("HELP should open a TXT dialog");
-        assert_eq!(title.as_deref(), Some("Help: CV / CVA"));
+        assert!(e.active_is_help_listing(), "HELP opens a results tab");
+        let text = e.document().text();
+        assert!(text.contains("CV / CVA"), "the exact entry leads the list: {text}");
         assert!(text.contains("change-with-verify"), "body: {text}");
-        e.dismiss_text();
-        assert!(e.text_request().is_none());
-        // `?` is an alias; `$` disambiguates the special from the same-named command.
+        // `?` is an alias; `$` disambiguates the special from the same-named command. Reuses the tab.
         e.run_command("? $SE");
-        let (_, text) = e.text_request().expect("? alias opens the dialog");
+        let text = e.document().text();
         assert!(text.contains("special variable") && text.contains("selected text"), "body: {text}");
-        e.dismiss_text();
     }
 
     #[test]
-    fn help_unknown_name_reports_suggestions_without_a_dialog() {
+    fn help_unknown_name_reports_suggestions_without_a_tab() {
         let mut e = Editor::new(typing_keymap());
         e.run_command("HELP CVV"); // a near-miss for CV/CVA, and no substring matches → did-you-mean
-        assert!(e.text_request().is_none(), "no dialog for an unknown name");
+        assert!(!e.active_is_help_listing(), "no results tab for an unknown name");
         e.run_command("PR $ERROR");
         assert_eq!(e.output().last().map(String::as_str), Some("1"), "unknown HELP sets $ERROR");
     }
 
     #[test]
-    fn help_greps_names_and_descriptions_on_miss_and_with_the_s_flag() {
+    fn help_searches_names_and_descriptions_and_regex() {
         let mut e = Editor::new(typing_keymap());
-        // A name that isn't a literal entry but appears across many: `HELP indent` lists matches in a
-        // dialog (grep of names + descriptions) rather than "did you mean".
+        // `HELP indent` lists matches in a results tab (grep of names + descriptions).
         e.run_command("HELP indent");
-        let (title, text) = e.text_request().expect("a miss with substring matches opens a list dialog");
-        assert!(title.as_deref().is_some_and(|t| t.contains("match")), "title: {title:?}");
-        assert!(text.contains("PVINDENT"), "should list PVINDENT among matches: {text}");
-        e.dismiss_text();
-        // `/S` forces the search even when the term IS a literal entry: `HELP/S TAB` lists every
-        // TAB-related entry (TABSPACES, TABINDENT, …), not just the one TAB command.
+        assert!(e.active_is_help_listing(), "a search opens a results tab");
+        assert!(e.document().text().contains("PVINDENT"), "should list PVINDENT: {}", e.document().text());
+        // `/S` is still accepted (a no-op alias now): `HELP/S TAB` lists every TAB-related entry.
         e.run_command("HELP/S TAB");
-        let (_, text) = e.text_request().expect("/S always opens the search-list dialog");
-        assert!(text.contains("TABSPACES"), "search should surface related entries: {text}");
-        e.dismiss_text();
-        // A term with no matches anywhere still falls back to did-you-mean (no dialog).
-        e.run_command("HELP zzzznope");
-        assert!(e.text_request().is_none(), "no matches → status-line fallback, no dialog");
+        assert!(
+            e.document().text().contains("TABSPACES"),
+            "search surfaces related entries: {}",
+            e.document().text()
+        );
         // A regex metacharacter switches to regex search. `PV.*SIZE` matches PVSIZE and PVCODESIZE by
-        // NAME — and proves it's a real regex, since the literal string "PV.*SIZE" is nowhere in the
-        // reference (a substring search would find nothing).
+        // NAME — a real regex, since the literal string "PV.*SIZE" is nowhere in the reference.
         e.run_command("HELP PV.*SIZE");
-        let (title, text) = e.text_request().expect("a regex query opens the search-list dialog");
-        assert!(title.as_deref().is_some_and(|t| t.contains("match")), "title: {title:?}");
+        let text = e.document().text();
         assert!(text.contains("PVSIZE") && text.contains("PVCODESIZE"), "regex PV.*SIZE: {text}");
-        e.dismiss_text();
+        // A term with no matches anywhere → status-line fallback, no results tab.
+        let mut e2 = Editor::new(typing_keymap());
+        e2.run_command("HELP zzzznope");
+        assert!(!e2.active_is_help_listing(), "no matches → no results tab");
+        e2.run_command("PR $ERROR");
+        assert_eq!(e2.output().last().map(String::as_str), Some("1"));
     }
 
     #[test]
     fn man_searches_the_manual_and_bare_man_opens_it() {
         let mut e = Editor::new(typing_keymap());
-        // `MAN <topic>` searches the manual by section and lists matches in a dialog.
+        // `MAN <topic>` searches the manual by section and lists matches in a results tab.
         e.run_command("MAN scratchpad");
-        let (title, text) = e.text_request().expect("MAN <topic> opens a search-list dialog");
-        assert!(title.as_deref().is_some_and(|t| t.contains("section")), "title: {title:?}");
-        assert!(text.to_lowercase().contains("scratchpad"), "should list the Scratchpad section: {text}");
-        e.dismiss_text();
-        // Regex topic: `^Editing` anchors to a section heading.
+        assert!(e.active_is_help_listing(), "MAN opens a results tab");
+        assert!(
+            e.document().text().to_lowercase().contains("scratchpad"),
+            "should list the Scratchpad section: {}",
+            e.document().text()
+        );
+        // Regex topic: `^Editing` anchors to a section heading. Reuses the tab.
         e.run_command("MAN ^Editing");
-        let (_, text) = e.text_request().expect("regex MAN opens a dialog");
-        assert!(text.contains("Editing"), "regex ^Editing: {text}");
-        e.dismiss_text();
-        // No matches → status line, no dialog, $ERROR set.
-        e.run_command("MAN zzzznotinmanual");
-        assert!(e.text_request().is_none(), "no matches → no dialog");
-        e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert!(e.document().text().contains("Editing"), "regex ^Editing: {}", e.document().text());
+        // No matches → status line, no tab, $ERROR set.
+        let mut e2 = Editor::new(typing_keymap());
+        e2.run_command("MAN zzzznotinmanual");
+        assert!(!e2.active_is_help_listing(), "no matches → no results tab");
+        e2.run_command("PR $ERROR");
+        assert_eq!(e2.output().last().map(String::as_str), Some("1"));
         // Bare `MAN` requests that the GUI open the manual (a host flag the GUI polls).
         e.run_command("MAN");
-        assert!(e.text_request().is_none(), "bare MAN opens the manual, not a dialog");
         assert!(e.host_mut().take_show_manual_request(), "bare MAN sets the show-manual request");
     }
 
     #[test]
     fn help_and_man_results_emphasize_whole_words_of_the_term() {
         let mut e = Editor::new(typing_keymap());
-        // HELP/S emphasizes the term extended to whole words: every highlighted span contains "save"
-        // (so `saves`/`saved`/… light up whole), and at least one occurrence is found.
-        e.run_command("HELP/S save");
-        let (_, text) = e.text_request().expect("HELP/S opens a dialog");
-        let spans = e.text_emphasis_spans().expect("HELP/S results carry emphasis");
-        let lines: Vec<&str> = text.lines().collect();
-        let mut hits = 0;
-        for (i, per_line) in spans.iter().enumerate() {
-            for &(a, b) in per_line {
-                hits += 1;
-                assert!(
-                    lines[i][a..b].to_lowercase().contains("save"),
-                    "emphasized span {:?} should contain the term",
-                    &lines[i][a..b]
-                );
-            }
+        // The results tab highlights the term via EMPH, extended to WHOLE words (so `saves`/`saved`/…
+        // light up whole). `emph_highlights` are the active doc's rope-offset match spans.
+        e.run_command("HELP save");
+        assert!(e.active_is_help_listing());
+        let text = e.document().text();
+        let spans = e.host().emph_highlights();
+        assert!(!spans.is_empty(), "HELP results carry EMPH highlights");
+        for (a, b) in &spans {
+            assert!(
+                text[*a..*b].to_lowercase().contains("save"),
+                "highlighted {:?} should contain the term",
+                &text[*a..*b]
+            );
         }
-        assert!(hits > 0, "expected at least one emphasized occurrence of the term");
-        e.dismiss_text();
-        // An exact single-entry lookup carries NO emphasis (it isn't a results list).
-        e.run_command("HELP SAVE");
-        assert!(e.text_request().is_some(), "exact lookup opens a dialog");
-        assert!(e.text_emphasis_spans().is_none(), "exact lookup should not emphasize");
-        e.dismiss_text();
-        // MAN results emphasize too.
+        // MAN results highlight too.
         e.run_command("MAN scratchpad");
-        assert!(e.text_request().is_some(), "MAN opens a dialog");
-        assert!(e.text_emphasis_spans().is_some(), "MAN results carry emphasis");
+        assert!(!e.host().emph_highlights().is_empty(), "MAN results carry EMPH highlights");
     }
 
     #[test]

@@ -6193,18 +6193,6 @@ impl GuiApp {
         self.editor.line_colors_request()
     }
 
-    /// Optional per-line EMPHasis spans for the parked TXT dialog (the `HELP`/`MAN` search-term
-    /// highlight): byte spans into each `txt_request` line, painted with the EMPH colours below.
-    fn txt_emphasis_spans(&self) -> Option<Vec<Vec<(usize, usize)>>> {
-        self.editor.text_emphasis_spans()
-    }
-
-    /// The EMPH highlight colours (`EMPHFGCOLOR`/`EMPHBGCOLOR`, falling back to the selection colours) —
-    /// used to paint the TXT dialog's search-term emphasis, so it matches in-document `EMPH`.
-    fn emph_colors(&self) -> ((u8, u8, u8), (u8, u8, u8)) {
-        (self.editor.emph_fg_color(), self.editor.emph_bg_color())
-    }
-
     // ---- DIR/W separate listing window (the runtime drives these) ----------------------------
     fn take_dir_window_open(&mut self) -> bool {
         self.editor.host_mut().take_dir_window_open()

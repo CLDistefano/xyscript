@@ -352,6 +352,9 @@ pub struct Document {
     /// When set, this buffer is a `GREP` results listing (read-only) rather than an editable document;
     /// holds the hits (line N → `hits[N]`) so `GJ` resolves the hit under the caret. Session-only.
     grep: Option<crate::grep::GrepState>,
+    /// Whether this buffer is a `HELP`/`MAN` results listing (read-only): a generated, reusable tab
+    /// that the next `HELP`/`MAN` replaces in place. Session-only. See [`Document::open_help_listing`].
+    help_listing: bool,
     /// A stable per-buffer handle for the split-pane layout tree. Tab indices shift when tabs close,
     /// so the pane tree references buffers by this id. Assigned once in [`Document::default`] (the
     /// single choke point all constructors route through), never reused. See [`crate::panes`].
@@ -426,6 +429,7 @@ impl Clone for Document {
             emph: self.emph.clone(),
             emph_regex: self.emph_regex,
             grep: self.grep.clone(),
+            help_listing: self.help_listing,
             id: fresh_doc_id(),
         }
     }
@@ -463,6 +467,7 @@ impl Default for Document {
             emph: None,
             emph_regex: false,
             grep: None,
+            help_listing: false,
             counters: std::array::from_fn(|_| crate::counter::Counter::default()),
             id: fresh_doc_id(),
         }
@@ -2302,6 +2307,31 @@ impl Document {
     /// Whether this buffer is a `GREP` results listing.
     pub fn is_grep_listing(&self) -> bool {
         self.grep.is_some()
+    }
+
+    /// Load a `HELP`/`MAN` results listing into this buffer: read-only, unnamed (no path), with the
+    /// caret at the top and marked so the next `HELP`/`MAN` reuses this same tab in place. `label` is
+    /// the tab title; `text` is the pre-formatted results body (the caller sets `EMPH` separately).
+    pub fn open_help_listing(&mut self, label: String, text: &str) {
+        self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
+        self.buffer = Buffer::from_str(text);
+        self.buffer.set_caret(0, None);
+        self.undo.clear();
+        self.redo.clear();
+        self.coalescing = false;
+        self.saved_len = Some(0);
+        self.path = None;
+        self.line_ending = LineEnding::Lf;
+        self.read_only = true;
+        self.highlighter = None;
+        self.tokens.clear();
+        self.label = Some(label);
+        self.help_listing = true;
+    }
+
+    /// Whether this buffer is a `HELP`/`MAN` results listing (the reusable read-only results tab).
+    pub fn is_help_listing(&self) -> bool {
+        self.help_listing
     }
 
     /// The number of `GREP` hits accumulated so far (0 when this isn't a results listing).

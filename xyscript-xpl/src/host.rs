@@ -388,6 +388,10 @@ pub enum EditorOp {
     /// Bare `MAN` — request the GUI to open the user manual (same as Help ▸ Manual). Headless builds
     /// have nowhere to show it, so it's a no-op there.
     ShowManual,
+    /// Open (or reuse in place) the read-only `HELP`/`MAN` results tab: `label` titles the tab, `text`
+    /// is the pre-formatted results body, and `emphasis` `(phrase, regex)` highlights the search term
+    /// via `EMPH` (`None` = no highlight). A non-modal document tab (smooth scrolling), not a dialog.
+    ShowResults { label: String, text: String, emphasis: Option<(String, bool)> },
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,

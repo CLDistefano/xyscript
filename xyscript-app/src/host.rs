@@ -7823,6 +7823,11 @@ impl AppHost {
         self.docs[self.active].is_grep_listing()
     }
 
+    /// Whether the active buffer is a `HELP`/`MAN` results listing (the reusable read-only tab).
+    pub fn active_is_help_listing(&self) -> bool {
+        self.docs[self.active].is_help_listing()
+    }
+
     /// `GJ` — open the file for the `GREP` hit on the caret's line (or switch to it if already open),
     /// jump to its `line:col`, and centre it. Trappable error when the active buffer isn't a results
     /// listing or the caret isn't on a hit. Public so the GUI can drive it from Enter / a double-click.
@@ -11935,6 +11940,29 @@ impl Host for AppHost {
                 self.show_manual_request = true;
                 return Ok(Value::str(""));
             }
+            EditorOp::ShowResults { label, text, emphasis } => {
+                // Open the results in a read-only DOCUMENT tab (smooth wrap-aware scrolling), reusing a
+                // prior HELP/MAN results tab in place so they don't accumulate. The search term is
+                // highlighted with EMPH (the same document renderer as GREP's results), so occurrences
+                // stand out; `None` clears any stale emphasis.
+                let (phrase, regex) = match emphasis {
+                    Some((p, r)) => (Some(p), r),
+                    None => (None, false),
+                };
+                if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
+                    self.docs[i].open_help_listing(label, &text);
+                    self.docs[i].set_emph(phrase, regex);
+                    self.active = i;
+                    self.sync_panes();
+                } else {
+                    let mut doc = Document::new();
+                    doc.open_help_listing(label, &text);
+                    doc.set_emph(phrase, regex);
+                    self.add_or_reuse(doc);
+                }
+                self.set_focus(Target::Document); // land the caret in the results for scrolling
+                return Ok(Value::str(""));
+            }
             EditorOp::SetUiSize { kind, value, relative } => {
                 // `relative` (the verb's arg began with an explicit +/-): add `value` to the knob's
                 // current value; otherwise `value` replaces it. Each knob then clamps to its range
@@ -13739,7 +13767,7 @@ impl Host for AppHost {
         Some(entry.path.to_string_lossy().into_owned())
     }
 
-    fn help(&self, query: Option<&str>, search: bool) -> HelpResponse {
+    fn help(&self, query: Option<&str>, _search: bool) -> HelpResponse {
         let Some(q) = query else {
             // Bare `HELP` — a short overview.
             return HelpResponse {
@@ -13749,21 +13777,16 @@ impl Host for AppHost {
                 emphasis: None,
             };
         };
-        // Exact lookup first (unless `/S` forces the search). A hit shows that one entry (no
-        // emphasis — a single entry isn't a search-results list).
-        if !search {
-            if let Some(e) = crate::help::lookup(q) {
-                return HelpResponse {
-                    title: format!("Help: {}", e.names.join(" / ")),
-                    body: format!("{}  ({})\n\n{}", e.names.join("  /  "), e.kind.label(), e.synopsis),
-                    not_found: false,
-                    emphasis: None,
-                };
-            }
-        }
-        // `/S`, or an exact miss: grep names + descriptions and list every match in the dialog.
+        // One command: `HELP <term>` always greps names + descriptions, but an EXACT headword match is
+        // promoted to the TOP of the list (so `HELP CV` leads with the CV entry, then everything else
+        // that mentions "CV"). `/S` used to force this search — it's now the only behaviour, kept as a
+        // no-op alias. Results open in a read-only tab (see `EditorOp::ShowResults`).
         const CAP: usize = 40; // max entries listed before "…and N more"
-        let hits = crate::help::search(q);
+        let mut hits = crate::help::search(q);
+        if let Some(exact) = crate::help::lookup(q) {
+            hits.retain(|e| !(e.names == exact.names && e.kind == exact.kind));
+            hits.insert(0, exact);
+        }
         if !hits.is_empty() {
             let shown = hits.len().min(CAP);
             let mut body = format!(

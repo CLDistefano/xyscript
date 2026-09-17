@@ -145,14 +145,15 @@ to the operating system shell.
 Reference* (#raw("Help ▸ Reference")), is the exhaustive A–Z catalog of every command, function, and
 special variable, checked against the code automatically. When you want to learn *how* to do something,
 read here; when you want to look up *exactly* what a verb takes, go there. For a single item without
-leaving the keyboard, #raw("HELP <name>") (or #raw("?")) shows that entry in a box — and when the name
-isn't an exact match, it lists everything whose name or description mentions it, so #raw("HELP indent")
-finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"); #raw("HELP/S <term>") forces that search.
-The term is matched as a substring, or as a *regular expression* if it contains a regex metacharacter
-(#raw("\\ . ^ $ | [ ( { * + ? #")) — so #raw("HELP ^PV") lists everything starting with #raw("PV").
-Its companion #raw("MAN") does the same for *this manual*: bare #raw("MAN") opens it, and
-#raw("MAN <topic>") searches it by section (#raw("MAN scratchpad")), with the same substring/regex
-rules — so #raw("HELP") finds the terse reference entry and #raw("MAN") the fuller explanation.]
+leaving the keyboard, #raw("HELP <name>") (or #raw("?")) lists matches in a read-only tab, with any
+exact entry promoted to the top — so #raw("HELP CV") leads with the CV entry, and #raw("HELP indent")
+finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"). The term is matched as a substring, or as
+a *regular expression* if it contains a regex metacharacter (#raw("\\ . ^ $ | [ ( { * + ? #")) — so
+#raw("HELP ^PV") lists everything starting with #raw("PV") — and each occurrence in the results is
+highlighted, extended to the whole word. Its companion #raw("MAN") does the same for *this manual*:
+bare #raw("MAN") opens it, and #raw("MAN <topic>") searches it by section (#raw("MAN scratchpad")),
+with the same rules — so #raw("HELP") finds the terse reference entry and #raw("MAN") the fuller
+explanation.]
 
 == Running XyScript
 
