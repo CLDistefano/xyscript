@@ -9588,7 +9588,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xyscript-app"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "comrak 0.49.0",
  "crossterm",
@@ -9614,7 +9614,7 @@ dependencies = [
 
 [[package]]
 name = "xyscript-gui"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "arboard",
  "cosmic-text",
@@ -9633,7 +9633,7 @@ dependencies = [
 
 [[package]]
 name = "xyscript-kbd"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "core-foundation 0.9.4",
  "core-graphics",
@@ -9643,7 +9643,7 @@ dependencies = [
 
 [[package]]
 name = "xyscript-xpl"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "num-bigint",
  "num-integer",
