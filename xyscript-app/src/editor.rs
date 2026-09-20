@@ -11959,10 +11959,15 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         let kinds: Vec<&TokenKind> = e.highlights().iter().map(|t| &t.kind).collect();
         assert!(kinds.contains(&&TokenKind::Keyword)); // "let"
         assert!(kinds.contains(&&TokenKind::Number)); // "42"
-        // A bad regex in a rule is trappable (no panic; sets the $ERROR flag), and SAVECFG round-trips.
+        // A bad regex in a rule is now a FATAL error that NAMES the kind (so a grammar RUN stops and
+        // reports the broken rule, rather than dropping it silently). No panic; the good rules added
+        // before it still round-trip via SAVECFG.
         e.run_command("HLRULE bad (unclosed");
-        e.run_command("PR $ERROR");
-        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        assert!(
+            e.last_error().is_some_and(|s| s.contains("bad")),
+            "a bad HLRULE regex reports a fatal error naming the kind: {:?}",
+            e.last_error()
+        );
         e.run_command("SAVECFG cfg.cfg");
         let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
         assert!(cfg.contains("HLLANG mylang .ml"), "cfg: {cfg}");
@@ -11985,6 +11990,21 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
             e.highlights().iter().filter(|t| t.kind == TokenKind::StringLit).collect();
         assert_eq!(strs.len(), 1, "tokens: {:?}", e.highlights());
         assert_eq!(&e.document().text()[strs[0].start..strs[0].end], "\"hi\"");
+    }
+
+    #[test]
+    fn bad_hlrule_regex_is_reported_naming_the_kind() {
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("HLLANG t .t");
+        // A hyphen in a capture-group NAME is illegal in the regex engine — a common trip-up. The rule
+        // must FAIL LOUDLY (fatal), naming the kind, rather than being silently dropped.
+        e.run_command("HLRULE xymode \"«MDBO»(?P<xytext-nm>[^«]*)«MDNM»\"");
+        let err = e.last_error().expect("a bad HLRULE regex must report an error");
+        assert!(err.contains("xymode"), "the error names the rule kind: {err}");
+        assert!(err.to_lowercase().contains("invalid regular expression"), "explains the cause: {err}");
+        // The fix (underscore) loads clean.
+        e.run_command("HLRULE xymode \"«MDBO»(?P<xytext_nm>[^«]*)«MDNM»\"");
+        assert!(e.last_error().is_none(), "underscore group name loads: {:?}", e.last_error());
     }
 
     #[test]

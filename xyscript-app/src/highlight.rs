@@ -288,13 +288,17 @@ impl GrammarRegistry {
         }
     }
 
-    /// `HLRULE <kind> <regex>`: append a rule to the current grammar. Errors if no
-    /// grammar was declared, or the regex does not compile (both trappable).
+    /// `HLRULE <kind> <regex>`: append a rule to the current grammar. Errors (naming the `kind`) if no
+    /// grammar was declared, or the regex does not compile — the caller raises these as FATAL so a
+    /// grammar loaded with `RUN` stops and reports the broken rule rather than dropping it silently.
     pub fn add_rule(&mut self, kind: &str, regex: &str) -> Result<(), String> {
         let i = self
             .current
-            .ok_or_else(|| "HLRULE: no current grammar — use HLLANG first".to_string())?;
-        let re = regex::Regex::new(regex).map_err(|e| format!("HLRULE: invalid regex: {e}"))?;
+            .ok_or_else(|| format!("HLRULE {kind}: no current grammar — use HLLANG first"))?;
+        // Name the offending rule's kind so a grammar that fails to load says WHICH rule broke. NB a
+        // regex capture-group NAME must be `[A-Za-z_][A-Za-z0-9_]*` (no hyphens) — a common trip-up.
+        let re = regex::Regex::new(regex)
+            .map_err(|e| format!("HLRULE {kind}: invalid regular expression: {e}"))?;
         self.grammars[i].rules.push(GrammarRule {
             kind: kind.trim().to_ascii_lowercase(),
             source: regex.to_string(),

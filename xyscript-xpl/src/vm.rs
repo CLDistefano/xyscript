@@ -3783,7 +3783,8 @@ impl Vm<'_, '_> {
                 let (kind, rest) = t.split_once(char::is_whitespace).unwrap_or((t, ""));
                 let rest = rest.trim();
                 if kind.is_empty() || rest.is_empty() {
-                    return Err(XplError::trappable("HLRULE: <kind> <regex>"));
+                    // Fatal (like a bad regex below) so a grammar RUN stops and reports the broken line.
+                    return Err(XplError::fatal("HLRULE: expected <kind> <regex>"));
                 }
                 // Allow an optional surrounding pair of double quotes (a regex may hold spaces).
                 let regex = rest

@@ -12346,10 +12346,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("highlight grammar: {name}")));
             }
             EditorOp::AddHighlightRule { kind, regex } => {
+                // A bad rule is FATAL (not a swallowed trappable): when a grammar is loaded with `RUN`,
+                // a fatal unwinds and is stamped `<file>:<line>` on the status line, so the author sees
+                // exactly which rule failed and why — instead of the rule being silently dropped.
                 self.highlight_grammars
                     .borrow_mut()
                     .add_rule(&kind, &regex)
-                    .map_err(XplError::trappable)?;
+                    .map_err(XplError::fatal)?;
                 return Ok(Value::str(format!("highlight rule: {kind}")));
             }
             EditorOp::SetHighlightAuto(on) => {
