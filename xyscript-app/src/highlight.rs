@@ -212,19 +212,45 @@ impl RegexGrammar {
             // Per-line claim map: byte i is true once some rule has taken it.
             let mut claimed = vec![false; line.len()];
             for rule in &self.rules {
-                for m in rule.re.find_iter(line) {
-                    let (a, b) = (m.start(), m.end());
+                let base = TokenKind::from_name(&rule.kind);
+                for caps in rule.re.captures_iter(line) {
+                    let whole = caps.get(0).expect("capture group 0 is the whole match");
+                    let (a, b) = (whole.start(), whole.end());
                     if a >= b || claimed[a..b].iter().any(|&c| c) {
                         continue; // empty, or overlaps an earlier (winning) rule
                     }
+                    // NAMED capture groups recolour their own sub-span: the group's NAME is the token
+                    // kind (`(?P<kind>…)`), coloured by that kind's `HLCOLOR`. Ungrouped parts of the
+                    // match keep the rule's own `kind`. A rule with NO named groups colours the whole
+                    // match as `kind` — the original behaviour, byte-for-byte. This lets one rule paint
+                    // (say) the `«MDBO»`/`«MDNM»` delimiters one colour and the text between another,
+                    // with no look-behind/ahead. Groups must not overlap; a group starting inside an
+                    // earlier one is skipped so the emitted tokens stay flat and non-overlapping.
+                    let mut segs: Vec<(usize, usize, TokenKind)> = Vec::new();
+                    for name in rule.re.capture_names().flatten() {
+                        if let Some(g) = caps.name(name) {
+                            segs.push((g.start(), g.end(), TokenKind::from_name(name)));
+                        }
+                    }
+                    segs.sort_by_key(|s| s.0);
+                    let mut push = |s: usize, e: usize, k: TokenKind| {
+                        if s < e {
+                            tokens.push(Token { start: line_start + s, end: line_start + e, kind: k });
+                        }
+                    };
+                    let mut pos = a;
+                    for (gs, ge, gk) in segs {
+                        if gs < pos {
+                            continue; // overlapping / nested group — keep the token stream flat
+                        }
+                        push(pos, gs, base.clone()); // ungrouped gap → the rule's own kind
+                        push(gs, ge, gk); // the group → its named kind
+                        pos = ge;
+                    }
+                    push(pos, b, base.clone()); // trailing ungrouped tail
                     for c in &mut claimed[a..b] {
                         *c = true;
                     }
-                    tokens.push(Token {
-                        start: line_start + a,
-                        end: line_start + b,
-                        kind: TokenKind::from_name(&rule.kind),
-                    });
                 }
             }
         }
@@ -608,5 +634,34 @@ mod tests {
         assert_eq!(TokenKind::from_name("stringlit"), TokenKind::StringLit);
         assert_eq!(TokenKind::from_name("string"), TokenKind::StringLit);
         assert_eq!(TokenKind::from_name("TYPE"), TokenKind::Other("type".into()));
+    }
+
+    #[test]
+    fn named_capture_groups_recolour_their_span() {
+        // The XyWrite case: `«MDBO»This is boldface text.«MDNM»` — the two `«MD…»` codes take the
+        // rule's own kind (xymode), the text BETWEEN them takes the group's kind (xytext). One rule,
+        // no look-behind/ahead.
+        let g = grammar(&[("xymode", "«MD[^«»]+»(?P<xytext>[^«]*)«MDNM»")], &["xy"]);
+        let src = "«MDBO»This is boldface text.«MDNM»\n";
+        let toks = g.highlight(src);
+        // Three flat tokens: code, text, code.
+        assert_eq!(toks.len(), 3, "expected code/text/code, got {toks:?}");
+        assert_eq!((slice(src, &toks[0]), &toks[0].kind), ("«MDBO»", &TokenKind::Other("xymode".into())));
+        assert_eq!(
+            (slice(src, &toks[1]), &toks[1].kind),
+            ("This is boldface text.", &TokenKind::Other("xytext".into()))
+        );
+        assert_eq!((slice(src, &toks[2]), &toks[2].kind), ("«MDNM»", &TokenKind::Other("xymode".into())));
+        // Tokens are flat (non-overlapping) and cover the whole span contiguously.
+        assert!(toks[0].end == toks[1].start && toks[1].end == toks[2].start);
+    }
+
+    #[test]
+    fn a_rule_without_groups_is_unchanged() {
+        // No named groups → the whole match takes the rule's kind, exactly as before.
+        let g = grammar(&[("xymode", "«MD[^«»]+»")], &["xy"]);
+        let toks = g.highlight("«MDBO»x«MDNM»\n");
+        assert_eq!(toks.len(), 2);
+        assert!(toks.iter().all(|t| t.kind == TokenKind::Other("xymode".into())));
     }
 }
