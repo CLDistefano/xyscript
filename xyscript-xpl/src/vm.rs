@@ -3792,9 +3792,11 @@ impl Vm<'_, '_> {
                     .strip_prefix('"')
                     .and_then(|s| s.strip_suffix('"'))
                     .unwrap_or(rest);
+                let perl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("P"));
                 self.host_op(EditorOp::AddHighlightRule {
                     kind: kind.to_string(),
                     regex: regex.to_string(),
+                    perl,
                 })?;
                 Ok(Flow::Next)
             }
@@ -5875,6 +5877,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "SAD" => &["NV"], // `/NV` — `SAD/NV <path>` overwrites without confirming
         "DEL" => &["NV"], // `/NV` — delete without the confirmation prompt
         "EMPH" => &["R"], // `/R` — treat the phrase as a regular expression (vs whole-word literal)
+        "HLRULE" => &["P"], // `/P` — compile the rule with the Perl-compatible (fancy-regex) engine
         "CARETALL" => &["R", "W", "A", "S"], // FIND-family flags: regex / whole-word / case-absolute / in-selection
         "CARETNEXT" => &["R", "W", "A"], // regex / whole-word / case-absolute (searches the whole doc, wraps)
         "CARETSKIP" => &["R", "W", "A"], // same match flags as CARETNEXT

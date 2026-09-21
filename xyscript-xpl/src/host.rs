@@ -806,10 +806,12 @@ pub enum EditorOp {
     /// and make it the target for subsequent `HLRULE`s. `exts` are extension tokens (leading
     /// dots/commas tolerated; lowercased by the host).
     DefineHighlightLang { name: String, exts: Vec<String> },
-    /// `HLRULE <kind> <regex>` — append a `pattern → kind` rule to the grammar `HLLANG` last
-    /// declared. `kind` is any name (built-in or grammar-defined); `regex` is matched per line.
-    /// No current grammar, or a regex that does not compile, is a trappable error.
-    AddHighlightRule { kind: String, regex: String },
+    /// `HLRULE[/P] <kind> <regex>` — append a `pattern → kind` rule to the grammar `HLLANG` last
+    /// declared. `kind` is any name (built-in or grammar-defined); `regex` is matched per line. `perl`
+    /// (the `/P` switch) selects the `fancy-regex` engine (look-around, backreferences, atomic groups)
+    /// instead of the linear-time default. No current grammar, or a regex that does not compile, is a
+    /// trappable error.
+    AddHighlightRule { kind: String, regex: String, perl: bool },
     /// `HLAUTO on|off` — when on, opening a file whose type a grammar/Markdown claims auto-enables
     /// highlighting (default off: the quiet-screen default). Persisted by `SAVECFG`. `$HLAUTO`.
     SetHighlightAuto(bool),

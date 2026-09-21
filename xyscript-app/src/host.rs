@@ -9060,7 +9060,8 @@ impl AppHost {
             };
             put(&mut s, "Highlight grammar", line);
             for rule in &g.rules {
-                put(&mut s, "Highlight rule", format!("HLRULE {} \"{}\"", rule.kind, rule.source));
+                let verb = if rule.perl { "HLRULE/P" } else { "HLRULE" };
+                put(&mut s, "Highlight rule", format!("{verb} {} \"{}\"", rule.kind, rule.source));
             }
         }
         if self.hl_auto {
@@ -12418,13 +12419,13 @@ impl Host for AppHost {
                 self.highlight_grammars.borrow_mut().define(&name, exts);
                 return Ok(Value::str(format!("highlight grammar: {name}")));
             }
-            EditorOp::AddHighlightRule { kind, regex } => {
+            EditorOp::AddHighlightRule { kind, regex, perl } => {
                 // A bad rule is FATAL (not a swallowed trappable): when a grammar is loaded with `RUN`,
                 // a fatal unwinds and is stamped `<file>:<line>` on the status line, so the author sees
                 // exactly which rule failed and why — instead of the rule being silently dropped.
                 self.highlight_grammars
                     .borrow_mut()
-                    .add_rule(&kind, &regex)
+                    .add_rule(&kind, &regex, perl)
                     .map_err(XplError::fatal)?;
                 return Ok(Value::str(format!("highlight rule: {kind}")));
             }

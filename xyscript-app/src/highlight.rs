@@ -175,13 +175,77 @@ pub fn theme(kind: &TokenKind) -> Style {
 
 // ---- regex grammars (Phase 2) ----------------------------------------------
 
-/// One rule of a [`RegexGrammar`]: spans matching `re` are classified as `kind`.
-/// `source` keeps the original regex text for config emission.
+/// The compiled matcher behind one grammar rule. `Fast` is the linear-time `regex`
+/// engine (the default); `Perl` is `fancy-regex` (the `/P` switch), which adds
+/// look-around, backreferences, and atomic groups — but backtracks, so it is built
+/// with a step limit ([`HL_BACKTRACK_LIMIT`]) and a match that trips it is skipped.
+#[derive(Debug, Clone)]
+pub enum RuleMatcher {
+    Fast(regex::Regex),
+    Perl(fancy_regex::Regex),
+}
+
+/// One match of a rule in a single line: the whole span plus its named-group
+/// sub-spans already resolved to token kinds, so the highlight loop is engine-agnostic.
+struct RuleMatch {
+    whole: (usize, usize),
+    groups: Vec<(usize, usize, TokenKind)>,
+}
+
+/// Per-match backtracking budget for a `/P` grammar rule. The highlighter runs on
+/// every render, so a catastrophic pattern must fail fast rather than freeze the UI;
+/// a `/P` match that exceeds this is dropped (that span just isn't highlighted). Well
+/// under `fancy-regex`'s 1,000,000 default, but ample for line-scoped look-around.
+const HL_BACKTRACK_LIMIT: usize = 100_000;
+
+impl RuleMatcher {
+    /// Every non-overlapping match of this rule in one line. A `/P` match that trips
+    /// the backtrack limit (or otherwise errors) is silently skipped via
+    /// `filter_map(Result::ok)`, so a pathological rule degrades to "no highlight".
+    fn matches(&self, line: &str) -> Vec<RuleMatch> {
+        match self {
+            RuleMatcher::Fast(re) => re
+                .captures_iter(line)
+                .map(|caps| {
+                    let w = caps.get(0).expect("capture group 0 is the whole match");
+                    let groups = re
+                        .capture_names()
+                        .flatten()
+                        .filter_map(|n| {
+                            caps.name(n).map(|g| (g.start(), g.end(), TokenKind::from_name(n)))
+                        })
+                        .collect();
+                    RuleMatch { whole: (w.start(), w.end()), groups }
+                })
+                .collect(),
+            RuleMatcher::Perl(re) => re
+                .captures_iter(line)
+                .filter_map(Result::ok)
+                .map(|caps| {
+                    let w = caps.get(0).expect("capture group 0 is the whole match");
+                    let groups = re
+                        .capture_names()
+                        .flatten()
+                        .filter_map(|n| {
+                            caps.name(n).map(|g| (g.start(), g.end(), TokenKind::from_name(n)))
+                        })
+                        .collect();
+                    RuleMatch { whole: (w.start(), w.end()), groups }
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One rule of a [`RegexGrammar`]: spans matching `matcher` are classified as `kind`.
+/// `source` keeps the original regex text, and `perl` whether it used `/P`, for config
+/// emission.
 #[derive(Debug, Clone)]
 pub struct GrammarRule {
     pub kind: String,
     pub source: String,
-    pub re: regex::Regex,
+    pub perl: bool,
+    pub matcher: RuleMatcher,
 }
 
 /// A flat, line-oriented regex grammar: an ordered list of `pattern → kind` rules,
@@ -213,9 +277,8 @@ impl RegexGrammar {
             let mut claimed = vec![false; line.len()];
             for rule in &self.rules {
                 let base = TokenKind::from_name(&rule.kind);
-                for caps in rule.re.captures_iter(line) {
-                    let whole = caps.get(0).expect("capture group 0 is the whole match");
-                    let (a, b) = (whole.start(), whole.end());
+                for m in rule.matcher.matches(line) {
+                    let (a, b) = m.whole;
                     if a >= b || claimed[a..b].iter().any(|&c| c) {
                         continue; // empty, or overlaps an earlier (winning) rule
                     }
@@ -226,12 +289,7 @@ impl RegexGrammar {
                     // (say) the `«MDBO»`/`«MDNM»` delimiters one colour and the text between another,
                     // with no look-behind/ahead. Groups must not overlap; a group starting inside an
                     // earlier one is skipped so the emitted tokens stay flat and non-overlapping.
-                    let mut segs: Vec<(usize, usize, TokenKind)> = Vec::new();
-                    for name in rule.re.capture_names().flatten() {
-                        if let Some(g) = caps.name(name) {
-                            segs.push((g.start(), g.end(), TokenKind::from_name(name)));
-                        }
-                    }
+                    let mut segs = m.groups;
                     segs.sort_by_key(|s| s.0);
                     let mut push = |s: usize, e: usize, k: TokenKind| {
                         if s < e {
@@ -288,21 +346,34 @@ impl GrammarRegistry {
         }
     }
 
-    /// `HLRULE <kind> <regex>`: append a rule to the current grammar. Errors (naming the `kind`) if no
-    /// grammar was declared, or the regex does not compile — the caller raises these as FATAL so a
+    /// `HLRULE[/P] <kind> <regex>`: append a rule to the current grammar. `perl` (the `/P` switch)
+    /// compiles the pattern with the `fancy-regex` engine (look-around, backreferences, atomic groups)
+    /// under a backtrack limit; otherwise the linear-time `regex` engine. Errors (naming the `kind`) if
+    /// no grammar was declared, or the regex does not compile — the caller raises these as FATAL so a
     /// grammar loaded with `RUN` stops and reports the broken rule rather than dropping it silently.
-    pub fn add_rule(&mut self, kind: &str, regex: &str) -> Result<(), String> {
+    pub fn add_rule(&mut self, kind: &str, regex: &str, perl: bool) -> Result<(), String> {
         let i = self
             .current
             .ok_or_else(|| format!("HLRULE {kind}: no current grammar — use HLLANG first"))?;
         // Name the offending rule's kind so a grammar that fails to load says WHICH rule broke. NB a
         // regex capture-group NAME must be `[A-Za-z_][A-Za-z0-9_]*` (no hyphens) — a common trip-up.
-        let re = regex::Regex::new(regex)
-            .map_err(|e| format!("HLRULE {kind}: invalid regular expression: {e}"))?;
+        let label = if perl { "HLRULE/P" } else { "HLRULE" };
+        let matcher = if perl {
+            fancy_regex::RegexBuilder::new(regex)
+                .backtrack_limit(HL_BACKTRACK_LIMIT)
+                .build()
+                .map(RuleMatcher::Perl)
+                .map_err(|e| format!("{label} {kind}: invalid regular expression: {e}"))?
+        } else {
+            regex::Regex::new(regex)
+                .map(RuleMatcher::Fast)
+                .map_err(|e| format!("{label} {kind}: invalid regular expression: {e}"))?
+        };
         self.grammars[i].rules.push(GrammarRule {
             kind: kind.trim().to_ascii_lowercase(),
             source: regex.to_string(),
-            re,
+            perl,
+            matcher,
         });
         Ok(())
     }
@@ -585,9 +656,46 @@ mod tests {
         let mut reg = GrammarRegistry::default();
         reg.define("test", exts.iter().map(|e| e.to_string()).collect());
         for (kind, re) in rules {
-            reg.add_rule(kind, re).unwrap();
+            reg.add_rule(kind, re, false).unwrap();
         }
         reg.for_ext(exts[0]).unwrap().clone()
+    }
+
+    /// Build a single-rule grammar with the `/P` (fancy-regex) engine.
+    fn perl_grammar(kind: &str, re: &str, ext: &str) -> RegexGrammar {
+        let mut reg = GrammarRegistry::default();
+        reg.define("test", vec![ext.to_string()]);
+        reg.add_rule(kind, re, true).unwrap();
+        reg.for_ext(ext).unwrap().clone()
+    }
+
+    #[test]
+    fn perl_rule_highlights_with_lookaround_and_named_groups() {
+        // Look-ahead: colour "foo" only where "bar" follows — impossible with the linear engine.
+        let g = perl_grammar("keyword", r"foo(?=bar)", "t");
+        let src = "foobar foobaz\n";
+        let toks = g.highlight(src);
+        let kw: Vec<_> = toks.iter().filter(|t| t.kind == TokenKind::Keyword).collect();
+        assert_eq!(kw.len(), 1);
+        assert_eq!(slice(src, kw[0]), "foo"); // the one before "bar", not "foobaz"
+
+        // Named groups still recolour sub-spans under /P (delimiters vs enclosed text), and a
+        // backreference in the pattern (fancy-regex only) drives the match.
+        let g = perl_grammar("delim", r"(?P<delim>\W)(?P<inner>\w+)\k<delim>", "t");
+        let src = "|word| next\n";
+        let toks = g.highlight(src);
+        let inner = toks.iter().find(|t| t.kind == TokenKind::Other("inner".into())).unwrap();
+        assert_eq!(slice(src, inner), "word");
+        // The matched delimiters keep the rule's own "delim" kind.
+        assert!(toks.iter().any(|t| t.kind == TokenKind::Other("delim".into())));
+    }
+
+    #[test]
+    fn perl_rule_is_flagged_for_config_emission() {
+        let g = perl_grammar("k", r"a(?=b)", "t");
+        assert!(g.rules[0].perl, "a /P rule must remember it, so SaveCfg re-emits HLRULE/P");
+        let g = grammar(&[("k", "a")], &["t"]);
+        assert!(!g.rules[0].perl);
     }
 
     #[test]

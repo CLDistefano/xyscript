@@ -2765,6 +2765,16 @@ HLRULE number \\b[0-9]+\\b")
 Save that as a #raw(".xpl") file, #raw("RUN") it, and any #raw(".foo") you open highlights. The
 Reference has the full grammar syntax; _Appendix B_ covers the regular-expression dialect.
 
+By default each rule's pattern uses the linear-time engine — fast and safe, but with no look-around or
+backreferences. When a rule genuinely needs one of those, write it as #raw("HLRULE/P") and it compiles
+with the Perl-compatible engine instead (the same #raw("/P") as #raw("SE")/#raw("CH")). Because that
+engine backtracks and the highlighter runs on every render, a #raw("/P") rule is bounded by a step
+limit: a pattern that blows past it simply doesn't paint that span, rather than stalling the screen. So
+reach for #raw("/P") only where you must — a lookahead, a backreference (use the *named* form,
+#raw("\\k<name>"), if the pattern also has named groups), or an atomic group.
+
+#ex("HLRULE/P str \"\\\"[^\\\"]*\\\"(?!:)\"   # a quoted string, but not when it's a key (foo: …)")
+
 === Inventing your own kinds
 
 A rule's kind may be *any name you like* — you are not limited to the twelve built-ins. Naming a new
