@@ -7526,6 +7526,7 @@ impl GuiApp {
         let trusted = ed.trusted();
         let hlauto_on = ed.special_str("HLAUTO") == "1";
         let pv_justify_on = ed.special_str("PVJUSTIFY") == "1";
+        let pv_marks_on = ed.special_str("PVMARKS") == "1";
         let autocfg_on = !ed.special_str("CFA").is_empty();
         let doctype = ed.special_str("DOCTYPE");
         let hex_on = ed.hex_view();
@@ -7998,6 +7999,8 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.preview.header.off", "Clear header"), "PVHEADER off"),
                         m_item(self.tr("menu.settings.preview.footer.off", "Clear footer"), "PVFOOTER off"),
                     ]),
+                    // Render the transient EMPH + URL highlights into the preview/PDF (MDA always renders).
+                    m_tog(self.tr("menu.settings.preview.marks", "Show EMPH + URL highlights"), pv_marks_on, if pv_marks_on { "PVMARKS off" } else { "PVMARKS on" }),
                 ]),
                 m_sub(self.tr("menu.settings.syntax", "Syntax highlighting"), vec![
                     // One colour-picker entry per themeable token kind — `HLCOLORS <kind>` (the bare

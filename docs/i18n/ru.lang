@@ -296,6 +296,7 @@ menu.settings.preview.header = Верхний колонтитул…   # Header
 menu.settings.preview.footer = Нижний колонтитул…   # Footer…
 menu.settings.preview.header.off = Очистить верхний колонтитул   # Clear header
 menu.settings.preview.footer.off = Очистить нижний колонтитул   # Clear footer
+menu.settings.preview.marks = Показывать подсветку EMPH + URL   # Show EMPH + URL highlights
 menu.settings.syntax = Подсветка синтаксиса   # Syntax highlighting
 menu.settings.syntax.theme_colors = Цвета темы   # Theme colors
 menu.settings.syntax.token_kinds = Виды токенов…   # Token kinds…
