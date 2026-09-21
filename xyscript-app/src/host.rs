@@ -2955,6 +2955,10 @@ pub struct AppHost {
     /// Syntax-highlight theme: token kind → RGB. A kind ABSENT from the map renders in `fg_color`
     /// (the editor default). `HLCOLOR` edits it; `HLRESET` restores `default_highlight_theme()`.
     highlight_theme: std::collections::HashMap<crate::highlight::TokenKind, (u8, u8, u8)>,
+    /// Syntax-highlight BACKGROUND theme: token kind → RGB, drawn as a band behind that kind's glyphs.
+    /// Opt-in and empty by default (no kind has a background), unlike `highlight_theme`; a kind absent
+    /// here has no background. `HLCOLOR/BG` edits it; `HLRESET` and `THEME` clear it.
+    highlight_bg: std::collections::HashMap<crate::highlight::TokenKind, (u8, u8, u8)>,
     /// User-defined regex grammars (`HLLANG`/`HLRULE`), SHARED with every document (so a doc can
     /// resolve its own highlighter by extension on open/reload). `HIGHLIGHT on` resolves against
     /// this first, falling back to the built-in Markdown highlighter.
@@ -3252,6 +3256,7 @@ impl AppHost {
             dw_font_family: None,
             dw_font_style: None,
             highlight_theme: crate::highlight::default_highlight_theme(),
+            highlight_bg: std::collections::HashMap::new(),
             highlight_grammars: std::rc::Rc::new(std::cell::RefCell::new(
                 crate::highlight::GrammarRegistry::default(),
             )),
@@ -3437,6 +3442,31 @@ impl AppHost {
     pub fn highlight_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
         self.highlight_theme.get(kind).copied()
     }
+    /// The active BACKGROUND colour for a token kind, or `None` when the kind has none (the common
+    /// case — backgrounds are opt-in). Driven by `HLCOLOR/BG`; the renderer draws it as a band behind
+    /// the kind's glyphs.
+    pub fn highlight_bg_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
+        self.highlight_bg.get(kind).copied()
+    }
+    /// Background-highlight spans for the ACTIVE document as `(rope_start, rope_end, rgb)` — one per
+    /// visible-or-not token whose kind carries an `HLCOLOR/BG`, for the GUI to paint behind the glyphs
+    /// via `highlight_rects` (which expects rope offsets, like the `MDA/B` bg layer). Empty (and cheap)
+    /// when no kind has a background. Token offsets are DECODED, converted to rope here.
+    pub fn highlight_bg_spans_raw(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        if self.highlight_bg.is_empty() {
+            return Vec::new();
+        }
+        let doc = self.active_doc();
+        let buf = doc.buffer();
+        doc.highlights()
+            .iter()
+            .filter_map(|t| {
+                self.highlight_bg
+                    .get(&t.kind)
+                    .map(|&rgb| (buf.rope_offset(t.start), buf.rope_offset(t.end), rgb))
+            })
+            .collect()
+    }
     /// The token kinds shown by `HLKINDS`, in display order: the built-ins (chart order) followed by
     /// any grammar-defined / themed extras (sorted). Shared by `highlight_kinds` (labels) and
     /// `highlight_kind_colors` (colours) so the two stay perfectly aligned.
@@ -3485,6 +3515,7 @@ impl AppHost {
                 self.txt_fg_color = DEF_TXT_FG_COLOR;
                 self.txt_bg_color = DEF_TXT_BG_COLOR;
                 self.highlight_theme = crate::highlight::default_highlight_theme();
+                self.highlight_bg.clear(); // backgrounds are opt-in; a theme defines the fg palette only
                 Ok("light")
             }
             "dark" => {
@@ -3505,6 +3536,7 @@ impl AppHost {
                 self.txt_fg_color = (220, 220, 220);
                 self.txt_bg_color = (30, 30, 34);
                 self.highlight_theme = crate::highlight::dark_highlight_theme();
+                self.highlight_bg.clear(); // backgrounds are opt-in; a theme defines the fg palette only
                 Ok("dark")
             }
             _ => Err(format!("THEME: unknown theme {:?} (try light|dark)", name.trim())),
@@ -9049,6 +9081,23 @@ impl AppHost {
         for (name, (r, g, b)) in custom {
             put(&mut s, "Highlight colour (grammar kind)", format!("HLCOLOR {name} {r} {g} {b}"));
         }
+        // Syntax-highlight BACKGROUND colours (`HLCOLOR/BG`) — opt-in (no built-in defaults), so emit
+        // every kind that has one: built-ins in chart order, then custom kinds sorted, like the fg block.
+        for kind in crate::highlight::TokenKind::ALL {
+            if let Some((r, g, b)) = self.highlight_bg.get(&kind).copied() {
+                put(&mut s, "Highlight background colour", format!("HLCOLOR/BG {} {r} {g} {b}", kind.name()));
+            }
+        }
+        let mut custom_bg: Vec<(String, (u8, u8, u8))> = self
+            .highlight_bg
+            .iter()
+            .filter(|(k, _)| !crate::highlight::TokenKind::ALL.contains(k))
+            .map(|(k, v)| (k.name().to_string(), *v))
+            .collect();
+        custom_bg.sort();
+        for (name, (r, g, b)) in custom_bg {
+            put(&mut s, "Highlight background colour (grammar kind)", format!("HLCOLOR/BG {name} {r} {g} {b}"));
+        }
         // Regex grammars (`HLLANG` + its `HLRULE`s) — re-runnable definitions, so reopening restores
         // them. HLLANG resets the grammar, so re-running this script is idempotent.
         for g in self.highlight_grammars.borrow().grammars() {
@@ -12399,24 +12448,29 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(format!("{name} colour = {r} {g} {b}")));
             }
-            EditorOp::SetHighlightColor { kind, color } => {
+            EditorOp::SetHighlightColor { kind, color, bg } => {
                 // Any kind name is accepted (built-in or grammar-defined → `Other`).
                 let k = crate::highlight::TokenKind::from_name(&kind);
                 let label = k.name().to_string();
+                let map = if bg { &mut self.highlight_bg } else { &mut self.highlight_theme };
+                let what = if bg { "background" } else { "foreground" };
                 match color {
                     Some(rgb) => {
-                        self.highlight_theme.insert(k, rgb);
+                        map.insert(k, rgb);
                         let (r, g, b) = rgb;
-                        return Ok(Value::str(format!("highlight {label} = {r} {g} {b}")));
+                        return Ok(Value::str(format!("highlight {label} {what} = {r} {g} {b}")));
                     }
                     None => {
-                        self.highlight_theme.remove(&k);
-                        return Ok(Value::str(format!("highlight {label} = (default text colour)")));
+                        map.remove(&k);
+                        let cleared =
+                            if bg { "(no background)" } else { "(default text colour)" };
+                        return Ok(Value::str(format!("highlight {label} {what} = {cleared}")));
                     }
                 }
             }
             EditorOp::ResetHighlightTheme => {
                 self.highlight_theme = crate::highlight::default_highlight_theme();
+                self.highlight_bg.clear(); // backgrounds are opt-in — reset removes them all
                 return Ok(Value::str("highlight theme reset"));
             }
             EditorOp::DefineHighlightLang { name, exts } => {

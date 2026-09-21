@@ -3741,10 +3741,11 @@ impl Vm<'_, '_> {
             // `HLRESET` restores the built-in defaults.
             "HLCOLOR" => {
                 let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let bg = vswitches.iter().any(|s| s.eq_ignore_ascii_case("BG"));
                 let t = args.trim();
                 let (kind, rest) = t.split_once(char::is_whitespace).unwrap_or((t, ""));
                 if kind.is_empty() {
-                    return Err(XplError::trappable("HLCOLOR: <kind> [<r g b> | default]"));
+                    return Err(XplError::trappable("HLCOLOR: [/BG] <kind> [<r g b> | default]"));
                 }
                 let rest = rest.trim();
                 let color = if rest.is_empty() || rest.eq_ignore_ascii_case("default") {
@@ -3752,7 +3753,7 @@ impl Vm<'_, '_> {
                 } else {
                     Some(parse_color("HLCOLOR", rest, hsl)?)
                 };
-                self.host_op(EditorOp::SetHighlightColor { kind: kind.to_string(), color })?;
+                self.host_op(EditorOp::SetHighlightColor { kind: kind.to_string(), color, bg })?;
                 Ok(Flow::Next)
             }
             "HLRESET" => {
@@ -5893,9 +5894,10 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "X" => &["NV", "BG", "R"], // `/NV` fire-and-forget; `/BG` background job; `/R:<var>` return
         "RUN" => &["BG", "R"], // `/BG` — background child process; `/R:<var>` — return output to a var
         "RUNCODE" => &["BG", "R"], // run XPL text from a var; `/BG` backgrounds; `/R:<var>` returns
+        "HLCOLOR" => &["HSL", "BG"], // `/HSL` triple as H S L; `/BG` set the token's BACKGROUND band
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
-        | "HLCOLOR" | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
+        | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
         | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR"
         | "LNFGCOLOR" | "LNBGCOLOR" | "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR"

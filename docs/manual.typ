@@ -2741,13 +2741,18 @@ There are three ways to change a color:
 / *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ — or the command #raw("HLCOLORS <kind>") — opens a live color picker for that one kind.
 / *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. The three numbers each run #raw("0")–#raw("255"); there are no color names or hex codes. Add #raw("/HSL") to give hue / saturation / lightness instead.
 / *Switching one off*: #raw("HLCOLOR <kind> default") drops that kind's color so it draws in the ordinary text color.
+/ *A background*: #raw("HLCOLOR/BG <kind> <R G B>") paints a colored band *behind* that kind's glyphs — say #raw("HLCOLOR/BG comment 245 245 210") to tint every comment. It is separate from the foreground (a kind can have both), off by default, and #raw("HLCOLOR/BG <kind> default") removes it. #raw("/HSL") works here too.
 
 #ex("HLCOLOR heading 200 40 40
-HLCOLOR comment 120 120 120")
+HLCOLOR comment 120 120 120
+HLCOLOR/BG comment 245 245 210   # a pale band behind comments")
 
-#raw("HLRESET") (#raw("Settings ▸ Syntax highlighting ▸ Reset theme")) restores the built-in colors, and
-the whole-editor schemes #raw("THEME light") / #raw("THEME dark") set a coordinated highlight palette
-along with everything else.
+The background sits at the very bottom of the paint order, so a selection, a #raw("FIND") highlight,
+#raw("EMPH"), or an #raw("MD/B") block color always shows on top of it.
+
+#raw("HLRESET") (#raw("Settings ▸ Syntax highlighting ▸ Reset theme")) restores the built-in colors and
+clears every background, and the whole-editor schemes #raw("THEME light") / #raw("THEME dark") set a
+coordinated highlight palette (backgrounds cleared) along with everything else.
 
 #tip("`default` is not the same as `HLRESET`")[#raw("HLCOLOR <kind> default") does *not* put back that
 kind's built-in color — it turns that kind's highlighting *off*, so it draws like ordinary text.

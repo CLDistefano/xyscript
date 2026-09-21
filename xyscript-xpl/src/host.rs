@@ -798,7 +798,9 @@ pub enum EditorOp {
     /// maps to its variant, anything else to a grammar-defined `Other` kind. So a colour may be set
     /// before (or without) a grammar emitting that kind; it is simply inert until an `HLRULE`
     /// produces tokens of it. The GUI rasters tokens with these.
-    SetHighlightColor { kind: String, color: Option<(u8, u8, u8)> },
+    /// `HLCOLOR[/BG] <kind> <r g b|default>` — set (or clear, `None`) a token kind's foreground colour,
+    /// or its BACKGROUND band when `bg` (the `/BG` switch).
+    SetHighlightColor { kind: String, color: Option<(u8, u8, u8)>, bg: bool },
     /// `HLRESET` — restore the built-in default highlight theme.
     ResetHighlightTheme,
     /// `HLLANG <name> <.ext1,.ext2>` — declare (or RESET, so re-running a grammar script is

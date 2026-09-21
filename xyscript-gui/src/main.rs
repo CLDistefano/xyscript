@@ -4690,6 +4690,22 @@ impl GuiApp {
             }
             out
         };
+        // Syntax-highlight token BACKGROUNDS (`HLCOLOR/BG`): one band per bg-coloured token, in ROPE
+        // offsets, mapped to pixel rects like `md_bg_rects`. Painted at the VERY bottom (under the MD
+        // block backgrounds and everything else), since it's the syntax layer. Empty (and skipped)
+        // unless some kind has a background.
+        let mut token_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> = {
+            let bg = self.editor.highlight_bg_spans_raw();
+            let mut out = Vec::new();
+            for (ms, me, rgb) in bg {
+                for (x0, y0, x1, y1, _) in
+                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
+                {
+                    out.push((x0, y0, x1, y1, rgb));
+                }
+            }
+            out
+        };
         // `MDA RV` reverse-video backgrounds — a rect in the current FGCOLOR behind each reversed span
         // (the glyphs are painted in BGCOLOR above). Same bottom layer as `md_bg_rects`.
         let mut mda_reverse_rects: Vec<(i32, i32, i32, i32)> = {
@@ -4824,6 +4840,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut token_bg_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
             for r in &mut mda_underline_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
@@ -4843,8 +4863,14 @@ impl GuiApp {
         for px in canvas.chunks_exact_mut(4) {
             px.copy_from_slice(&[br, bg_, bb, 255]);
         }
-        // MD block backgrounds — the BOTTOM highlight layer, painted directly over the canvas fill and
-        // under everything else (EMPH/FIND/selection). Opaque, each rect in its own persisted colour.
+        // Syntax-highlight token backgrounds (`HLCOLOR/BG`) — the VERY bottom layer, under the MD block
+        // backgrounds and everything else, so a user's `MD/B` block colour and EMPH/FIND/selection all
+        // still show on top. Opaque, each rect in its kind's colour.
+        for &(x0, y0, x1, y1, (r, g, b)) in &token_bg_rects {
+            fill_blend(&mut canvas, w, h, x0, y0, x1, y1, r, g, b, 1.0);
+        }
+        // MD block backgrounds — above the syntax layer but under everything else (EMPH/FIND/selection).
+        // Opaque, each rect in its own persisted colour.
         for &(x0, y0, x1, y1, (r, g, b)) in &md_bg_rects {
             fill_blend(&mut canvas, w, h, x0, y0, x1, y1, r, g, b, 1.0);
         }

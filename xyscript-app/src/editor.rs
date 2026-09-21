@@ -229,6 +229,15 @@ impl Editor {
     pub fn bg_color_spans_raw(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
         self.host.active_doc().color_spans_raw().1.to_vec()
     }
+    /// Syntax-highlight token BACKGROUND spans (`HLCOLOR/BG`) for the active document, in RAW rope-byte
+    /// offsets, `(start, end, rgb)` — fed through `highlight_rects` like the `MDA/B` bg layer.
+    pub fn highlight_bg_spans_raw(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.host.highlight_bg_spans_raw()
+    }
+    /// The BACKGROUND colour set for a highlight token kind (`HLCOLOR/BG`), or `None`.
+    pub fn highlight_bg_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
+        self.host.highlight_bg_color(kind)
+    }
     /// The active document's `MDA` text-attribute spans (`(start, end, bits)`) in DECODED-byte offsets
     /// — the renderer maps the bits to glyph weight/slant (bold/italic).
     pub fn attr_spans(&self) -> Vec<(usize, usize, u8)> {
@@ -3079,6 +3088,40 @@ mod tests {
         assert!(!m.get("CFG").cloned().unwrap_or_default().trim().is_empty(), "SAVECFG capture empty");
         assert!(m.get("AR").cloned().unwrap_or_default().contains("teh=the"), "SAVEAR capture missing pair");
         assert!(!m.get("KBD").cloned().unwrap_or_default().trim().is_empty(), "SAVEKBD capture empty");
+    }
+
+    #[test]
+    fn hlcolor_bg_sets_reads_saves_and_resets() {
+        use crate::highlight::TokenKind;
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // `/BG` sets a SEPARATE background band; the foreground stays independent.
+        e.run_command("HLCOLOR keyword 10 20 30");
+        e.run_command("HLCOLOR/BG keyword 200 210 220");
+        assert_eq!(e.highlight_color(&TokenKind::Keyword), Some((10, 20, 30)));
+        assert_eq!(e.highlight_bg_color(&TokenKind::Keyword), Some((200, 210, 220)));
+
+        // SAVECFG round-trips the fg as HLCOLOR and the bg as HLCOLOR/BG.
+        e.run_command("CAPTURE cfg SAVECFG");
+        let m: std::collections::HashMap<String, String> = e.breakpoint_vars().into_iter().collect();
+        let cfg = m.get("CFG").cloned().unwrap_or_default();
+        assert!(cfg.contains("HLCOLOR keyword 10 20 30"), "fg emitted: {cfg}");
+        assert!(cfg.contains("HLCOLOR/BG keyword 200 210 220"), "bg emitted: {cfg}");
+
+        // Clearing the bg (`default`) leaves the fg intact.
+        e.run_command("HLCOLOR/BG keyword default");
+        assert_eq!(e.highlight_bg_color(&TokenKind::Keyword), None);
+        assert_eq!(e.highlight_color(&TokenKind::Keyword), Some((10, 20, 30)));
+
+        // HLRESET clears all backgrounds (backgrounds are opt-in, so reset removes them).
+        e.run_command("HLCOLOR/BG keyword 1 2 3");
+        e.run_command("HLRESET");
+        assert_eq!(e.highlight_bg_color(&TokenKind::Keyword), None, "HLRESET clears bg");
+
+        // THEME clears backgrounds too (a theme defines the fg palette only).
+        e.run_command("HLCOLOR/BG comment 9 9 9");
+        e.run_command("THEME dark");
+        assert_eq!(e.highlight_bg_color(&TokenKind::Comment), None, "THEME clears bg");
     }
 
     #[test]
