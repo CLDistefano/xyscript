@@ -72,6 +72,13 @@ harper-typst = { version = "2.7", optional = true }
 # the face bytes we hand Typst). Matches the version cosmic-text already pulls in.
 fontdb = "0.23"
 
+# Unix only: read the local UTC offset (DST-aware) from `localtime_r`'s `tm_gmtoff` for the date/time
+# specials ($MDAY/$DA/…) and DIR file times. Windows uses `GetTimeZoneInformation` (hand-rolled FFI,
+# no crate); hand-declaring `struct tm` is unwise (layout differs across macOS/glibc/musl), so on Unix
+# we lean on the ubiquitous `libc`. See `dir::system_local_offset_secs`.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [features]
 # Compile in the harper-backed language checker (the `CHECK` verb, live underlines). Adds the burn
 # ML dependency — see the note on `harper-core` above.

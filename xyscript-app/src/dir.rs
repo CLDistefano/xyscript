@@ -299,8 +299,10 @@ pub fn local_offset_secs() -> i64 {
     LOCAL_OFFSET_SECS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// The host system's current local UTC offset in seconds (east positive). Windows reads
-/// it from the OS (`GetTimeZoneInformation`, DST-aware); elsewhere it's UTC (0) for now.
+/// The host system's current local UTC offset in seconds (east positive), DST-aware. Windows reads it
+/// from `GetTimeZoneInformation`; Unix (macOS/Linux) from `localtime_r`'s `tm_gmtoff`. Any other target
+/// falls back to UTC (0). Consumed once at startup by [`set_local_offset`], feeding every date/time
+/// special (`$MDAY`/`$DA`/…) and DIR file-time display.
 pub fn system_local_offset_secs() -> i64 {
     #[cfg(windows)]
     {
@@ -332,7 +334,25 @@ pub fn system_local_offset_secs() -> i64 {
             -((tzi.bias + active) as i64) * 60
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        // `localtime_r` fills a `struct tm` whose `tm_gmtoff` is seconds EAST of UTC for the current
+        // instant, already accounting for the active DST rule — exactly the offset we want. Both macOS
+        // and Linux expose `tm_gmtoff` via `libc::tm`.
+        // SAFETY: `time(NULL)` returns the current time_t; `localtime_r` writes into our zeroed `tm`
+        // out-param (no shared state, no lifetimes). A null return (shouldn't happen for a valid time)
+        // leaves us at 0 = UTC.
+        unsafe {
+            let t = libc::time(std::ptr::null_mut());
+            let mut tmv: libc::tm = std::mem::zeroed();
+            if libc::localtime_r(&t, &mut tmv).is_null() {
+                0
+            } else {
+                tmv.tm_gmtoff as i64
+            }
+        }
+    }
+    #[cfg(not(any(windows, unix)))]
     {
         0
     }
@@ -368,6 +388,39 @@ fn civil_format(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_local_offset_is_a_plausible_utc_offset() {
+        // Cross-platform sanity: a real timezone offset is within [-12h, +14h] and a whole number of
+        // minutes. (Before the fix this returned a hard-coded 0 on macOS/Linux — the $MDAY-in-UTC bug.)
+        let off = system_local_offset_secs();
+        assert!((-12 * 3600..=14 * 3600).contains(&off), "offset out of range: {off}");
+        assert_eq!(off % 60, 0, "offset should be a whole number of minutes: {off}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unix_local_offset_reads_the_timezone() {
+        // Drive `system_local_offset_secs` via the `TZ` env var (POSIX fixed-offset, DST-free zones) so
+        // the result is deterministic regardless of the machine's real timezone. POSIX `TZ` offsets are
+        // hours WEST of UTC, so `EST5` is UTC-5 (`tm_gmtoff` = -5h) and `XXX-9` is UTC+9.
+        let saved = std::env::var("TZ").ok();
+        let set_tz = |v: &str| {
+            std::env::set_var("TZ", v);
+            unsafe { libc::tzset() };
+        };
+        set_tz("UTC0");
+        assert_eq!(system_local_offset_secs(), 0, "UTC0 → 0");
+        set_tz("EST5");
+        assert_eq!(system_local_offset_secs(), -5 * 3600, "EST5 → UTC-5");
+        set_tz("XXX-9");
+        assert_eq!(system_local_offset_secs(), 9 * 3600, "XXX-9 → UTC+9");
+        match saved {
+            Some(v) => std::env::set_var("TZ", v),
+            None => std::env::remove_var("TZ"),
+        }
+        unsafe { libc::tzset() };
+    }
 
     /// Create a unique temp directory with the given child dirs/files, returning its path.
     /// (Named by `tag` + the test thread's address to avoid cross-test collisions without
