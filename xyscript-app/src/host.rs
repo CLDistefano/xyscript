@@ -2810,6 +2810,10 @@ pub struct AppHost {
     /// background (no band). `$URLFGCOLOR`/`$URLBGCOLOR`; SaveCfg.
     url_fg_color: Option<(u8, u8, u8)>,
     url_bg_color: Option<(u8, u8, u8)>,
+    /// Whether the preview/`TOPDF` render also paints the transient EMPH matches and URL highlights
+    /// (`PVMARKS`). Off by default — a printout stays clean unless asked. MDA styling is unaffected
+    /// (always rendered). `$PVMARKS`; SaveCfg. Applies to the styler-based kinds (GFM/Typst/Text).
+    preview_marks: bool,
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
@@ -3302,6 +3306,7 @@ impl AppHost {
             url_highlight: false, // off by default
             url_fg_color: None,
             url_bg_color: None,
+            preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
@@ -3717,6 +3722,11 @@ impl AppHost {
     /// Whether URL highlighting + Ctrl+click-to-open is on (`URLHIGHLIGHT`/`$URLHIGHLIGHT`).
     pub fn url_highlight(&self) -> bool {
         self.url_highlight
+    }
+
+    /// Whether preview/`TOPDF` renders the EMPH + URL marks (`PVMARKS`/`$PVMARKS`).
+    pub fn preview_marks(&self) -> bool {
+        self.preview_marks
     }
     /// The URL-highlight text colour, EFFECTIVE (the override, or the default link blue).
     pub fn url_fg_color(&self) -> (u8, u8, u8) {
@@ -7661,15 +7671,72 @@ impl AppHost {
     /// with `source` for any encoding. Reverse video uses the document's current FGCOLOR/BGCOLOR.
     pub fn mda_styler(&self, source: &str) -> crate::gfm::Styler {
         let doc = &self.docs[self.active];
+        let mut fg = doc.color_spans_decoded();
+        let mut bg = doc.bg_color_spans_decoded();
+        // With `PVMARKS` on, fold the EMPH + URL highlight spans in AHEAD of the MDA spans, so the
+        // Styler's first-match `cover()` favours a mark where it overlaps MDA — the preview/printout
+        // then shows the same emphasis / link colouring as the editor. `PVMARKS` off = MDA only.
+        if self.preview_marks {
+            let (mut mfg, mut mbg) = self.mark_spans(source);
+            mfg.append(&mut fg);
+            fg = mfg;
+            mbg.append(&mut bg);
+            bg = mbg;
+        }
         crate::gfm::Styler::new(
             source,
-            doc.color_spans_decoded(),
-            doc.bg_color_spans_decoded(),
+            fg,
+            bg,
             doc.attr_spans_decoded(),
             self.fg_color,
             self.bg_color,
             self.ul_spaces,
         )
+    }
+
+    /// The EMPH + URL highlight spans over `source` (decoded offsets), as `(fg, bg)` colour-span lists,
+    /// for `PVMARKS` rendering. EMPH matches come first so they win over a URL where the two overlap
+    /// (and both win over MDA once the caller prepends them). Computed directly over `source` — the
+    /// exact decoded string the styler splices into — so offsets align for any encoding. Empty when the
+    /// document has no EMPH phrase / `URLHIGHLIGHT` is off.
+    fn mark_spans(&self, source: &str) -> (Vec<(usize, usize, (u8, u8, u8))>, Vec<(usize, usize, (u8, u8, u8))>) {
+        let (mut fg, mut bg): (Vec<(usize, usize, (u8, u8, u8))>, Vec<(usize, usize, (u8, u8, u8))>) =
+            (Vec::new(), Vec::new());
+        let doc = &self.docs[self.active];
+        // EMPH: the phrase's matches, in the EMPH colours (bare = whole-word literal; `EMPH/R` = regex;
+        // always case-insensitive — same as the editor overlay).
+        if let Some(phrase) = doc.emph().filter(|p| !p.is_empty()) {
+            let pattern = if doc.emph_is_regex() {
+                phrase.to_string()
+            } else {
+                format!(r"\b{}\b", regex::escape(phrase))
+            };
+            if let Ok(re) = regex::RegexBuilder::new(&pattern).case_insensitive(true).build() {
+                let (efg, ebg) = (self.emph_fg_color(), self.emph_bg_color());
+                for m in re.find_iter(source).filter(|m| m.end() > m.start()) {
+                    fg.push((m.start(), m.end(), efg));
+                    bg.push((m.start(), m.end(), ebg));
+                }
+            }
+        }
+        // URLs: the same pattern the editor highlights, trailing punctuation trimmed. Link colour for
+        // the text; a background band only if `URLBGCOLOR` is set.
+        if self.url_highlight {
+            if let Ok(re) = regex::Regex::new(URL_PATTERN) {
+                let (ufg, ubg) = (self.url_fg_color(), self.url_bg_color());
+                for m in re.find_iter(source) {
+                    let trimmed = trim_url_len(&source.as_bytes()[m.start()..m.end()]);
+                    if trimmed > 0 {
+                        let (s, e) = (m.start(), m.start() + trimmed);
+                        fg.push((s, e, ufg));
+                        if let Some(c) = ubg {
+                            bg.push((s, e, c));
+                        }
+                    }
+                }
+            }
+        }
+        (fg, bg)
     }
 
     /// Record the current `$CWD` as the remembered directory for its drive, so a later bare `X:`
@@ -8950,6 +9017,7 @@ impl AppHost {
         put(&mut s, "Highlight URLs and Ctrl+click to open them -- on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
         put_opt_color(&mut s, "URL highlight text colour -- R G B, 0-255", "URLFGCOLOR", self.url_fg_color);
         put_opt_color(&mut s, "URL highlight background colour -- R G B, 0-255", "URLBGCOLOR", self.url_bg_color);
+        put(&mut s, "Render EMPH + URL highlights in preview/TOPDF (MDA always renders) -- on | off", format!("PVMARKS {}", if self.preview_marks { "on" } else { "off" }));
         put(&mut s, "Underline the spaces between words in MDA underline styling -- on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path -- max display width in characters", format!("PATHLEN {}", self.path_len));
@@ -11627,7 +11695,8 @@ impl Host for AppHost {
                         crate::pdf::html_to_pdf(&source, &doc_dir, &self.preview_fonts())
                     }
                     crate::document::RenderKind::Text => {
-                        crate::pdf::text_to_pdf(&source, &doc_dir, &self.preview_fonts())
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::text_to_pdf(&source, &doc_dir, &self.preview_fonts(), Some(&styler))
                     }
                 }
                 .map_err(XplError::trappable)?;
@@ -11660,7 +11729,8 @@ impl Host for AppHost {
                         crate::pdf::html_to_pdf(&text, &doc_dir, &self.preview_fonts())
                     }
                     crate::document::RenderKind::Text => {
-                        crate::pdf::text_to_pdf(&text, &doc_dir, &self.preview_fonts())
+                        // FPRINT renders a file that isn't open — no MDA/marks apply (nothing loaded).
+                        crate::pdf::text_to_pdf(&text, &doc_dir, &self.preview_fonts(), None)
                     }
                 }
                 .map_err(XplError::trappable)?;
@@ -12605,6 +12675,13 @@ impl Host for AppHost {
                     if self.url_highlight { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetPreviewMarks(opt) => {
+                self.preview_marks = opt.unwrap_or(!self.preview_marks);
+                return Ok(Value::str(format!(
+                    "PVMARKS {}",
+                    if self.preview_marks { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetUrlColor { fg, color } => {
                 if fg {
                     self.url_fg_color = color;
@@ -13519,6 +13596,7 @@ impl Host for AppHost {
             "DIMONBLUR" => Some(Value::Int(if self.dim_on_blur { 1 } else { 0 })),
             "CLOSEBACK" => Some(Value::Int(if self.close_back { 1 } else { 0 })),
             "URLHIGHLIGHT" => Some(Value::Int(if self.url_highlight { 1 } else { 0 })),
+            "PVMARKS" => Some(Value::Int(if self.preview_marks { 1 } else { 0 })),
             "URLFGCOLOR" => Some(Value::str(match self.url_fg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),

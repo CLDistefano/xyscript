@@ -11865,6 +11865,35 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn pvmarks_round_trips_and_marks_render_in_a_plain_text_printout() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut()
+            .files
+            .insert("notes.txt".into(), "see http://example.com and a KEYWORD here\n".into());
+        e.run_command("open notes.txt"); // .txt → plain-text render kind
+        e.run_command("EMPH/R KEYWORD"); // an EMPH phrase
+        e.run_command("URLHIGHLIGHT on"); // and URL highlighting
+        // Off by default.
+        e.run_command("PR $PVMARKS");
+        assert_eq!(e.output().last().map(String::as_str), Some("0"));
+        e.run_command("PVMARKS on");
+        e.run_command("PR $PVMARKS");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+        // TOPDF a plain-text doc with EMPH + URL marks folded in → still compiles to a valid PDF
+        // (proves the styled plain-text path with marks doesn't break).
+        e.run_command("TOPDF out.pdf");
+        assert!(e.last_error().is_none(), "err: {:?}", e.last_error());
+        assert!(
+            e.host_mut().files.get("out.pdf").cloned().unwrap_or_default().starts_with("%PDF-"),
+            "out.pdf is not a PDF"
+        );
+        // SAVECFG round-trips the toggle.
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(e.host_mut().files.get("cfg.cfg").unwrap().contains("PVMARKS on"), "PVMARKS not persisted");
+    }
+
+    #[test]
     fn doctype_routes_topdf_and_reads_back() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

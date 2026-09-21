@@ -4211,6 +4211,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetUrlHighlight(want))?;
                 Ok(Flow::Next)
             }
+            // `PVMARKS on|off` (bare = toggle) — whether preview/`TOPDF` paints the EMPH matches and
+            // URL highlights (like the editor). MDA styling renders regardless. `$PVMARKS`; SaveCfg.
+            "PVMARKS" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "PVMARKS: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetPreviewMarks(want))?;
+                Ok(Flow::Next)
+            }
             // `URLFGCOLOR`/`URLBGCOLOR <r g b>` — the URL-highlight text colour / background (`/HSL`);
             // bare or `… default` clears it (fg → link blue, bg → transparent). `URLFGCOLORS`/
             // `URLBGCOLORS` open the picker. `$URLFGCOLOR`/`$URLBGCOLOR`.

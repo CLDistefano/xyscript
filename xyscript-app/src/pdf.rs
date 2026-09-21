@@ -579,9 +579,20 @@ fn compile_gfm(
 /// hard line break and no Markdown/Typst syntax is interpreted (`#`, `*`, `=` … print literally) — with
 /// the SAME preamble (page setup + fonts) as GFM. This is the auto default for non-.md text files and
 /// the target of `DOCTYPE text`. See [`plain_text_body`] for the verbatim transform.
-fn compile_text(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<PagedDocument, String> {
+fn compile_text(
+    source: &str,
+    fonts: &PreviewFonts,
+    doc_dir: &Path,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<PagedDocument, String> {
     let (preamble, blobs) = gfm_preamble(fonts);
-    compile_markup(format!("{preamble}{}\n", plain_text_body(source)), blobs, doc_dir)
+    // With a styler the document's MDA styling (and any EMPH/URL marks folded in) is spliced around
+    // the verbatim text; without one, the plain escaped body.
+    let body = match styler {
+        Some(s) => s.plain_text_body(source),
+        None => plain_text_body(source),
+    };
+    compile_markup(format!("{preamble}{body}\n"), blobs, doc_dir)
 }
 
 /// Turn raw text into a Typst body that renders VERBATIM. Every source line is emitted with all Typst
@@ -702,19 +713,27 @@ pub fn gfm_to_image(
 }
 
 /// Render a PLAIN-TEXT document to PDF bytes (verbatim, no Markdown interpretation), styled per `fonts`.
+/// `styler` splices the document's MDA styling (and any EMPH/URL marks) into the output (`None` = plain).
 /// Errors are returned as a message so the caller can surface them trappably.
-pub fn text_to_pdf(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_text(source, fonts, doc_dir)?)
+pub fn text_to_pdf(
+    source: &str,
+    doc_dir: &Path,
+    fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_pdf_bytes(&compile_text(source, fonts, doc_dir, styler)?)
 }
 
 /// Render a PLAIN-TEXT document (all pages, stacked) to a raster RGBA image — the GUI live-preview path.
+/// `styler` splices the document's MDA styling (and any EMPH/URL marks) into the output (`None` = plain).
 pub fn text_to_image(
     source: &str,
     doc_dir: &Path,
     scale: f32,
     fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_text(source, fonts, doc_dir)?, scale)
+    to_raster(&compile_text(source, fonts, doc_dir, styler)?, scale)
 }
 
 /// Render an HTML document to PDF bytes, styled per `fonts` (structural conversion — see
@@ -1062,7 +1081,7 @@ mod tests {
         // A leading `#`, `*`, `=`, `-` must print literally (escaped), not become a heading/list/etc.,
         // and the tricky metacharacters must not inject Typst — end-to-end proof it compiles.
         let txt = "# not a heading\n* not a bullet\n= not typst\nloose $ # * < @ chars\n";
-        let pdf = text_to_pdf(txt, dot(), &dflt()).expect("plain text should compile");
+        let pdf = text_to_pdf(txt, dot(), &dflt(), None).expect("plain text should compile");
         assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
         // The `#` survives as literal text (escaped), never as a Typst code sigil.
         let body = plain_text_body(txt);
@@ -1071,7 +1090,7 @@ mod tests {
 
     #[test]
     fn renders_plain_text_to_a_raster_image() {
-        let (rgba, w, h) = text_to_image("line one\nline two\n", dot(), 1.0, &dflt()).expect("image");
+        let (rgba, w, h) = text_to_image("line one\nline two\n", dot(), 1.0, &dflt(), None).expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize);
         assert!(rgba.iter().any(|&b| b != 0));
@@ -1079,7 +1098,28 @@ mod tests {
 
     #[test]
     fn empty_plain_text_still_compiles() {
-        assert!(text_to_pdf("", dot(), &dflt()).expect("empty text").starts_with(b"%PDF-"));
+        assert!(text_to_pdf("", dot(), &dflt(), None).expect("empty text").starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn mda_styled_plain_text_compiles() {
+        // MDA styling (colour + bold/underline) spliced into a PLAIN-TEXT body must produce Typst the
+        // engine accepts — proof the styled plain-text path compiles. Offsets into `txt`: "one" [11,14)
+        // on line 1, "bold" [22,26) on line 2.
+        use xyscript_xpl::{ATTR_BOLD, ATTR_UNDERLINE};
+        let txt = "plain line one\nsecond bold line\n";
+        let styler = crate::gfm::Styler::new(
+            txt,
+            vec![(11, 14, (200, 0, 0))],                 // "one" red
+            vec![],
+            vec![(22, 26, ATTR_BOLD | ATTR_UNDERLINE)],  // "bold" bold+underline
+            (0, 0, 0),
+            (255, 255, 255),
+            true,
+        );
+        let pdf = text_to_pdf(txt, dot(), &dflt(), Some(&styler)).expect("styled plain text compiles");
+        assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
+        assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
     }
 
     // ---- Typst-as-input (Phase 0): the buffer IS typst markup -----------------

@@ -10429,7 +10429,9 @@ impl GuiApp {
                         }
                         RenderKind::Text => {
                             // Plain text: verbatim, no Markdown interpretation; takes the PV font settings.
-                            xyscript_app::text_to_image(&cur, &doc_dir, scale, &fonts)
+                            // Splice the document's MDA styling (+ any PVMARKS EMPH/URL) like the other kinds.
+                            let styler = self.editor.host().mda_styler(&cur);
+                            xyscript_app::text_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler))
                         }
                     };
                     match res {

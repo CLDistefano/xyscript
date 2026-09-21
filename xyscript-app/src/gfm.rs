@@ -134,6 +134,32 @@ impl Styler {
         }
     }
 
+    /// Render `source` as a PLAIN-TEXT typst body — each newline a hard line break, no Markdown/Typst
+    /// interpretation — with this document's styling (MDA + any EMPH/URL marks folded in) spliced in.
+    /// The styled analogue of `pdf::plain_text_body`: leading indentation becomes non-breaking spaces
+    /// (Typst trims leading blanks otherwise); the rest of each line is escaped and wrapped in the
+    /// covering styling via [`emit_styled`]. An empty styler yields the same output as the unstyled
+    /// builder (each line just escaped).
+    pub fn plain_text_body(&self, source: &str) -> String {
+        let mut out = String::new();
+        let mut line_start = 0usize;
+        for (i, raw) in source.split('\n').enumerate() {
+            let line = raw.strip_suffix('\r').unwrap_or(raw); // tolerate CRLF buffers
+            if i > 0 {
+                out.push_str("#linebreak() "); // trailing space required (see the LineBreak note below)
+            }
+            // Leading indent → non-breaking spaces (unstyled); a tab ≈ 8. Typst trims leading blanks.
+            let indent_end = line.find(|c: char| c != ' ' && c != '\t').unwrap_or(line.len());
+            for c in line[..indent_end].chars() {
+                out.push_str(if c == '\t' { "~~~~~~~~" } else { "~" });
+            }
+            // The rest of the line: escaped + styled at its true source offset.
+            self.emit_styled(line_start + indent_end, &line[indent_end..], true, &mut out);
+            line_start += raw.len() + 1; // +1 for the '\n' that `split` consumed
+        }
+        out
+    }
+
     /// Splice this document's MDA styling into an **authored-Typst** source. Parse it into Typst's
     /// lossless syntax tree, reconstruct it verbatim, and wrap each maximal run of markup prose
     /// (`Text`/`Space` leaves) that MDA covers in the matching Typst markup — the authored-Typst

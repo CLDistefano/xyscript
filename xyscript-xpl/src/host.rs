@@ -627,6 +627,10 @@ pub enum EditorOp {
     /// document are coloured (`URLFGCOLOR`/`URLBGCOLOR`) and Ctrl+click on one opens it in the OS
     /// default application. Off by default. Persisted by SaveCfg. `$URLHIGHLIGHT`.
     SetUrlHighlight(Option<bool>),
+    /// Turn preview/`TOPDF` mark rendering on/off (`PVMARKS on|off`; `None` toggles). When on, the
+    /// EMPH matches and URL highlights are painted into the preview/PDF (all styler-based kinds), like
+    /// the editor overlay; MDA styling is always rendered regardless. Off by default. SaveCfg. `$PVMARKS`.
+    SetPreviewMarks(Option<bool>),
     /// Set the URL-highlight text colour (`fg = true`, `URLFGCOLOR`) or background (`fg = false`,
     /// `URLBGCOLOR`). `None` = default (fg = a link blue; bg = transparent, no band). Read back via
     /// `$URLFGCOLOR`/`$URLBGCOLOR`.
