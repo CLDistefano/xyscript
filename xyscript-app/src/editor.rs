@@ -1186,6 +1186,7 @@ impl Editor {
         regex: bool,
         case: bool,
         whole: bool,
+        perl: bool,
     ) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Grep {
             pattern: pattern.to_string(),
@@ -1193,6 +1194,7 @@ impl Editor {
             regex,
             case,
             whole,
+            perl,
         }))
     }
     /// All match spans of `find` in the active document (for the FIND dialog's live highlight-all).
@@ -8439,7 +8441,7 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command(&format!("CD {}", d.display()));
         // The GREP dialog dispatches this directly (literal pattern, no $-expansion). It opens a
         // results tab; ignore_case=true is the /I flag.
-        let msg = e.run_grep("cat", None, false, false, false).unwrap();
+        let msg = e.run_grep("cat", None, false, false, false, false).unwrap();
         assert!(msg.contains("GREP"), "status: {msg}");
         assert!(e.active_is_grep_listing(), "a results tab is now active");
         assert_eq!(e.active_emph().as_deref(), Some("cat")); // matches highlighted

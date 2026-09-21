@@ -1436,13 +1436,14 @@ impl Vm<'_, '_> {
             let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
             let case = vswitches.iter().any(|s| s.eq_ignore_ascii_case("I"));
             let whole = vswitches.iter().any(|s| s.eq_ignore_ascii_case("W"));
+            let perl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("P"));
             let (pattern, path) = parse_grep_args(&args);
             if pattern.is_empty() {
                 // Bare `GREP` (no pattern) opens the GREP dialog — the interactive companion to FIND.
                 self.host_op(EditorOp::OpenGrepDialog)?;
                 return Ok(Flow::Next);
             }
-            self.host_op(EditorOp::Grep { pattern, path, regex, case, whole })?;
+            self.host_op(EditorOp::Grep { pattern, path, regex, case, whole, perl })?;
             return Ok(Flow::Next);
         }
         // GJ: point-and-shoot on a GREP results tab — open + jump to the hit under the caret.

@@ -206,7 +206,7 @@ pub enum EditorOp {
     /// `path` is an optional search root: a directory (`GREP foo src`), a glob (`GREP foo *.rs`,
     /// searches `$CWD`), or both (`GREP foo src/*.rs`) — resolved like a `DIR` filespec. Absent = the
     /// current directory. See [`crate::host`] and grep.rs.
-    Grep { pattern: String, path: Option<String>, regex: bool, case: bool, whole: bool },
+    Grep { pattern: String, path: Option<String>, regex: bool, case: bool, whole: bool, perl: bool },
     /// `GJ` — point-and-shoot on a `GREP` results listing: open the file for the hit on the caret's
     /// line (or switch to it if already open), jump to its `line:col`, and centre it. No-op message
     /// when the active buffer isn't a results listing / the caret isn't on a hit.

@@ -2297,6 +2297,8 @@ struct GrepDialog {
     regex: bool,
     ignore_case: bool,
     whole: bool,
+    /// The `/P` flag — the Perl-compatible (fancy-regex) engine.
+    perl: bool,
     /// One-shot: focus the pattern field on the next frame (set on open).
     focus_pattern: bool,
 }
@@ -7339,6 +7341,7 @@ impl GuiApp {
             regex: false,
             ignore_case: false,
             whole: false,
+            perl: false,
             focus_pattern: true,
         });
     }
@@ -7356,6 +7359,7 @@ impl GuiApp {
         let l_regex = self.tr("dialog.grep.regex", "Regular expression");
         let l_ignore = self.tr("dialog.grep.ignore_case", "Ignore case");
         let l_whole = self.tr("dialog.grep.whole_word", "Whole word");
+        let l_perl = self.tr("dialog.grep.perl", "Perl (look-around, backrefs)");
         let l_search = self.tr("dialog.grep.search", "Search");
         let l_close = self.tr("button.close", "Close");
         let Some(d) = self.grep_dialog.as_mut() else {
@@ -7410,6 +7414,7 @@ impl GuiApp {
                     ui.checkbox(&mut d.regex, &l_regex);
                     ui.checkbox(&mut d.ignore_case, &l_ignore);
                     ui.checkbox(&mut d.whole, &l_whole);
+                    ui.checkbox(&mut d.perl, &l_perl);
                 });
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -7425,14 +7430,21 @@ impl GuiApp {
             });
 
         // Apply (self.editor borrowable now).
-        let (pattern, path, regex, ignore_case, whole) = {
+        let (pattern, path, regex, ignore_case, whole, perl) = {
             let d = self.grep_dialog.as_ref().unwrap();
-            (d.pattern.trim().to_string(), d.path.trim().to_string(), d.regex, d.ignore_case, d.whole)
+            (
+                d.pattern.trim().to_string(),
+                d.path.trim().to_string(),
+                d.regex,
+                d.ignore_case,
+                d.whole,
+                d.perl,
+            )
         };
         if do_search && !pattern.is_empty() {
             let path_opt = (!path.is_empty()).then_some(path);
             // `ignore_case` IS the `/I` (case-insensitive) flag the op expects.
-            match self.editor.run_grep(&pattern, path_opt, regex, ignore_case, whole) {
+            match self.editor.run_grep(&pattern, path_opt, regex, ignore_case, whole, perl) {
                 Ok(msg) => self.status = msg,
                 Err(e) => self.status = e,
             }

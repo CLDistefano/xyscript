@@ -1172,7 +1172,9 @@ an entry copies its full path to the clipboard, the mouse equivalent of the list
 finds them, so even a big tree never freezes the editor — the status line shows a running count, and
 starting another #raw("GREP") (or closing the tab) cancels one still in progress. It's a literal search by default; #raw("/R") makes the pattern a
 regular expression, #raw("/I") ignores case, #raw("/W") matches whole words — the same letters as
-#raw("SE") and #raw("FIND"). Point it somewhere else with a second argument — a folder (#raw("GREP cat src")),
+#raw("SE") and #raw("FIND"). #raw("/P") is the Perl-compatible engine (look-around, backreferences,
+atomic groups — see _Appendix B_), for the rare pattern that needs one of those; the default engine is
+linear-time. Point it somewhere else with a second argument — a folder (#raw("GREP cat src")),
 a file-name glob over the current folder (#raw("GREP cat *.rs")), or both at once (#raw("GREP cat src/*.rs")) —
 just like a #raw("DIR") filespec; and quote a pattern with spaces (#raw("GREP \"foo bar\" src")).
 
@@ -2985,6 +2987,11 @@ instead, so a badly-shaped pattern on a big input can be slow (it is bounded, no
 #raw("/P") when — and only when — the pattern genuinely needs look-around, a backreference, or an atomic
 group. When a #raw("/R") pattern seems to want one, a capturing group plus a replacement — or splitting
 the job into two commands — often does it without #raw("/P") at all.
+
+The same #raw("/P") switch works wherever #raw("/R") does: search and change (#raw("SE"), #raw("CH")),
+the recursive #raw("GREP"), and highlighter rules (#raw("HLRULE/P")). In #raw("GREP") and #raw("HLRULE")
+the match is line-scoped and bounded by a per-line backtrack limit, so a runaway pattern degrades to "no
+hit" for that line rather than stalling — reserve #raw("/P") for the patterns that truly need it.
 
 = Appendix C — Sample Scripts
 

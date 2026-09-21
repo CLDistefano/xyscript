@@ -2272,6 +2272,7 @@ impl Document {
         hits: Vec<crate::grep::GrepHit>,
         pattern: String,
         regex: bool,
+        perl: bool,
         capped: bool,
     ) {
         self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
@@ -2287,7 +2288,7 @@ impl Document {
         self.highlighter = None;
         self.tokens.clear();
         self.label = Some(format!("grep {pattern}"));
-        self.grep = Some(crate::grep::GrepState { base, pattern, regex, capped, hits });
+        self.grep = Some(crate::grep::GrepState { base, pattern, regex, perl, capped, hits });
     }
 
     /// Append a streamed batch of `GREP` hits: push them onto the state and append their rendered

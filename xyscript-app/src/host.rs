@@ -10102,10 +10102,10 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(msg));
             }
-            EditorOp::Grep { pattern, path, regex, case, whole } => {
+            EditorOp::Grep { pattern, path, regex, case, whole, perl } => {
                 use std::sync::atomic::{AtomicBool, Ordering};
-                // Validate the pattern up front so a bad `/R` errors immediately — no tab, no thread.
-                crate::grep::compile_check(&pattern, regex, case, whole)
+                // Validate the pattern up front so a bad `/R`/`/P` errors immediately — no tab, no thread.
+                crate::grep::compile_check(&pattern, regex, case, whole, perl)
                     .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
                 // Resolve the optional path/glob into a search root + file-name mask, exactly like a
                 // `DIR` filespec: a directory searches it; a glob (`*.rs`) filters `$CWD`; `dir/*.rs`
@@ -10125,7 +10125,7 @@ impl Host for AppHost {
                 // Open an EMPTY results tab immediately (so the search is visibly under way); the worker
                 // streams hits into it via `poll_grep`.
                 let mut doc = Document::new();
-                doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, false);
+                doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, perl, false);
                 let doc_id = doc.id();
                 self.add_or_reuse(doc);
                 // Highlight the matches with EMPH — in the results tab now, and (via `grep_jump`) in
@@ -10134,7 +10134,11 @@ impl Host for AppHost {
                 // own whole-word literal; a plain literal GREP → `EMPH/R` on the ESCAPED pattern, so
                 // substring matches light up too (EMPH's non-regex mode is whole-word only). EMPH is
                 // always case-insensitive, so a case-sensitive GREP may highlight extra case variants.
-                let (emph_phrase, emph_regex) = if regex {
+                let (emph_phrase, emph_regex) = if regex || perl {
+                    // A `/P` pattern feeds EMPH's linear `/R` engine: if it uses a fancy-only construct
+                    // (look-around, backreference) EMPH can't compile it and simply leaves the results
+                    // un-emphasised — the hits still show. A `/P` pattern that is also valid linear
+                    // regex highlights normally.
                     (pattern.clone(), true)
                 } else if whole {
                     (pattern.clone(), false)
@@ -10157,7 +10161,7 @@ impl Host for AppHost {
                     std::thread::spawn(move || {
                         let mut batch: Vec<crate::grep::GrepHit> = Vec::new();
                         let summary = crate::grep::search(
-                            &base, &pat, regex, case, whole, mask.as_deref(), GREP_CAP, before,
+                            &base, &pat, regex, case, whole, perl, mask.as_deref(), GREP_CAP, before,
                             after, blank, &cancel,
                             |hit| {
                                 batch.push(hit);
