@@ -36,6 +36,8 @@ jobs:
     name: ${{ matrix.name }}
     needs: i18n-check
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # attach the bundle straight to the Release (see the zip/attach steps below)
     strategy:
       fail-fast: false
       matrix:
@@ -114,12 +116,28 @@ jobs:
           cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      # Zip the bundle, then attach it DIRECTLY to the Release (below). Release assets use separate,
+      # effectively-unlimited storage — unlike the Actions artifact store, whose per-account quota was
+      # blocking publishes once a few releases' build artifacts accumulated. So no intermediate
+      # `upload-artifact` / `download-artifact` round-trip, and no quota to hit.
+      - name: Zip bundle (Linux)
+        if: runner.os == 'Linux'
+        run: (cd staged && zip -r "../${{ matrix.artifact }}.zip" "${{ matrix.artifact }}")
+      - name: Zip bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "staged/${{ matrix.artifact }}" -DestinationPath "${{ matrix.artifact }}.zip"
+
+      - name: Attach bundle to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
         with:
-          name: ${{ matrix.artifact }}
-          path: staged/${{ matrix.artifact }}
-          if-no-files-found: error
+          files: ${{ matrix.artifact }}.zip
+          fail_on_unmatched_files: true
+          # Auto-populate the release body with GitHub's generated notes; a hand-edited body is
+          # preserved on re-run (action-gh-release won't overwrite a non-empty body). The three build
+          # jobs each upsert the same tag's Release and add their own asset.
+          generate_release_notes: true
 
   # One macOS binary for BOTH architectures. The Apple-Silicon runner (macos-14) builds its native
   # arm64 plus a cross-compiled x86_64, then `lipo` merges them into a universal executable.
@@ -127,6 +145,8 @@ jobs:
     name: macos-universal
     needs: i18n-check
     runs-on: macos-14
+    permissions:
+      contents: write # attach the universal bundle straight to the Release
     steps:
       - uses: actions/checkout@v7
 
@@ -164,45 +184,13 @@ jobs:
           cp templates/* "$pkg/templates/"
           cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: xyscript-macos-universal
-          path: staged/xyscript-macos-universal
-          if-no-files-found: error
+      - name: Zip bundle
+        run: (cd staged && zip -r "../xyscript-macos-universal.zip" "xyscript-macos-universal")
 
-  # On a version tag, gather every platform's bundle (binary + lang/), zip each, and attach to a Release.
-  release:
-    name: Publish release
-    needs: [build, macos]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-
-      # Each artifact is a platform bundle directory (binary + lang/). Zip each into one release asset
-      # so the catalogs travel with the binary (ubuntu runners ship `zip`).
-      - name: Zip each platform bundle
-        run: |
-          cd artifacts
-          for d in */; do
-            name="${d%/}"
-            zip -r "../$name.zip" "$name"
-          done
-          cd ..
-          ls -la *.zip
-
-      - name: Attach bundles to the release
+      - name: Attach bundle to the release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: "*.zip"
+          files: xyscript-macos-universal.zip
           fail_on_unmatched_files: true
-          # Auto-populate the release body with GitHub's generated notes (commits / merged PRs and new
-          # contributors since the previous tag). Any body edited by hand afterwards is preserved on a
-          # re-run — action-gh-release does not overwrite an existing non-empty release body.
           generate_release_notes: true
