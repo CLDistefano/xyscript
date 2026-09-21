@@ -1,6 +1,6 @@
 [package]
 name = "xyscript-app"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 rust-version = "1.88"
 description = "XyScript Stage 2: the closed editing loop — wires the keyboard resolver, the XPL interpreter, and a minimal text engine into an editor."
