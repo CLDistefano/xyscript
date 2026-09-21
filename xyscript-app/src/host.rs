@@ -1669,6 +1669,7 @@ pub enum ColorTarget {
     GrammarUnderline,
     PaneBorder,
     Highlight(crate::highlight::TokenKind),
+    HighlightBg(crate::highlight::TokenKind),
     Tab(TabState),
     TabClose,
     BalPairs,
@@ -1715,6 +1716,7 @@ impl ColorTarget {
             ColorTarget::GrammarUnderline => "Grammar underline colour".into(),
             ColorTarget::PaneBorder => "Active-pane border colour".into(),
             ColorTarget::Highlight(k) => format!("Highlight colour: {}", k.name()),
+            ColorTarget::HighlightBg(k) => format!("Highlight background colour: {}", k.name()),
             ColorTarget::Tab(state) => format!("Tab {} background colour", state.name()),
             ColorTarget::TabClose => "Tab close-× colour".into(),
             ColorTarget::BalPairs => "Matched-bracket highlight colour".into(),
@@ -1760,6 +1762,7 @@ impl ColorTarget {
             ColorTarget::GrammarUnderline => "GRAMMARCOLOR",
             ColorTarget::PaneBorder => "PANECOLOR",
             ColorTarget::Highlight(k) => return format!("HLCOLOR {} {r} {g} {b}", k.name()),
+            ColorTarget::HighlightBg(k) => return format!("HLCOLOR/BG {} {r} {g} {b}", k.name()),
             ColorTarget::Tab(state) => return format!("TABBGCOLOR {} {r} {g} {b}", state.name()),
             ColorTarget::TabClose => return format!("TABXCOLOR {r} {g} {b}"),
             ColorTarget::BalPairs => return format!("BALPAIRSCOLOR {r} {g} {b}"),
@@ -10910,9 +10913,10 @@ impl Host for AppHost {
                 });
                 return Ok(Value::str(""));
             }
-            EditorOp::OpenHighlightColorPicker(name) => {
+            EditorOp::OpenHighlightColorPicker { name, bg } => {
                 let k = crate::highlight::TokenKind::from_name(&name);
-                self.color_picker_request = Some(ColorTarget::Highlight(k));
+                self.color_picker_request =
+                    Some(if bg { ColorTarget::HighlightBg(k) } else { ColorTarget::Highlight(k) });
                 return Ok(Value::str(""));
             }
             EditorOp::OpenTabColorPicker(state) => {

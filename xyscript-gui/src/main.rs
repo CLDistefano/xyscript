@@ -8041,16 +8041,26 @@ impl GuiApp {
                     m_tog(self.tr("menu.settings.preview.marks", "Show EMPH + URL highlights"), pv_marks_on, if pv_marks_on { "PVMARKS off" } else { "PVMARKS on" }),
                 ]),
                 m_sub(self.tr("menu.settings.syntax", "Syntax highlighting"), vec![
-                    // One colour-picker entry per themeable token kind — `HLCOLORS <kind>` (the bare
-                    // verb needs a kind, so a single item did nothing). Built from the live kind list.
-                    // The per-kind item labels are the (generated) token-kind names — not translated.
-                    m_sub(
-                        self.tr("menu.settings.syntax.theme_colors", "Theme colors"),
+                    // One submenu per themeable token kind, each offering a Text-colour picker
+                    // (`HLCOLORS <kind>`) and a Background-band picker (`HLCOLORS/BG <kind>`). Built from
+                    // the live kind list; the per-kind labels are the (generated) token-kind names — not
+                    // translated.
+                    m_sub(self.tr("menu.settings.syntax.theme_colors", "Theme colors"), {
+                        let l_text = self.tr("menu.settings.syntax.text_color", "Text color…");
+                        let l_bg = self.tr("menu.settings.syntax.bg_color", "Background…");
                         ed.highlight_kinds()
                             .into_iter()
-                            .map(|k| m_item(format!("{}…", cap_first(&k)), format!("HLCOLORS {k}")))
-                            .collect(),
-                    ),
+                            .map(|k| {
+                                m_sub(
+                                    format!("{}…", cap_first(&k)),
+                                    vec![
+                                        m_item(l_text.clone(), format!("HLCOLORS {k}")),
+                                        m_item(l_bg.clone(), format!("HLCOLORS/BG {k}")),
+                                    ],
+                                )
+                            })
+                            .collect()
+                    }),
                     m_item(self.tr("menu.settings.syntax.token_kinds", "Token kinds…"), "HLKINDS"),
                     m_item(self.tr("menu.settings.syntax.reset_theme", "Reset theme"), "HLRESET"),
                     m_tog(self.tr("menu.settings.syntax.auto", "Auto-highlight on open"), hlauto_on, if hlauto_on { "HLAUTO off" } else { "HLAUTO on" }),
@@ -8607,6 +8617,10 @@ impl GuiApp {
             ColorTarget::PaneBorder => self.editor.pane_border_color(),
             // A cleared highlight kind shows as the editor foreground — seed the picker with that.
             ColorTarget::Highlight(k) => self.editor.highlight_color(k).unwrap_or(self.editor.fg_color()),
+            // A kind with no background band seeds from the canvas background.
+            ColorTarget::HighlightBg(k) => {
+                self.editor.highlight_bg_color(k).unwrap_or(self.editor.bg_color())
+            }
             // An unset tab state uses egui's theme colour (no fixed RGB) — seed from the chrome bg.
             ColorTarget::Tab(state) => {
                 let cur = match state {

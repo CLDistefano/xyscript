@@ -3727,13 +3727,15 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenColorPicker(ground))?;
                 Ok(Flow::Next)
             }
-            // `HLCOLORS <kind>` — colour-picker dialog for a syntax-highlight token kind.
+            // `HLCOLORS[/BG] <kind>` — colour-picker dialog for a syntax-highlight token kind's
+            // foreground (or its BACKGROUND band with `/BG`).
             "HLCOLORS" => {
                 let kind = args.trim();
                 if kind.is_empty() {
                     return Err(XplError::trappable("HLCOLORS: a token kind is required"));
                 }
-                self.host_op(EditorOp::OpenHighlightColorPicker(kind.to_string()))?;
+                let bg = vswitches.iter().any(|s| s.eq_ignore_ascii_case("BG"));
+                self.host_op(EditorOp::OpenHighlightColorPicker { name: kind.to_string(), bg })?;
                 Ok(Flow::Next)
             }
             // Syntax-highlight theme: `HLCOLOR <kind> <r g b>` recolors a token kind (`/HSL` reads
@@ -5895,6 +5897,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "RUN" => &["BG", "R"], // `/BG` — background child process; `/R:<var>` — return output to a var
         "RUNCODE" => &["BG", "R"], // run XPL text from a var; `/BG` backgrounds; `/R:<var>` returns
         "HLCOLOR" => &["HSL", "BG"], // `/HSL` triple as H S L; `/BG` set the token's BACKGROUND band
+        "HLCOLORS" => &["BG"], // `/BG` — pick the token's BACKGROUND band instead of the foreground
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"

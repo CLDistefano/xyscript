@@ -2738,7 +2738,7 @@ color itself.
 
 There are three ways to change a color:
 
-/ *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ — or the command #raw("HLCOLORS <kind>") — opens a live color picker for that one kind.
+/ *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ opens a submenu with a *Text color…* and a *Background…* picker for that one kind — or the commands #raw("HLCOLORS <kind>") (text) and #raw("HLCOLORS/BG <kind>") (background).
 / *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. The three numbers each run #raw("0")–#raw("255"); there are no color names or hex codes. Add #raw("/HSL") to give hue / saturation / lightness instead.
 / *Switching one off*: #raw("HLCOLOR <kind> default") drops that kind's color so it draws in the ordinary text color.
 / *A background*: #raw("HLCOLOR/BG <kind> <R G B>") paints a colored band *behind* that kind's glyphs — say #raw("HLCOLOR/BG comment 245 245 210") to tint every comment. It is separate from the foreground (a kind can have both), off by default, and #raw("HLCOLOR/BG <kind> default") removes it. #raw("/HSL") works here too.

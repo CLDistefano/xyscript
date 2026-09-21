@@ -828,8 +828,9 @@ pub enum EditorOp {
     /// `FGCOLORS`/`BGCOLORS`/`UIFGCOLORS`/… — request the GUI's colour-picker dialog for a colour
     /// target. On OK the GUI applies the matching `*COLOR` setter. Headless hosts record it.
     OpenColorPicker(ColorGround),
-    /// `HLCOLORS <kind>` — request the colour-picker dialog for a syntax-highlight token kind.
-    OpenHighlightColorPicker(String),
+    /// `HLCOLORS[/BG] <kind>` — request the colour-picker dialog for a syntax-highlight token kind's
+    /// foreground, or its BACKGROUND band when `bg` (the `/BG` switch).
+    OpenHighlightColorPicker { name: String, bg: bool },
     /// `TABBGCOLORS <state>` — request the colour-picker dialog for a tab-title background state
     /// (`active`/`hover`/`inactive`). On OK the GUI applies `TABBGCOLOR <state> r g b`.
     OpenTabColorPicker(String),
