@@ -1167,6 +1167,7 @@ impl Editor {
             from_top,
             scope,
             regex,
+            perl: false, // the Find dialog uses the linear engine; `/P` is a command-line flag for now
             keep_case,
             extend: false,
             verify: false,
@@ -3887,6 +3888,34 @@ mod tests {
         // Regex /K: the expanded result is recased to the whole match's case.
         e.run_command("CH/KR /foo\\w+/baz/");
         assert_eq!(e.document().text(), "Baz BAZ baz");
+    }
+
+    #[test]
+    fn perl_flag_enables_lookaround_and_backreferences() {
+        // `/P` (fancy-regex) does what the linear `/R` engine can't: lookaround + backreferences.
+        let mut e = ed();
+        e.run_command("INSERT \"foobar foobaz\"");
+        e.run_command("TF");
+        // Lookahead: the linear `/R` engine can't compile `(?=…)`, so the replace is a usage error and
+        // the text is untouched; `/P` compiles it and matches ONLY the "foo" before "bar".
+        e.run_command("CH/R /foo(?=bar)/XXX/");
+        assert!(e.document().text().contains("foobar"), "linear /R must not perform the lookahead replace");
+        e.run_command("CH/P /foo(?=bar)/XXX/");
+        assert_eq!(e.document().text(), "XXXbar foobaz");
+
+        // Backreference `\1` — collapse doubled letters (also impossible with `/R`).
+        let mut e = ed();
+        e.run_command("INSERT \"greet teeth\"");
+        e.run_command("TF");
+        e.run_command(r"CH/P /(\w)\1/#/");
+        assert_eq!(e.document().text(), "gr#t t#th");
+
+        // A `/P` find with capture groups, replaced with `$1`/`$2` (swap around the `@`).
+        let mut e = ed();
+        e.run_command("INSERT \"user@host\"");
+        e.run_command("TF");
+        e.run_command(r"CH/P /(\w+)@(\w+)/$2.$1/");
+        assert_eq!(e.document().text(), "host.user");
     }
 
     #[test]

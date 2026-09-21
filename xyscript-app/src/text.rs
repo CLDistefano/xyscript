@@ -2519,19 +2519,37 @@ pub struct SearchOpts {
 pub enum Pattern {
     Literal { needle: String, case_sensitive: bool, whole_word: bool },
     Regex(regex::Regex),
+    /// A Perl-compatible pattern (`/P`) — the `fancy-regex` engine, which adds lookaround,
+    /// backreferences and atomic groups. Its backtracking VM has a built-in step limit, so a
+    /// pathological pattern fails (yields no more matches) instead of hanging; a match that errors is
+    /// skipped by the `filter_map(Result::ok)` in each arm below.
+    Perl(fancy_regex::Regex),
 }
 
 impl Pattern {
-    /// Build a pattern from a search request. `regex` selects the engine; `/A`
-    /// (case_sensitive) and `/W` (whole_word) apply to both. Returns the regex
-    /// compile error message on a bad `/R` pattern.
+    /// Build a pattern from a search request. `perl` (the `/P` flag) selects the Perl-compatible
+    /// engine; else `regex` (`/R`) selects the linear-time `regex` engine; else a literal matcher.
+    /// `/A` (case_sensitive) and `/W` (whole_word) apply to all. Returns the compile error message on
+    /// a bad `/R`/`/P` pattern.
     pub fn build(
         needle: &str,
         case_sensitive: bool,
         whole_word: bool,
         regex: bool,
+        perl: bool,
     ) -> Result<Pattern, String> {
-        if regex {
+        if perl {
+            // `/W` wraps the user's regex in word boundaries; case-insensitivity via the inline `(?i)`
+            // flag (fancy-regex has no builder). `\b` and `(?i)` are both PCRE-standard.
+            let mut body =
+                if whole_word { format!(r"\b(?:{needle})\b") } else { needle.to_string() };
+            if !case_sensitive {
+                body = format!("(?i){body}");
+            }
+            fancy_regex::Regex::new(&body)
+                .map(Pattern::Perl)
+                .map_err(|e| format!("invalid regex: {e}"))
+        } else if regex {
             // `/W` wraps the user's regex in word boundaries; `/A` toggles case.
             let body =
                 if whole_word { format!(r"\b(?:{needle})\b") } else { needle.to_string() };
@@ -2578,6 +2596,20 @@ impl Pattern {
                         .map(|m| (m.start(), m.end()))
                 }
             }
+            Pattern::Perl(re) => {
+                if forward {
+                    re.find_iter(text)
+                        .filter_map(Result::ok)
+                        .map(|m| (m.start(), m.end()))
+                        .find(|&(s, _)| s >= from)
+                } else {
+                    re.find_iter(text)
+                        .filter_map(Result::ok)
+                        .map(|m| (m.start(), m.end()))
+                        .take_while(|&(s, _)| s < from)
+                        .last()
+                }
+            }
         }
     }
 
@@ -2589,6 +2621,12 @@ impl Pattern {
             }
             Pattern::Regex(re) => re
                 .find_iter(text)
+                .filter(|m| m.start() >= from)
+                .map(|m| (m.start(), m.end()))
+                .collect(),
+            Pattern::Perl(re) => re
+                .find_iter(text)
+                .filter_map(Result::ok)
                 .filter(|m| m.start() >= from)
                 .map(|m| (m.start(), m.end()))
                 .collect(),
@@ -2625,6 +2663,13 @@ impl Pattern {
                 .take(cap)
                 .map(|m| (m.start(), m.end()))
                 .collect(),
+            Pattern::Perl(re) => re
+                .find_iter(text)
+                .filter_map(Result::ok)
+                .filter(|m| m.start() >= from)
+                .take(cap)
+                .map(|m| (m.start(), m.end()))
+                .collect(),
         }
     }
 
@@ -2640,6 +2685,14 @@ impl Pattern {
                 match re.captures(matched) {
                     Some(c) => c.expand(replacement, &mut out),
                     None => out.push_str(replacement),
+                }
+                out
+            }
+            Pattern::Perl(re) => {
+                let mut out = String::new();
+                match re.captures(matched) {
+                    Ok(Some(c)) => c.expand(replacement, &mut out),
+                    _ => out.push_str(replacement),
                 }
                 out
             }
@@ -2693,6 +2746,31 @@ impl Pattern {
             Pattern::Regex(re) => {
                 let caps: Vec<regex::Captures> = re
                     .captures_iter(text)
+                    .filter(|c| c.get(0).unwrap().start() >= from)
+                    .take(cap)
+                    .collect();
+                let fs = caps.first()?.get(0).unwrap().start();
+                let le = caps.last()?.get(0).unwrap().end();
+                let mut region = String::new();
+                let mut pos = fs;
+                for c in &caps {
+                    let m = c.get(0).unwrap();
+                    region.push_str(&text[pos..m.start()]);
+                    if keep_case {
+                        let mut expanded = String::new();
+                        c.expand(replacement, &mut expanded); // $1, ${name}, $$ → $
+                        region.push_str(&cased(m.as_str(), &expanded));
+                    } else {
+                        c.expand(replacement, &mut region);
+                    }
+                    pos = m.end();
+                }
+                Some((fs, le, region, caps.len()))
+            }
+            Pattern::Perl(re) => {
+                let caps: Vec<fancy_regex::Captures> = re
+                    .captures_iter(text)
+                    .filter_map(Result::ok)
                     .filter(|c| c.get(0).unwrap().start() >= from)
                     .take(cap)
                     .collect();
@@ -3006,7 +3084,7 @@ mod tests {
             s.push_str("self here\n");
         }
         let buf = Buffer::from_str(&s);
-        let pat = Pattern::build("self", false, false, true).unwrap(); // /R regex, like GREP→EMPH
+        let pat = Pattern::build("self", false, false, true, false).unwrap(); // /R regex, like GREP→EMPH
         let hits = buf.find_all(&pat, 0, buf.len(), 5000);
         assert_eq!(hits.len(), 5000, "capped at 5000");
         // In order, non-overlapping, each spanning exactly the 4-byte match.

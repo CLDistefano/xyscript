@@ -1140,8 +1140,11 @@ pub struct SearchSpec {
     /// span, which stays put as a scope. The start point depends on where the caret sits relative
     /// to the selection (see `Document::search_select`/`replace_all`).
     pub scope: bool,
-    /// Treat the pattern as a regular expression (`R`).
+    /// Treat the pattern as a regular expression (`R`) — the linear-time `regex` engine.
     pub regex: bool,
+    /// Treat the pattern as a Perl-compatible regex (`P`) — the `fancy-regex` engine, adding
+    /// lookaround / backreferences / atomic groups. Wins over `regex` when both are set.
+    pub perl: bool,
     /// `/K` — recase each replacement to match the case of the text it replaces: lower, Capitalized,
     /// or UPPER. So `CH/K /alligator/crocodile/` maps `alligator`→`crocodile`, `Alligator`→`Crocodile`,
     /// and `ALLIGATOR`→`CROCODILE`. Uses the same classification as `AR` auto-replace; a mixed-case

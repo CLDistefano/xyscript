@@ -26,6 +26,11 @@ ropey = "1"
 # B1 search: the `regex` crate backs the `/R` regex search flag (literal search is
 # hand-rolled in text.rs; regex is opt-in per command).
 regex = "1"
+# `/P` search: a Perl-compatible engine (lookaround, backreferences, atomic groups) for FIND/SE/CH,
+# opt-in per command. `fancy-regex` is pure Rust — it uses the `regex` crate above for the fast path
+# and a backtracking VM (with a step limit, so a pathological pattern fails instead of hanging) only
+# for the fancy features. The linear-time `regex` engine stays the default; `/P` is the opt-in.
+fancy-regex = "0.14"
 # GREP (built-in ripgrep-style search): the ripgrep libraries. `grep-regex` wraps the SAME
 # `regex` crate above (identical pattern semantics to FIND/EMPH/HLRULE); `grep-searcher` gives
 # line/column reporting + binary-file skipping + big-file handling; `ignore` is the recursive

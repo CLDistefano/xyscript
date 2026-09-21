@@ -1359,13 +1359,14 @@ impl Vm<'_, '_> {
 
         // Search / replace. Switches are flags-first: attached to the verb (`SE/W`)
         // or leading before the self-delimiting pattern (`SE /W "x"`, `SE -w "x"`).
-        // Parsed from the RAW args so a regex replacement keeps its `$1` capture
+        // Parsed from the RAW args so a regex/perl replacement keeps its `$1` capture
         // references — `$`-substitution applies to the find pattern, and to the
-        // replacement only when it isn't a regex (where `$1` is literal text).
+        // replacement only when it isn't a regex or `/P` pattern (where `$1` is
+        // literal text).
         if is_search_base(base) {
             let mut spec = parse_search(base, &vswitches, raw_args)?;
             spec.find = self.subst(&spec.find);
-            if !spec.regex {
+            if !spec.regex && !spec.perl {
                 if let Some(r) = spec.replace.take() {
                     spec.replace = Some(self.subst(&r));
                 }
@@ -5721,7 +5722,7 @@ fn scan_delimited(s: &str, delim: char, regex: bool) -> Vec<String> {
 
 /// The recognized order-free search flag letters (case-insensitive): `T` from-top,
 /// `W` whole-word, `A` case-absolute, `B` backward, `R` regex (reserved).
-const FLAG_LETTERS: &str = "TWABRSXtwabrsx";
+const FLAG_LETTERS: &str = "TWABRSXPtwabrsxp";
 
 /// Whether `base` is a search/replace verb.
 /// Normalize every line ending in `s` (`\r\n` or bare `\n`) to the OS default — CRLF on Windows, LF
@@ -5973,6 +5974,7 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
     let mut whole_word = false;
     let mut from_top = false;
     let mut regex = false;
+    let mut perl = false;
     let mut scope = false;
     let mut extend = false;
     let mut keep_case = false;
@@ -5982,6 +5984,7 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
             'T' => from_top = true,
             'A' => absolute = true,
             'R' => regex = true,
+            'P' => perl = true, // Perl-compatible regex (fancy-regex): lookaround/backrefs/atomic groups
             'S' => scope = true,
             'X' => extend = true,
             'K' => keep_case = true,
@@ -6009,9 +6012,9 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
         from_top = false;
     }
 
-    // The flags are known before the pattern, so regex patterns keep their
-    // backslash escapes (`\d`, `\s`) instead of being unescaped as literal text.
-    let (find, replace) = parse_pattern(base, rest, is_replace, regex)?;
+    // The flags are known before the pattern, so a regex/Perl pattern keeps its backslash escapes
+    // (`\d`, `\s`) instead of being unescaped as literal text.
+    let (find, replace) = parse_pattern(base, rest, is_replace, regex || perl)?;
 
     Ok(SearchSpec {
         find,
@@ -6022,6 +6025,7 @@ fn parse_search(base: &str, vswitches: &[String], args: &str) -> VmResult<Search
         from_top,
         scope,
         regex,
+        perl,
         keep_case,
         extend,
         verify,

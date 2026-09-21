@@ -3718,7 +3718,7 @@ mod tests {
         // just outside, and the 'a' at 0 is before the scope.
         let mut d = Document::from_str("aXaXaXaz");
         d.set_caret(6, Some(2)); // selection span (2,6), caret on the end edge
-        let pat = Pattern::build("a", false, false, false).unwrap();
+        let pat = Pattern::build("a", false, false, false, false).unwrap();
 
         // Caret on the edge → outside → search from the top of the scope: match at 2..3.
         let scope = d.buffer().selection_span();
@@ -3745,7 +3745,7 @@ mod tests {
         let mut d = Document::from_str("abc.def");
         d.set_caret(0, None); // from_str leaves the caret at the end; start at the top
         d.define_toggle(); // DF at cursor 0
-        let pat = Pattern::build(".", false, false, false).unwrap();
+        let pat = Pattern::build(".", false, false, false, false).unwrap();
         assert!(d.search_select(&pat, true, false, None, true));
         assert_eq!(d.buffer().selection_span(), Some((0, 4)), "anchor kept; span grows to past the .");
         assert_eq!(d.buffer().cursor(), 4, "caret on the leading (far) edge of travel");
@@ -3764,7 +3764,7 @@ mod tests {
         // Scope [1,6] over "aXaXaXaz" → 'a's at 2 and 4 inside.
         let mut d = Document::from_str("aXaXaXaz");
         d.set_caret(1, Some(6)); // span (1,6), caret on the start edge
-        let pat = Pattern::build("a", false, false, false).unwrap();
+        let pat = Pattern::build("a", false, false, false, false).unwrap();
 
         // Caret on the start edge → outside → search backward from the bottom: last 'a' at 4.
         let scope = d.buffer().selection_span();
@@ -3785,7 +3785,7 @@ mod tests {
         // Scope [2,5] over "aXaXaa" → 'a's at 2 and 4; the match at 4 ends exactly on the boundary 5.
         let mut d = Document::from_str("aXaXaa");
         d.set_caret(5, Some(2)); // fresh coupled selection, caret on the end edge
-        let pat = Pattern::build("a", false, false, false).unwrap();
+        let pat = Pattern::build("a", false, false, false, false).unwrap();
 
         // Fresh caret on the edge → searches the whole scope: 2..3, then 4..5 (lands ON the edge).
         let scope = d.buffer().selection_span();
@@ -3807,7 +3807,7 @@ mod tests {
         // Scope [0,3] over "aXaX" → 'a's at 0 and 2; the match at 0 starts exactly on the boundary.
         let mut d = Document::from_str("aXaX");
         d.set_caret(0, Some(3)); // fresh coupled selection, caret on the start edge
-        let pat = Pattern::build("a", false, false, false).unwrap();
+        let pat = Pattern::build("a", false, false, false, false).unwrap();
 
         let scope = d.buffer().selection_span();
         assert!(d.search_select(&pat, false, false, scope, false));
@@ -3825,7 +3825,7 @@ mod tests {
     fn scoped_replace_only_touches_the_selection() {
         let mut d = Document::from_str("aXaXaXaz");
         d.set_caret(2, Some(6)); // span (2,6): 'a's at 2 and 4; 'a' at 0 and 6 are outside
-        let pat = Pattern::build("a", false, false, false).unwrap();
+        let pat = Pattern::build("a", false, false, false, false).unwrap();
         let scope = d.buffer().selection_span();
         let n = d.replace_all(&pat, "Q", false, scope, None, false);
         assert_eq!(n, 2);

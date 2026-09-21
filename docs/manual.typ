@@ -1296,6 +1296,7 @@ Switches attach to the verb, before the separator, and combine in any order:
 
 / #raw("/W"): whole-word match — surrounding characters must be non-word characters.
 / #raw("/R"): treat the search half as a *regular expression* (see Appendix B). The replacement half is still taken literally except for its backreferences.
+/ #raw("/P"): like #raw("/R"), but with the *Perl-compatible* engine — it adds look-around, backreferences, and atomic groups in the pattern (see Appendix B). Use it only when the pattern needs one of those; #raw("/R") is the linear-time default.
 / #raw("/T"): from the *top* — start the sweep at the beginning of the file (or the end, for a backward search) rather than at the cursor.
 / #raw("/S"): confine the search or replace to the current *selection*.
 / #raw("/K"): *keep case* (change only) — recase each replacement to match the text it replaces, so #raw("CH/K /alligator/crocodile/") turns `alligator`, `Alligator`, and `ALLIGATOR` into `crocodile`, `Crocodile`, and `CROCODILE`. A mixed-case match takes the replacement exactly as written.
@@ -2954,12 +2955,26 @@ read cleanly):
 
 #ex("CH/R \"(\\w+),\\s+(\\w+)\"$2 $1\"")
 
-== Not supported
+== The Perl-compatible engine (#raw("/P"))
 
-The linear-time engine omits the features that require backtracking: *backreferences in the pattern*
-(such as #raw("(\\w)\\1")), *look-around* (#raw("(?=…)"), #raw("(?<=…)")), and *atomic groups*. When a
-pattern seems to want one, a capturing group plus a replacement — or splitting the job into two commands
-— usually does it.
+The default #raw("/R") engine omits the features that require backtracking: *backreferences in the
+pattern* (such as #raw("(\\w)\\1")), *look-around* (#raw("(?=…)"), #raw("(?<=…)")), and *atomic groups*.
+When you need one of those, use #raw("/P") in place of #raw("/R"): it selects a *Perl-compatible* engine
+that understands all three. Everything else is the same — the search is case-insensitive unless you use
+the case-absolute verb (#raw("SEA"), #raw("CHA")), #raw("/W") wraps the pattern to a whole word, and a
+#raw("CH/P") replacement reuses captures with #raw("$1"), #raw("${name}"), #raw("$0"), and #raw("$$")
+exactly as #raw("/R") does.
+
+#ex("SE/P /foo(?=bar)/       # match \"foo\" only when \"bar\" follows (look-ahead)
+CH/P /(\\w)\\1/#/          # collapse any doubled letter to \"#\" (backreference)
+CH/P \"(\\w+)@(\\w+)\"$2.$1\"  # swap the halves around an \"@\"")
+
+Prefer #raw("/R") when it can do the job. Its linear-time guarantee means no pattern, however
+pathological, can make it run away on a large document; #raw("/P") runs a step-limited backtracking VM
+instead, so a badly-shaped pattern on a big input can be slow (it is bounded, not free). Reach for
+#raw("/P") when — and only when — the pattern genuinely needs look-around, a backreference, or an atomic
+group. When a #raw("/R") pattern seems to want one, a capturing group plus a replacement — or splitting
+the job into two commands — often does it without #raw("/P") at all.
 
 = Appendix C — Sample Scripts
 

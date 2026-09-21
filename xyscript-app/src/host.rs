@@ -4090,6 +4090,7 @@ impl AppHost {
             from_top: false,
             scope: false,
             regex,
+            perl: false,
             keep_case: false,
             extend: false,
             verify: false,
@@ -6743,7 +6744,7 @@ impl AppHost {
         if find.is_empty() {
             return Vec::new();
         }
-        let pattern = match Pattern::build(find, case, whole, regex) {
+        let pattern = match Pattern::build(find, case, whole, regex, false) {
             Ok(p) => p,
             Err(_) => return Vec::new(), // a half-typed `/R` regex just yields no hits yet
         };
@@ -6768,6 +6769,7 @@ impl AppHost {
                 spec.case_sensitive = last.case_sensitive;
                 spec.whole_word = last.whole_word;
                 spec.regex = last.regex;
+                spec.perl = last.perl;
             } else {
                 spec.find = self.last_search.clone();
             }
@@ -6779,9 +6781,10 @@ impl AppHost {
         self.last_search = find.clone();
         self.last_spec = Some(spec.clone());
 
-        // Compile once (a bad `/R` regex is a trappable usage error).
-        let pattern = Pattern::build(&find, spec.case_sensitive, spec.whole_word, spec.regex)
-            .map_err(XplError::trappable)?;
+        // Compile once (a bad `/R`/`/P` regex is a trappable usage error).
+        let pattern =
+            Pattern::build(&find, spec.case_sensitive, spec.whole_word, spec.regex, spec.perl)
+                .map_err(XplError::trappable)?;
 
         // Interactive change-verify (`CV`): open a walk; the GUI drives it.
         if spec.verify {
@@ -9739,7 +9742,7 @@ impl Host for AppHost {
                 if needle.is_empty() {
                     return Ok(Value::str("CARETALL: nothing to match".to_string()));
                 }
-                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex, false)
                     .map_err(|e| XplError::trappable(format!("CARETALL: {e}")))?;
                 // Search the whole document, or confine to the current selection with /S.
                 let (lo, hi) = if in_selection {
@@ -9782,7 +9785,7 @@ impl Host for AppHost {
                 if needle.is_empty() {
                     return Ok(Value::str("CARETNEXT: nothing to match".to_string()));
                 }
-                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex, false)
                     .map_err(|e| XplError::trappable(format!("CARETNEXT: {e}")))?;
                 // Search forward from just past the LAST caret; wrap to the top if nothing follows.
                 let b = self.active().buffer();
@@ -9822,7 +9825,7 @@ impl Host for AppHost {
                     return Ok(Value::str("CARETSKIP: no current match to skip".to_string()));
                 }
                 let needle = b.selection_text();
-                let pat = Pattern::build(&needle, case_sensitive, whole, regex)
+                let pat = Pattern::build(&needle, case_sensitive, whole, regex, false)
                     .map_err(|e| XplError::trappable(format!("CARETSKIP: {e}")))?;
                 // Look forward from the END of the current (primary) match; wrap at EOF.
                 let from = b.selection_span().map(|(_, e)| e).unwrap_or_else(|| b.cursor());
@@ -11500,7 +11503,7 @@ impl Host for AppHost {
                 // is left unchanged so the user can correct it.
                 if regex {
                     if let Some(p) = phrase.as_deref().filter(|p| !p.is_empty()) {
-                        if Pattern::build(p, false, false, true).is_err() {
+                        if Pattern::build(p, false, false, true, false).is_err() {
                             return Err(XplError::trappable(format!(
                                 "EMPH/R: invalid regular expression: {p}"
                             )));
