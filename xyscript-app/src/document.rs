@@ -34,6 +34,12 @@ fn next_content_gen() -> u64 {
     CONTENT_GEN.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Byte margin tokenized on each side of the visible window by [`Document::refresh_highlights`]. Big
+/// enough that a document this size or smaller is highlighted whole (so small files and tests are
+/// unchanged), and that a few screens of scrolling reuse the cache; small enough that a re-tokenize of
+/// the window stays cheap on a multi-megabyte file.
+const HL_WINDOW_PAD: usize = 64 * 1024;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -286,8 +292,19 @@ pub struct Document {
     /// default). Selected by file type when highlighting is turned on.
     highlighter: Option<Highlighter>,
     /// Cached highlight tokens for the current buffer (empty when off). Refreshed
-    /// after every text mutation; byte offsets into the UTF-8 source.
+    /// after every text mutation; byte offsets into the UTF-8 source. For a large
+    /// document these cover only a WINDOW (see `hl_covered`), not the whole file.
     tokens: Vec<Token>,
+    /// The DECODED range the GUI wants highlighted (its visible span). `None` until the renderer
+    /// reports one — then `refresh_highlights` tokenizes only a padded, line-snapped window around it
+    /// instead of the whole (possibly huge) document. See [`Document::ensure_highlights`].
+    hl_window: Option<(usize, usize)>,
+    /// The DECODED range `tokens` actually covers (the padded window that was last tokenized), so a
+    /// scroll within it needs no recompute. `None` when highlighting is off or nothing is cached.
+    hl_covered: Option<(usize, usize)>,
+    /// The content `gen` at which `tokens` were computed — a mismatch with `gen` means an edit landed
+    /// and the window must be re-tokenized.
+    hl_gen: u64,
     /// Per-selection FOREGROUND colour spans (`FGCOLOR`/`MD` on a selection): `(start, end, rgb)` in
     /// ROPE-byte offsets (like `Op.at`, so `record` tracks them across edits). Sorted, non-overlapping.
     /// Converted to decoded offsets for the renderer by `color_spans_decoded`. Persisted to the doc's
@@ -432,6 +449,9 @@ impl Clone for Document {
             label: self.label.clone(),
             highlighter: self.highlighter.clone(),
             tokens: self.tokens.clone(),
+            hl_window: self.hl_window,
+            hl_covered: self.hl_covered,
+            hl_gen: self.hl_gen,
             color_spans: self.color_spans.clone(),
             bg_spans: self.bg_spans.clone(),
             attr_spans: self.attr_spans.clone(),
@@ -471,6 +491,9 @@ impl Default for Document {
             label: None,
             highlighter: None, // quiet screen by default
             tokens: Vec::new(),
+            hl_window: None,
+            hl_covered: None,
+            hl_gen: 0,
             color_spans: Vec::new(),
             bg_spans: Vec::new(),
             attr_spans: Vec::new(),
@@ -1053,12 +1076,50 @@ impl Document {
         self.buffer.set_caret(cursor, anchor);
     }
 
-    /// Recompute the highlight cache from the current source (no-op when off).
+    /// Recompute the highlight cache — but only over a WINDOW, not the whole document. The window is
+    /// the GUI's visible range (`hl_window`) when known, else centered on the caret (so a headless or
+    /// pre-render pass is bounded too); it is padded and snapped to whole lines. This keeps the cost
+    /// per edit (and per open) proportional to the screen, not the file — a 7 MB file no longer
+    /// re-tokenizes in full on every keystroke. A document smaller than the padding is covered whole,
+    /// so small files (and every test) behave exactly as before. The grammar is strictly per-line and
+    /// stateless, so tokenizing an arbitrary line span is correct with no cross-line context.
     fn refresh_highlights(&mut self) {
-        match &self.highlighter {
-            Some(h) => self.tokens = h.highlight(&self.buffer.text()),
-            None => self.tokens.clear(),
+        if self.highlighter.is_none() {
+            self.tokens.clear();
+            self.hl_covered = None;
+            self.hl_gen = self.gen;
+            return;
         }
+        let (clo, chi) = self.hl_window.unwrap_or_else(|| {
+            let c = self.buffer.decoded_offset(self.buffer.cursor());
+            (c, c)
+        });
+        let (src, base, end) = self.buffer.windowed_lines(clo, chi, HL_WINDOW_PAD);
+        let mut toks = self.highlighter.as_ref().unwrap().highlight(&src);
+        for t in &mut toks {
+            t.start += base;
+            t.end += base;
+        }
+        self.tokens = toks;
+        self.hl_covered = Some((base, end));
+        self.hl_gen = self.gen;
+    }
+
+    /// Ensure the highlight cache covers the DECODED range `[dec_lo, dec_hi]` (the renderer's visible
+    /// span), retokenizing that window only if the content changed since the last pass or the range
+    /// isn't already covered. Called each frame by the GUI before it reads [`highlights`](Document::
+    /// highlights); cheap (a no-op) while the view sits still over already-lit text.
+    pub fn ensure_highlights(&mut self, dec_lo: usize, dec_hi: usize) {
+        if self.highlighter.is_none() {
+            return;
+        }
+        let fresh = self.hl_gen == self.gen;
+        let covered = self.hl_covered.is_some_and(|(lo, hi)| dec_lo >= lo && dec_hi <= hi);
+        if fresh && covered {
+            return;
+        }
+        self.hl_window = Some((dec_lo, dec_hi));
+        self.refresh_highlights();
     }
 
     /// The current selection as a `(start, end)` ROPE-byte range, or `None` when there's no
@@ -3263,6 +3324,51 @@ mod tests {
             kind: "spelling".into(),
             message: String::new(),
         }
+    }
+
+    #[test]
+    fn highlighting_is_windowed_on_a_large_document() {
+        use crate::highlight::{Highlighter, TokenKind};
+        // ~450 KB of headings — well past HL_WINDOW_PAD (64 KB), so the whole file must NOT tokenize.
+        let text = "# Heading here\n".repeat(30_000);
+        let total = text.len();
+        let mut d = Document::from_str(&text);
+        d.set_highlighter(Some(Highlighter::Markdown)); // refresh: a bounded window around the caret
+
+        // The first pass covers a bounded window (around wherever the caret landed), NOT the whole file.
+        let (clo, chi) = d.hl_covered.expect("covered range is set once highlighting is on");
+        assert!(chi - clo < total, "covered span must be a window, not the whole {total} bytes");
+        assert!(chi - clo <= 2 * HL_WINDOW_PAD + 64, "window is ~the pad, not the file");
+
+        // Scroll to the TOP: a window at 0 is tokenized on demand.
+        d.ensure_highlights(0, 100);
+        let (tlo, thi) = d.hl_covered.unwrap();
+        assert_eq!(tlo, 0, "the top window begins at 0");
+        assert!(thi < total, "still a window, not the whole file");
+        assert!(!d.highlights().is_empty(), "headings at the top are lit");
+        assert!(
+            d.highlights().iter().all(|t| t.start >= tlo && t.end <= thi),
+            "every token lies inside the covered window"
+        );
+
+        // Scroll to the middle: the cache retokenizes a window THERE (still bounded).
+        let mid = total / 2;
+        d.ensure_highlights(mid, mid + 100);
+        let (clo2, chi2) = d.hl_covered.unwrap();
+        assert!(clo2 <= mid && mid + 100 <= chi2, "covers the requested middle window");
+        assert!(chi2 - clo2 < total / 2, "still a bounded window, not the whole file");
+        assert!(
+            d.highlights()
+                .iter()
+                .any(|t| t.kind == TokenKind::Heading && t.start >= mid && t.end <= chi2),
+            "a heading in the middle is now lit"
+        );
+
+        // A small document is still covered whole (unchanged behaviour for normal files + tests).
+        let mut small = Document::from_str("# a\ntext\n# b\n");
+        small.set_highlighter(Some(Highlighter::Markdown));
+        let (slo, shi) = small.hl_covered.unwrap();
+        assert_eq!((slo, shi), (0, small.buffer().len()), "small file: whole-document window");
     }
 
     /// Live underlines must ride along with edits. Before this, the marks kept the offsets they were

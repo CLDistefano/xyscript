@@ -3413,6 +3413,10 @@ impl GuiApp {
         self.refresh_url(); // and the URLHIGHLIGHT match set
         let lo = win.start_decoded;
         let hi = win.start_decoded + win.decoded_len;
+        // Highlight only what's on screen: make sure the token cache covers this window (a windowed,
+        // cheap retokenize when the view scrolled off the cached span or the content changed) before
+        // reading it. Keeps highlighting a big file proportional to the screen, not the file size.
+        self.editor.ensure_highlights(lo, hi);
         let wt: Vec<Token> = self
             .editor
             .highlights()

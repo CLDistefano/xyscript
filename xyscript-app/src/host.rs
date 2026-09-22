@@ -4204,6 +4204,13 @@ impl AppHost {
         &self.docs[self.active]
     }
 
+    /// Ensure the active document's highlight cache covers the DECODED range `[dec_lo, dec_hi]` (the
+    /// renderer's visible span) — windowed retokenize only when the view moved off the cached span or
+    /// the content changed. The GUI calls this each frame before reading the tokens.
+    pub fn ensure_highlights(&mut self, dec_lo: usize, dec_hi: usize) {
+        self.docs[self.active].ensure_highlights(dec_lo, dec_hi);
+    }
+
     /// The document at tab index `idx` (read-only) — for inspecting a non-active tab (highlighter,
     /// path, render override).
     pub fn document_at(&self, idx: usize) -> &Document {

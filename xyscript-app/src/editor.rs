@@ -210,9 +210,16 @@ impl Editor {
         self.host.active_doc().path().map(|p| p.to_path_buf())
     }
 
-    /// The active document's highlight tokens (empty when highlighting is off).
+    /// The active document's highlight tokens (empty when highlighting is off). For a large file these
+    /// cover only the windowed region last requested via [`ensure_highlights`](Editor::ensure_highlights).
     pub fn highlights(&self) -> &[crate::highlight::Token] {
         self.host.active_doc().highlights()
+    }
+    /// Ensure the active document's highlight cache covers the DECODED range `[dec_lo, dec_hi]` — the
+    /// renderer's visible span. Windowed: retokenizes only when the view scrolled off the cached span
+    /// or the content changed, so big files stay responsive. Call before reading `highlights()`.
+    pub fn ensure_highlights(&mut self, dec_lo: usize, dec_hi: usize) {
+        self.host.ensure_highlights(dec_lo, dec_hi);
     }
     /// The active document's transient FGCOLOR-on-selection colour spans, in DECODED-byte offsets
     /// (aligned with `highlights()`), each `(start, end, rgb)`. Empty when none are set.

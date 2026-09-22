@@ -975,6 +975,22 @@ impl Buffer {
         (self.slice(rope_lo, rope_hi), self.decoded_offset(rope_lo))
     }
 
+    /// Decode the smallest span of WHOLE LINES that covers the decoded range `[dec_lo, dec_hi]` padded
+    /// by ~`pad_bytes` on each side (snapped outward to line boundaries). Returns `(decoded_substring,
+    /// base_decoded_offset, end_decoded_offset)`: the substring, the decoded offset it begins at, and
+    /// the decoded offset it ends at. A per-line highlighter can tokenize just this substring and add
+    /// `base_decoded_offset` to each token's offsets. Line snapping uses the rope's byte↔line index
+    /// (cheap), so this never materializes the whole document — the point of windowed highlighting.
+    pub fn windowed_lines(&self, dec_lo: usize, dec_hi: usize, pad_bytes: usize) -> (String, usize, usize) {
+        let rlo = self.rope_offset(dec_lo.min(dec_hi)).saturating_sub(pad_bytes);
+        let rhi = (self.rope_offset(dec_lo.max(dec_hi)) + pad_bytes).min(self.rope.len());
+        let line_count = self.rope.line_count();
+        let start = self.rope.line_to_byte(self.rope.byte_to_line(rlo)); // start of rlo's line
+        let end_line = (self.rope.byte_to_line(rhi) + 1).min(line_count); // line after rhi's line
+        let end = self.rope.line_to_byte(end_line).max(start);
+        (self.slice(start, end), self.decoded_offset(start), self.decoded_offset(end))
+    }
+
     /// Set the cursor and selection anchor directly (clamped to length). Used by
     /// undo/redo to restore the caret; does not move text. Every byte offset is a
     /// valid boundary for single-byte encodings, so clamping is just `min(len)`.
