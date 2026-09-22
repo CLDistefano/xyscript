@@ -185,6 +185,15 @@ impl Editor {
     pub fn open_hex(&mut self, path: &str, hex: bool) -> Result<String, String> {
         op_status(self.host.editor_op(EditorOp::Open { path: path.to_string(), force: false, hex }))
     }
+    /// Open a file READ-ONLY (the `READ` verb), optionally in the hex view — the native Open-read-only
+    /// dialog's result path.
+    pub fn open_read(&mut self, path: &str, hex: bool) -> Result<String, String> {
+        op_status(self.host.editor_op(EditorOp::OpenReadOnly {
+            path: path.to_string(),
+            force: false,
+            hex,
+        }))
+    }
     /// Open a startup file argument, switching to an already-open copy (e.g. one `SESSION` restored)
     /// rather than surfacing the blocking "already open?" prompt. See `AppHost::open_startup_file`.
     pub fn open_startup_file(&mut self, path: &str) -> Result<String, String> {

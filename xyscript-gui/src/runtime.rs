@@ -187,7 +187,7 @@ fn run_file_dialog(
     use crate::PendingDialog;
     let base = rfd::FileDialog::new().set_parent(window);
     match req {
-        PendingDialog::Open { hex, dir, extra_exts } => {
+        PendingDialog::Open { hex, dir, extra_exts, read_only: _ } => {
             // Seed the start folder on the first open ($CWD); later opens pass `None` so the OS
             // reopens at its last-used directory.
             let base = if let Some(dir) = dir { base.set_directory(dir) } else { base };

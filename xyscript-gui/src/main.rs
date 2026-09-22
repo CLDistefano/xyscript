@@ -484,7 +484,8 @@ enum PendingDialog {
     /// `dir` seeds the dialog's start folder (the FIRST open uses `$CWD`; later opens pass `None`
     /// so the OS reopens at the last-used directory).
     /// `extra_exts` are the user's `TEXTFILES` additions to the "Text files" filter.
-    Open { hex: bool, dir: Option<std::path::PathBuf>, extra_exts: Vec<String> },
+    /// `read_only` opens the pick with `READ` (locked) instead of `OPEN`, so both share the filter.
+    Open { hex: bool, dir: Option<std::path::PathBuf>, extra_exts: Vec<String>, read_only: bool },
     SaveAs,
     Export,
     Run { save: bool, filter: Option<(String, Vec<String>)>, template: String, dir: Option<std::path::PathBuf> },
@@ -508,8 +509,10 @@ enum MenuAct {
     New,
     /// Save — to the current path, or prompt for one if untitled.
     Save,
-    /// Pick a file to open (text/markdown filter).
+    /// Pick a file to open (text-files filter).
     PickOpen,
+    /// Pick a file to open READ-ONLY — same text-files filter as `PickOpen`, but locks the tab.
+    PickReadOnly,
     /// Pick a destination for Save As (markdown filter).
     PickSaveAs,
     /// Pick a destination for the PDF export.
@@ -7643,7 +7646,6 @@ impl GuiApp {
             _ => "EMPH/R ".to_string(),
         };
         use MenuAct::*;
-        let txtmd: Option<(&str, &[&str])> = Some(("Text / Markdown", &["md", "markdown", "txt"]));
         let xpl_f: Option<(&str, &[&str])> = Some(("XPL script", &["xpl"]));
         let cfg_f: Option<(&str, &[&str])> = Some(("XPL config", &["xpl"]));
         let kbd_f: Option<(&str, &[&str])> = Some(("Keyboard", &["kbd"]));
@@ -7660,7 +7662,7 @@ impl GuiApp {
             m_sub(self.tr("menubar.file", "File"), vec![
                 m_act(self.tr("menu.file.new", "New"), New),
                 m_act(self.tr("menu.file.open", "Open…"), PickOpen),
-                m_act(self.tr("menu.file.open_readonly", "Open read-only…"), pick(false, txtmd, "READ {}")),
+                m_act(self.tr("menu.file.open_readonly", "Open read-only…"), PickReadOnly),
                 m_item(self.tr("menu.file.reopen", "Reopen closed…"), "REOPEN"),
                 m_item(self.tr("menu.file.revert", "Revert to saved"), "REC"),
                 MenuNode::Sep,
@@ -8201,7 +8203,11 @@ impl GuiApp {
                 }
             }
             MenuAct::PickOpen => {
-                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec() });
+                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec(), read_only: false });
+                None
+            }
+            MenuAct::PickReadOnly => {
+                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec(), read_only: true });
                 None
             }
             MenuAct::PickSaveAs => {
@@ -8262,11 +8268,16 @@ impl GuiApp {
             return; // cancelled — nothing else to do
         };
         match req {
-            PendingDialog::Open { hex, .. } => {
+            PendingDialog::Open { hex, read_only, .. } => {
                 // A file was picked — from now on let the OS reopen at the last-used directory
                 // instead of re-seeding $CWD.
                 self.open_dialog_picked = true;
-                let r = self.editor.open_hex(&p.to_string_lossy(), hex);
+                let path = p.to_string_lossy();
+                let r = if read_only {
+                    self.editor.open_read(&path, hex)
+                } else {
+                    self.editor.open_hex(&path, hex)
+                };
                 self.reset_view();
                 self.note(r);
             }
@@ -9394,7 +9405,7 @@ impl GuiApp {
             self.pending_dialog = Some(PendingDialog::SaveAs);
         }
         if let Some(hex) = self.editor.take_open_request() {
-            self.pending_dialog = Some(PendingDialog::Open { hex, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec() });
+            self.pending_dialog = Some(PendingDialog::Open { hex, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec(), read_only: false });
         }
         // `FIND` requests the non-modal Find/Replace dialog (e.g. a bound key or the command line).
         if self.editor.take_find_request() {
