@@ -245,6 +245,15 @@ impl Editor {
     pub fn highlight_bg_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
         self.host.highlight_bg_color(kind)
     }
+    /// The MODE attributes (`HLMODE`, an `ATTR_*` bitset) set for a highlight token kind, or `None`.
+    pub fn highlight_mode(&self, kind: &crate::highlight::TokenKind) -> Option<u8> {
+        self.host.highlight_mode(kind)
+    }
+    /// Syntax-highlight token MODE spans (`HLMODE`) for the active document, in RAW rope-byte offsets,
+    /// `(start, end, bits)` — fed through the same underline/reverse rect machinery as the `MDA` layer.
+    pub fn highlight_mode_spans_raw(&self) -> Vec<(usize, usize, u8)> {
+        self.host.highlight_mode_spans_raw()
+    }
     /// The active document's `MDA` text-attribute spans (`(start, end, bits)`) in DECODED-byte offsets
     /// — the renderer maps the bits to glyph weight/slant (bold/italic).
     pub fn attr_spans(&self) -> Vec<(usize, usize, u8)> {
@@ -3129,6 +3138,42 @@ mod tests {
         e.run_command("HLCOLOR/BG comment 9 9 9");
         e.run_command("THEME dark");
         assert_eq!(e.highlight_bg_color(&TokenKind::Comment), None, "THEME clears bg");
+    }
+
+    #[test]
+    fn hlmode_sets_reads_saves_and_resets() {
+        use crate::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_UNDERLINE};
+        use crate::highlight::TokenKind;
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // Multiple keywords combine into one bitset; independent of the kind's colour.
+        e.run_command("HLCOLOR keyword 10 20 30");
+        e.run_command("HLMODE keyword BO UL");
+        assert_eq!(e.highlight_mode(&TokenKind::Keyword), Some(ATTR_BOLD | ATTR_UNDERLINE));
+        assert_eq!(e.highlight_color(&TokenKind::Keyword), Some((10, 20, 30)), "mode is independent of colour");
+        // A pre-combined keyword works too.
+        e.run_command("HLMODE comment BI");
+        assert_eq!(e.highlight_mode(&TokenKind::Comment), Some(ATTR_BOLD | ATTR_ITALIC));
+
+        // SAVECFG round-trips the mode as compact keywords.
+        e.run_command("CAPTURE cfg SAVECFG");
+        let m: std::collections::HashMap<String, String> = e.breakpoint_vars().into_iter().collect();
+        let cfg = m.get("CFG").cloned().unwrap_or_default();
+        assert!(cfg.contains("HLMODE keyword BO UL"), "mode emitted: {cfg}");
+        assert!(cfg.contains("HLMODE comment BO IT"), "combined mode emitted as keywords: {cfg}");
+
+        // NM (and `default`) clears; the colour is untouched.
+        e.run_command("HLMODE keyword NM");
+        assert_eq!(e.highlight_mode(&TokenKind::Keyword), None);
+        assert_eq!(e.highlight_color(&TokenKind::Keyword), Some((10, 20, 30)));
+
+        // HLRESET and THEME both clear all modes.
+        e.run_command("HLMODE keyword RV");
+        e.run_command("HLRESET");
+        assert_eq!(e.highlight_mode(&TokenKind::Keyword), None, "HLRESET clears modes");
+        e.run_command("HLMODE comment IT");
+        e.run_command("THEME dark");
+        assert_eq!(e.highlight_mode(&TokenKind::Comment), None, "THEME clears modes");
     }
 
     #[test]

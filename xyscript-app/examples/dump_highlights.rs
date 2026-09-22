@@ -30,13 +30,15 @@ fn main() {
         let text = e.document().decoded_region(t.start, t.end).0;
         let fg = e.highlight_color(&t.kind);
         let bg = e.highlight_bg_color(&t.kind);
+        let mode = e.highlight_mode(&t.kind).unwrap_or(0);
         println!(
-            "{:>4}..{:<4} {:<12} fg={:<15} bg={:<15} {:?}",
+            "{:>4}..{:<4} {:<12} fg={:<15} bg={:<15} mode={:<4} {:?}",
             t.start,
             t.end,
             t.kind.name(),
             format!("{fg:?}"),
             format!("{bg:?}"),
+            mode,
             text,
         );
     }

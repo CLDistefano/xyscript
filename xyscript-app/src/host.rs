@@ -399,6 +399,25 @@ fn mda_attr_names(a: u8) -> String {
     parts.join(" ")
 }
 
+/// The compact `MDA`/`HLMODE` keyword(s) for an attribute bitset (`BO IT UL RV`), space-joined — the
+/// form `HLMODE` parses back, so `SAVECFG` round-trips a mode. Empty for no bits.
+fn mda_attr_keywords(a: u8) -> String {
+    let mut parts = Vec::new();
+    if a & xyscript_xpl::ATTR_BOLD != 0 {
+        parts.push("BO");
+    }
+    if a & xyscript_xpl::ATTR_ITALIC != 0 {
+        parts.push("IT");
+    }
+    if a & xyscript_xpl::ATTR_UNDERLINE != 0 {
+        parts.push("UL");
+    }
+    if a & xyscript_xpl::ATTR_REVERSE != 0 {
+        parts.push("RV");
+    }
+    parts.join(" ")
+}
+
 /// Parse one `at <start> <end> <bits>` attribute line. `None` on any malformed/zero-width/empty field.
 fn parse_xymeta_attr(line: &str) -> Option<(usize, usize, u8)> {
     let mut it = line.split_whitespace();
@@ -2962,6 +2981,10 @@ pub struct AppHost {
     /// Opt-in and empty by default (no kind has a background), unlike `highlight_theme`; a kind absent
     /// here has no background. `HLCOLOR/BG` edits it; `HLRESET` and `THEME` clear it.
     highlight_bg: std::collections::HashMap<crate::highlight::TokenKind, (u8, u8, u8)>,
+    /// Syntax-highlight MODE theme: token kind → `ATTR_*` bitset (bold/italic/underline/reverse), the
+    /// complement of the colour for a highlighting rule. Opt-in and empty by default; a kind absent here
+    /// has no attributes. `HLMODE` edits it; `HLRESET` and `THEME` clear it.
+    highlight_mode: std::collections::HashMap<crate::highlight::TokenKind, u8>,
     /// User-defined regex grammars (`HLLANG`/`HLRULE`), SHARED with every document (so a doc can
     /// resolve its own highlighter by extension on open/reload). `HIGHLIGHT on` resolves against
     /// this first, falling back to the built-in Markdown highlighter.
@@ -3260,6 +3283,7 @@ impl AppHost {
             dw_font_style: None,
             highlight_theme: crate::highlight::default_highlight_theme(),
             highlight_bg: std::collections::HashMap::new(),
+            highlight_mode: std::collections::HashMap::new(),
             highlight_grammars: std::rc::Rc::new(std::cell::RefCell::new(
                 crate::highlight::GrammarRegistry::default(),
             )),
@@ -3470,6 +3494,30 @@ impl AppHost {
             })
             .collect()
     }
+    /// The active MODE attributes (`HLMODE`, an `ATTR_*` bitset) for a token kind, or `None` when the
+    /// kind has none (the common case — modes are opt-in). The renderer folds the bits into the glyphs
+    /// (bold/italic) and underline/reverse rects, exactly as `MDA` block attributes do.
+    pub fn highlight_mode(&self, kind: &crate::highlight::TokenKind) -> Option<u8> {
+        self.highlight_mode.get(kind).copied()
+    }
+    /// Mode-attribute spans for the ACTIVE document as `(rope_start, rope_end, bits)` — one per token
+    /// whose kind carries an `HLMODE`, for the GUI to feed the same underline/reverse rect machinery as
+    /// `MDA`. Empty (and cheap) when no kind has a mode. Token offsets are DECODED, converted to rope.
+    pub fn highlight_mode_spans_raw(&self) -> Vec<(usize, usize, u8)> {
+        if self.highlight_mode.is_empty() {
+            return Vec::new();
+        }
+        let doc = self.active_doc();
+        let buf = doc.buffer();
+        doc.highlights()
+            .iter()
+            .filter_map(|t| {
+                self.highlight_mode
+                    .get(&t.kind)
+                    .map(|&bits| (buf.rope_offset(t.start), buf.rope_offset(t.end), bits))
+            })
+            .collect()
+    }
     /// The token kinds shown by `HLKINDS`, in display order: the built-ins (chart order) followed by
     /// any grammar-defined / themed extras (sorted). Shared by `highlight_kinds` (labels) and
     /// `highlight_kind_colors` (colours) so the two stay perfectly aligned.
@@ -3519,6 +3567,7 @@ impl AppHost {
                 self.txt_bg_color = DEF_TXT_BG_COLOR;
                 self.highlight_theme = crate::highlight::default_highlight_theme();
                 self.highlight_bg.clear(); // backgrounds are opt-in; a theme defines the fg palette only
+                self.highlight_mode.clear(); // modes are opt-in too
                 Ok("light")
             }
             "dark" => {
@@ -3540,6 +3589,7 @@ impl AppHost {
                 self.txt_bg_color = (30, 30, 34);
                 self.highlight_theme = crate::highlight::dark_highlight_theme();
                 self.highlight_bg.clear(); // backgrounds are opt-in; a theme defines the fg palette only
+                self.highlight_mode.clear(); // modes are opt-in too
                 Ok("dark")
             }
             _ => Err(format!("THEME: unknown theme {:?} (try light|dark)", name.trim())),
@@ -9108,6 +9158,23 @@ impl AppHost {
         for (name, (r, g, b)) in custom_bg {
             put(&mut s, "Highlight background colour (grammar kind)", format!("HLCOLOR/BG {name} {r} {g} {b}"));
         }
+        // Syntax-highlight MODE attributes (`HLMODE`) — opt-in, so emit every kind that has one:
+        // built-ins in chart order, then custom kinds sorted, like the colour blocks.
+        for kind in crate::highlight::TokenKind::ALL {
+            if let Some(&bits) = self.highlight_mode.get(&kind) {
+                put(&mut s, "Highlight text attributes", format!("HLMODE {} {}", kind.name(), mda_attr_keywords(bits)));
+            }
+        }
+        let mut custom_mode: Vec<(String, u8)> = self
+            .highlight_mode
+            .iter()
+            .filter(|(k, _)| !crate::highlight::TokenKind::ALL.contains(k))
+            .map(|(k, v)| (k.name().to_string(), *v))
+            .collect();
+        custom_mode.sort();
+        for (name, bits) in custom_mode {
+            put(&mut s, "Highlight text attributes (grammar kind)", format!("HLMODE {name} {}", mda_attr_keywords(bits)));
+        }
         // Regex grammars (`HLLANG` + its `HLRULE`s) — re-runnable definitions, so reopening restores
         // them. HLLANG resets the grammar, so re-running this script is idempotent.
         for g in self.highlight_grammars.borrow().grammars() {
@@ -12479,9 +12546,24 @@ impl Host for AppHost {
                     }
                 }
             }
+            EditorOp::SetHighlightMode { kind, bits } => {
+                let k = crate::highlight::TokenKind::from_name(&kind);
+                let label = k.name().to_string();
+                match bits {
+                    Some(b) => {
+                        self.highlight_mode.insert(k, b);
+                        return Ok(Value::str(format!("highlight {label} mode = {}", mda_attr_names(b))));
+                    }
+                    None => {
+                        self.highlight_mode.remove(&k);
+                        return Ok(Value::str(format!("highlight {label} mode = (none)")));
+                    }
+                }
+            }
             EditorOp::ResetHighlightTheme => {
                 self.highlight_theme = crate::highlight::default_highlight_theme();
                 self.highlight_bg.clear(); // backgrounds are opt-in — reset removes them all
+                self.highlight_mode.clear(); // modes are opt-in too — reset clears them
                 return Ok(Value::str("highlight theme reset"));
             }
             EditorOp::DefineHighlightLang { name, exts } => {

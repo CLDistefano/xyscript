@@ -3646,6 +3646,15 @@ impl GuiApp {
         for &(s, e, bits) in &attr_disp {
             cattrs[s..e.min(n)].iter_mut().for_each(|slot| *slot = bits);
         }
+        // Syntax-highlight token MODE attributes (`HLMODE`): OR each kind's bold/italic/underline/
+        // reverse bits into the per-glyph attrs, so a highlighted kind can carry a text style like an
+        // `MDA` block. `|=` so it combines with any MDA attributes over the same text. Underline and
+        // reverse also get rects in `raster` (below), like MDA; bold/italic ride the AttrsList here.
+        for t in &wt {
+            if let Some(bits) = self.editor.highlight_mode(&t.kind) {
+                cattrs[t.start..t.end.min(n)].iter_mut().for_each(|slot| *slot |= bits);
+            }
+        }
         // `MDA RV` reverse video: paint the glyph in the current BGCOLOR (the background rect is drawn
         // in FGCOLOR in `raster`). Dynamic — reads the live editor colours, so it stays inverted across
         // a theme change. Applied LAST so a reversed run always reads as inverted.
@@ -4710,12 +4719,20 @@ impl GuiApp {
             }
             out
         };
-        // `MDA RV` reverse-video backgrounds — a rect in the current FGCOLOR behind each reversed span
-        // (the glyphs are painted in BGCOLOR above). Same bottom layer as `md_bg_rects`.
+        // MDA block attributes PLUS syntax-highlight token modes (`HLMODE`), in rope offsets — both feed
+        // the underline + reverse-video rect machinery identically (bold/italic already rode the glyphs
+        // above). Concatenated once so a kind's `HLMODE UL`/`RV` draws exactly like an `MDA` block.
+        let attr_raw_all: Vec<(usize, usize, u8)> = {
+            let mut v = self.editor.attr_spans_raw();
+            v.extend(self.editor.highlight_mode_spans_raw());
+            v
+        };
+        // `MDA RV` / `HLMODE RV` reverse-video backgrounds — a rect in the current FGCOLOR behind each
+        // reversed span (the glyphs are painted in BGCOLOR above). Same bottom layer as `md_bg_rects`.
         let mut mda_reverse_rects: Vec<(i32, i32, i32, i32)> = {
             let rv_bit = xyscript_app::document::ATTR_REVERSE;
             let mut out = Vec::new();
-            for (ms, me, bits) in self.editor.attr_spans_raw() {
+            for &(ms, me, bits) in &attr_raw_all {
                 if bits & rv_bit == 0 {
                     continue;
                 }
@@ -4737,7 +4754,7 @@ impl GuiApp {
             let ul_spaces = self.editor.ul_spaces();
             let doc_idx = self.editor.active_index();
             let mut out = Vec::new();
-            for (ms, me, bits) in self.editor.attr_spans_raw() {
+            for &(ms, me, bits) in &attr_raw_all {
                 if bits & ul_bit == 0 {
                     continue;
                 }

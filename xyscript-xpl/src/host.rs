@@ -801,6 +801,10 @@ pub enum EditorOp {
     /// `HLCOLOR[/BG] <kind> <r g b|default>` — set (or clear, `None`) a token kind's foreground colour,
     /// or its BACKGROUND band when `bg` (the `/BG` switch).
     SetHighlightColor { kind: String, color: Option<(u8, u8, u8)>, bg: bool },
+    /// `HLMODE <kind> <BO|IT|BI|UL|BU|RV|NM>` — set (or clear, `None` = `NM`) a token kind's persistent
+    /// TEXT ATTRIBUTES (bold / italic / underline / reverse, an `ATTR_*` bitset), the complement of
+    /// `HLCOLOR` for a highlighting rule.
+    SetHighlightMode { kind: String, bits: Option<u8> },
     /// `HLRESET` — restore the built-in default highlight theme.
     ResetHighlightTheme,
     /// `HLLANG <name> <.ext1,.ext2>` — declare (or RESET, so re-running a grammar script is

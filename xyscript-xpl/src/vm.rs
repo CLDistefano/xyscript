@@ -3758,6 +3758,36 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetHighlightColor { kind: kind.to_string(), color, bg })?;
                 Ok(Flow::Next)
             }
+            // `HLMODE <kind> <BO|IT|BI|UL|BU|RV>` — persistent TEXT ATTRIBUTES for a token kind (the
+            // complement of HLCOLOR). Multiple keywords combine (`HLMODE kw BO UL`); `NM`/`default`
+            // clears. Same keywords as `MDA`.
+            "HLMODE" => {
+                let t = args.trim();
+                let (kind, rest) = t.split_once(char::is_whitespace).unwrap_or((t, ""));
+                if kind.is_empty() {
+                    return Err(XplError::trappable("HLMODE: <kind> <BO|IT|BI|UL|BU|RV|NM>"));
+                }
+                let rest = rest.trim();
+                let bits = if rest.is_empty() || rest.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    let mut acc: Option<u8> = None;
+                    for word in rest.split_whitespace() {
+                        match crate::host::parse_mda_attr(word) {
+                            Some(Some(b)) => acc = Some(acc.unwrap_or(0) | b),
+                            Some(None) => acc = None, // NM / NORMAL clears
+                            None => {
+                                return Err(XplError::trappable(format!(
+                                    "HLMODE: unknown attribute {word:?} (BO|IT|BI|UL|BU|RV|NM)"
+                                )))
+                            }
+                        }
+                    }
+                    acc
+                };
+                self.host_op(EditorOp::SetHighlightMode { kind: kind.to_string(), bits })?;
+                Ok(Flow::Next)
+            }
             "HLRESET" => {
                 self.host_op(EditorOp::ResetHighlightTheme)?;
                 Ok(Flow::Next)

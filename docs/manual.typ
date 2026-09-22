@@ -2742,6 +2742,7 @@ There are three ways to change a color:
 / *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. The three numbers each run #raw("0")–#raw("255"); there are no color names or hex codes. Add #raw("/HSL") to give hue / saturation / lightness instead.
 / *Switching one off*: #raw("HLCOLOR <kind> default") drops that kind's color so it draws in the ordinary text color.
 / *A background*: #raw("HLCOLOR/BG <kind> <R G B>") paints a colored band *behind* that kind's glyphs — say #raw("HLCOLOR/BG comment 245 245 210") to tint every comment. It is separate from the foreground (a kind can have both), off by default, and #raw("HLCOLOR/BG <kind> default") removes it. #raw("/HSL") works here too.
+/ *A text style*: #raw("HLMODE <kind> <BO|IT|BI|UL|BU|RV>") makes every span of that kind bold, italic, underlined, or reverse-video — the same keywords as #raw("MDA"), and the complement of a color. Several combine (#raw("HLMODE keyword BO UL")), it is independent of the color (a kind can be colored *and* styled), and #raw("HLMODE <kind> NM") clears it. For example #raw("HLMODE comment IT") italicizes comments and #raw("HLMODE keyword BO") bolds keywords.
 
 #ex("HLCOLOR heading 200 40 40
 HLCOLOR comment 120 120 120
