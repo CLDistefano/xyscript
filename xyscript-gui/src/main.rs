@@ -586,6 +586,22 @@ fn m_tog(label: impl std::fmt::Display, on: bool, cmd: impl Into<String>) -> Men
     m_item(format!("{mark}{label}"), cmd)
 }
 
+/// The `HLMODE` command that sets token `kind`'s text attributes to exactly `bits` — compact keywords
+/// (`BO IT UL RV`), or `NM` to clear. Used by the per-kind Text-style menu toggles, which each pass the
+/// current bits XOR the one they flip.
+fn hlmode_cmd(kind: &str, bits: u8) -> String {
+    use xyscript_app::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
+    if bits == 0 {
+        return format!("HLMODE {kind} NM");
+    }
+    let mut kw: Vec<&str> = Vec::new();
+    if bits & ATTR_BOLD != 0 { kw.push("BO"); }
+    if bits & ATTR_ITALIC != 0 { kw.push("IT"); }
+    if bits & ATTR_UNDERLINE != 0 { kw.push("UL"); }
+    if bits & ATTR_REVERSE != 0 { kw.push("RV"); }
+    format!("HLMODE {kind} {}", kw.join(" "))
+}
+
 /// The six spelling/grammar underline styles as a submenu — a ✔-marked toggle per style that runs
 /// `<verb> <name>` (e.g. `SPELLSTYLE squiggle-thick`). `current` is the live `$SPELLSTYLE`-style name.
 fn style_choices(verb: &str, current: &str) -> Vec<MenuNode> {
@@ -8067,16 +8083,27 @@ impl GuiApp {
                     // the live kind list; the per-kind labels are the (generated) token-kind names — not
                     // translated.
                     m_sub(self.tr("menu.settings.syntax.theme_colors", "Theme colors"), {
+                        use xyscript_app::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
                         let l_text = self.tr("menu.settings.syntax.text_color", "Text color…");
                         let l_bg = self.tr("menu.settings.syntax.bg_color", "Background…");
+                        let l_bold = self.tr("menu.settings.syntax.bold", "Bold");
+                        let l_italic = self.tr("menu.settings.syntax.italic", "Italic");
+                        let l_underline = self.tr("menu.settings.syntax.underline", "Underline");
+                        let l_reverse = self.tr("menu.settings.syntax.reverse", "Reverse video");
                         ed.highlight_kinds()
                             .into_iter()
                             .map(|k| {
+                                // The kind's live text attributes (HLMODE); each toggle flips one bit.
+                                let m = ed.highlight_mode(&TokenKind::from_name(&k)).unwrap_or(0);
                                 m_sub(
                                     format!("{}…", cap_first(&k)),
                                     vec![
                                         m_item(l_text.clone(), format!("HLCOLORS {k}")),
                                         m_item(l_bg.clone(), format!("HLCOLORS/BG {k}")),
+                                        m_tog(&l_bold, m & ATTR_BOLD != 0, hlmode_cmd(&k, m ^ ATTR_BOLD)),
+                                        m_tog(&l_italic, m & ATTR_ITALIC != 0, hlmode_cmd(&k, m ^ ATTR_ITALIC)),
+                                        m_tog(&l_underline, m & ATTR_UNDERLINE != 0, hlmode_cmd(&k, m ^ ATTR_UNDERLINE)),
+                                        m_tog(&l_reverse, m & ATTR_REVERSE != 0, hlmode_cmd(&k, m ^ ATTR_REVERSE)),
                                     ],
                                 )
                             })
