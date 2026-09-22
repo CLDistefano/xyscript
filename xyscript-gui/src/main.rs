@@ -483,7 +483,8 @@ enum PendingDialog {
     /// `hex` = open the picked file in the hex view (`OPEN/HEX` with no path).
     /// `dir` seeds the dialog's start folder (the FIRST open uses `$CWD`; later opens pass `None`
     /// so the OS reopens at the last-used directory).
-    Open { hex: bool, dir: Option<std::path::PathBuf> },
+    /// `extra_exts` are the user's `TEXTFILES` additions to the "Text files" filter.
+    Open { hex: bool, dir: Option<std::path::PathBuf>, extra_exts: Vec<String> },
     SaveAs,
     Export,
     Run { save: bool, filter: Option<(String, Vec<String>)>, template: String, dir: Option<std::path::PathBuf> },
@@ -8200,7 +8201,7 @@ impl GuiApp {
                 }
             }
             MenuAct::PickOpen => {
-                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir() });
+                self.pending_dialog = Some(PendingDialog::Open { hex: false, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec() });
                 None
             }
             MenuAct::PickSaveAs => {
@@ -9393,7 +9394,7 @@ impl GuiApp {
             self.pending_dialog = Some(PendingDialog::SaveAs);
         }
         if let Some(hex) = self.editor.take_open_request() {
-            self.pending_dialog = Some(PendingDialog::Open { hex, dir: self.open_dialog_dir() });
+            self.pending_dialog = Some(PendingDialog::Open { hex, dir: self.open_dialog_dir(), extra_exts: self.editor.text_file_exts().to_vec() });
         }
         // `FIND` requests the non-modal Find/Replace dialog (e.g. a bound key or the command line).
         if self.editor.take_find_request() {

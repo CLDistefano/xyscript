@@ -521,6 +521,11 @@ impl Editor {
     pub fn cwd_path(&self) -> std::path::PathBuf {
         self.host.cwd_path()
     }
+    /// The user's extra text-file extensions (`TEXTFILES`) — the GUI appends these to the built-in set
+    /// its File ▸ Open "Text files" filter matches.
+    pub fn text_file_exts(&self) -> &[String] {
+        self.host.text_file_exts()
+    }
     /// Set `$CWD` directly (the `--cwd` CLI flag; `DUPVIEW/W` restores the parent's working directory
     /// after the child boots in the exe directory).
     pub fn set_cwd(&mut self, dir: std::path::PathBuf) {
@@ -3138,6 +3143,28 @@ mod tests {
         e.run_command("HLCOLOR/BG comment 9 9 9");
         e.run_command("THEME dark");
         assert_eq!(e.highlight_bg_color(&TokenKind::Comment), None, "THEME clears bg");
+    }
+
+    #[test]
+    fn textfiles_extends_the_open_filter_and_round_trips() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // Comma/space list, dots optional, lowercased + deduped.
+        e.run_command("TEXTFILES .TXA, txb .txa");
+        assert_eq!(e.text_file_exts(), &["txa".to_string(), "txb".to_string()]);
+        assert_eq!(e.special_str("TEXTFILES"), ".txa,.txb");
+
+        // SAVECFG round-trips it.
+        e.run_command("CAPTURE cfg SAVECFG");
+        let m: std::collections::HashMap<String, String> = e.breakpoint_vars().into_iter().collect();
+        assert!(m.get("CFG").cloned().unwrap_or_default().contains("TEXTFILES .txa,.txb"), "emitted");
+
+        // `default` clears; bare reports (no change).
+        e.run_command("TEXTFILES default");
+        assert!(e.text_file_exts().is_empty());
+        e.run_command("TEXTFILES");
+        assert!(e.text_file_exts().is_empty(), "bare TEXTFILES only reports");
+        assert_eq!(e.special_str("TEXTFILES"), "");
     }
 
     #[test]

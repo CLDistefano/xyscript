@@ -900,6 +900,10 @@ pub enum EditorOp {
     SetPathPlace(PathPlace),
     /// Set the max width (chars) of the displayed `$CWD` path (`PATHLEN n`). Read back via `$PATHLEN`.
     SetPathLen(usize),
+    /// `TEXTFILES <.ext,…>` — the user's EXTRA text-file extensions, appended to the built-in set the
+    /// File ▸ Open dialog's "Text files" filter matches. `Some(list)` replaces them (an empty list, from
+    /// `TEXTFILES default`, clears); `None` reports the current list. Read back via `$TEXTFILES`.
+    SetTextFileExts(Option<Vec<String>>),
     /// `HISTORY`/`HI [arg]` — ask the GUI to open the command-history picker. `arg` filters the
     /// listing: a number = the last N commands, any other non-empty text = commands containing it,
     /// empty = all. The host records the request; the GUI drains + applies it.

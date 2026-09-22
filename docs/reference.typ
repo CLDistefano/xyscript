@@ -438,7 +438,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 
 == Files
 
-/ #cmd("NEW", "NE"): a new empty (or named) buffer. #cmd("OPEN", "CA", "ED", "EDIT"): open a file. #cmd("READ"): open read-only. #cmd("DUPVIEW"): a second view of the current file (`/W` in its own window). #cmd("BEDIT"): edit invisibly (for scripts). #cmd("BCLOSE"): close that invisible buffer.
+/ #cmd("NEW", "NE"): a new empty (or named) buffer. #cmd("OPEN", "CA", "ED", "EDIT"): open a file. #cmd("READ"): open read-only. #cmd("DUPVIEW"): a second view of the current file (`/W` in its own window). #cmd("BEDIT"): edit invisibly (for scripts). #cmd("BCLOSE"): close that invisible buffer. #cmd("TEXTFILES"): widen the Open dialog's text-file filter.
 / #cmd("SAVE", "SA") / #cmd("SAAS", "SAVEAS") / #cmd("SAD"): save / save-as-and-adopt / save just the selection.
 / #cmd("ST") / #cmd("SF") / #cmd("SL"): save then close the tab / save and close all / save every modified buffer.
 / #cmd("REC", "RECALL"): revert to the last saved state. #cmd("RO"): the read-only lock. #cmd("AUTOSAVE"): the autosave interval. #cmd("AUTOREOPEN"): auto-reload a file changed on disk.
@@ -923,6 +923,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("PANECOLOR", "PANECOLORS"): the border color drawn around the FOCUSED split pane — `PANECOLOR <r g b>` (`/HSL`; `…S` opens a picker). Inactive panes use the separator color (#cmd("SEPCOLOR")). Read back via #sv("PANECOLOR"); re-set by #cmd("THEME"); persists in the config. See the split-pane verbs #cmd("THS")/#cmd("TVS").
 / #cmd("PASTE"): paste the clipboard at the caret. With a multi-caret set: if the clipboard was filled by a multi-caret #cmd("COPY")/#cmd("CUT") whose piece count equals the current caret count, each piece is DISTRIBUTED to its caret in document order; otherwise the whole clipboard is pasted at every caret. An external (OS) clipboard change resets to paste-the-same.
 / #cmd("PATHLEN"): max width (characters) of the displayed `$CWD` path — `PATHLEN n` (bare reports it). A longer path keeps the drive and the trailing directories, eliding the middle with `...`; hovering the truncated path shows the full one in a tooltip. Read back via `$PATHLEN`; persists in the config.
+/ #cmd("TEXTFILES"): extra extensions the *File ▸ Open* dialog's "Text files" filter matches, on top of the built-in set (`txt`, `md`, `xpl`, `json`, `rs`, `html`, … and dozens more) — `TEXTFILES .txa,.txb` (a comma or space list; the dots are optional). This only widens that convenience filter; `OPEN <path>` opens *any* file regardless of extension (encoding is detected from the content), and the dialog's "All files" entry is always there too. Bare `TEXTFILES` reports the current additions; `TEXTFILES default` (or `none`) clears them. Read back via `$TEXTFILES`; persists in the config.
 / #cmd("PICK", "CHOOSE"): pop a list chooser and put the picked item in a variable — `PICK <var> ["title"] <list-expr>` (the list is an expression yielding an array; `/I` returns the 1-based index instead of the item). Cancelling leaves the variable empty and sets `$ERROR`. Arrow/type-to-find to choose; Enter picks, Esc cancels.
 / #cmd("PR"): print to the status line / script output. #cmd("PUT"): the same, but insert the (substituted) text at the caret instead.
 / #cmd("PUTSUM"): cursor addition — insert the running total (#sv("RUNSUM")) at the caret, formatted with #cmd("DECIMALS"). Recorded (undoable). Build the total with #cmd("CLRSUM") (reset) and #cmd("ADDSUM") (add the number under the caret), then `PUTSUM` drops it into the text.
@@ -1472,6 +1473,7 @@ Every special variable in one list, for quick lookup.
 / #sv("PAPLACE"): where the `$CWD` path is shown — `cmline` or `status` (set with `PAPLACE`).
 / #sv("PAFGCOLOR") / #sv("PABGCOLOR"): the `$CWD` path text / background color (empty = default: dimmed UI text / transparent). Set with `PAFGCOLOR`/`PABGCOLOR`.
 / #sv("PATHLEN"): max display width (chars) of the `$CWD` path (set with `PATHLEN`).
+/ #sv("TEXTFILES"): the extra text-file extensions (set with `TEXTFILES`), as `.ext,.ext` (empty when none added).
 / #sv("PS"): persistent-selection mode on.
 / #sv("PV"): preview pane visible.
 / #sv("RC"): last shell command's exit code.

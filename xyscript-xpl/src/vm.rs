@@ -4476,6 +4476,27 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetPathLen(n))?;
                 Ok(Flow::Next)
             }
+            // `TEXTFILES <.ext,…>` — extra text-file extensions for the File ▸ Open "Text files" filter.
+            // Bare reports; `default`/`none` clears; otherwise a comma/space list (dots optional). `$TEXTFILES`.
+            "TEXTFILES" => {
+                let t = args.trim();
+                let action = if t.is_empty() {
+                    None // report
+                } else if t.eq_ignore_ascii_case("default") || t.eq_ignore_ascii_case("none") {
+                    Some(Vec::new()) // clear
+                } else {
+                    let mut exts: Vec<String> = Vec::new();
+                    for tok in t.split([',', ' ', '\t', ';']) {
+                        let e = tok.trim().trim_start_matches('.').to_ascii_lowercase();
+                        if !e.is_empty() && !exts.contains(&e) {
+                            exts.push(e);
+                        }
+                    }
+                    Some(exts)
+                };
+                self.host_op(EditorOp::SetTextFileExts(action))?;
+                Ok(Flow::Next)
+            }
             // Deletion buffer + strict delete.
             "RD" => {
                 self.host_op(EditorOp::RubDelete)?;

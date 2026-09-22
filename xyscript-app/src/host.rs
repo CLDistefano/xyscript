@@ -2781,6 +2781,10 @@ pub struct AppHost {
     path_place: PathPlace,
     /// Max width (chars) of the displayed `$CWD` path before it's truncated (`PATHLEN`; `$PATHLEN`).
     path_len: usize,
+    /// User-added text-file extensions (`TEXTFILES`; `$TEXTFILES`), lowercased and dot-stripped —
+    /// appended to the built-in list the File ▸ Open dialog's "Text files" filter matches. Empty by
+    /// default (`OPEN <path>` opens any file regardless; this only widens the dialog's convenience filter).
+    text_file_exts: Vec<String>,
     /// Whether the command line is blanked after a command runs from it (`CMBLANK`; `$CMBLANK`).
     /// Off (default) keeps the command for re-running / editing (XyWrite B23).
     cmline_blank: bool,
@@ -3318,6 +3322,7 @@ impl AppHost {
             status_line_top: false, // default: status at the bottom edge
             path_place: PathPlace::Status,
             path_len: 45,
+            text_file_exts: Vec::new(),
             cmline_blank: false,
             caret_visual: false,
             show_one_tab: false,
@@ -3736,6 +3741,11 @@ impl AppHost {
     /// Max width (chars) of the displayed `$CWD` path (`PATHLEN`/`$PATHLEN`).
     pub fn path_len(&self) -> usize {
         self.path_len
+    }
+    /// The user's extra text-file extensions (`TEXTFILES`), lowercased and dot-stripped — the GUI
+    /// appends these to the built-in list its File ▸ Open "Text files" filter matches.
+    pub fn text_file_exts(&self) -> &[String] {
+        &self.text_file_exts
     }
     /// Whether the command line is blanked after a command runs from it (`CMBLANK`/`$CMBLANK`).
     pub fn cmline_blank(&self) -> bool {
@@ -9116,6 +9126,17 @@ impl AppHost {
         put(&mut s, "Underline the spaces between words in MDA underline styling -- on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path -- max display width in characters", format!("PATHLEN {}", self.path_len));
+        {
+            // Extra text-file extensions for the File ▸ Open "Text files" filter (the built-in set is
+            // always matched too). Emitted even when empty (`default`) so the setting is visible.
+            let line = if self.text_file_exts.is_empty() {
+                "TEXTFILES default".to_string()
+            } else {
+                let joined = self.text_file_exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(",");
+                format!("TEXTFILES {joined}")
+            };
+            put(&mut s, "Extra extensions the File > Open text-file filter matches -- .ext,.ext (default = built-in set only)", line);
+        }
         // Syntax-highlight theme — emit only the kinds that differ from the built-in defaults:
         // a recolour `HLCOLOR <kind> r g b`, a clear `HLCOLOR <kind> default`, or a grammar-defined
         // (custom) kind `HLCOLOR <kind> r g b`. Built-ins first (stable chart order), then custom
@@ -12964,6 +12985,23 @@ impl Host for AppHost {
                 self.path_len = n.max(1); // never zero — a length of 0 would hide the path entirely
                 return Ok(Value::str(format!("path length: {}", self.path_len)));
             }
+            EditorOp::SetTextFileExts(list) => {
+                let report = |exts: &[String]| {
+                    if exts.is_empty() {
+                        "text-file extensions: (built-in set only)".to_string()
+                    } else {
+                        let joined = exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(",");
+                        format!("text-file extensions (added to the built-in set): {joined}")
+                    }
+                };
+                match list {
+                    Some(exts) => {
+                        self.text_file_exts = exts;
+                        return Ok(Value::str(report(&self.text_file_exts)));
+                    }
+                    None => return Ok(Value::str(report(&self.text_file_exts))), // bare TEXTFILES = report
+                }
+            }
             EditorOp::SetCaretShape(shape) => {
                 self.caret_shape = shape;
                 return Ok(Value::str(format!("caret shape: {}", shape.name())));
@@ -13795,6 +13833,9 @@ impl Host for AppHost {
             "MAILDEBUG" => Some(Value::Int(0)),
             "PAPLACE" => Some(Value::str(self.path_place.name())),
             "PATHLEN" => Some(Value::Int(self.path_len as i64)),
+            "TEXTFILES" => Some(Value::str(
+                self.text_file_exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(","),
+            )),
             // The active document's line-ending style (`LF`/`CRLF`).
             "NEWLINE" => Some(Value::str(doc.line_ending().label())),
             // The active document's line-ending CHARACTERS (`\n` or `\r\n`) — the character twin of

@@ -1089,6 +1089,14 @@ the open copy (#raw("$GOTOOPEN") reads the state, #raw("SaveCfg") remembers it; 
 prompt). #raw("READ") skips that question a different way and always opens a fresh read-only copy, so
 you can keep several views of the same file open at once.
 
+A bare #raw("OPEN") (or #raw("File ▸ Open…")) pops the native file dialog. Its "Text files" filter matches
+a broad built-in set of extensions — #raw("txt"), #raw("md"), #raw("xpl"), #raw("json"), #raw("rs"),
+#raw("html"), and dozens more — with an "All files" entry alongside. If you keep documents under an
+extension the filter doesn't know, widen it with #raw("TEXTFILES .txa,.txb") (a comma or space list, dots
+optional); bare #raw("TEXTFILES") reports the additions and #raw("TEXTFILES default") clears them
+(#raw("$TEXTFILES") reads them, #raw("SaveCfg") remembers them). This only affects the dialog's filter —
+#raw("OPEN <name>") opens *any* file whatever its extension, guessing the text encoding from the bytes.
+
 *Two views of one file.* When you want to see two parts of a long file at once — reference the top while
 editing the bottom, say — #raw("DUPVIEW") opens a *second view* of the current file, positioned at the
 line you are on. A bare #raw("DUPVIEW") opens it as another tab (a separate view with its own cursor and

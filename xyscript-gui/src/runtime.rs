@@ -187,17 +187,20 @@ fn run_file_dialog(
     use crate::PendingDialog;
     let base = rfd::FileDialog::new().set_parent(window);
     match req {
-        PendingDialog::Open { hex, dir } => {
+        PendingDialog::Open { hex, dir, extra_exts } => {
             // Seed the start folder on the first open ($CWD); later opens pass `None` so the OS
             // reopens at its last-used directory.
             let base = if let Some(dir) = dir { base.set_directory(dir) } else { base };
+            // The "Text files" filter matches the built-in set PLUS the user's `TEXTFILES` additions.
+            let mut text_exts: Vec<&str> = TEXT_EXTENSIONS.to_vec();
+            text_exts.extend(extra_exts.iter().map(|s| s.as_str()));
             // A `/HEX` open is usually a binary, so lead with the All-files filter there.
             if *hex {
                 base.add_filter("All files", &["*"])
-                    .add_filter("Text files", TEXT_EXTENSIONS)
+                    .add_filter("Text files", &text_exts)
                     .pick_file()
             } else {
-                base.add_filter("Text files", TEXT_EXTENSIONS)
+                base.add_filter("Text files", &text_exts)
                     .add_filter("All files", &["*"])
                     .pick_file()
             }
