@@ -175,17 +175,92 @@ const TEXT_EXTENSIONS: &[&str] = &[
 /// Windows filter spec stays short enough for `IFileDialog` to apply it. Well under any plausible limit.
 const MAX_FILTER_EXTS: usize = 32;
 
-/// Run a native file dialog for `req`, parented to `window` so the OS makes it *owner-modal*. Blocks
-/// until the user chooses or cancels; returns the picked path (or `None`). Called from
-/// `about_to_wait` — never from inside the egui frame — so the modal loop can't re-enter `run_ui`
-/// and deadlock egui's Context.
+/// A native file dialog running on its own thread (Windows): the channel the picked path arrives on,
+/// and the request to apply it to. See [`Handler::about_to_wait`], which starts it non-blocking so the
+/// owner-modal handshake can't deadlock (a blocking `join` on the main thread did — it stops pumping the
+/// owner window's messages, which the cross-thread modal needs).
+struct DialogJob {
+    rx: std::sync::mpsc::Receiver<Option<std::path::PathBuf>>,
+    req: crate::PendingDialog,
+}
+
+/// A parent window handle carried to the dialog thread on Windows. `winit::Window` isn't `Send`, but a
+/// bare `HWND` (`isize`) is; this rebuilds the `raw-window-handle` traits `rfd` needs so the dialog is
+/// still owner-modal to the main window from another thread.
+#[cfg(windows)]
+struct ParentWindow {
+    hwnd: isize,
+}
+
+#[cfg(windows)]
+impl winit::raw_window_handle::HasWindowHandle for ParentWindow {
+    fn window_handle(
+        &self,
+    ) -> Result<winit::raw_window_handle::WindowHandle<'_>, winit::raw_window_handle::HandleError> {
+        use winit::raw_window_handle::{HandleError, RawWindowHandle, Win32WindowHandle, WindowHandle};
+        let hwnd = std::num::NonZeroIsize::new(self.hwnd).ok_or(HandleError::Unavailable)?;
+        // SAFETY: the HWND belongs to the main window, which outlives the dialog thread.
+        Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(Win32WindowHandle::new(hwnd))) })
+    }
+}
+
+#[cfg(windows)]
+impl winit::raw_window_handle::HasDisplayHandle for ParentWindow {
+    fn display_handle(
+        &self,
+    ) -> Result<winit::raw_window_handle::DisplayHandle<'_>, winit::raw_window_handle::HandleError> {
+        use winit::raw_window_handle::{DisplayHandle, RawDisplayHandle, WindowsDisplayHandle};
+        Ok(unsafe { DisplayHandle::borrow_raw(RawDisplayHandle::Windows(WindowsDisplayHandle::new())) })
+    }
+}
+
+/// The main window's raw `HWND`, for parenting a dialog run on another thread.
+#[cfg(windows)]
+fn main_hwnd(window: &winit::window::Window) -> Option<isize> {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match window.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(w) => Some(w.hwnd.get()),
+        _ => None,
+    }
+}
+
+/// Build + show the dialog for `req` on the Windows dialog thread, owner-modal to `hwnd`. Blocks THIS
+/// (worker) thread until the user chooses/cancels; the main thread meanwhile keeps pumping, so the
+/// modal handshake completes.
+#[cfg(windows)]
+fn run_file_dialog_threaded(
+    req: &crate::PendingDialog,
+    hwnd: Option<isize>,
+    default_typst: bool,
+) -> Option<std::path::PathBuf> {
+    let base = match hwnd {
+        Some(h) => rfd::FileDialog::new().set_parent(&ParentWindow { hwnd: h }),
+        None => rfd::FileDialog::new(),
+    };
+    dialog_pick(req, base, default_typst)
+}
+
+/// Run a native file dialog for `req` on the CURRENT thread, parented to `window` (owner-modal). Blocks
+/// until the user chooses or cancels. Used on non-Windows, where file dialogs MUST run on the main
+/// thread; Windows runs [`run_file_dialog_threaded`] on a worker instead (see `about_to_wait`).
+#[cfg(not(windows))]
 fn run_file_dialog(
     req: &crate::PendingDialog,
     window: &winit::window::Window,
     default_typst: bool,
 ) -> Option<std::path::PathBuf> {
-    use crate::PendingDialog;
     let base = rfd::FileDialog::new().set_parent(window);
+    dialog_pick(req, base, default_typst)
+}
+
+/// Apply `req`'s filters to an already-parented `base` dialog and show it (blocking). Shared by the
+/// main-thread path and (on Windows) the dialog worker thread.
+fn dialog_pick(
+    req: &crate::PendingDialog,
+    base: rfd::FileDialog,
+    default_typst: bool,
+) -> Option<std::path::PathBuf> {
+    use crate::PendingDialog;
     match req {
         PendingDialog::Open { hex, dir, extra_exts, read_only: _ } => {
             // Seed the start folder on the first open ($CWD); later opens pass `None` so the OS
@@ -334,6 +409,9 @@ struct Handler {
     surface_px: Option<(u32, u32)>,
     /// When egui asked for the next repaint (for caret blink, IME, etc.).
     repaint_at: Option<Instant>,
+    /// A native file dialog running on its own thread (Windows), delivered non-blocking so the main
+    /// loop keeps pumping while it's open. `None` = no dialog in flight.
+    dialog_job: Option<DialogJob>,
     /// The separate `TXT` window, when a script is paused on a `TXT` dialog.
     txt: Option<TxtWindow>,
     /// The separate `DIR/W` listing window (`None` = closed).
@@ -394,6 +472,7 @@ impl Handler {
             painter: None,
             surface_px: None,
             repaint_at: None,
+            dialog_job: None,
             txt: None,
             txt_pos: None,
             txt_size: None,
@@ -2920,17 +2999,48 @@ impl ApplicationHandler for Handler {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // A menu / key action requested a native file dialog. Run it HERE — outside the egui frame
-        // and outside any window-event dispatch — parented to the main window so the OS makes it
-        // owner-modal: while it is open, clicks on the main window are refused (it stays put) and
-        // clicking another application still switches to it. Running it inline mid-frame re-entered
-        // `run_ui` and deadlocked egui's Context (the freeze).
+        // Native file dialogs. On Windows the dialog runs on its OWN thread, started non-blocking here:
+        // the main loop keeps pumping while it's open (so the owner-modal cross-thread handshake can't
+        // deadlock — a blocking join did), and the picked path is delivered back over a channel and
+        // applied on a later `about_to_wait`. wgpu's DXGI factory hooks the main thread's message queue,
+        // which stops a same-thread modal dialog from re-enumerating on a filter change; its own thread
+        // has a clean queue. Elsewhere, dialogs MUST run on the main thread, so they run inline (as
+        // before — outside the egui frame so they can't re-enter `run_ui` and deadlock egui's Context).
         if let Some(window) = self.window.clone() {
-            if let Some(req) = self.app.take_pending_dialog() {
-                let default_typst = self.app.active_is_typst();
-                let picked = run_file_dialog(&req, window.as_ref(), default_typst);
-                self.app.apply_dialog_result(req, picked);
-                window.request_redraw();
+            // Deliver a finished dialog first.
+            if let Some(job) = self.dialog_job.as_ref() {
+                match job.rx.try_recv() {
+                    Ok(picked) => {
+                        let job = self.dialog_job.take().unwrap();
+                        self.app.apply_dialog_result(job.req, picked);
+                        window.request_redraw();
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => self.dialog_job = None,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {} // still open
+                }
+            }
+            // Start a new one only when none is in flight (owner-modal already blocks the UI that would
+            // request another, but guard anyway).
+            if self.dialog_job.is_none() {
+                if let Some(req) = self.app.take_pending_dialog() {
+                    let default_typst = self.app.active_is_typst();
+                    #[cfg(windows)]
+                    {
+                        let hwnd = main_hwnd(window.as_ref());
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        let req_thread = req.clone();
+                        std::thread::spawn(move || {
+                            let _ = tx.send(run_file_dialog_threaded(&req_thread, hwnd, default_typst));
+                        });
+                        self.dialog_job = Some(DialogJob { rx, req });
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let picked = run_file_dialog(&req, window.as_ref(), default_typst);
+                        self.app.apply_dialog_result(req, picked);
+                        window.request_redraw();
+                    }
+                }
             }
         }
         // A `LOADKBD` (via Ctrl+L or the cmline) swaps the keymap on the editor; mirror it
@@ -3004,6 +3114,13 @@ impl ApplicationHandler for Handler {
             }
             Some(t) => event_loop.set_control_flow(ControlFlow::WaitUntil(t)),
             None => event_loop.set_control_flow(ControlFlow::Wait),
+        }
+        // While a native file dialog is open on its own thread, keep waking (~30 ms) so we poll its
+        // result channel promptly — otherwise `Wait` would sleep until an unrelated event.
+        if self.dialog_job.is_some() {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + std::time::Duration::from_millis(30),
+            ));
         }
     }
 }
