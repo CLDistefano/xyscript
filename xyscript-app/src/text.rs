@@ -991,6 +991,12 @@ impl Buffer {
         (self.slice(start, end), self.decoded_offset(start), self.decoded_offset(end))
     }
 
+    /// The decoded (UTF-8) length of the whole buffer — the end of the decoded-offset space. The
+    /// incremental highlighter tracks this to derive an edit's decoded delta (new len − old len).
+    pub fn decoded_len(&self) -> usize {
+        self.decoded_offset(self.rope.len())
+    }
+
     /// Set the cursor and selection anchor directly (clamped to length). Used by
     /// undo/redo to restore the caret; does not move text. Every byte offset is a
     /// valid boundary for single-byte encodings, so clamping is just `min(len)`.

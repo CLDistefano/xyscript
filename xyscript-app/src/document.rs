@@ -40,12 +40,6 @@ fn next_content_gen() -> u64 {
 /// the window stays cheap on a multi-megabyte file.
 const HL_WINDOW_PAD: usize = 64 * 1024;
 
-/// How many highlighted windows [`Document`] keeps at once. More than one so that split panes viewing
-/// the SAME large document at different scroll positions each keep their window lit without evicting
-/// the other's every frame; small so the cached-token memory stays bounded. A handful covers realistic
-/// pane counts.
-const HL_MAX_WINDOWS: usize = 4;
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -297,20 +291,28 @@ pub struct Document {
     /// The active syntax highlighter, if any. `None` = off (the quiet-screen
     /// default). Selected by file type when highlighting is turned on.
     highlighter: Option<Highlighter>,
-    /// Cached highlight tokens for the current buffer (empty when off). Refreshed
-    /// after every text mutation; byte offsets into the UTF-8 source. For a large
-    /// document these cover only a WINDOW (see `hl_covered`), not the whole file.
+    /// Cached highlight tokens for the current buffer (empty when off), sorted by start and covering the
+    /// contiguous DECODED range `[hl_lo, hl_hi]`. For a large document this is only a WINDOW around the
+    /// view, not the whole file, and it's maintained INCREMENTALLY: an edit re-tokenizes just the changed
+    /// line(s) ([`note_edit`](Document::note_edit)) and a scroll extends the covered range
+    /// ([`ensure_highlights`](Document::ensure_highlights)) — never the whole window per keystroke.
     tokens: Vec<Token>,
     /// The DECODED range the GUI last wanted highlighted (its visible span). `None` until the renderer
     /// reports one — then `refresh_highlights` tokenizes only a padded, line-snapped window around it
     /// instead of the whole (possibly huge) document. See [`Document::ensure_highlights`].
     hl_window: Option<(usize, usize)>,
-    /// The cached highlighted windows: each a `(base, end, tokens)` — a padded, line-snapped DECODED
-    /// range that was tokenized and its tokens. Up to [`HL_MAX_WINDOWS`] are kept (LRU, oldest first)
-    /// so split panes over the same doc don't evict each other every frame; flattened into `tokens`.
-    hl_cache: Vec<(usize, usize, Vec<Token>)>,
-    /// The content `gen` at which the cache was computed — a mismatch with `gen` means an edit landed
-    /// and every cached window's offsets are stale.
+    /// The contiguous DECODED range `tokens` currently covers (line-aligned). Valid only when `hl_valid`.
+    hl_lo: usize,
+    hl_hi: usize,
+    /// The buffer's decoded length when the cache was last synced — subtract from the current decoded
+    /// length to get an edit's decoded delta (for shifting tokens after the edit) without decoding the
+    /// changed bytes.
+    hl_doc_len: usize,
+    /// Whether `tokens`/`hl_lo`/`hl_hi` are usable. Cleared when an edit lands outside the covered range
+    /// (or highlighting is off); [`ensure_highlights`](Document::ensure_highlights) then rebuilds.
+    hl_valid: bool,
+    /// The content `gen` at which the cache was last synced — a mismatch with `gen` means an edit landed
+    /// that the incremental path didn't handle, so the cache is stale and must be rebuilt.
     hl_gen: u64,
     /// Per-selection FOREGROUND colour spans (`FGCOLOR`/`MD` on a selection): `(start, end, rgb)` in
     /// ROPE-byte offsets (like `Op.at`, so `record` tracks them across edits). Sorted, non-overlapping.
@@ -457,7 +459,10 @@ impl Clone for Document {
             highlighter: self.highlighter.clone(),
             tokens: self.tokens.clone(),
             hl_window: self.hl_window,
-            hl_cache: self.hl_cache.clone(),
+            hl_lo: self.hl_lo,
+            hl_hi: self.hl_hi,
+            hl_doc_len: self.hl_doc_len,
+            hl_valid: self.hl_valid,
             hl_gen: self.hl_gen,
             color_spans: self.color_spans.clone(),
             bg_spans: self.bg_spans.clone(),
@@ -499,7 +504,10 @@ impl Default for Document {
             highlighter: None, // quiet screen by default
             tokens: Vec::new(),
             hl_window: None,
-            hl_cache: Vec::new(),
+            hl_lo: 0,
+            hl_hi: 0,
+            hl_doc_len: 0,
+            hl_valid: false,
             hl_gen: 0,
             color_spans: Vec::new(),
             bg_spans: Vec::new(),
@@ -1083,12 +1091,13 @@ impl Document {
         self.buffer.set_caret(cursor, anchor);
     }
 
-    /// Tokenize ONE window around the decoded range `[lo, hi]` — padded and snapped to whole lines by
-    /// [`windowed_lines`](crate::text::Buffer::windowed_lines) — and return the covered decoded range
-    /// `(base, end)` plus the tokens (offsets already absolute). Bounded work: the point of windowed
-    /// highlighting. Caller must have checked the highlighter is `Some`.
-    fn tokenize_window(&self, lo: usize, hi: usize) -> (usize, usize, Vec<Token>) {
-        let (src, base, end) = self.buffer.windowed_lines(lo, hi, HL_WINDOW_PAD);
+    /// Tokenize the whole-line span covering decoded `[lo, hi]` (via
+    /// [`windowed_lines`](crate::text::Buffer::windowed_lines) with `pad`) and return `(base, end,
+    /// tokens)` — the covered decoded range and its tokens, offsets already absolute. Caller must have
+    /// checked the highlighter is `Some`. `base`/`end` are line boundaries, so tokens never straddle
+    /// them (the grammar is per-line), which is what makes the incremental splicing below exact.
+    fn tokenize_span(&self, lo: usize, hi: usize, pad: usize) -> (usize, usize, Vec<Token>) {
+        let (src, base, end) = self.buffer.windowed_lines(lo, hi, pad);
         let mut toks = self.highlighter.as_ref().unwrap().highlight(&src);
         for t in &mut toks {
             t.start += base;
@@ -1097,25 +1106,15 @@ impl Document {
         (base, end, toks)
     }
 
-    /// Flatten the per-window cache into the single `tokens` slice that [`highlights`](Document::
-    /// highlights) hands the renderer (which filters to its own window anyway, so extra off-window
-    /// tokens are harmless).
-    fn rebuild_tokens(&mut self) {
-        self.tokens = self.hl_cache.iter().flat_map(|(_, _, t)| t.iter().cloned()).collect();
-    }
-
-    /// Recompute the highlight cache from scratch — but only over a WINDOW, not the whole document.
-    /// The window is the GUI's last visible range (`hl_window`) when known, else centered on the caret
-    /// (so a headless or pre-render pass is bounded too). This keeps the cost per edit (and per open)
-    /// proportional to the screen, not the file — a 7 MB file no longer re-tokenizes in full on every
-    /// keystroke. A document smaller than the padding is covered whole, so small files (and every test)
-    /// behave exactly as before. The grammar is strictly per-line and stateless, so tokenizing an
-    /// arbitrary line span is correct with no cross-line context. Resets the cache to this one window
-    /// (an edit shifts every other window's offsets, so they can't be kept).
+    /// Rebuild the highlight cache from scratch over a WINDOW around the view (or the caret when the GUI
+    /// hasn't reported a visible range yet) — the fallback when the incremental paths can't be used
+    /// (first light, an edit outside the covered range, a view jump). A document smaller than the padding
+    /// is covered whole, so small files and tests behave as before. The grammar is per-line and
+    /// stateless, so tokenizing an arbitrary line span is correct with no cross-line context.
     fn refresh_highlights(&mut self) {
         if self.highlighter.is_none() {
             self.tokens.clear();
-            self.hl_cache.clear();
+            self.hl_valid = false;
             self.hl_gen = self.gen;
             return;
         }
@@ -1123,42 +1122,115 @@ impl Document {
             let c = self.buffer.decoded_offset(self.buffer.cursor());
             (c, c)
         });
-        let win = self.tokenize_window(clo, chi);
-        self.hl_cache = vec![win];
-        self.rebuild_tokens();
+        let (base, end, toks) = self.tokenize_span(clo, chi, HL_WINDOW_PAD);
+        self.tokens = toks;
+        self.hl_lo = base;
+        self.hl_hi = end;
+        self.hl_doc_len = self.buffer.decoded_len();
+        self.hl_valid = true;
+        self.hl_gen = self.gen;
+    }
+
+    /// Re-highlight just the line(s) an edit touched, in place — the key to staying fast on a big file
+    /// (a keystroke re-tokenizes one line, not the whole visible window). Called from the edit sink with
+    /// the applied edit's ROPE offset and inserted byte length; the buffer is already in its new state.
+    ///
+    /// Splices the token list: tokens before the changed line(s) are untouched, tokens after shift by the
+    /// edit's decoded delta (derived from the buffer's total decoded-length change — no need to decode the
+    /// changed bytes), and the changed line(s) are re-tokenized. If the cache isn't usable or the edit
+    /// falls outside the covered range, it just invalidates so the next [`ensure_highlights`] rebuilds.
+    fn note_edit(&mut self, at_rope: usize, inserted_rope_len: usize) {
+        if self.highlighter.is_none() {
+            self.tokens.clear();
+            self.hl_valid = false;
+            self.hl_gen = self.gen;
+            return;
+        }
+        let new_doc_len = self.buffer.decoded_len();
+        if !self.hl_valid {
+            self.hl_doc_len = new_doc_len; // nothing cached; ensure_highlights will build (hl_gen stale)
+            return;
+        }
+        let at_dec = self.buffer.decoded_offset(at_rope);
+        // Only splice when the edit is inside the covered range; otherwise let ensure rebuild.
+        if at_dec < self.hl_lo || at_dec > self.hl_hi {
+            self.hl_valid = false;
+            return;
+        }
+        let delta = new_doc_len as isize - self.hl_doc_len as isize;
+        let ins_dec = self.buffer.decoded_offset(at_rope + inserted_rope_len).saturating_sub(at_dec);
+        // The whole new line(s) the edit now occupies, and the OLD range they replaced.
+        let (src, alo, ahi) = self.buffer.windowed_lines(at_dec, at_dec + ins_dec, 0);
+        let old_ahi = (ahi as isize - delta).max(0) as usize;
+        if old_ahi > self.hl_hi {
+            self.hl_valid = false; // the change reaches past the covered tail — rebuild instead
+            return;
+        }
+        let mut new_toks = self.highlighter.as_ref().unwrap().highlight(&src);
+        for t in &mut new_toks {
+            t.start += alo;
+            t.end += alo;
+        }
+        // before (ends at/at-boundary ≤ alo) ++ re-tokenized line(s) ++ after (starts ≥ old_ahi, shifted).
+        let mut out = Vec::with_capacity(self.tokens.len() + new_toks.len());
+        out.extend(self.tokens.iter().filter(|t| t.end <= alo).cloned());
+        out.extend(new_toks);
+        for t in &self.tokens {
+            if t.start >= old_ahi {
+                out.push(Token {
+                    start: (t.start as isize + delta) as usize,
+                    end: (t.end as isize + delta) as usize,
+                    kind: t.kind.clone(),
+                });
+            }
+        }
+        self.tokens = out;
+        self.hl_hi = (self.hl_hi as isize + delta).max(alo as isize) as usize;
+        self.hl_doc_len = new_doc_len;
         self.hl_gen = self.gen;
     }
 
     /// Ensure the highlight cache covers the DECODED range `[dec_lo, dec_hi]` (the renderer's visible
-    /// span), retokenizing that window only if the content changed or the range isn't already lit.
-    /// Called each frame by the GUI (per pane) before it reads [`highlights`](Document::highlights);
-    /// a no-op while the view sits still over already-lit text.
-    ///
-    /// The cache holds up to [`HL_MAX_WINDOWS`] windows, not one, so two split panes viewing the SAME
-    /// large document at different scroll positions each keep their window lit instead of evicting the
-    /// other's every frame (the thrash a single-window cache would cause). An edit invalidates them all
-    /// (offsets shift) — [`refresh_highlights`](Document::refresh_highlights) then resets to one window.
+    /// span). Called each frame by the GUI before it reads [`highlights`](Document::highlights); a no-op
+    /// while the view sits still over already-lit text. On a scroll it EXTENDS the covered range by
+    /// tokenizing only the newly-revealed lines (not the whole window); a stale cache or a far jump falls
+    /// back to a full window [`refresh_highlights`](Document::refresh_highlights).
     pub fn ensure_highlights(&mut self, dec_lo: usize, dec_hi: usize) {
         if self.highlighter.is_none() {
             return;
         }
-        if self.hl_gen != self.gen {
-            // Content changed since the cache was built: every window's offsets are stale — rebuild
-            // around this one.
-            self.hl_window = Some((dec_lo, dec_hi));
+        self.hl_window = Some((dec_lo, dec_hi));
+        // Stale (an edit the incremental path didn't handle) or never built → full rebuild.
+        if !self.hl_valid || self.hl_gen != self.gen {
             self.refresh_highlights();
             return;
         }
-        if self.hl_cache.iter().any(|&(lo, hi, _)| dec_lo >= lo && dec_hi <= hi) {
-            return; // already lit by some cached window
+        if dec_lo >= self.hl_lo && dec_hi <= self.hl_hi {
+            return; // already covered
         }
-        self.hl_window = Some((dec_lo, dec_hi));
-        let win = self.tokenize_window(dec_lo, dec_hi);
-        self.hl_cache.push(win);
-        if self.hl_cache.len() > HL_MAX_WINDOWS {
-            self.hl_cache.remove(0); // evict the oldest window
+        // A view jump with no overlap: cheaper to rebuild one window than to tokenize the huge gap.
+        if dec_hi < self.hl_lo || dec_lo > self.hl_hi {
+            self.refresh_highlights();
+            return;
         }
-        self.rebuild_tokens();
+        // Scroll: extend only past the covered edge(s), padded forward so small scrolls stay covered.
+        if dec_hi > self.hl_hi {
+            let (base, end, toks) = self.tokenize_span(self.hl_hi, dec_hi + HL_WINDOW_PAD, 0);
+            debug_assert_eq!(base, self.hl_hi, "down-extend must abut the covered tail");
+            self.tokens.extend(toks);
+            self.hl_hi = end;
+        }
+        if dec_lo < self.hl_lo {
+            // End at `hl_lo - 1` (a position in the PREVIOUS line) so the span stops exactly at the
+            // covered head's line boundary — `windowed_lines(_, hl_lo, _)` would re-include hl_lo's own
+            // line and duplicate its tokens.
+            let (base, end, mut toks) =
+                self.tokenize_span(dec_lo.saturating_sub(HL_WINDOW_PAD), self.hl_lo - 1, 0);
+            debug_assert_eq!(end, self.hl_lo, "up-extend must abut the covered head");
+            toks.append(&mut self.tokens);
+            self.tokens = toks;
+            self.hl_lo = base;
+        }
     }
 
     /// The current selection as a `(start, end)` ROPE-byte range, or `None` when there's no
@@ -3243,6 +3315,9 @@ impl Document {
         cursor_after: usize,
         anchor_after: Option<usize>,
     ) {
+        // Capture the edit's location + inserted length before `op` may be moved into `merge` below —
+        // the incremental highlighter re-tokenizes just the changed line(s) from these.
+        let (edit_at, edit_ins) = (op.at, op.inserted.len());
         self.caret_ring.clear(); // any edit invalidates the transient CARETPOP snapshots
         // Transient FGCOLOR-on-selection spans follow the edit (typing before a coloured word
         // shifts its colour along, an edit inside grows/shrinks it, a deletion over it clips it).
@@ -3263,7 +3338,7 @@ impl Document {
             if let Some(last) = self.undo.last_mut() {
                 if last.kind == kind && coalesces(last, &op) {
                     merge(last, op, cursor_after, anchor_after);
-                    self.refresh_highlights();
+                    self.note_edit(edit_at, edit_ins);
                     return;
                 }
             }
@@ -3280,7 +3355,7 @@ impl Document {
             secondary_after: Vec::new(),
         });
         self.coalescing = kind != Kind::Other;
-        self.refresh_highlights();
+        self.note_edit(edit_at, edit_ins);
     }
 }
 
@@ -3375,43 +3450,67 @@ mod tests {
         d.set_highlighter(Some(Highlighter::Markdown)); // refresh: a bounded window around the caret
 
         // The first pass covers a bounded window (around wherever the caret landed), NOT the whole file.
-        assert_eq!(d.hl_cache.len(), 1, "one window cached after the initial pass");
-        let (clo, chi, _) = d.hl_cache[0];
-        assert!(chi - clo < total, "covered span must be a window, not the whole {total} bytes");
-        assert!(chi - clo <= 2 * HL_WINDOW_PAD + 64, "window is ~the pad, not the file");
+        assert!(d.hl_valid, "cache built");
+        assert!(d.hl_hi - d.hl_lo < total, "covered span is a window, not the whole {total} bytes");
+        assert!(d.hl_hi - d.hl_lo <= 2 * HL_WINDOW_PAD + 64, "window is ~the pad, not the file");
 
         // Scroll to the TOP: a window at 0 is tokenized on demand.
         d.ensure_highlights(0, 100);
         assert!(d.highlights().iter().any(|t| t.kind == TokenKind::Heading && t.start < 64));
         assert!(!d.highlights().is_empty(), "headings at the top are lit");
 
-        // Scroll to the middle: the cache retokenizes a window THERE (still bounded), and KEEPS the top
-        // window too (two split panes over one doc mustn't evict each other).
+        // Scroll to the middle (a far jump): the covered range moves there, still bounded.
         let mid = total / 2;
         d.ensure_highlights(mid, mid + 100);
-        assert!(d.hl_cache.len() >= 2, "the top window is kept alongside the new middle one");
+        assert!(d.hl_hi - d.hl_lo < total, "still a bounded window after the jump");
         assert!(
             d.highlights().iter().any(|t| t.kind == TokenKind::Heading && t.start >= mid),
             "a heading in the middle is now lit"
         );
-        assert!(
-            d.highlights().iter().any(|t| t.kind == TokenKind::Heading && t.start < 64),
-            "the top window's headings are STILL lit (not evicted)"
-        );
-
-        // Re-requesting the top window is a pure no-op — no re-tokenize, no thrash between two panes.
-        let cache_len = d.hl_cache.len();
-        let token_count = d.highlights().len();
-        d.ensure_highlights(0, 100);
-        assert_eq!(d.hl_cache.len(), cache_len, "already-lit window: no new tokenize");
-        assert_eq!(d.highlights().len(), token_count, "already-lit window: tokens unchanged");
 
         // A small document is still covered whole (unchanged behaviour for normal files + tests).
         let mut small = Document::from_str("# a\ntext\n# b\n");
         small.set_highlighter(Some(Highlighter::Markdown));
-        assert_eq!(small.hl_cache.len(), 1);
-        let (slo, shi, _) = small.hl_cache[0];
-        assert_eq!((slo, shi), (0, small.buffer().len()), "small file: whole-document window");
+        assert_eq!((small.hl_lo, small.hl_hi), (0, small.buffer().len()), "small file: whole doc");
+    }
+
+    #[test]
+    fn incremental_edit_matches_a_full_retokenize() {
+        use crate::highlight::{Highlighter, Token, TokenKind};
+        // Sorted token signature, so within-line rule order can't spuriously fail the comparison.
+        fn sig(toks: &[Token]) -> Vec<(usize, usize, String)> {
+            let mut v: Vec<_> =
+                toks.iter().map(|t| (t.start, t.end, t.kind.name().to_string())).collect();
+            v.sort();
+            v
+        }
+        // Whole-covered (small) doc so the incremental splice path (not a rebuild) runs on the edit.
+        let mut d = Document::from_str(&"# H\nplain text here\n".repeat(40));
+        d.set_highlighter(Some(Highlighter::Markdown));
+
+        // Edit in the middle: insert a new heading line (adds a Heading, splits/reshapes a line, shifts
+        // everything after). This goes through `record` -> `note_edit` (the incremental path).
+        d.set_caret(100, None);
+        d.insert("\n## Inserted heading\nmore\n");
+        assert!(d.hl_valid, "still incrementally valid after the edit");
+
+        // The incremental result must equal a from-scratch tokenize of the final text.
+        let final_text = d.buffer().text();
+        let mut fresh = Document::from_str(&final_text);
+        fresh.set_highlighter(Some(Highlighter::Markdown));
+        assert_eq!(sig(d.highlights()), sig(fresh.highlights()), "incremental == full re-tokenize");
+        assert!(
+            d.highlights().iter().any(|t| t.kind == TokenKind::Heading && t.start > 100),
+            "the inserted heading is lit"
+        );
+
+        // A delete (removing a line) must also stay consistent.
+        d.set_caret(0, None);
+        d.replace_span(0, 4, ""); // drop the first "# H\n"
+        let final_text = d.buffer().text();
+        let mut fresh = Document::from_str(&final_text);
+        fresh.set_highlighter(Some(Highlighter::Markdown));
+        assert_eq!(sig(d.highlights()), sig(fresh.highlights()), "incremental delete == full");
     }
 
     /// Live underlines must ride along with edits. Before this, the marks kept the offsets they were
