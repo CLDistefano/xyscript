@@ -154,26 +154,26 @@ impl KeyCap {
     }
 }
 
-/// Text-like extensions the Open dialog shows by default. Broad on purpose — XyScript is a UTF-8
-/// text editor, not tied to one format — and an "All files" entry is added alongside, so anything
-/// else stays reachable. (rfd renders each as `*.<ext>`; a filter's first ext is the Save default,
-/// which doesn't matter for Open.)
+/// Text-like extensions the Open dialog shows by default — the common document/markup, data, and
+/// XyScript-own types — with an "All files" entry alongside so anything else stays reachable, and
+/// `TEXTFILES` to add more. Kept SHORT ON PURPOSE: Windows 11's file dialog (`IFileDialog`) silently
+/// ignores an over-long filter spec (rfd joins these into one `*.ext;*.ext;…` string), which made the
+/// "Text files" filter show everything and look identical to "All files" — the filter appeared not to
+/// refresh when switched. Additions go through `TEXTFILES`; the combined list is length-capped below.
 const TEXT_EXTENSIONS: &[&str] = &[
     // Documents / markup
-    "txt", "text", "md", "markdown", "mdown", "mkd", "rst", "org", "adoc", "asciidoc", "tex", "typ",
-    "log", "nfo", "me", "readme",
+    "txt", "text", "md", "markdown", "rst", "tex", "typ", "log",
     // XyScript's own files
     "xpl", "kbd", "lib", "cfg",
     // Data / config
-    "json", "jsonc", "csv", "tsv", "xml", "yaml", "yml", "toml", "ini", "conf", "config",
-    "properties", "env", "editorconfig", "diff", "patch",
+    "json", "csv", "tsv", "xml", "yaml", "yml", "toml", "ini",
     // Web / style
-    "html", "htm", "xhtml", "css", "scss", "sass", "less", "svg",
-    // Code / scripts
-    "js", "mjs", "cjs", "ts", "tsx", "jsx", "rs", "py", "rb", "pl", "php", "lua", "sh", "bash",
-    "zsh", "ps1", "bat", "cmd", "c", "h", "cpp", "hpp", "cc", "cs", "java", "kt", "go", "swift",
-    "sql", "r", "jl", "vim", "awk", "make", "mk", "cmake",
+    "html", "css",
 ];
+
+/// Cap on how many extensions the "Text files" filter carries (built-in + `TEXTFILES`), so the joined
+/// Windows filter spec stays short enough for `IFileDialog` to apply it. Well under any plausible limit.
+const MAX_FILTER_EXTS: usize = 32;
 
 /// Run a native file dialog for `req`, parented to `window` so the OS makes it *owner-modal*. Blocks
 /// until the user chooses or cancels; returns the picked path (or `None`). Called from
@@ -191,9 +191,16 @@ fn run_file_dialog(
             // Seed the start folder on the first open ($CWD); later opens pass `None` so the OS
             // reopens at its last-used directory.
             let base = if let Some(dir) = dir { base.set_directory(dir) } else { base };
-            // The "Text files" filter matches the built-in set PLUS the user's `TEXTFILES` additions.
+            // The "Text files" filter matches the built-in set PLUS the user's `TEXTFILES` additions,
+            // deduped and length-capped so the joined Windows filter spec stays short enough to apply
+            // (an over-long spec makes Win11's dialog ignore the filter — see `TEXT_EXTENSIONS`).
             let mut text_exts: Vec<&str> = TEXT_EXTENSIONS.to_vec();
-            text_exts.extend(extra_exts.iter().map(|s| s.as_str()));
+            for e in extra_exts.iter().map(|s| s.as_str()) {
+                if !text_exts.contains(&e) {
+                    text_exts.push(e);
+                }
+            }
+            text_exts.truncate(MAX_FILTER_EXTS);
             // A `/HEX` open is usually a binary, so lead with the All-files filter there.
             if *hex {
                 base.add_filter("All files", &["*"])

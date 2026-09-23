@@ -1090,8 +1090,8 @@ prompt). #raw("READ") skips that question a different way and always opens a fre
 you can keep several views of the same file open at once.
 
 A bare #raw("OPEN") (or #raw("File ▸ Open…")) pops the native file dialog. Its "Text files" filter matches
-a broad built-in set of extensions — #raw("txt"), #raw("md"), #raw("xpl"), #raw("json"), #raw("rs"),
-#raw("html"), and dozens more — with an "All files" entry alongside. If you keep documents under an
+a built-in set of common extensions — #raw("txt"), #raw("md"), #raw("xpl"), #raw("cfg"), #raw("json"),
+#raw("html"), and other document/data types — with an "All files" entry alongside. If you keep documents under an
 extension the filter doesn't know, widen it with #raw("TEXTFILES .txa,.txb") (a comma or space list, dots
 optional); bare #raw("TEXTFILES") reports the additions and #raw("TEXTFILES default") clears them
 (#raw("$TEXTFILES") reads them, #raw("SaveCfg") remembers them). This only affects the dialog's filter —
