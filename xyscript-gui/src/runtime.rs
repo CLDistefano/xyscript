@@ -184,37 +184,16 @@ struct DialogJob {
     req: crate::PendingDialog,
 }
 
-/// A parent window handle carried to the dialog thread on Windows. `winit::Window` isn't `Send`, but a
-/// bare `HWND` (`isize`) is; this rebuilds the `raw-window-handle` traits `rfd` needs so the dialog is
-/// still owner-modal to the main window from another thread.
+// Win32 window enable/foreground, for enforcing modality ourselves (see `run_file_dialog_threaded`).
+// Declared directly (no extra crate); user32 is already linked by rfd.
 #[cfg(windows)]
-struct ParentWindow {
-    hwnd: isize,
+#[link(name = "user32")]
+extern "system" {
+    fn EnableWindow(hwnd: isize, enable: i32) -> i32;
+    fn SetForegroundWindow(hwnd: isize) -> i32;
 }
 
-#[cfg(windows)]
-impl winit::raw_window_handle::HasWindowHandle for ParentWindow {
-    fn window_handle(
-        &self,
-    ) -> Result<winit::raw_window_handle::WindowHandle<'_>, winit::raw_window_handle::HandleError> {
-        use winit::raw_window_handle::{HandleError, RawWindowHandle, Win32WindowHandle, WindowHandle};
-        let hwnd = std::num::NonZeroIsize::new(self.hwnd).ok_or(HandleError::Unavailable)?;
-        // SAFETY: the HWND belongs to the main window, which outlives the dialog thread.
-        Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(Win32WindowHandle::new(hwnd))) })
-    }
-}
-
-#[cfg(windows)]
-impl winit::raw_window_handle::HasDisplayHandle for ParentWindow {
-    fn display_handle(
-        &self,
-    ) -> Result<winit::raw_window_handle::DisplayHandle<'_>, winit::raw_window_handle::HandleError> {
-        use winit::raw_window_handle::{DisplayHandle, RawDisplayHandle, WindowsDisplayHandle};
-        Ok(unsafe { DisplayHandle::borrow_raw(RawDisplayHandle::Windows(WindowsDisplayHandle::new())) })
-    }
-}
-
-/// The main window's raw `HWND`, for parenting a dialog run on another thread.
+/// The main window's raw `HWND`, for enforcing modality around a dialog run on another thread.
 #[cfg(windows)]
 fn main_hwnd(window: &winit::window::Window) -> Option<isize> {
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -224,20 +203,31 @@ fn main_hwnd(window: &winit::window::Window) -> Option<isize> {
     }
 }
 
-/// Build + show the dialog for `req` on the Windows dialog thread, owner-modal to `hwnd`. Blocks THIS
-/// (worker) thread until the user chooses/cancels; the main thread meanwhile keeps pumping, so the
-/// modal handshake completes.
+/// Build + show the dialog for `req` on the Windows dialog thread. Blocks THIS (worker) thread until the
+/// user chooses/cancels; the main thread meanwhile keeps pumping.
+///
+/// The dialog is run UNPARENTED: making it owner-modal to the wgpu/DX main window breaks
+/// `IFileDialog`'s shell-view refresh when the file-type filter changes (confirmed — the DX owner
+/// window is the trigger; the dialog's thread is not). To keep it *behaving* modal (no click-through to
+/// the editor while it's open), we disable the main window ourselves for the dialog's lifetime and
+/// re-enable + refocus it after — the same effect as owner-modality, without the owner relationship.
 #[cfg(windows)]
 fn run_file_dialog_threaded(
     req: &crate::PendingDialog,
     hwnd: Option<isize>,
     default_typst: bool,
 ) -> Option<std::path::PathBuf> {
-    let base = match hwnd {
-        Some(h) => rfd::FileDialog::new().set_parent(&ParentWindow { hwnd: h }),
-        None => rfd::FileDialog::new(),
-    };
-    dialog_pick(req, base, default_typst)
+    if let Some(h) = hwnd {
+        unsafe { EnableWindow(h, 0) }; // block input to the editor window while the dialog is open
+    }
+    let picked = dialog_pick(req, rfd::FileDialog::new(), default_typst);
+    if let Some(h) = hwnd {
+        unsafe {
+            EnableWindow(h, 1); // re-enable, then bring the editor back to the front
+            SetForegroundWindow(h);
+        }
+    }
+    picked
 }
 
 /// Run a native file dialog for `req` on the CURRENT thread, parented to `window` (owner-modal). Blocks
