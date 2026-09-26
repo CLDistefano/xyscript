@@ -1694,6 +1694,8 @@ pub enum ColorTarget {
     BalPairs,
     PathFg,
     PathBg,
+    PreviewFg,
+    PreviewBg,
     ScratchFg,
     ScratchBg,
     MarkFg,
@@ -1741,6 +1743,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => "Matched-bracket highlight colour".into(),
             ColorTarget::PathFg => "$CWD path text colour".into(),
             ColorTarget::PathBg => "$CWD path background colour".into(),
+            ColorTarget::PreviewFg => "Preview text colour".into(),
+            ColorTarget::PreviewBg => "Preview background colour".into(),
             ColorTarget::ScratchFg => "Scratchpad text colour".into(),
             ColorTarget::ScratchBg => "Scratchpad background colour".into(),
             ColorTarget::MarkFg => "Bookmark gutter dot colour".into(),
@@ -1787,6 +1791,8 @@ impl ColorTarget {
             ColorTarget::BalPairs => return format!("BALPAIRSCOLOR {r} {g} {b}"),
             ColorTarget::PathFg => "PAFGCOLOR",
             ColorTarget::PathBg => "PABGCOLOR",
+            ColorTarget::PreviewFg => "PVFGCOLOR",
+            ColorTarget::PreviewBg => "PVBGCOLOR",
             ColorTarget::ScratchFg => "SCRATCHFGCOLOR",
             ColorTarget::ScratchBg => "SCRATCHBGCOLOR",
             ColorTarget::MarkFg => "MARKFGCOLOR",
@@ -2962,6 +2968,10 @@ pub struct AppHost {
     // dimmed UI text, the bg is transparent. `$PAFGCOLOR`/`$PABGCOLOR`.
     path_fg_color: Option<(u8, u8, u8)>,
     path_bg_color: Option<(u8, u8, u8)>,
+    // Preview-pane tint (`PVFGCOLOR`/`PVBGCOLOR`). `None` = Typst default (white paper / black body
+    // text). PREVIEW ONLY — never applied to `TOPDF`/print output. `$PVFGCOLOR`/`$PVBGCOLOR`.
+    preview_fg_color: Option<(u8, u8, u8)>,
+    preview_bg_color: Option<(u8, u8, u8)>,
     // Scratchpad-window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`). `None` = egui's theme default
     // (light background, dark text). `$SCRATCHFGCOLOR`/`$SCRATCHBGCOLOR`.
     scratch_fg_color: Option<(u8, u8, u8)>,
@@ -3273,6 +3283,8 @@ impl AppHost {
             tab_x_color: None,
             path_fg_color: None,
             path_bg_color: None,
+            preview_fg_color: None,
+            preview_bg_color: None,
             scratch_fg_color: None,
             scratch_bg_color: None,
             tab_hover_bg: None,
@@ -3679,6 +3691,19 @@ impl AppHost {
     }
     pub fn path_bg_color(&self) -> Option<(u8, u8, u8)> {
         self.path_bg_color
+    }
+    /// Preview-pane tint colours (`PVFGCOLOR`/`PVBGCOLOR`). `None` = Typst default (white paper / black
+    /// body text). PREVIEW ONLY. Read individually, or as a [`crate::pdf::PreviewTint`] via
+    /// [`Self::preview_tint`] for the render call.
+    pub fn preview_fg_color(&self) -> Option<(u8, u8, u8)> {
+        self.preview_fg_color
+    }
+    pub fn preview_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.preview_bg_color
+    }
+    /// The preview-pane tint bundled for the raster render path (`*_to_image`). Never used for `TOPDF`.
+    pub fn preview_tint(&self) -> crate::pdf::PreviewTint {
+        crate::pdf::PreviewTint { bg: self.preview_bg_color, fg: self.preview_fg_color }
     }
     /// Scratchpad-window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`). `None` = egui's theme default.
     /// The GUI applies them to each scratchpad window's text / background.
@@ -9083,6 +9108,8 @@ impl AppHost {
         // `$CWD` path-display colours (defaults: dimmed UI text / transparent — `default` restores them).
         put_opt_color(&mut s, "$CWD path text colour -- R G B, 0-255", "PAFGCOLOR", self.path_fg_color);
         put_opt_color(&mut s, "$CWD path background colour -- R G B, 0-255", "PABGCOLOR", self.path_bg_color);
+        put_opt_color(&mut s, "Preview-pane text colour (preview only, not TOPDF) -- R G B, 0-255", "PVFGCOLOR", self.preview_fg_color);
+        put_opt_color(&mut s, "Preview-pane background colour (preview only, not TOPDF) -- R G B, 0-255", "PVBGCOLOR", self.preview_bg_color);
         put_opt_color(&mut s, "Scratchpad text colour -- R G B, 0-255", "SCRATCHFGCOLOR", self.scratch_fg_color);
         put_opt_color(&mut s, "Scratchpad background colour -- R G B, 0-255", "SCRATCHBGCOLOR", self.scratch_bg_color);
         let (r, g, b) = self.txt_fg_color;
@@ -12656,6 +12683,23 @@ impl Host for AppHost {
                     Some(if fg { ColorTarget::PathFg } else { ColorTarget::PathBg });
                 return Ok(Value::str(""));
             }
+            EditorOp::SetPreviewColor { fg, color } => {
+                if fg {
+                    self.preview_fg_color = color;
+                } else {
+                    self.preview_bg_color = color;
+                }
+                let what = if fg { "text" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("preview {what} colour = {r} {g} {b}"),
+                    None => format!("preview {what} colour = (default)"),
+                }));
+            }
+            EditorOp::OpenPreviewColorPicker { fg } => {
+                self.color_picker_request =
+                    Some(if fg { ColorTarget::PreviewFg } else { ColorTarget::PreviewBg });
+                return Ok(Value::str(""));
+            }
             EditorOp::SetScratchColor { fg, color } => {
                 if fg {
                     self.scratch_fg_color = color;
@@ -13664,6 +13708,14 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "PABGCOLOR" => Some(Value::str(match self.path_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "PVFGCOLOR" => Some(Value::str(match self.preview_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "PVBGCOLOR" => Some(Value::str(match self.preview_bg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
             })),

@@ -2838,6 +2838,9 @@ struct GuiApp {
     /// The Preview/TOPDF font choice (`PVFAMILY`/`PVSIZE`/`PVCODE`) the cached raster was rendered
     /// with — re-render when it changes so a font switch shows immediately in the GFM preview.
     preview_font_sig: String,
+    /// The preview tint (`PVBGCOLOR`/`PVFGCOLOR`) the cached raster was rendered with — re-render when
+    /// it changes so a colour switch shows immediately (all render kinds).
+    preview_tint_sig: String,
     /// Pane width the preview texture was last RENDERED at — re-render (rescale) when it changes, so
     /// the preview fills the pane instead of staying at a first-frame thumbnail size.
     preview_pane_w: f32,
@@ -3076,6 +3079,7 @@ impl GuiApp {
             preview_h: 0.0,
             preview_src: String::new(),
             preview_font_sig: String::new(),
+            preview_tint_sig: String::new(),
             preview_err: None,
             preview_was_visible: false,
             preview_was_kind: RenderKind::Gfm,
@@ -7951,6 +7955,8 @@ impl GuiApp {
                         m_item(self.tr("menu.settings.appearance.colors.ui_bg", "UI background…"), "UIBGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.path_text", "$CWD path text…"), "PAFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.path_bg", "$CWD path background…"), "PABGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.preview_text", "Preview text…"), "PVFGCOLORS"),
+                        m_item(self.tr("menu.settings.appearance.colors.preview_bg", "Preview background…"), "PVBGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.txt_text", "TXT window text…"), "TXTFGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.txt_bg", "TXT window background…"), "TXTBGCOLORS"),
                         m_item(self.tr("menu.settings.appearance.colors.dir_text", "Directory window text…"), "DWFGCOLORS"),
@@ -8701,6 +8707,9 @@ impl GuiApp {
             ColorTarget::PathBg => {
                 self.editor.host().path_bg_color().unwrap_or(self.editor.ui_bg_color())
             }
+            // Preview colours default to Typst's paper — black text on white — when unset; seed with those.
+            ColorTarget::PreviewFg => self.editor.host().preview_fg_color().unwrap_or((0, 0, 0)),
+            ColorTarget::PreviewBg => self.editor.host().preview_bg_color().unwrap_or((255, 255, 255)),
             // Scratchpad colours default to egui's light theme (dark text on a near-white ground).
             ColorTarget::ScratchFg => self.editor.host().scratch_fg_color().unwrap_or((30, 30, 30)),
             ColorTarget::ScratchBg => self.editor.host().scratch_bg_color().unwrap_or((250, 250, 250)),
@@ -10518,12 +10527,18 @@ impl GuiApp {
                 fonts.family, fonts.size, fonts.code, m.left, m.right, m.top, m.bottom
             );
             let font_stale = !is_typst && font_sig != self.preview_font_sig;
+            // Preview-only page/body tint (PVBGCOLOR/PVFGCOLOR). Applies to EVERY render kind (incl.
+            // typst), so its staleness is checked independently of the font signature; a colour change
+            // re-rasters immediately.
+            let tint = self.editor.host().preview_tint();
+            let tint_sig = format!("{:?}|{:?}", tint.bg, tint.fg);
+            let tint_stale = tint_sig != self.preview_tint_sig;
             let kind_changed = kind != self.preview_was_kind;
-            // The cached texture is stale if the text, the render kind, the chosen font, OR the width
-            // it was rendered at changed — so resizing the pane (or its first-frame settle) re-rasters.
+            // The cached texture is stale if the text, the render kind, the chosen font, the tint, OR the
+            // width it was rendered at changed — so resizing the pane (or its first-frame settle) re-rasters.
             let width_stale = (pane_w - self.preview_pane_w).abs() > 2.0;
-            if cur != self.preview_src || kind_changed || width_stale || font_stale {
-                if now - self.last_change_time >= 0.4 || kind_changed || font_stale {
+            if cur != self.preview_src || kind_changed || width_stale || font_stale || tint_stale {
+                if now - self.last_change_time >= 0.4 || kind_changed || font_stale || tint_stale {
                     let scale = (pane_w / 595.0).clamp(0.4, 3.0); // page width ≈ 595 pt
                     let doc_dir = self.editor.host().typst_doc_dir(); // roots #image/#read resolution
                     let res = match kind {
@@ -10531,22 +10546,22 @@ impl GuiApp {
                             // Splice MDA styling into the authored-Typst preview too (wraps only prose,
                             // so the document's own Typst markup is untouched).
                             let styler = self.editor.host().mda_styler(&cur);
-                            xyscript_app::typst_to_image(&cur, &doc_dir, scale, Some(&styler))
+                            xyscript_app::typst_to_image(&cur, &doc_dir, scale, Some(&styler), tint)
                         }
                         RenderKind::Gfm => {
                             // Splice the document's MDA styling into the preview so it matches the
                             // editor canvas (bold/italic/underline/colour/reverse).
                             let styler = self.editor.host().mda_styler(&cur);
-                            xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler))
+                            xyscript_app::gfm_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler), tint)
                         }
                         RenderKind::Html => {
-                            xyscript_app::html_to_image(&cur, &doc_dir, scale, &fonts)
+                            xyscript_app::html_to_image(&cur, &doc_dir, scale, &fonts, tint)
                         }
                         RenderKind::Text => {
                             // Plain text: verbatim, no Markdown interpretation; takes the PV font settings.
                             // Splice the document's MDA styling (+ any PVMARKS EMPH/URL) like the other kinds.
                             let styler = self.editor.host().mda_styler(&cur);
-                            xyscript_app::text_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler))
+                            xyscript_app::text_to_image(&cur, &doc_dir, scale, &fonts, Some(&styler), tint)
                         }
                     };
                     match res {
@@ -10583,6 +10598,7 @@ impl GuiApp {
                     self.preview_src = cur;
                     self.preview_was_kind = kind;
                     self.preview_font_sig = font_sig;
+                    self.preview_tint_sig = tint_sig;
                     self.preview_pane_w = pane_w;
                 } else {
                     ctx.request_repaint_after(std::time::Duration::from_millis(400));

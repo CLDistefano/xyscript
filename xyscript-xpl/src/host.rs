@@ -691,6 +691,12 @@ pub enum EditorOp {
     SetPathColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the `$CWD` path-display fg (`PAFGCOLORS`) or bg (`PABGCOLORS`).
     OpenPathColorPicker { fg: bool },
+    /// Set the preview-pane text (`fg = true`, `PVFGCOLOR`) or background (`fg = false`, `PVBGCOLOR`)
+    /// colour. `None` = Typst default (black text / white paper). PREVIEW ONLY — never applied to
+    /// `TOPDF`/print output. Read back via `$PVFGCOLOR`/`$PVBGCOLOR`.
+    SetPreviewColor { fg: bool, color: Option<(u8, u8, u8)> },
+    /// Open the colour picker for the preview-pane fg (`PVFGCOLORS`) or bg (`PVBGCOLORS`).
+    OpenPreviewColorPicker { fg: bool },
     /// Set the scratchpad-window foreground (`fg = true`, `SCRATCHFGCOLOR`) or background
     /// (`fg = false`, `SCRATCHBGCOLOR`) colour. `None` = default (egui's theme). `$SCRATCHFGCOLOR`/
     /// `$SCRATCHBGCOLOR`.

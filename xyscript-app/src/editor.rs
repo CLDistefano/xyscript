@@ -1908,7 +1908,7 @@ impl Editor {
 
     /// Resume an `INPUT`-parked script with the line the user typed.
     pub fn feed_input_line(&mut self, text: String) {
-        self.resume_input(xyscript_xpl::Value::str(text), None, 0); // a typed line carries no key/mods
+        self.resume_input(Value::str(text), None, 0); // a typed line carries no key/mods
     }
 
     /// Resume a `READKEY`-parked script with the character read and its scancode
@@ -1920,7 +1920,7 @@ impl Editor {
     }
 
     pub fn feed_input_key(&mut self, ch: &str, scancode: u16, mods: i64) {
-        self.resume_input(xyscript_xpl::Value::str(ch.to_string()), Some(scancode), mods);
+        self.resume_input(Value::str(ch.to_string()), Some(scancode), mods);
     }
 
     fn resume_input(&mut self, value: xyscript_xpl::Value, scancode: Option<u16>, mods: i64) {
@@ -11644,6 +11644,36 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert!(cfg.contains("SCRATCHBGCOLOR default"), "cfg: {cfg}");
         e.run_command("SCRATCHFGCOLOR default");
         assert_eq!(e.host().scratch_fg_color(), None);
+    }
+
+    #[test]
+    fn preview_colors_set_read_hsl_and_savecfg() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // Set, then read back through the $-specials.
+        e.run_command("PVBGCOLOR 20 30 40");
+        e.run_command("PVFGCOLOR 230 230 210");
+        assert_eq!(e.host().preview_bg_color(), Some((20, 30, 40)));
+        assert_eq!(e.host().preview_fg_color(), Some((230, 230, 210)));
+        assert_eq!(e.host().special("PVBGCOLOR"), Some(Value::str("20 30 40")));
+        assert_eq!(e.host().special("PVFGCOLOR"), Some(Value::str("230 230 210")));
+        // The bundled tint reflects both knobs.
+        let tint = e.host().preview_tint();
+        assert_eq!((tint.bg, tint.fg), (Some((20, 30, 40)), Some((230, 230, 210))));
+        // SaveCfg records both (customized → RGB); LOADCFG round-trips.
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("PVBGCOLOR 20 30 40"), "cfg: {cfg}");
+        assert!(cfg.contains("PVFGCOLOR 230 230 210"), "cfg: {cfg}");
+        // `/HSL` takes each channel 0-255 in this editor.
+        e.run_command("PVBGCOLOR/HSL 120 100 50");
+        assert_eq!(e.host().preview_bg_color(), Some((30, 70, 63)));
+        // Bare `default` clears back to Typst's default (None).
+        e.run_command("PVBGCOLOR default");
+        e.run_command("PVFGCOLOR default");
+        assert_eq!(e.host().preview_bg_color(), None);
+        assert_eq!(e.host().preview_fg_color(), None);
+        assert_eq!(e.host().special("PVBGCOLOR"), Some(Value::str("")));
     }
 
     #[test]

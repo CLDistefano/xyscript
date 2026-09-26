@@ -1674,6 +1674,26 @@ you watch the formatted result take shape while you write. A bare #raw("PV") tog
 #raw("PV on") / #raw("PV off") set it explicitly, and #raw("$PV") reads whether it is open. (The preview
 is a GUI feature.)
 
+=== Preview colours
+
+The preview page is white paper with black text by default. If that is hard on the eyes in low light,
+recolour just the pane:
+
+/ #raw("PVBGCOLOR <r g b>"): the page (paper) colour.
+/ #raw("PVFGCOLOR <r g b>"): the body-text colour.
+
+Each takes three values 0–255 (add #raw("/HSL") to give them as hue, saturation, and lightness instead),
+and #raw("PVBGCOLOR default") — or a bare #raw("PVBGCOLOR") — clears it back to white / black. For a dark
+theme, pair a dark background with a light foreground, e.g. #raw("PVBGCOLOR 28 30 38") with
+#raw("PVFGCOLOR 222 224 230"). #raw("PVBGCOLORS") and #raw("PVFGCOLORS") open colour pickers, and
+*Settings ▸ Appearance ▸ Colours* lists them as *Preview background* and *Preview text*.
+
+These colours apply to *every* kind of document in the preview — Markdown, HTML, plain text, and authored
+Typst alike — and a document's own explicit colours (links, coloured spans, #raw("MDA") styling) still show
+through. They affect the *screen only*: #raw("TOPDF") and printed output stay white paper with black text,
+so an export is always clean. Read them back with #raw("$PVBGCOLOR") / #raw("$PVFGCOLOR"); both persist in
+your configuration.
+
 == Page setup and fonts
 
 The look of *Markdown* rendering — in both the preview and the exported PDF — is adjustable. (HTML

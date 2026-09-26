@@ -49,7 +49,7 @@ pub use gfm::to_typst;
 pub use highlight::{Highlighter, Token, TokenKind};
 pub use pdf::{
     gfm_to_image, gfm_to_pdf, html_to_image, html_to_pdf, text_to_image, text_to_pdf, typst_to_image,
-    typst_to_pdf, PreviewFonts,
+    typst_to_pdf, PreviewFonts, PreviewTint,
 };
 pub use style::{Color, Span, Style, StyledLine};
 pub use host::AppHost;

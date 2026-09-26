@@ -140,6 +140,43 @@ impl Default for PreviewFonts {
     }
 }
 
+/// Preview-only page/body tint (RGB), applied ONLY on the raster (live-preview) path — `TOPDF`/print
+/// output is never tinted (its `*_to_pdf` functions pass [`PreviewTint::default`]). Each `None` field
+/// keeps Typst's default (white paper / black body text). `PVBGCOLOR` sets `bg`, `PVFGCOLOR` sets `fg`.
+///
+/// Implemented as a `#set page(fill: …)` / `#set text(fill: …)` prelude prepended to the compiled
+/// markup, so it recolours the paper and default body text while the document's own explicit colours
+/// (links, `#text(fill:)` spans, MDA styling) still win. Because it can add lines ahead of authored
+/// Typst, the prelude's line count is subtracted back out of compile diagnostics (see
+/// [`compile_markup`]) so error locations still map to the user's buffer.
+#[derive(Clone, Copy, Default)]
+pub struct PreviewTint {
+    /// Page (paper) fill — `#set page(fill: …)`. `None` = Typst default (white).
+    pub bg: Option<(u8, u8, u8)>,
+    /// Default body text colour — `#set text(fill: …)`. `None` = Typst default (black).
+    pub fg: Option<(u8, u8, u8)>,
+}
+
+impl PreviewTint {
+    /// The `#set` prelude (one rule per set field, each newline-terminated), or `""` when nothing is set.
+    fn prelude(&self) -> String {
+        let mut s = String::new();
+        if let Some((r, g, b)) = self.bg {
+            s.push_str(&format!("#set page(fill: rgb({r}, {g}, {b}))\n"));
+        }
+        if let Some((r, g, b)) = self.fg {
+            s.push_str(&format!("#set text(fill: rgb({r}, {g}, {b}))\n"));
+        }
+        s
+    }
+
+    /// Number of source lines [`Self::prelude`] prepends — subtracted from diagnostic line numbers so
+    /// they still point at the user's buffer.
+    fn line_count(&self) -> usize {
+        self.bg.is_some() as usize + self.fg.is_some() as usize
+    }
+}
+
 /// The four page margins for GFM rendering, each a validated Typst length string (`"1in"`, `"2.5cm"`,
 /// `"18pt"`, …). Set per-side by `PVMARGINL/R/T/B` or all four by `PVMARGIN`.
 #[derive(Clone)]
@@ -434,6 +471,7 @@ fn compile_markup(
     markup: String,
     extra_fonts: Vec<Vec<u8>>,
     doc_dir: &Path,
+    diag_line_offset: usize,
 ) -> Result<PagedDocument, String> {
     // Unify the bundled `&'static [u8]` fonts and the (owned) user font blobs into one homogeneous
     // `Vec<Vec<u8>>`. `to_vec` on the bundled set matches what `.fonts()` did internally before, so
@@ -448,7 +486,7 @@ fn compile_markup(
     engine
         .with_world(|world| {
             let Warned { output, .. } = typst::compile::<PagedDocument>(world);
-            output.map_err(|diags| format_diagnostics(&diags, world))
+            output.map_err(|diags| format_diagnostics(&diags, world, diag_line_offset))
         })
         .map_err(|e| format!("typst: {e}"))?
 }
@@ -535,7 +573,7 @@ fn gfm_preamble(fonts: &PreviewFonts) -> (String, Vec<Vec<u8>>) {
 
 /// Format typst compile diagnostics as `line:col: message` (semicolon-joined), resolving each span's
 /// location against `world`. A diagnostic with no resolvable span falls back to just its message.
-fn format_diagnostics(diags: &[SourceDiagnostic], world: &dyn World) -> String {
+fn format_diagnostics(diags: &[SourceDiagnostic], world: &dyn World, line_offset: usize) -> String {
     let mut msgs = Vec::new();
     for d in diags {
         let loc = d
@@ -546,7 +584,8 @@ fn format_diagnostics(diags: &[SourceDiagnostic], world: &dyn World) -> String {
                 let range = src.range(d.span)?;
                 src.lines().byte_to_line_column(range.start)
             })
-            .map(|(line, col)| format!("{}:{}: ", line + 1, col + 1)) // 1-based for display
+            // 1-based for display, minus any preview-tint prelude prepended ahead of the user's buffer.
+            .map(|(line, col)| format!("{}:{}: ", (line + 1).saturating_sub(line_offset), col + 1))
             .unwrap_or_default();
         msgs.push(format!("{loc}{}", d.message));
     }
@@ -564,6 +603,7 @@ fn compile_gfm(
     fonts: &PreviewFonts,
     doc_dir: &Path,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<PagedDocument, String> {
     let (preamble, blobs) = gfm_preamble(fonts);
     // With a styler, the document's MDA colours/attributes are spliced into the body as Typst markup
@@ -572,7 +612,8 @@ fn compile_gfm(
         Some(s) => crate::gfm::to_typst_styled(source, s),
         None => crate::gfm::to_typst(source),
     };
-    compile_markup(format!("{preamble}{body}\n"), blobs, doc_dir)
+    // GFM diagnostics already reference the generated typst (not the user's markdown), so no offset.
+    compile_markup(format!("{}{preamble}{body}\n", tint.prelude()), blobs, doc_dir, 0)
 }
 
 /// Compile a PLAIN-TEXT document: the buffer rendered **verbatim** — every source newline becomes a
@@ -584,6 +625,7 @@ fn compile_text(
     fonts: &PreviewFonts,
     doc_dir: &Path,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<PagedDocument, String> {
     let (preamble, blobs) = gfm_preamble(fonts);
     // With a styler the document's MDA styling (and any EMPH/URL marks folded in) is spliced around
@@ -592,7 +634,7 @@ fn compile_text(
         Some(s) => s.plain_text_body(source),
         None => plain_text_body(source),
     };
-    compile_markup(format!("{preamble}{body}\n"), blobs, doc_dir)
+    compile_markup(format!("{}{preamble}{body}\n", tint.prelude()), blobs, doc_dir, 0)
 }
 
 /// Turn raw text into a Typst body that renders VERBATIM. Every source line is emitted with all Typst
@@ -623,9 +665,19 @@ fn plain_text_body(src: &str) -> String {
 /// the SAME preamble as GFM — the document's own `style`/`class` are ignored (a structural
 /// conversion), so the user's [`PreviewFonts`] choice governs its appearance just as it does for
 /// Markdown.
-fn compile_html(source: &str, fonts: &PreviewFonts, doc_dir: &Path) -> Result<PagedDocument, String> {
+fn compile_html(
+    source: &str,
+    fonts: &PreviewFonts,
+    doc_dir: &Path,
+    tint: PreviewTint,
+) -> Result<PagedDocument, String> {
     let (preamble, blobs) = gfm_preamble(fonts);
-    compile_markup(format!("{preamble}{}\n", crate::html::to_typst(source)), blobs, doc_dir)
+    compile_markup(
+        format!("{}{preamble}{}\n", tint.prelude(), crate::html::to_typst(source)),
+        blobs,
+        doc_dir,
+        0,
+    )
 }
 
 /// Compile a document whose source IS typst markup (authored typst, not GFM): (near-)verbatim, no
@@ -641,6 +693,7 @@ fn compile_typst(
     source: &str,
     doc_dir: &Path,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<PagedDocument, String> {
     let mut blobs: Vec<Vec<u8>> = Vec::new();
     for fam in fonts_referenced(source) {
@@ -650,7 +703,10 @@ fn compile_typst(
         Some(s) => s.splice_typst_source(source),
         None => source.to_string(),
     };
-    compile_markup(markup, blobs, doc_dir)
+    // The tint prelude (if any) is prepended; its line count is subtracted back out of diagnostics so
+    // error locations still map to the user's buffer. `set` rules for fill are cumulative, so the
+    // document's own `#set page`/`#set text` (font, size, margins) keep our fill unless they set one too.
+    compile_markup(format!("{}{markup}", tint.prelude()), blobs, doc_dir, tint.line_count())
 }
 
 /// A compiled document → PDF bytes.
@@ -696,7 +752,7 @@ pub fn gfm_to_pdf(
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
 ) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_gfm(source, fonts, doc_dir, styler)?)
+    to_pdf_bytes(&compile_gfm(source, fonts, doc_dir, styler, PreviewTint::default())?)
 }
 
 /// Render a GFM document (all pages, stacked) to a raster RGBA image (the GUI live-preview path, 8d),
@@ -708,8 +764,9 @@ pub fn gfm_to_image(
     scale: f32,
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_gfm(source, fonts, doc_dir, styler)?, scale)
+    to_raster(&compile_gfm(source, fonts, doc_dir, styler, tint)?, scale)
 }
 
 /// Render a PLAIN-TEXT document to PDF bytes (verbatim, no Markdown interpretation), styled per `fonts`.
@@ -721,7 +778,7 @@ pub fn text_to_pdf(
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
 ) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_text(source, fonts, doc_dir, styler)?)
+    to_pdf_bytes(&compile_text(source, fonts, doc_dir, styler, PreviewTint::default())?)
 }
 
 /// Render a PLAIN-TEXT document (all pages, stacked) to a raster RGBA image — the GUI live-preview path.
@@ -732,14 +789,15 @@ pub fn text_to_image(
     scale: f32,
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_text(source, fonts, doc_dir, styler)?, scale)
+    to_raster(&compile_text(source, fonts, doc_dir, styler, tint)?, scale)
 }
 
 /// Render an HTML document to PDF bytes, styled per `fonts` (structural conversion — see
 /// [`crate::html`]). Errors are returned as a message so the caller can surface them trappably.
 pub fn html_to_pdf(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_html(source, fonts, doc_dir)?)
+    to_pdf_bytes(&compile_html(source, fonts, doc_dir, PreviewTint::default())?)
 }
 
 /// Render an HTML document (all pages, stacked) to a raster RGBA image — the GUI live-preview path.
@@ -748,8 +806,9 @@ pub fn html_to_image(
     doc_dir: &Path,
     scale: f32,
     fonts: &PreviewFonts,
+    tint: PreviewTint,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_html(source, fonts, doc_dir)?, scale)
+    to_raster(&compile_html(source, fonts, doc_dir, tint)?, scale)
 }
 
 /// Render an authored-typst document (the buffer is typst markup) to PDF bytes. `doc_dir` roots
@@ -760,7 +819,7 @@ pub fn typst_to_pdf(
     doc_dir: &Path,
     styler: Option<&crate::gfm::Styler>,
 ) -> Result<Vec<u8>, String> {
-    to_pdf_bytes(&compile_typst(source, doc_dir, styler)?)
+    to_pdf_bytes(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
 }
 
 /// Render an authored-typst document (all pages, stacked) to a raster RGBA image. `styler` splices the
@@ -770,8 +829,9 @@ pub fn typst_to_image(
     doc_dir: &Path,
     scale: f32,
     styler: Option<&crate::gfm::Styler>,
+    tint: PreviewTint,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    to_raster(&compile_typst(source, doc_dir, styler)?, scale)
+    to_raster(&compile_typst(source, doc_dir, styler, tint)?, scale)
 }
 
 #[cfg(test)]
@@ -1047,7 +1107,8 @@ mod tests {
     #[test]
     fn renders_gfm_to_a_raster_image() {
         let (rgba, w, h) =
-            gfm_to_image("# Title\n\nbody **text**\n", dot(), 1.0, &dflt(), None).expect("image");
+            gfm_to_image("# Title\n\nbody **text**\n", dot(), 1.0, &dflt(), None, PreviewTint::default())
+                .expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize); // RGBA
         assert!(rgba.iter().any(|&b| b != 0)); // not all-transparent/black
@@ -1057,9 +1118,11 @@ mod tests {
     fn raster_stacks_all_pages_not_just_the_first() {
         // One page vs an explicit two-page document (forced via #pagebreak): the preview must show
         // BOTH pages, so the two-page raster is taller than the one-page one (was first-page-only).
-        let (_, w1, h1) = typst_to_image("Page one.", dot(), 1.0, None).expect("one page");
+        let (_, w1, h1) =
+            typst_to_image("Page one.", dot(), 1.0, None, PreviewTint::default()).expect("one page");
         let (rgba, w2, h2) =
-            typst_to_image("Page one.#pagebreak()Page two.", dot(), 1.0, None).expect("two pages");
+            typst_to_image("Page one.#pagebreak()Page two.", dot(), 1.0, None, PreviewTint::default())
+                .expect("two pages");
         assert_eq!(w1, w2, "same page width");
         assert!(h2 > h1 + h1 / 2, "two pages ({h2}) should be ~twice one page ({h1})");
         assert_eq!(rgba.len(), (w2 * h2 * 4) as usize);
@@ -1090,7 +1153,9 @@ mod tests {
 
     #[test]
     fn renders_plain_text_to_a_raster_image() {
-        let (rgba, w, h) = text_to_image("line one\nline two\n", dot(), 1.0, &dflt(), None).expect("image");
+        let (rgba, w, h) =
+            text_to_image("line one\nline two\n", dot(), 1.0, &dflt(), None, PreviewTint::default())
+                .expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize);
         assert!(rgba.iter().any(|&b| b != 0));
@@ -1191,10 +1256,39 @@ Body with $a^2 + b^2 = c^2$ and #strong[bold].
 
     #[test]
     fn renders_authored_typst_to_a_raster_image() {
-        let (rgba, w, h) = typst_to_image("= Title\n\nbody *text*\n", dot(), 1.0, None).expect("image");
+        let (rgba, w, h) =
+            typst_to_image("= Title\n\nbody *text*\n", dot(), 1.0, None, PreviewTint::default())
+                .expect("image");
         assert!(w > 0 && h > 0);
         assert_eq!(rgba.len(), (w * h * 4) as usize);
         assert!(rgba.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn preview_tint_recolours_the_page_but_pdf_stays_white() {
+        // The preview page paper is white by default; a PVBGCOLOR tint repaints it. The top-left pixel
+        // is page paper (the page fills the raster width). Default → white; black tint → black.
+        let plain = PreviewTint::default();
+        let dark = PreviewTint { bg: Some((0, 0, 0)), fg: Some((240, 240, 240)) };
+        let (white, w, _) = typst_to_image("Hello", dot(), 1.0, None, plain).expect("plain");
+        let (black, _, _) = typst_to_image("Hello", dot(), 1.0, None, dark).expect("tinted");
+        // Top-left corner (paper), opaque in both.
+        assert_eq!(&white[0..4], &[255, 255, 255, 255], "default paper is white");
+        assert_eq!(&black[0..4], &[0, 0, 0, 255], "PVBGCOLOR repaints the paper");
+        let _ = w;
+        // The tint is preview-only: TOPDF still compiles the source verbatim (no fill injected). We
+        // can't easily inspect PDF pixels, but the PDF path must ignore the tint and still succeed.
+        assert!(typst_to_pdf("Hello", dot(), None).is_ok());
+    }
+
+    #[test]
+    fn preview_tint_diagnostics_still_map_to_the_buffer() {
+        // A two-field tint prepends two `#set` lines ahead of authored typst. A compile error on the
+        // user's line 3 must still be reported as 3 (the prelude lines are subtracted back out).
+        let src = "#set text(size: 14pt)\n\n#nonexistent_fn()";
+        let dark = PreviewTint { bg: Some((10, 10, 10)), fg: Some((230, 230, 230)) };
+        let err = typst_to_image(src, dot(), 1.0, None, dark).unwrap_err();
+        assert!(err.starts_with("3:"), "error should point at buffer line 3, got: {err}");
     }
 
     #[test]

@@ -2726,6 +2726,24 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenPathColorPicker { fg: base == "PAFGCOLORS" })?;
                 Ok(Flow::Next)
             }
+            // `PVFGCOLOR`/`PVBGCOLOR <r g b>` — the preview pane's text/background colour (`/HSL`);
+            // bare or `… default` clears it (back to Typst's black text / white paper). PREVIEW ONLY —
+            // never affects TOPDF/print. The `…S` forms open the picker. `$PVFGCOLOR`/`$PVBGCOLOR`.
+            "PVFGCOLOR" | "PVBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetPreviewColor { fg: base == "PVFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
+            "PVFGCOLORS" | "PVBGCOLORS" => {
+                self.host_op(EditorOp::OpenPreviewColorPicker { fg: base == "PVFGCOLORS" })?;
+                Ok(Flow::Next)
+            }
             // `SCRATCHFGCOLOR`/`SCRATCHBGCOLOR <r g b>` — the scratchpad window's text/background
             // colour (`/HSL`); bare or `… default` clears it (back to egui's theme). The `…S` forms
             // open the picker. `$SCRATCHFGCOLOR`/`$SCRATCHBGCOLOR`.
@@ -5951,7 +5969,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "HLCOLORS" => &["BG"], // `/BG` — pick the token's BACKGROUND band instead of the foreground
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
-        | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR"
+        | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR" | "PVFGCOLOR" | "PVBGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
         | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR"
         | "LNFGCOLOR" | "LNBGCOLOR" | "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR"
