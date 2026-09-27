@@ -252,9 +252,10 @@ pub enum EditorOp {
     SetSessionRestore(Option<bool>),
     /// Enable/disable shell-out for the session (`TRUST 1`/`TRUST 0`). Read back via `$TR`.
     SetTrust(bool),
-    /// `RUNHERE` — run the fenced code block enclosing the caret as XPL (literate
-    /// scripting). The host stashes the block; the editor runs it after the script returns.
-    RunHere,
+    /// `RUNHERE [args…]` — run the fenced code block enclosing the caret as XPL (literate
+    /// scripting). The host stashes the block; the editor runs it after the script returns. Any
+    /// operand tokens are seeded as the block's positional args (`$1..$N`/`$*`/`$#`), like `RUN`.
+    RunHere { args: Vec<String> },
     /// `ZT` — reset the stopwatch to zero (subsequent `$ET`/`ET`/`ETS` measure from now).
     ResetStopwatch,
     /// `MSG [/T:<secs>] <text>` — show `text` in a GUI message box. `timeout_secs` self-

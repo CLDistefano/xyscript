@@ -1643,8 +1643,13 @@ impl Vm<'_, '_> {
             }
             // Shell-out (trust-gated in the host). `X`/`XY`/`XV` consume the rest of the
             // line (self-delimiting in the splitter) and substitute `$`-vars.
+            // `RUNHERE [args…]` — run the fenced code block at the caret. Operand tokens (already
+            // `$`-substituted) become the block's positional args `$1..$N` (`$*`/`$#` too), split on
+            // whitespace exactly like a `RUN`/routine call.
             "RUNHERE" => {
-                self.host_op(EditorOp::RunHere)?;
+                let block_args: Vec<String> =
+                    args.split_whitespace().map(str::to_string).collect();
+                self.host_op(EditorOp::RunHere { args: block_args })?;
                 Ok(Flow::Next)
             }
             // Date / time / stopwatch (B12). The component fields live in `$YEAR`/`$MON`/…;

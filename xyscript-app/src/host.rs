@@ -2538,7 +2538,9 @@ pub struct AppHost {
     /// re-enter the interpreter mid-dispatch; same deferral as `SUBMIT`). A QUEUE so
     /// multiple deferrals in one dispatch (`&A;&B`, or `RUNHERE` + a binder) all run, and
     /// nested `&X`→`&Y` chains accumulate. Sources: `RUNHERE` and script binders (`&X`).
-    pending_run: Vec<String>,
+    /// Each entry is `(source, positional_args)`; args are the `RUNHERE [args…]` operands
+    /// (`$1..$N` for the block) and empty for binders / config runs.
+    pending_run: Vec<(String, Vec<String>)>,
     /// Text binders `@A`–`@Z`/`@0`–`@9` (`LDTX`): inserted at the caret by `@X`.
     text_binders: HashMap<char, String>,
     /// Script binders `&A`–`&Z`/`&0`–`&9` (`LDSC`/`LDPM`): run as XPL by `&X`.
@@ -8737,9 +8739,10 @@ impl AppHost {
         std::mem::take(&mut self.cmline_exec)
     }
 
-    /// Next deferred XPL to run (FIFO), if any — from `RUNHERE` or a `&X` script binder.
+    /// Next deferred XPL to run (FIFO), if any — from `RUNHERE` or a `&X` script binder — paired
+    /// with its positional args (the `RUNHERE [args…]` operands; empty for binders / config runs).
     /// The editor drains this in a loop after the current script returns.
-    pub fn take_pending_run(&mut self) -> Option<String> {
+    pub fn take_pending_run(&mut self) -> Option<(String, Vec<String>)> {
         if self.pending_run.is_empty() {
             None
         } else {
@@ -10446,7 +10449,7 @@ impl Host for AppHost {
                 };
                 return Ok(Value::str(msg));
             }
-            EditorOp::RunHere => {
+            EditorOp::RunHere { args } => {
                 // Move the caret to the text area FIRST (if it was on the cmline), then run — so
                 // `RUNHERE` fired from the command line lands you in the document and never refuses
                 // just because focus was elsewhere. The block is found at the DOCUMENT's caret.
@@ -10456,7 +10459,7 @@ impl Host for AppHost {
                 return match block {
                     Some(code) if !code.trim().is_empty() => {
                         let lines = code.lines().count();
-                        self.pending_run.push(code);
+                        self.pending_run.push((code, args));
                         let s = if lines == 1 { "" } else { "s" };
                         Ok(Value::str(format!("RUNHERE: running {lines} line{s}")))
                     }
@@ -10500,7 +10503,7 @@ impl Host for AppHost {
                     XplError::trappable(format!("binder {sigil}{slot} is empty"))
                 })?;
                 if script {
-                    self.pending_run.push(content); // run after the current script returns
+                    self.pending_run.push((content, Vec::new())); // run after the current script returns
                 } else {
                     self.active().insert(&content); // insert text at the active caret
                 }
@@ -11542,11 +11545,11 @@ impl Host for AppHost {
                 let content = self.read_file(&resolved)?;
                 self.last_loadcfg_path = Some(resolved); // $CF
                 // It's just XPL — run it after the current script returns (the RUNHERE pattern).
-                self.pending_run.push(content);
+                self.pending_run.push((content, Vec::new()));
                 // The config's own commands would clobber any status we set now, so confirm the load
                 // AFTER it runs, as a final queued line — so LOADCFG reports like LOADLIB/LOADAR.
                 // (`$CF` is the resolved path just set above.)
-                self.pending_run.push("PR loaded config from $CF".to_string());
+                self.pending_run.push(("PR loaded config from $CF".to_string(), Vec::new()));
                 return Ok(Value::str(format!("loading config from {path}")));
             }
             EditorOp::LoadLang(opt) => {

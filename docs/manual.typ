@@ -261,7 +261,9 @@ MSG $greeting
 ```")
 
 Put the cursor inside the block and run it with #raw("RUNHERE") (the *Tools* menu has it too). XyScript
-recognizes the fenced block, runs it as a script, and a message box shows *Hello, world!*
+recognizes the fenced block, runs it as a script, and a message box shows *Hello, world!* You can pass
+arguments too — #raw("RUNHERE alpha beta") gives the block #raw("$1") = alpha, #raw("$2") = beta
+(#raw("$*") = all, #raw("$#") = count), just like #raw("RUN file args…").
 
 #tip("Three ways to run code")[#raw("RUNHERE") runs the fenced block under the cursor. #raw("RUN file")
 runs a script file; #raw("RUN/BG file") runs it in the background (its own process). And the shell-out

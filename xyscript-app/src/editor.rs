@@ -2036,8 +2036,11 @@ impl Editor {
         // drained until empty. A cap guards a self-referential binder (`&A` = "&A") from
         // hanging the editor. A pause mid-drain leaves the rest queued for after resume.
         let mut guard = 0;
-        while let Some(src) = self.host.take_pending_run() {
-            self.dispatch(&src);
+        while let Some((src, args)) = self.host.take_pending_run() {
+            // A RUNHERE block carries its operand tokens as positional args (`$1..$N`); binders and
+            // config runs carry none. Empty args behave exactly like the old bare `dispatch`.
+            let arg_vals: Vec<Value> = args.into_iter().map(Value::str).collect();
+            self.dispatch_with_args(&src, &arg_vals, None);
             if self.interp.is_suspended() {
                 return;
             }
@@ -9391,6 +9394,22 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command("TOP");
         e.run_command("RUNHERE");
         assert_eq!(e.status_message(), Some("RUNHERE: not inside a code block"));
+    }
+
+    #[test]
+    fn runhere_seeds_positional_args() {
+        let mut e = ed();
+        // A fenced block that echoes its positional args ($#/$1/$2/$*) — like a RUN-ed script. The
+        // `\$` escapes keep the specials LITERAL in the document (else `insert` would expand them now).
+        e.run_command("insert \"```\\nPR \\$#|\\$1|\\$2|\\$*\\n```\"");
+        e.run_command("TOP");
+        e.run_command("DOWN"); // caret on the PR line inside the fence
+        e.run_command("RUNHERE alpha beta");
+        assert_eq!(e.output().last().map(String::as_str), Some("2|alpha|beta|alpha beta"));
+
+        // Bare RUNHERE (no operands) → no positionals, exactly as before.
+        e.run_command("RUNHERE");
+        assert_eq!(e.output().last().map(String::as_str), Some("0|||"));
     }
 
     #[test]
