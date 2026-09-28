@@ -45,6 +45,20 @@ pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
     }
 }
 
+/// A text-match query for `MDALL` — the pattern plus the flags that decide how it matches, mirroring
+/// the search verbs. Literal matches default to whole-word + case-insensitive (like `EMPH`); `/C` makes
+/// them case-sensitive, `/R` switches to a regex (crate `regex`), `/P` to a Perl/fancy regex, and `/S`
+/// confines the sweep to the current selection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchQuery {
+    pub pattern: String,
+    pub case: bool,
+    pub whole: bool,
+    pub regex: bool,
+    pub perl: bool,
+    pub in_selection: bool,
+}
+
 /// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"
 /// title text, the box background, or the OK button's text / background.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -799,6 +813,15 @@ pub enum EditorOp {
     /// `ATTR_*`) to the SELECTION as an independent block layer; `attrs == None` (`MDA NM`) strips them.
     /// Selection-only, edit-following, persisted to the `.xymeta` sidecar's `[attrs]` section.
     ModeAttr { attrs: Option<u8> },
+    /// `MDALL <color> <pattern>` / `MDALL/B` — the bulk analogue of [`EditorOp::ModeColor`]: stamp the
+    /// foreground (or, with `background`, the background) colour onto EVERY match of `find`, as
+    /// persistent MDA spans (a one-time snapshot bake — the spans then follow edits / persist / print
+    /// like any MDA styling, but do not re-match). `rgb == None` (`MDALL off`) clears the layer over the
+    /// matches — and, for the foreground, its attributes too (mirrors bare `MDA`).
+    ModeAllColor { background: bool, rgb: Option<(u8, u8, u8)>, find: MatchQuery },
+    /// `MDALL BO|IT|… <pattern>` — the bulk analogue of [`EditorOp::ModeAttr`]: apply TEXT ATTRIBUTES to
+    /// every match of `find`; `attrs == None` (`MDALL NM`) strips them over the matches.
+    ModeAllAttr { attrs: Option<u8>, find: MatchQuery },
     /// `HLCOLOR <kind> <r g b>` — set the syntax-highlight colour for a token kind (by name).
     /// `color = None` (`HLCOLOR <kind> default`) clears it → that kind renders in `FGCOLOR`.
     /// ANY kind name is accepted (2026-06-18 decision: arbitrary string kinds) — a built-in name

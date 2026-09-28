@@ -522,6 +522,10 @@ Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") 
 
 == Colors and appearance
 
+Anywhere a color is given as `R G B` (three numbers 0–255), you can instead give a *color name* — the
+classic X11 / `rgb.txt` set of ~650 (`red`, `SlateGray`, `salmon`, `grey40`, …), case-insensitive. So
+`FGCOLOR salmon`, `MDA red`, and `MDALL/B yellow TODO` all work. `/HSL` still expects a numeric triple.
+
 / #cmd("FGCOLOR", "FGCOLORS") / #cmd("BGCOLOR", "BGCOLORS"): the editor text / background color.
 / #cmd("UIFGCOLOR", "UIFGCOLORS") / #cmd("UIBGCOLOR", "UIBGCOLORS") / #cmd("SEPCOLOR", "SEPCOLORS"): the UI chrome's text / background / separator color.
 / #cmd("SELFGCOLOR", "SELFGCOLORS") / #cmd("SELBGCOLOR", "SELBGCOLORS"): the selected text's color / highlight.
@@ -529,6 +533,7 @@ Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") 
 / #cmd("EMPH") / #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): emphasize a word/phrase in the current tab / its text color / its background.
 / #cmd("URLHIGHLIGHT") / #cmd("URLFGCOLOR", "URLFGCOLORS") / #cmd("URLBGCOLOR", "URLBGCOLORS"): highlight URLs (Ctrl+click opens them) / their text color / their background.
 / #cmd("MDA") / #cmd("MDAS"): style the selection as a persistent text block — foreground colour, background colour (`/B`), or an attribute (`BO`/`IT`/`BI`/`UL`/`BU`/`RV`, `NM` to clear) — saved with the file; `MDAS` opens a colour picker.
+/ #cmd("MDALL"): apply an #cmd("MDA") style to EVERY match of a text string / regex at once (`MDALL <style> <pattern>`) — a persistent one-time bake, unlike the live #cmd("EMPH") highlight.
 / #cmd("ULSPACES"): whether an `MDA` underline runs through the spaces between words (`on`, default) or breaks at them (`off`).
 / #cmd("CRCOLOR", "CRCOLORS") / #cmd("CRSHAPE") / #cmd("CMCRCOLOR", "CMCRCOLORS") / #cmd("CMCRSHAPE"): the text / command-line caret color and shape.
 / #cmd("TABBGCOLOR", "TABBGCOLORS") / #cmd("TABXCOLOR", "TABXCOLORS") / #cmd("PANECOLOR", "PANECOLORS"): the tab background / close-× / focused-pane border color.
@@ -888,6 +893,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
   #emph[In print.] `MDA` styling isn't only on-screen: a #emph[Markdown/GFM] document carries it into the #cmd("PV") preview and #cmd("TOPDF") export — every layer (bold / italic / underline / reverse / foreground / background) is woven into the generated Typst so it renders in the PDF, even the attributes Markdown itself can't express. It applies to prose text; styling that falls inside Markdown syntax (a code span, a link's target) is left to render plainly. #emph[Authored-Typst] documents (#cmd("DOCTYPE") `typst`) style themselves in Typst markup, so `MDA` there stays a screen-only overlay.
 / #cmd("MDAS"): open a colour #underline[picker] for the selection's #cmd("MDA") block colour — bare picks the foreground, `MDAS/B` the background. On accept it runs `MDA`/`MDA/B <r g b>`. In the GUI: #emph[Settings ▸ Appearance ▸ Colors ▸ Block colour].
+/ #cmd("MDALL"): apply an #cmd("MDA") style to #emph[every] match of a pattern in one pass — `MDALL <style> <pattern>`. The style is exactly what #cmd("MDA") takes and picks the same layer: a colour `MDALL <r g b>` — or a colour name, `MDALL red` — (foreground; `/B` background; `/HSL`) or an attribute `MDALL BO|IT|BI|UL|BU|RV` (`NM` clears attributes); `MDALL off <pattern>` clears the foreground colour #emph[and] attributes over the matches (`MDALL/B off` clears the background). The style spec is fixed-width — one word for an attribute / `off` / a colour name, three for a numeric colour — so the rest of the line is the pattern. Matching mirrors #cmd("EMPH"): a literal pattern is whole-word and case-insensitive by default; `/C` makes it case-sensitive, `/R` treats it as a regular expression, `/P` as a Perl-compatible one, and `/S` confines it to the current selection. Each match becomes an ordinary #cmd("MDA") span, so it #emph[persists] to the `.xymeta` sidecar, follows later edits, and prints in #cmd("PV")/#cmd("TOPDF"). This is a #emph[one-time bake], not a standing rule: unlike the live #cmd("EMPH") highlight it does not re-evaluate — editing a styled word keeps its style, and newly typed occurrences are unstyled. Re-run `MDALL off <pattern>` to remove it. A pattern with no matches is a trappable error; very large match counts are capped.
 / #cmd("MARKSET") / #cmd("MARKCLEAR"): set / clear a bookmark at the caret (`MARKCLEAR` where there is none is a trappable error). #cmd("MARKTOGGLE"): set one if absent, clear it if present. #cmd("MARKCLEARALL"): remove every bookmark in the document.
 / #cmd("MARKNEXT") / #cmd("MARKPREV"): move the caret to the next / previous bookmark, wrapping at the ends, and scroll it into view. A bookmark whose text has moved (the file changed since it was saved) is relocated to the nearby text, noted in the status line. Bookmarks are per-document, persist in the hidden `.xymeta` sidecar, and show as a dot in the left gutter. See #sv("MARKS") / #sv("MARK").
 / #cmd("MARKLIST"): open a modal chooser of the document's bookmarks — each row is the line number and its text — and jump the caret to the one you pick (centered). Bind it to a key for a quick "go to bookmark" menu. A no-op note when there are none.

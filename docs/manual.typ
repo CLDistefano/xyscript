@@ -974,7 +974,7 @@ underline, reverse video).
 
 Select some text, then apply a layer:
 
-/ #raw("MDA <r g b>"): color the selected text (the foreground). A color name works too — #raw("MDA red") — and #raw("/HSL") reads the triple as hue / saturation / lightness.
+/ #raw("MDA <r g b>"): color the selected text (the foreground). A color *name* works too — #raw("MDA red"), #raw("MDA SlateGray"): about 650 X11 / #raw("rgb.txt") names are built in (case doesn't matter), and they work anywhere a color is taken (#raw("FGCOLOR"), #raw("MDALL"), …). #raw("/HSL") reads the triple as hue / saturation / lightness.
 / #raw("MDA/B <r g b>"): color the *background* behind the selection.
 / #raw("MDA BO") / #raw("IT") / #raw("BI") / #raw("UL") / #raw("BU"): bold / italic / bold-italic / underlined / bold-underlined.
 / #raw("MDA RV"): reverse video — the text is drawn in the background color over a foreground-colored block, so it stays inverted even if you switch themes.
@@ -1010,6 +1010,27 @@ Typing modes are *per file* — each tab keeps its own, so switching files never
 mode into another. When a mode is armed, the status line shows a small reverse-video tag at the left:
 the attribute letters (#raw("B"), #raw("I"), #raw("U"), #raw("R")) and a swatch of the armed
 foreground / background color, so you can see at a glance what the next keystrokes will look like.
+
+== Styling every match at once
+
+#raw("MDALL") applies an MDA style to *every* occurrence of a word, phrase, or pattern in one pass —
+no need to find and select each one. The style is exactly what #raw("MDA") takes, and picks the same
+layer; the rest of the line is the pattern:
+
+#ex("MDALL red WARNING        # every \"WARNING\" in red (a colour name)
+MDALL BO TODO              # every \"TODO\" in bold
+MDALL/B yellow FIXME       # every \"FIXME\" on a yellow background
+MDALL/R 0 0 255 [A-Z]{3,}  # every run of 3+ capitals, in blue")
+
+Matching works like #raw("EMPH"): a plain pattern is whole-word and case-insensitive; add #raw("/C")
+for case-sensitive, #raw("/R") for a regular expression, #raw("/P") for a Perl-compatible one, or
+#raw("/S") to stay within the current selection. To remove the styling again, run #raw("MDALL off")
+with the same pattern (or #raw("MDALL/B off") for a background, #raw("MDALL NM") for attributes).
+
+The important thing to understand is that this is a *one-time bake*, not a live rule. Each match becomes
+an ordinary MDA span — it saves with the file, follows your later edits, and prints — but it does not
+keep re-matching: edit a styled word and it keeps its color; type a new occurrence later and it is not
+styled. (For a *live*, always-current highlight that isn't saved, use #raw("EMPH") instead.)
 
 == How the styling is stored
 

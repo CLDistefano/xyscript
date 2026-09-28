@@ -3666,6 +3666,65 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::ModeColor { background, rgb })?;
                 Ok(Flow::Next)
             }
+            // `MDALL <style> <pattern>` — the bulk analogue of `MDA`: stamp a persistent style onto EVERY
+            // match of the pattern (a one-time snapshot bake — see `EditorOp::ModeAllColor`). The style
+            // spec is fixed-arity so the remainder is the pattern: an attribute keyword / `off` / `default`
+            // is ONE word, a colour is THREE (`R G B`, or `H S L` under `/HSL`). Literal patterns default
+            // to whole-word + case-insensitive like `EMPH`; `/C` = case-sensitive, `/R` = regex, `/P` =
+            // Perl regex, `/B` = background layer, `/S` = confine to the selection.
+            "MDALL" => {
+                let background =
+                    vswitches.iter().any(|s| s.eq_ignore_ascii_case("B") || s.eq_ignore_ascii_case("BG"));
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let regex = vswitches.iter().any(|s| s.eq_ignore_ascii_case("R"));
+                let perl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("P"));
+                let in_selection = vswitches.iter().any(|s| s.eq_ignore_ascii_case("S"));
+                let case = vswitches.iter().any(|s| s.eq_ignore_ascii_case("C"));
+                let s = args.trim_start();
+                if s.is_empty() {
+                    return Err(XplError::trappable("MDALL: a style and a pattern are required"));
+                }
+                // A match query shared by both dispatch paths (whole-word only for a literal pattern).
+                let make_query = |pattern: &str| -> VmResult<crate::host::MatchQuery> {
+                    let pattern = pattern.trim();
+                    if pattern.is_empty() {
+                        return Err(XplError::trappable("MDALL: a pattern is required"));
+                    }
+                    Ok(crate::host::MatchQuery {
+                        pattern: pattern.to_string(),
+                        case,
+                        whole: !regex && !perl,
+                        regex,
+                        perl,
+                        in_selection,
+                    })
+                };
+                let (first, rest1) = {
+                    let (w, r) = peel_words(s, 1);
+                    (w.first().copied().unwrap_or(""), r)
+                };
+                if let Some(attrs) = crate::host::parse_mda_attr(first) {
+                    // `MDALL BO|IT|…|NM <pattern>`
+                    let find = make_query(rest1)?;
+                    self.host_op(EditorOp::ModeAllAttr { attrs, find })?;
+                } else if first.eq_ignore_ascii_case("off") || first.eq_ignore_ascii_case("default") {
+                    // `MDALL off <pattern>` — clear the colour layer (and, for fg, attributes) over matches.
+                    let find = make_query(rest1)?;
+                    self.host_op(EditorOp::ModeAllColor { background, rgb: None, find })?;
+                } else if !hsl && crate::color_names::is_name(first) {
+                    // `MDALL <name> <pattern>` — a one-word colour name (not under `/HSL`, which wants a triple).
+                    let find = make_query(rest1)?;
+                    let rgb = Some(parse_color("MDALL", first, hsl)?);
+                    self.host_op(EditorOp::ModeAllColor { background, rgb, find })?;
+                } else {
+                    // A colour: exactly three leading words (`R G B` or `H S L`), the rest is the pattern.
+                    let (nums, patt) = peel_words(s, 3);
+                    let find = make_query(patt)?;
+                    let rgb = Some(parse_color("MDALL", &nums.join(" "), hsl)?);
+                    self.host_op(EditorOp::ModeAllColor { background, rgb, find })?;
+                }
+                Ok(Flow::Next)
+            }
             // `DWFGCOLOR`/`DWBGCOLOR <r g b>` — the DIR/W window's text/background colour (`/HSL`);
             // bare or `… default` clears it so the window inherits the editor's colour. `…S` opens the
             // picker. Kept separate from the RGB-only verbs below because it is an OPTION (unset =
@@ -5827,13 +5886,38 @@ fn is_search_base(base: &str) -> bool {
 /// Parse a colour command's three values into an RGB triple. `FGCOLOR`/`BGCOLOR` take
 /// `R G B` (0-255); with `/HSL` the triple is `H S L` on the same 0-255 scale, converted
 /// here to RGB. Wrong arity or out-of-range values are trappable usage errors.
+/// Peel the first `n` whitespace-delimited words off `s`, returning them plus the remainder (its
+/// leading whitespace trimmed; interior/trailing whitespace preserved so a pattern keeps its shape).
+/// Fewer than `n` words present → the words found and an empty remainder. Used by `MDALL` to split a
+/// fixed-arity style spec (1 word for an attribute/`off`, 3 for a colour) from the trailing pattern.
+fn peel_words(s: &str, n: usize) -> (Vec<&str>, &str) {
+    let mut words = Vec::with_capacity(n);
+    let mut rest = s.trim_start();
+    for _ in 0..n {
+        if rest.is_empty() {
+            break;
+        }
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        words.push(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
+    (words, rest)
+}
+
 fn parse_color(base: &str, args: &str, hsl: bool) -> VmResult<(u8, u8, u8)> {
     let nums: Vec<&str> = args.split_whitespace().collect();
+    // A single word that isn't a number is a colour NAME (X11 / rgb.txt set, e.g. `red`, `SlateGray`).
+    // `/HSL` is meaningless for a name, so a name resolves straight to its RGB regardless.
+    if nums.len() == 1 {
+        if let Some(rgb) = crate::color_names::lookup(nums[0]) {
+            return Ok(rgb);
+        }
+    }
     if nums.len() != 3 {
         return Err(XplError::trappable(format!(
-            "{base}: expected three numbers ({}), got {}",
+            "{base}: expected three numbers ({}) or a colour name, got {}",
             if hsl { "H S L" } else { "R G B" },
-            nums.len()
+            args.trim()
         )));
     }
     let mut v = [0u8; 3];
@@ -5981,6 +6065,9 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
+        // `MDALL`: `/B`|`/BG` background; `/HSL` colour as H S L; `/R` regex; `/P` Perl regex;
+        // `/S` confine to the selection; `/C` case-sensitive (default: case-insensitive whole-word).
+        "MDALL" => &["B", "BG", "HSL", "R", "P", "S", "C"],
         "NEW" | "NE" => &["H", "V"], // `/H` `/V` — open the new buffer in a split pane (Stacked/SideBySide)
         "SCRATCH" => &["V"], // `/V` — prefill the new scratchpad with the clipboard
         "SCRATCHCLOSE" => &["V"], // `/V` — also insert the closing scratchpad's text at the caret

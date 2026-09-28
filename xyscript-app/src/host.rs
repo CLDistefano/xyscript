@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -6888,6 +6888,26 @@ impl AppHost {
         buffer.find_all(&pattern, lo, hi, CAP)
     }
 
+    /// Maximum matches `MDALL` styles in one pass — a guard against a runaway `/R` on a huge file. The
+    /// bulk span-setter handles this many cheaply; report it when the cap is hit.
+    pub(crate) const MDALL_CAP: usize = 20_000;
+
+    /// Run a `MatchQuery` (the `MDALL` operand) against the active document, returning the match spans as
+    /// ROPE offsets (the same space the MDA span setters use). A malformed regex is a trappable error
+    /// (so `MDALL/R (` reports instead of silently doing nothing), matching `EMPH`'s validation.
+    fn find_all_query(&self, q: &MatchQuery) -> VmResult<Vec<(usize, usize)>> {
+        let pattern = Pattern::build(&q.pattern, q.case, q.whole, q.regex, q.perl)
+            .map_err(|e| XplError::trappable(format!("MDALL: {e}")))?;
+        let buffer = self.active_doc().buffer();
+        let scope = if q.in_selection {
+            buffer.selection_span().filter(|&(s, e)| e > s)
+        } else {
+            None
+        };
+        let (lo, hi) = scope.unwrap_or((0, buffer.len()));
+        Ok(buffer.find_all(&pattern, lo, hi, Self::MDALL_CAP))
+    }
+
     fn do_search(&mut self, mut spec: SearchSpec) -> VmResult<Value> {
         // An empty pattern repeats the last search — carrying its OPTIONS (case/whole/regex), not
         // just the text — so Find Next / F3 (bare `SE`) and Find Prev / Shift+F3 (bare `SEB`) repeat
@@ -12470,6 +12490,43 @@ impl Host for AppHost {
                     },
                 };
                 return Ok(Value::str(msg));
+            }
+            EditorOp::ModeAllColor { background, rgb, find } => {
+                // Bulk MDA colour: stamp the fg (or bg) colour onto EVERY match, as persistent spans.
+                let spans = self.find_all_query(&find)?;
+                if spans.is_empty() {
+                    return Err(XplError::trappable(format!("MDALL: no matches for {:?}", find.pattern)));
+                }
+                let n = spans.len();
+                if background {
+                    self.docs[self.active].set_bg_color_spans_bulk(&spans, rgb);
+                } else {
+                    self.docs[self.active].set_color_spans_bulk(&spans, rgb);
+                    // Bare `MDALL off` mirrors bare `MDA`: clearing the foreground clears attributes too.
+                    if rgb.is_none() {
+                        self.docs[self.active].set_attr_spans_bulk(&spans, None);
+                    }
+                }
+                let layer = if background { "background" } else { "foreground" };
+                let capped = if n >= Self::MDALL_CAP { " (capped)" } else { "" };
+                return Ok(Value::str(match rgb {
+                    Some((r, g, b)) => format!("MDALL {layer}: {r} {g} {b} on {n} match(es){capped}"),
+                    None => format!("MDALL cleared {layer} on {n} match(es){capped}"),
+                }));
+            }
+            EditorOp::ModeAllAttr { attrs, find } => {
+                // Bulk MDA attributes: apply (or, with `NM`, clear) attributes on EVERY match.
+                let spans = self.find_all_query(&find)?;
+                if spans.is_empty() {
+                    return Err(XplError::trappable(format!("MDALL: no matches for {:?}", find.pattern)));
+                }
+                let n = spans.len();
+                self.docs[self.active].set_attr_spans_bulk(&spans, attrs);
+                let capped = if n >= Self::MDALL_CAP { " (capped)" } else { "" };
+                return Ok(Value::str(match attrs {
+                    Some(a) => format!("MDALL {}: {n} match(es){capped}", mda_attr_names(a)),
+                    None => format!("MDALL cleared attributes on {n} match(es){capped}"),
+                }));
             }
             EditorOp::SetColor { ground, rgb } => {
                 let (r, g, b) = rgb;

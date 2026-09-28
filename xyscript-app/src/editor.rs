@@ -4433,6 +4433,98 @@ mod tests {
     }
 
     #[test]
+    fn mdall_styles_every_match_with_emph_defaults() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "cat Cat concatenate cat""#);
+        //                         0   4   8            21
+        // Literal default = whole-word + case-insensitive: the two standalone "cat"/"Cat" match, but
+        // "cat" inside "concatenate" does NOT.
+        e.run_command("MDALL 255 0 0 cat");
+        assert_eq!(
+            e.color_spans(),
+            vec![(0, 3, (255, 0, 0)), (4, 7, (255, 0, 0)), (20, 23, (255, 0, 0))],
+            "fg on every whole-word match, case-insensitive, skipping the substring in concatenate"
+        );
+        // A background pass and an attribute pass are independent layers over the same matches.
+        e.run_command("MDALL/B 0 0 255 cat");
+        assert_eq!(e.bg_color_spans().len(), 3, "bg on all three matches");
+        e.run_command("MDALL BO cat");
+        assert_eq!(e.attr_spans(), vec![(0, 3, 1), (4, 7, 1), (20, 23, 1)], "bold on all three matches");
+    }
+
+    #[test]
+    fn mdall_regex_and_perl_match() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "a1 b22 c333""#);
+        // `/R` regex, `/B` background layer.
+        e.run_command(r#"MDALL/R/B 0 0 255 \d+"#);
+        assert_eq!(
+            e.bg_color_spans(),
+            vec![(1, 2, (0, 0, 255)), (4, 6, (0, 0, 255)), (8, 11, (0, 0, 255))],
+            "regex styles every run of digits"
+        );
+    }
+
+    #[test]
+    fn mdall_off_clears_matches_including_attributes() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "cat dog cat""#);
+        e.run_command("MDALL 255 0 0 cat");
+        e.run_command("MDALL BO cat");
+        assert_eq!(e.color_spans().len(), 2);
+        assert_eq!(e.attr_spans().len(), 2);
+        // `MDALL off <pattern>` clears the fg colour AND attributes over the matches (bare-MDA parity).
+        e.run_command("MDALL off cat");
+        assert!(e.color_spans().is_empty(), "fg cleared on matches");
+        assert!(e.attr_spans().is_empty(), "attributes cleared on matches too");
+    }
+
+    #[test]
+    fn mdall_spans_follow_edits() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "cat cat""#);
+        e.run_command("MDALL 1 2 3 cat");
+        assert_eq!(e.color_spans(), vec![(0, 3, (1, 2, 3)), (4, 7, (1, 2, 3))]);
+        // Insert at the very top → both baked spans shift right, like any MDA styling.
+        e.run_command("TF");
+        e.run_command(r#"INSERT "XY""#);
+        assert_eq!(e.color_spans(), vec![(2, 5, (1, 2, 3)), (6, 9, (1, 2, 3))], "baked spans track the edit");
+    }
+
+    #[test]
+    fn mda_and_mdall_accept_colour_names() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "red flag red""#);
+        // MDA takes a name on a selection (red = 255 0 0).
+        e.run_command("TF");
+        e.run_command("DW"); // select "red"
+        e.run_command("MDA red");
+        assert_eq!(e.color_spans(), vec![(0, 3, (255, 0, 0))], "MDA <name> colours the selection");
+        // MDALL takes a one-word name as its style; the rest is the pattern.
+        e.run_command("MDALL/B yellow flag");
+        assert_eq!(e.bg_color_spans(), vec![(4, 8, (255, 255, 0))], "MDALL <name> styles every match");
+    }
+
+    #[test]
+    fn mdall_no_match_reports_without_styling() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "cat dog""#);
+        e.run_command("MDALL 255 0 0 zzz");
+        assert!(e.color_spans().is_empty(), "nothing styled when there are no matches");
+        assert!(
+            e.status_message().map(|s| s.contains("no matches")).unwrap_or(false),
+            "a no-match reports on the status line: {:?}",
+            e.status_message()
+        );
+    }
+
+    #[test]
     fn mda_colours_persist_across_save_and_reopen_via_sidecar() {
         // Real filesystem (NOT the virtual FS) — the sidecar is a genuine hidden companion file.
         let base = std::env::temp_dir().join(format!("xyscript-xymeta-{:p}", &"mda"));

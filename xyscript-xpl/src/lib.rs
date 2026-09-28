@@ -11,6 +11,7 @@
 //! the next. This file re-exports the stable surface as modules come online.
 
 pub mod ast;
+pub mod color_names;
 pub mod env;
 pub mod error;
 pub mod expr;
@@ -33,7 +34,7 @@ pub use library::{BUILTIN_VERBS, CONTROL_KEYWORDS};
 pub use host::{
     parse_mda_attr, ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE, BinderSource, CalcContext, CaretShape, CaseKind,
     ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly, DirOpts, DirOrder,
-    DocTypeReq, EditorOp, HelpResponse, Host, LintFixChoices, LockKey, MarkGutterMode, Motion, MsgColorSlot, PathPlace, PersistKind,
+    DocTypeReq, EditorOp, HelpResponse, Host, LintFixChoices, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, PathPlace, PersistKind,
     PvMarginSide, SearchSpec, SortSpec, StubHost, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
 };
 pub use library::{parse_lib, LibSource, Library, Routine};

@@ -1365,6 +1365,82 @@ impl Document {
         *list = merged;
     }
 
+    /// Apply (or, with `value == None`, CLEAR) `value` over MANY ROPE ranges in ONE pass — the bulk
+    /// analogue of [`set_span_in`], for `MDALL` (style every match). Calling `set_span_in` per range
+    /// would be O(ranges × spans) (it rebuilds + re-sorts the whole list each time); this subtracts all
+    /// the ranges from the existing spans, adds the new ones, then sorts + coalesces exactly once.
+    /// `ranges` need not be sorted or disjoint; empty ranges (`start >= end`) are skipped.
+    fn set_spans_bulk<P: Copy + PartialEq>(
+        list: &mut Vec<(usize, usize, P)>,
+        ranges: &[(usize, usize)],
+        value: Option<P>,
+    ) {
+        // Normalize + sort the target ranges so overlap tests are a linear sweep.
+        let mut cuts: Vec<(usize, usize)> = ranges.iter().copied().filter(|&(s, e)| s < e).collect();
+        if cuts.is_empty() {
+            return;
+        }
+        cuts.sort_unstable();
+        // Subtract every target range from each existing span (interval subtraction), keeping the
+        // uncovered remainders. A span can be split by several ranges, so walk the sorted cuts.
+        let mut out: Vec<(usize, usize, P)> = Vec::with_capacity(list.len() + cuts.len());
+        for &(ss, se, c) in list.iter() {
+            let mut pos = ss;
+            for &(cs, ce) in &cuts {
+                if ce <= pos || cs >= se {
+                    continue; // this cut doesn't touch what's left of the span
+                }
+                if cs > pos {
+                    out.push((pos, cs.min(se), c)); // keep the uncovered left remainder
+                }
+                pos = pos.max(ce);
+                if pos >= se {
+                    break;
+                }
+            }
+            if pos < se {
+                out.push((pos, se, c)); // trailing uncovered remainder
+            }
+        }
+        // Add the new spans (a set); a clear just leaves the holes.
+        if let Some(v) = value {
+            for &(cs, ce) in &cuts {
+                out.push((cs, ce, v));
+            }
+        }
+        out.sort_by_key(|&(s, _, _)| s);
+        let mut merged: Vec<(usize, usize, P)> = Vec::with_capacity(out.len());
+        for span in out {
+            match merged.last_mut() {
+                Some(prev) if prev.1 == span.0 && prev.2 == span.2 => prev.1 = span.1,
+                _ => merged.push(span),
+            }
+        }
+        *list = merged;
+    }
+
+    /// Bulk-apply a FOREGROUND colour to many ranges (`MDALL`). `None` clears them.
+    pub fn set_color_spans_bulk(&mut self, ranges: &[(usize, usize)], color: Option<(u8, u8, u8)>) {
+        Self::set_spans_bulk(&mut self.color_spans, ranges, color);
+        self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
+    }
+
+    /// Bulk-apply a BACKGROUND colour to many ranges (`MDALL/B`). `None` clears them.
+    pub fn set_bg_color_spans_bulk(&mut self, ranges: &[(usize, usize)], color: Option<(u8, u8, u8)>) {
+        Self::set_spans_bulk(&mut self.bg_spans, ranges, color);
+        self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
+    }
+
+    /// Bulk-apply text ATTRIBUTES to many ranges (`MDALL BO|IT|…`). `None` (or an all-zero bitset)
+    /// clears them.
+    pub fn set_attr_spans_bulk(&mut self, ranges: &[(usize, usize)], attrs: Option<u8>) {
+        Self::set_spans_bulk(&mut self.attr_spans, ranges, attrs.filter(|&a| a != 0));
+        self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
+    }
+
     /// Shift ALL span layers (both colours + attributes) to follow an edit at byte `at` that removed
     /// `removed` and inserted `inserted` bytes (called from `record`, so they track typing/deletion).
     /// Points inside the removed range collapse to `at`; spans emptied by the edit are dropped.
@@ -3438,6 +3514,37 @@ mod tests {
             kind: "spelling".into(),
             message: String::new(),
         }
+    }
+
+    #[test]
+    fn set_spans_bulk_matches_sequential_set_span_in() {
+        // The bulk setter (MDALL) must produce EXACTLY what applying each range one-by-one would —
+        // same interval subtraction, sort, and coalesce — but in a single pass.
+        let ranges = [(10usize, 13usize), (0, 3), (4, 7), (20, 25)];
+        // Seed a pre-existing span that some ranges overlap/split, to exercise subtraction.
+        let seed = || vec![(2usize, 22usize, (9u8, 9u8, 9u8))];
+
+        let mut sequential = seed();
+        for &(s, e) in &ranges {
+            Document::set_span_in(&mut sequential, s, e, Some((1, 2, 3)));
+        }
+        let mut bulk = seed();
+        Document::set_spans_bulk(&mut bulk, &ranges, Some((1, 2, 3)));
+        assert_eq!(bulk, sequential, "bulk set == sequential set");
+
+        // A bulk CLEAR (value None) must equal sequential clears too.
+        let mut seq_clear = seed();
+        for &(s, e) in &ranges {
+            Document::set_span_in(&mut seq_clear, s, e, None::<(u8, u8, u8)>);
+        }
+        let mut bulk_clear = seed();
+        Document::set_spans_bulk(&mut bulk_clear, &ranges, None);
+        assert_eq!(bulk_clear, seq_clear, "bulk clear == sequential clear");
+
+        // Adjacent same-value spans coalesce into one.
+        let mut adj: Vec<(usize, usize, u8)> = Vec::new();
+        Document::set_spans_bulk(&mut adj, &[(0, 3), (3, 6)], Some(1));
+        assert_eq!(adj, vec![(0, 6, 1)], "touching same-value ranges coalesce");
     }
 
     #[test]
