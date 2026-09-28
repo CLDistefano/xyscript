@@ -277,8 +277,32 @@ pub(crate) fn clean(s: &str) -> String {
     static RAW_RE: OnceLock<Regex> = OnceLock::new();
     let raw_re = RAW_RE.get_or_init(|| Regex::new(r#"#raw\("([^"]*)"\)"#).unwrap());
     let out = raw_re.replace_all(&out, |c: &regex::Captures| c[1].to_string());
+    // Inline content wrappers — `#emph[x]`, `#strong[x]`, `#underline[x]`, `#highlight[x]`, and
+    // `#text(…)[x]` — reduce to their inner text `x` (so the reference's `#emph[not]` etc. don't show
+    // their markup). The bracketed body is non-nested in entries, so a single pass suffices.
+    static WRAP_RE: OnceLock<Regex> = OnceLock::new();
+    let wrap_re = WRAP_RE
+        .get_or_init(|| Regex::new(r#"#(?:emph|strong|underline|highlight|text)(?:\([^)]*\))?\[([^\]]*)\]"#).unwrap());
+    let out = wrap_re.replace_all(&out, |c: &regex::Captures| c[1].to_string());
     let out = out.replace('`', "");
-    unescape(&out).trim().to_string()
+    // Strip Typst emphasis markers `*bold*` / `_italic_` (all `*`/`_` in an entry are emphasis).
+    // A `\`-escaped pair is carried through verbatim so a literal `\*`/`\_` survives to be unescaped
+    // below rather than losing its `*`/`_`. Mirrors the manual reducer, which also drops emphasis.
+    let mut stripped = String::with_capacity(out.len());
+    let mut it = out.chars();
+    while let Some(c) = it.next() {
+        match c {
+            '\\' => {
+                stripped.push('\\');
+                if let Some(n) = it.next() {
+                    stripped.push(n);
+                }
+            }
+            '*' | '_' => {} // emphasis marker
+            _ => stripped.push(c),
+        }
+    }
+    unescape(&stripped).trim().to_string()
 }
 
 /// Unescape the backslash escapes the reference uses to keep markup characters literal.
@@ -468,6 +492,27 @@ mod tests {
         assert!(!s.contains('`'), "backticks stripped: {s}");
         assert!(!s.contains("#cmd("), "macros expanded: {s}");
         assert!(s.contains("$CMPLACE"), "an #sv became $-form: {s}");
+    }
+
+    #[test]
+    fn clean_reduces_emphasis_and_content_wrappers() {
+        // Emphasis markers and inline content wrappers reduce to their text (like the manual reducer),
+        // so `REF` output carries no leftover Typst markup.
+        assert_eq!(clean("run it #emph[now] and *stop*"), "run it now and stop");
+        assert_eq!(clean("#strong[bold] _soft_ #underline[u]"), "bold soft u");
+        assert_eq!(clean("a #text(weight: \"bold\")[big] one"), "a big one");
+        // Escaped literals survive (the `\*` is kept, not treated as emphasis).
+        assert_eq!(clean(r"a literal \* char"), "a literal * char");
+    }
+
+    #[test]
+    fn a_real_entry_has_no_leftover_markup() {
+        // AUTOREOPEN's description uses `#emph[unsaved]` / `#emph[independent of]`; the synopsis must
+        // carry neither the wrapper nor a bare `*`/`_` emphasis marker.
+        let s = lookup("AUTOREOPEN").unwrap().synopsis;
+        assert!(!s.contains("#emph"), "emph reduced: {s}");
+        assert!(s.contains("unsaved") && s.contains("independent of"), "text kept: {s}");
+        assert!(!s.contains('#'), "no leftover directives: {s}");
     }
 
     #[test]
