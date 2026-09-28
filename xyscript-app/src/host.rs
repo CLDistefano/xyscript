@@ -12281,6 +12281,29 @@ impl Host for AppHost {
                 self.set_focus(Target::Document); // land the caret in the results for scrolling
                 return Ok(Value::str(""));
             }
+            EditorOp::ShowColorNames { filter } => {
+                // Build the colour-name listing (text + per-name fg tint + swatch bg) and show it in the
+                // shared read-only results tab, exactly like HELP/MAN — then paint the colour spans so
+                // each name renders in its own colour with a solid swatch block.
+                const HELP_TAB: &str = "Help";
+                let listing = xyscript_xpl::color_names::listing(filter.as_deref());
+                let n = listing.fg.len();
+                let idx = if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
+                    self.docs[i].open_help_listing(HELP_TAB.to_string(), &listing.text);
+                    self.docs[i].set_emph(None, false);
+                    self.active = i;
+                    self.sync_panes();
+                    i
+                } else {
+                    let mut doc = Document::new();
+                    doc.open_help_listing(HELP_TAB.to_string(), &listing.text);
+                    self.add_or_reuse(doc);
+                    self.active
+                };
+                self.docs[idx].set_color_spans_raw(listing.fg, listing.bg, Vec::new());
+                self.set_focus(Target::Document);
+                return Ok(Value::str(format!("{n} colour name(s)")));
+            }
             EditorOp::OpenDocPdf { manual } => {
                 // `REFPDF`/`MANPDF` — open the shipped reference/manual PDF in the OS default app. Look
                 // in `$XSDIR/docs` first (the repo layout), then `$XSDIR` (the deployed-alongside-the-exe

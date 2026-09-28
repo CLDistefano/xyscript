@@ -527,6 +527,7 @@ classic X11 / `rgb.txt` set of ~650 (`red`, `SlateGray`, `salmon`, `grey40`, …
 `FGCOLOR salmon`, `MDA red`, and `MDALL/B yellow TODO` all work. `/HSL` still expects a numeric triple.
 
 / #cmd("FGCOLOR", "FGCOLORS") / #cmd("BGCOLOR", "BGCOLORS"): the editor text / background color.
+/ #cmd("COLORNAMES", "COLOURNAMES"): list every built-in color name with its `R G B` value (`COLORNAMES <filter>` narrows it), each shown in its own color.
 / #cmd("UIFGCOLOR", "UIFGCOLORS") / #cmd("UIBGCOLOR", "UIBGCOLORS") / #cmd("SEPCOLOR", "SEPCOLORS"): the UI chrome's text / background / separator color.
 / #cmd("SELFGCOLOR", "SELFGCOLORS") / #cmd("SELBGCOLOR", "SELBGCOLORS"): the selected text's color / highlight.
 / #cmd("FINDFGCOLOR", "FINDFGCOLORS") / #cmd("FINDBGCOLOR", "FINDBGCOLORS"): the FIND "highlight all" color / background.
@@ -729,6 +730,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("CC"): swap the case of the selection — or, with no selection, the character under the caret, then step one character right (so you can sweep along the text).
 / #cmd("CD"): change the working directory; if you name a drive it switches to that drive too (the `/D` switch is optional). A bare drive-qualified path on its own — `D:`, `X:\proj`, `x:rel` — is itself a `CD` (XyWrite muscle memory: type `D:` to switch drives). `subst`ed drives are kept as `drive:\…`, not rewritten to their backing path.
 / #cmd("CHECK"): run the language checker (spelling and grammar) over the active document; the report (one line per issue, `line:col [kind] "text": message`) opens in a scrollable read-only `*Language Check*` tab. Under CAPTURE it goes to the variable instead. (A one-shot; #cmd("SPELLING")/#cmd("GRAMMAR") are the live versions.)
+/ #cmd("COLORNAMES", "COLOURNAMES"): list every built-in colour name with its `R G B` value — the names any colour verb accepts (`MDA red`, `FGCOLOR salmon`, …). Opens the read-only results tab; in the GUI each name is shown in its own colour with a solid swatch block (so a pale name is still visible). `COLORNAMES <filter>` narrows the list to names containing `<filter>` (case-insensitive). Under CAPTURE the plain `name  r g b` text goes to the variable instead. The set is the classic X11 / `rgb.txt` list (~650).
 / #cmd("SPELLING", "SP") / #cmd("GRAMMAR", "GR"): `<verb> on|off` — toggle LIVE spelling / grammar underlines in the canvas, independently. Checking runs on a background thread (never blocks); #sv("SPELLING") / #sv("GRAMMAR") read the states. A spelling underline is held back for the word you are actively typing — it appears only once you finish the word (type a space or other separator) — and every underline hugs the word itself, never the surrounding whitespace. Right-click an underline (spelling OR grammar) for a popup with the issue's explanation, its correction suggestions, "Add to dictionary" (spelling only), and "Check whole document". (Need a build compiled `--features lint`.)
 / #cmd("SPELLNEXT") / #cmd("SPELLPREV"): jump the caret to (and select) the next / previous SPELLING issue, scanning beyond the visible text as needed (bounded; reports if none is found nearby).
 / #cmd("GRAMMARNEXT") / #cmd("GRAMMARPREV"): the same for GRAMMAR / word-choice issues.
@@ -1637,7 +1639,6 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("togs"): a menu of interface toggles.
 / #lib("inspect"): inspect and adjust the Appearance settings.
 / #lib("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR"); an increment argument, e.g. #raw("colors UIBGCOLOR 5")).
-/ #lib("colornames"): open a reference list of named colours with their RGB values (from #raw("examples/color-names.lst")).
 
 == Dates and the calendar
 
@@ -1693,7 +1694,6 @@ Every bundled routine, alphabetical.
 / #lib("closeup"): reduce runs of blank lines to at most n (default 2), over the file or selection.
 / #lib("cmd"): start a shell session (Windows or Linux).
 / #lib("cmnt"): add or remove comment markers on the defined block (default #raw("#"); #raw("cmnt semi") uses #raw(";")).
-/ #lib("colornames"): open a reference list of named colours with their RGB values (from #raw("examples/color-names.lst")).
 / #lib("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR"); an increment argument, e.g. #raw("colors UIBGCOLOR 5")).
 
 == D

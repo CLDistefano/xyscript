@@ -49,6 +49,77 @@ pub fn lookup(name: &str) -> Option<(u8, u8, u8)> {
     table().get(&name.trim().to_ascii_lowercase()).copied()
 }
 
+/// Every colour, de-duplicated (a name that appears more than once keeps the FIRST spelling but the
+/// value [`lookup`] would return — the last one parsed) and sorted case-insensitively by name. The
+/// display names are `'static` (borrowed from the embedded source). Built once.
+fn entries() -> &'static Vec<(&'static str, (u8, u8, u8))> {
+    static E: OnceLock<Vec<(&'static str, (u8, u8, u8))>> = OnceLock::new();
+    E.get_or_init(|| {
+        // Ordered de-dup: first spelling wins for display, last value wins (matches `table()`/`lookup`).
+        let mut order: Vec<&'static str> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut vals: Vec<(u8, u8, u8)> = Vec::new();
+        for line in SOURCE.lines() {
+            if let Some((name, rgb)) = parse_line(line) {
+                let key = name.to_ascii_lowercase();
+                match seen.get(&key) {
+                    Some(&i) => vals[i] = rgb,
+                    None => {
+                        seen.insert(key, order.len());
+                        order.push(name);
+                        vals.push(rgb);
+                    }
+                }
+            }
+        }
+        let mut v: Vec<(&'static str, (u8, u8, u8))> =
+            order.into_iter().zip(vals).collect();
+        v.sort_by(|a, b| a.0.to_ascii_lowercase().cmp(&b.0.to_ascii_lowercase()));
+        v
+    })
+}
+
+/// A rendered colour-name listing: the text plus the span layers that colour it — used by the
+/// `COLORNAMES` verb. `fg` tints each name in its own colour; `bg` paints a solid swatch block after the
+/// values so every colour is visible regardless of the editor theme (a pale name that would vanish as
+/// text still shows as a block). Offsets are byte offsets into `text` (all-ASCII, so also rope offsets).
+pub struct Listing {
+    pub text: String,
+    pub fg: Vec<(usize, usize, (u8, u8, u8))>,
+    pub bg: Vec<(usize, usize, (u8, u8, u8))>,
+}
+
+/// Build the `COLORNAMES` listing, optionally filtered to names containing `filter` (case-insensitive).
+pub fn listing(filter: Option<&str>) -> Listing {
+    const SWATCH: &str = "      "; // 6 blank cells, painted with the colour as background
+    let needle = filter.map(|f| f.trim().to_ascii_lowercase()).filter(|f| !f.is_empty());
+    let rows: Vec<&(&str, (u8, u8, u8))> = entries()
+        .iter()
+        .filter(|(name, _)| needle.as_ref().map_or(true, |n| name.to_ascii_lowercase().contains(n)))
+        .collect();
+    let width = rows.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
+
+    let mut text = match &needle {
+        Some(n) => format!("{} colour name(s) matching {n:?}:\n\n", rows.len()),
+        None => format!("{} colour names (X11 / rgb.txt):\n\n", rows.len()),
+    };
+    let mut fg = Vec::with_capacity(rows.len());
+    let mut bg = Vec::with_capacity(rows.len());
+    for (name, (r, g, b)) in rows {
+        let line_start = text.len();
+        fg.push((line_start, line_start + name.len(), (*r, *g, *b)));
+        text.push_str(name);
+        // Pad to align the values, then the values, then the swatch.
+        text.push_str(&" ".repeat(width - name.len()));
+        text.push_str(&format!("  {r:>3} {g:>3} {b:>3}  "));
+        let sw_start = text.len();
+        bg.push((sw_start, sw_start + SWATCH.len(), (*r, *g, *b)));
+        text.push_str(SWATCH);
+        text.push('\n');
+    }
+    Listing { text, fg, bg }
+}
+
 /// Whether `word` is a known colour name — lets a caller (e.g. `MDALL`'s style/pattern split) tell a
 /// one-word colour name from the start of a pattern without consuming it.
 pub fn is_name(word: &str) -> bool {
@@ -80,5 +151,41 @@ mod tests {
         // Two entries carry an apostrophe / hyphen — they must still load.
         assert!(lookup("baker'schocolate").is_some());
         assert!(lookup("semi-sweetchocolate").is_some());
+    }
+
+    #[test]
+    fn entries_are_sorted_and_deduped() {
+        let e = entries();
+        assert!(e.len() > 500);
+        // Sorted case-insensitively, and each lowercased name appears once.
+        for w in e.windows(2) {
+            assert!(w[0].0.to_ascii_lowercase() <= w[1].0.to_ascii_lowercase(), "sorted");
+        }
+        let mut keys: Vec<String> = e.iter().map(|(n, _)| n.to_ascii_lowercase()).collect();
+        let before = keys.len();
+        keys.dedup();
+        assert_eq!(before, keys.len(), "no duplicate names");
+    }
+
+    #[test]
+    fn listing_text_and_spans_line_up() {
+        let l = listing(None);
+        assert!(
+            l.text.starts_with(&format!("{} colour names", entries().len())),
+            "header counts the names: {:?}",
+            &l.text[..24]
+        );
+        // There's one fg span (the name) and one bg span (the swatch) per row.
+        assert_eq!(l.fg.len(), l.bg.len());
+        assert_eq!(l.fg.len(), entries().len());
+        // Every fg span's covered text is exactly that colour's name (offsets align with the text).
+        for (s, e, rgb) in &l.fg {
+            let name = &l.text[*s..*e];
+            assert_eq!(lookup(name), Some(*rgb), "fg span {name:?} maps to its own colour");
+        }
+        // A filter narrows the rows and updates the header.
+        let blue = listing(Some("blue"));
+        assert!(blue.text.contains("matching \"blue\""));
+        assert!(blue.fg.len() < l.fg.len() && !blue.fg.is_empty());
     }
 }

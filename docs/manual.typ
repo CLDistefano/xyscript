@@ -974,7 +974,7 @@ underline, reverse video).
 
 Select some text, then apply a layer:
 
-/ #raw("MDA <r g b>"): color the selected text (the foreground). A color *name* works too — #raw("MDA red"), #raw("MDA SlateGray"): about 650 X11 / #raw("rgb.txt") names are built in (case doesn't matter), and they work anywhere a color is taken (#raw("FGCOLOR"), #raw("MDALL"), …). #raw("/HSL") reads the triple as hue / saturation / lightness.
+/ #raw("MDA <r g b>"): color the selected text (the foreground). A color *name* works too — #raw("MDA red"), #raw("MDA SlateGray"): about 650 X11 / #raw("rgb.txt") names are built in (case doesn't matter), and they work anywhere a color is taken (#raw("FGCOLOR"), #raw("MDALL"), …). Run #raw("COLORNAMES") to see them all with their values, each in its own color (#raw("COLORNAMES blue") narrows the list). #raw("/HSL") reads the triple as hue / saturation / lightness.
 / #raw("MDA/B <r g b>"): color the *background* behind the selection.
 / #raw("MDA BO") / #raw("IT") / #raw("BI") / #raw("UL") / #raw("BU"): bold / italic / bold-italic / underlined / bold-underlined.
 / #raw("MDA RV"): reverse video — the text is drawn in the background color over a foreground-colored block, so it stays inverted even if you switch themes.
@@ -2292,7 +2292,6 @@ The routines, by what they do:
 / #raw("togs"): a menu of interface toggles.
 / #raw("inspect"): inspect and adjust the Appearance settings.
 / #raw("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR")).
-/ #raw("colornames"): open a reference list of named colours with their RGB values.
 
 === Dates and the calendar
 
@@ -2790,7 +2789,7 @@ color itself.
 There are three ways to change a color:
 
 / *A picker*: #raw("Settings ▸ Syntax highlighting ▸ Theme colors ▸ ") _kind_ opens a submenu with a *Text color…* and a *Background…* picker for that one kind — or the commands #raw("HLCOLORS <kind>") (text) and #raw("HLCOLORS/BG <kind>") (background).
-/ *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings. The three numbers each run #raw("0")–#raw("255"); there are no color names or hex codes. Add #raw("/HSL") to give hue / saturation / lightness instead.
+/ *A command*: #raw("HLCOLOR <kind> <R G B>") — for example #raw("HLCOLOR heading 200 40 40") for red headings, or a color name (#raw("HLCOLOR heading firebrick")). The three numbers each run #raw("0")–#raw("255"); add #raw("/HSL") to give hue / saturation / lightness instead.
 / *Switching one off*: #raw("HLCOLOR <kind> default") drops that kind's color so it draws in the ordinary text color.
 / *A background*: #raw("HLCOLOR/BG <kind> <R G B>") paints a colored band *behind* that kind's glyphs — say #raw("HLCOLOR/BG comment 245 245 210") to tint every comment. It is separate from the foreground (a kind can have both), off by default, and #raw("HLCOLOR/BG <kind> default") removes it. #raw("/HSL") works here too.
 / *A text style*: #raw("HLMODE <kind> <BO|IT|BI|UL|BU|RV>") makes every span of that kind bold, italic, underlined, or reverse-video — the same keywords as #raw("MDA"), and the complement of a color. Several combine (#raw("HLMODE keyword BO UL")), it is independent of the color (a kind can be colored *and* styled), and #raw("HLMODE <kind> NM") clears it. For example #raw("HLMODE comment IT") italicizes comments and #raw("HLMODE keyword BO") bolds keywords. The same _kind_ submenu under #raw("Settings ▸ Syntax highlighting ▸ Theme colors") has _Bold_ / _Italic_ / _Underline_ / _Reverse video_ toggles.

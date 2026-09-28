@@ -4511,6 +4511,24 @@ mod tests {
     }
 
     #[test]
+    fn colornames_opens_a_coloured_listing() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command("COLORNAMES");
+        assert!(e.active_is_help_listing(), "COLORNAMES opens the read-only results tab");
+        let text = e.document().text();
+        assert!(text.contains("black") && text.contains("255"), "lists names + values: {:?}", &text[..40]);
+        // Each name is tinted (fg spans) and each swatch painted (bg spans).
+        assert!(!e.color_spans().is_empty(), "names are coloured");
+        assert!(!e.bg_color_spans().is_empty(), "swatches are painted");
+        // A filter narrows it to matching names.
+        e.run_command("COLORNAMES blue");
+        let filtered = e.document().text();
+        assert!(filtered.contains("matching \"blue\""), "filtered header: {:?}", &filtered[..40]);
+        assert!(filtered.to_lowercase().contains("blue"));
+    }
+
+    #[test]
     fn mdall_no_match_reports_without_styling() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

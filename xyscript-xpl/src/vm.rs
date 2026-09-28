@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 const NO_ERROR_TOUCH: &[&str] = &[
     "CALL", "ENV", "SETERR", "CLERR", "QUIET",
     "?", "ABOUT", "HELP", "REF", "MAN", "COMMANDS", "LISTLIB", "LISTVAR", "LISTVARS", "HISTORY", "HI", "BUFLIST",
-    "HLKINDS",
+    "HLKINDS", "COLORNAMES", "COLOURNAMES",
 ];
 
 /// Verbs whose single argument IS a file to act upon. When one of these is issued with NO argument
@@ -5043,6 +5043,23 @@ impl Vm<'_, '_> {
             // The file is looked up in `$XSDIR/docs` first, then `$XSDIR` (see `EditorOp::OpenDocPdf`).
             "REFPDF" | "MANPDF" => {
                 self.host_op(EditorOp::OpenDocPdf { manual: base == "MANPDF" })?;
+                Ok(Flow::Next)
+            }
+            // `COLORNAMES [filter]` — list the built-in colour names + values (the names any colour verb
+            // accepts, e.g. `MDA red`) in the read-only results tab, each shown in its own colour. Under
+            // CAPTURE, feed the plain text to the captured variable instead. `<filter>` narrows to names
+            // containing it.
+            "COLORNAMES" | "COLOURNAMES" => {
+                let filter = {
+                    let t = args.trim();
+                    (!t.is_empty()).then(|| t.to_string())
+                };
+                if self.is_capturing() {
+                    let text = crate::color_names::listing(filter.as_deref()).text;
+                    self.capture_push(&text);
+                    return Ok(Flow::Next);
+                }
+                self.host_op(EditorOp::ShowColorNames { filter })?;
                 Ok(Flow::Next)
             }
             "KBCHART" => {

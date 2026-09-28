@@ -408,6 +408,10 @@ pub enum EditorOp {
     /// `EMPH` (`None` = no highlight). A non-modal document tab (smooth scrolling), not a dialog; the
     /// tab keeps a fixed "Help" name so both `HELP` and `MAN` reuse the same recognizable tab.
     ShowResults { text: String, emphasis: Option<(String, bool)> },
+    /// `COLORNAMES [filter]` — open the read-only results tab listing every known colour name with its
+    /// `R G B` value (optionally filtered to names containing `filter`), each tinted in its own colour
+    /// plus a solid swatch block so it's visible in any theme. Built from [`crate::color_names::listing`].
+    ShowColorNames { filter: Option<String> },
     /// `REFPDF` (`manual = false`) / `MANPDF` (`manual = true`) — open the shipped reference / user-
     /// manual PDF in the OS default PDF application. The file is sought in `$XSDIR/docs` first, then
     /// `$XSDIR`. Headless builds still resolve + launch it (the OS opens the reader).
