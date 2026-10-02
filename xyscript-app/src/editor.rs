@@ -5479,6 +5479,17 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command("PR $ERROR");
         assert_eq!(e.output().last().map(String::as_str), Some("1"), "unknown charset → $ERROR");
 
+        // The euro sign isn't in CP437. Without /STRICT it is lossily written as `?` (byte 0x3F);
+        // with /STRICT the write is refused (trappable $ERROR) and no file is produced.
+        e.run_command("SET eur = \"€\"");
+        e.run_command("WF/ENC:cp437 lossy.xy $eur");
+        e.run_command("PR $(READFILE(\"lossy.xy\", \"hex\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("3f"), "non-CP437 char → ? (0x3F)");
+        e.run_command("WF/ENC:cp437/STRICT strict.xy $eur");
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"), "STRICT refuses the lossy write");
+        assert!(!base.join("strict.xy").exists(), "STRICT writes nothing on failure");
+
         let _ = std::fs::remove_dir_all(&base);
     }
 

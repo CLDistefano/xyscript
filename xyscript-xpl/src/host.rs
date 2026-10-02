@@ -1893,11 +1893,18 @@ pub trait Host {
 
     /// Write a file encoding `content` through a named `charset` (for `WRITEFILE/ENC:<cp>` / `/B` /
     /// `/HEX`). `charset == None` (or `"utf-8"`) is the plain [`Self::write_file`] path. Single-byte
-    /// code pages encode text → bytes (characters the page can't represent become `?`); `latin1` is the
-    /// byte-exact "binary" write; `"hex"` parses the content as a hex string and writes those raw bytes
-    /// (odd length / non-hex digit is a trappable error). An unknown charset is a trappable error. The
-    /// default ignores `charset` (UTF-8 only).
-    fn write_file_enc(&mut self, path: &str, _charset: Option<&str>, content: &str) -> VmResult<()> {
+    /// code pages encode text → bytes (characters the page can't represent become `?`, unless `strict`,
+    /// which makes such a character a trappable error and writes nothing); `latin1` is the byte-exact
+    /// "binary" write; `"hex"` parses the content as a hex string and writes those raw bytes (odd length
+    /// / non-hex digit is a trappable error). An unknown charset is a trappable error. The default
+    /// ignores `charset`/`strict` (UTF-8 only, where nothing is unrepresentable).
+    fn write_file_enc(
+        &mut self,
+        path: &str,
+        _charset: Option<&str>,
+        _strict: bool,
+        content: &str,
+    ) -> VmResult<()> {
         self.write_file(path, content)
     }
 

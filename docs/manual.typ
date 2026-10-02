@@ -2063,7 +2063,9 @@ switch:
 WF/ENC:cp437 old.xy $t                 # ...and write it back as CP437")
 
 On the way out, a character the target code page can't represent is written as #raw("?") (the same as
-#raw("ENCODING")'s \"convert\"); an unknown encoding name is a trappable error.
+#raw("ENCODING")'s \"convert\"). Add #raw("/STRICT") to refuse such a write instead: the first
+unrepresentable character is a trappable error (#raw("$ERROR")) and nothing is written, so a script can
+catch a lossy save rather than letting it slip through. An unknown encoding name is a trappable error too.
 
 Two special modes let a script handle *any* file, byte for byte:
 

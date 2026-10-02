@@ -1543,9 +1543,20 @@ impl Vm<'_, '_> {
             // string describes (`WF/HEX out.bin "4d5a9000"`).
             "WRITEFILE" | "WF" => {
                 let charset = write_charset_switch(&vswitches);
+                // `/STRICT` — refuse a lossy code-page write (a character the page can't hold is a
+                // trappable error) instead of substituting `?`.
+                let strict = vswitches.iter().any(|s| s.eq_ignore_ascii_case("STRICT"));
                 let (path, content) = split_path_and_rest(&args)?;
-                self.ctx.host.write_file_enc(&path, charset.as_deref(), &content)?;
-                Ok(Flow::Next)
+                // Trap a write failure (bad path, unknown encoding, `/STRICT` loss, bad `/HEX`) into
+                // `$ERROR` so the script can recover, rather than letting it unwind the run.
+                match self.ctx.host.write_file_enc(&path, charset.as_deref(), strict, &content) {
+                    Ok(()) => Ok(Flow::Next),
+                    Err(XplError::Trappable { code, msg }) => {
+                        self.fail_trap(code, msg);
+                        Ok(Flow::Next)
+                    }
+                    Err(fatal) => Err(fatal),
+                }
             }
             // Counters `C1`..`C9` (XyWrite-style, per-document). `Cn <seed>` configures (number /
             // letter / Roman+`r` + optional decorator); bare `Cn` puts the value and advances;
@@ -6092,8 +6103,9 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "RUN" => &["BG", "R"], // `/BG` — background child process; `/R:<var>` — return output to a var
         "RUNCODE" => &["BG", "R"], // run XPL text from a var; `/BG` backgrounds; `/R:<var>` returns
         // `/ENC:<charset>` encode through a code page; `/B` byte-exact binary (= latin1); `/HEX` write
-        // the bytes a hex string describes. (`validate_switches` strips the `:value` before checking.)
-        "WRITEFILE" | "WF" => &["ENC", "B", "HEX"],
+        // the bytes a hex string describes; `/STRICT` error instead of `?`-substituting a character the
+        // code page can't hold. (`validate_switches` strips the `:value` before checking.)
+        "WRITEFILE" | "WF" => &["ENC", "B", "HEX", "STRICT"],
         "HLCOLOR" => &["HSL", "BG"], // `/HSL` triple as H S L; `/BG` set the token's BACKGROUND band
         "HLCOLORS" => &["BG"], // `/BG` — pick the token's BACKGROUND band instead of the foreground
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"

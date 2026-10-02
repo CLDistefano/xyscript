@@ -14514,19 +14514,34 @@ impl Host for AppHost {
         Ok(enc.decode(&bytes))
     }
 
-    fn write_file_enc(&mut self, path: &str, charset: Option<&str>, content: &str) -> VmResult<()> {
+    fn write_file_enc(
+        &mut self,
+        path: &str,
+        charset: Option<&str>,
+        strict: bool,
+        content: &str,
+    ) -> VmResult<()> {
         let cs = charset.unwrap_or("utf-8");
         if cs.eq_ignore_ascii_case("utf-8") || cs.eq_ignore_ascii_case("utf8") {
-            return self.write_file(path, content);
+            return self.write_file(path, content); // nothing is unrepresentable in UTF-8
         }
         let bytes = if cs.eq_ignore_ascii_case("hex") {
             hex_to_bytes(content).map_err(|e| XplError::trappable(format!("WRITEFILE/HEX: {e}")))?
         } else {
-            // Code-page encode: characters the page can't represent become `?` (lossy — the same
-            // behaviour as `ENCODING/C`; a stricter mode is a future `/STRICT`). `latin1` = binary.
+            // Code-page encode. `latin1` = binary. With `/STRICT`, a character the page can't hold is a
+            // trappable error (nothing written); otherwise it becomes `?` (as `ENCODING/C` does).
             let enc = crate::encoding::by_name(cs)
                 .ok_or_else(|| XplError::trappable(format!("WRITEFILE: unknown encoding {cs:?}")))?;
-            enc.encode(content)
+            if strict {
+                enc.encode_strict(content).map_err(|c| {
+                    XplError::trappable(format!(
+                        "WRITEFILE/STRICT: character {c:?} (U+{:04X}) is not representable in {cs}",
+                        c as u32
+                    ))
+                })?
+            } else {
+                enc.encode(content)
+            }
         };
         self.write_bytes(path, &bytes)
     }

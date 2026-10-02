@@ -39,6 +39,13 @@ pub trait Encoding {
     /// Encode text into bytes for storage. Characters the encoding can't
     /// represent become `?`.
     fn encode(&self, text: &str) -> Vec<u8>;
+    /// Like [`Self::encode`] but *strict*: the first character the encoding cannot represent is
+    /// returned as `Err(char)` instead of being substituted with `?`. Used by `WRITEFILE/STRICT` so a
+    /// script can refuse a lossy write. The default (for UTF-8, where every character is representable)
+    /// never fails.
+    fn encode_strict(&self, text: &str) -> Result<Vec<u8>, char> {
+        Ok(self.encode(text))
+    }
 
     /// Byte length of the character whose lead byte is `b` (1 for single-byte;
     /// the UTF-8 lead-byte length otherwise). A continuation/invalid lead yields
@@ -91,6 +98,16 @@ impl Encoding for SingleByteEncoding {
         text.chars()
             .map(|c| self.to_byte.get(&c).copied().unwrap_or(b'?'))
             .collect()
+    }
+    fn encode_strict(&self, text: &str) -> Result<Vec<u8>, char> {
+        let mut out = Vec::with_capacity(text.len());
+        for c in text.chars() {
+            match self.to_byte.get(&c) {
+                Some(&b) => out.push(b),
+                None => return Err(c), // not representable in this code page
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -164,6 +181,9 @@ impl Encoding for Charset {
     }
     fn encode(&self, text: &str) -> Vec<u8> {
         self.inner().encode(text)
+    }
+    fn encode_strict(&self, text: &str) -> Result<Vec<u8>, char> {
+        self.inner().encode_strict(text)
     }
     fn lead_len(&self, b: u8) -> usize {
         self.inner().lead_len(b)
