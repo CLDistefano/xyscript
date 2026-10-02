@@ -2014,6 +2014,42 @@ fn line_col_to_offset(text: &str, line: usize, col: usize) -> usize {
 /// via a non-hydrating `symlink_metadata` (reparse-point stat, doesn't trigger download). A *hydrated*
 /// cloud file (local copy present) has neither flag, so it's not tripped — no false positives on
 /// normal files. No-op on non-Windows or when the attributes can't be read (the read just proceeds).
+/// Raw bytes → a continuous lowercase hex string (the `READFILE(path, "hex")` output).
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        s.push(char::from_digit((b >> 4) as u32, 16).unwrap());
+        s.push(char::from_digit((b & 0xF) as u32, 16).unwrap());
+    }
+    s
+}
+
+/// A hex string → raw bytes (the `WRITEFILE/HEX` input). Tolerant: ASCII whitespace, `:` separators,
+/// and `0x`/`0X` prefixes are ignored, so a hand-edited or tool-dumped blob pastes cleanly. An odd
+/// number of hex digits, or any non-hex character, is an `Err(message)`.
+fn hex_to_bytes(s: &str) -> Result<Vec<u8>, String> {
+    let mut nibbles: Vec<u8> = Vec::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_ascii_whitespace() || c == ':' {
+            continue;
+        }
+        // Skip a `0x`/`0X` prefix (a `0` immediately followed by `x`/`X`).
+        if c == '0' && matches!(chars.peek(), Some('x') | Some('X')) {
+            chars.next();
+            continue;
+        }
+        match c.to_digit(16) {
+            Some(d) => nibbles.push(d as u8),
+            None => return Err(format!("not a hex digit: {c:?}")),
+        }
+    }
+    if nibbles.len() % 2 != 0 {
+        return Err(format!("odd number of hex digits ({})", nibbles.len()));
+    }
+    Ok(nibbles.chunks(2).map(|p| (p[0] << 4) | p[1]).collect())
+}
+
 fn cloud_only_guard(path: &Path) -> VmResult<()> {
     #[cfg(windows)]
     {
@@ -7785,6 +7821,46 @@ impl AppHost {
         } else {
             self.cwd.join(pb)
         }
+    }
+
+    /// Read a file's RAW bytes (for the charset-aware `READFILE(path, charset)` path). In the virtual
+    /// test FS a stored entry is a byte-mirror (each `char` is one byte 0–255, as [`Self::write_bytes`]
+    /// stores it); on real disk it's `std::fs::read`. Missing/unreadable is a trappable error.
+    fn read_bytes(&self, path: &str) -> VmResult<Vec<u8>> {
+        if let Some(text) = self.files.get(path) {
+            return Ok(text.chars().map(|c| c as u32 as u8).collect());
+        }
+        if self.virtual_fs {
+            return Err(XplError::trappable_code(
+                ErrCode::FileNotFound,
+                self.tr_fmt("msg.open.not_found", "file not found: {path}", &[("path", &path)]),
+            ));
+        }
+        let resolved = self.resolve_path(path);
+        cloud_only_guard(&resolved)?;
+        std::fs::read(&resolved)
+            .map_err(|e| XplError::trappable(format!("cannot read {}: {e}", resolved.display())))
+    }
+
+    /// Write RAW bytes atomically (for the charset-aware `WRITEFILE` path). The virtual test FS stores
+    /// them as a byte-mirror string (recoverable by [`Self::read_bytes`]); real disk uses the same
+    /// temp-file + rename as [`Host::write_file`] so a failed write can't corrupt the target.
+    fn write_bytes(&mut self, path: &str, bytes: &[u8]) -> VmResult<()> {
+        if self.virtual_fs {
+            let mirror: String = bytes.iter().map(|&b| b as char).collect();
+            self.files.insert(path.to_string(), mirror);
+            return Ok(());
+        }
+        let target = self.resolve_path(path);
+        let mut tmp_os = target.as_os_str().to_os_string();
+        tmp_os.push(".xyscript-tmp");
+        let tmp = PathBuf::from(tmp_os);
+        std::fs::write(&tmp, bytes)
+            .map_err(|e| XplError::trappable(format!("cannot write {}: {e}", target.display())))?;
+        std::fs::rename(&tmp, &target).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            XplError::trappable(format!("cannot finalize {}: {e}", target.display()))
+        })
     }
 
     /// Change `$CWD` to `path`, matching the `CD` verb exactly: a BARE drive letter (`D:`) goes to
@@ -14418,6 +14494,41 @@ impl Host for AppHost {
             XplError::trappable(format!("cannot finalize {}: {e}", target.display()))
         })?;
         Ok(())
+    }
+
+    fn read_file_enc(&self, path: &str, charset: Option<&str>) -> VmResult<String> {
+        // No charset (or UTF-8) → the plain text path, unchanged.
+        let cs = charset.unwrap_or("utf-8");
+        if cs.eq_ignore_ascii_case("utf-8") || cs.eq_ignore_ascii_case("utf8") {
+            return self.read_file(path);
+        }
+        let bytes = self.read_bytes(path)?;
+        // `hex` is a pseudo-encoding: the raw bytes as a lowercase hex string (safe to display/edit).
+        if cs.eq_ignore_ascii_case("hex") {
+            return Ok(bytes_to_hex(&bytes));
+        }
+        // Otherwise a real single-byte code page from the catalog (decode never fails — undefined bytes
+        // map to private-use round-trip points). `latin1` is the byte-exact "binary" read.
+        let enc = crate::encoding::by_name(cs)
+            .ok_or_else(|| XplError::trappable(format!("READFILE: unknown encoding {cs:?}")))?;
+        Ok(enc.decode(&bytes))
+    }
+
+    fn write_file_enc(&mut self, path: &str, charset: Option<&str>, content: &str) -> VmResult<()> {
+        let cs = charset.unwrap_or("utf-8");
+        if cs.eq_ignore_ascii_case("utf-8") || cs.eq_ignore_ascii_case("utf8") {
+            return self.write_file(path, content);
+        }
+        let bytes = if cs.eq_ignore_ascii_case("hex") {
+            hex_to_bytes(content).map_err(|e| XplError::trappable(format!("WRITEFILE/HEX: {e}")))?
+        } else {
+            // Code-page encode: characters the page can't represent become `?` (lossy — the same
+            // behaviour as `ENCODING/C`; a stricter mode is a future `/STRICT`). `latin1` = binary.
+            let enc = crate::encoding::by_name(cs)
+                .ok_or_else(|| XplError::trappable(format!("WRITEFILE: unknown encoding {cs:?}")))?;
+            enc.encode(content)
+        };
+        self.write_bytes(path, &bytes)
     }
 
     fn error_log_enabled(&self) -> bool {

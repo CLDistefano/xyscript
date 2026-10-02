@@ -173,6 +173,12 @@ pub trait EvalContext {
     fn read_file(&self, _path: &str) -> Result<String, String> {
         Err("READFILE: no filesystem in this context".to_string())
     }
+    /// Like [`Self::read_file`] but decoding through a named `charset` (for `READFILE(path, charset)`):
+    /// a single-byte code page (`cp437`, `latin1`, …) or the pseudo-encoding `"hex"` (raw bytes as a hex
+    /// string). `None`/`"utf-8"` is the plain UTF-8 read. Default delegates to [`Self::read_file`].
+    fn read_file_enc(&self, path: &str, _charset: Option<&str>) -> Result<String, String> {
+        self.read_file(path)
+    }
     /// A random integer in the inclusive range `[min, max]` (for `RANDOM(min, max)`), drawn from the
     /// host's seedable generator (see the `SRANDOM` verb). `None` in the bare evaluator, which has no
     /// generator — there `RANDOM` reports an error. Args swapped if `min > max`.
@@ -1264,11 +1270,19 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
             let p = s(0);
             Ok(Value::Int(if ctx.path_exists(&p) && !ctx.path_is_dir(&p) { 1 } else { 0 }))
         }
-        // `READFILE(path)` / `RF(path)` — the file's text as a string (host-resolved against `$CWD`).
-        // A missing/unreadable/non-UTF-8 file is a trappable error. Pairs with the `WRITEFILE` verb.
+        // `READFILE(path[, charset])` / `RF(…)` — the file's text as a string (host-resolved against
+        // `$CWD`). With a second argument the bytes are decoded through a named code page (`cp437`,
+        // `windows-1252`, `latin1`, …) or the pseudo-encoding `"hex"` (the raw bytes as a hex string);
+        // with none, UTF-8 as before. A missing/unreadable file, or an unknown charset, is a trappable
+        // error. Pairs with the `WRITEFILE` verb.
         "READFILE" | "RF" => {
-            expect(1)?;
-            ctx.read_file(&s(0)).map(|t| Value::str(t)).map_err(ExprError::trappable)
+            if argc != 1 && argc != 2 {
+                return Err(ExprError::new(format!("{name}: expected 1 or 2 args, got {argc}")));
+            }
+            let charset = (argc == 2).then(|| s(1));
+            ctx.read_file_enc(&s(0), charset.as_deref())
+                .map(Value::str)
+                .map_err(ExprError::trappable)
         }
         // `DATE(mask)` / `TIME(mask)` — the current LOCAL date/time formatted by a mask. DATE tokens:
         // `yyyy`/`yy` (year), `mm`/`m` (month), `dd`/`d` (day). TIME tokens: `hh`/`h`, `mm`/`m`,

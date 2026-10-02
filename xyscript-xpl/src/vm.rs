@@ -1537,10 +1537,14 @@ impl Vm<'_, '_> {
             // `WRITEFILE <path> <content>` / `WF` — write `content` (taken RAW after `$`-substitution,
             // like `PUT` — so `WF out.txt $x` writes the variable's value verbatim) to a file,
             // OVERWRITING it. The path is the first token (quote it for spaces); paths resolve against
-            // `$CWD`. Reads back with the `READFILE()` function.
+            // `$CWD`. Reads back with the `READFILE()` function. By default the content is written as
+            // UTF-8; `/ENC:<charset>` encodes it through a named code page (`cp437`, `latin1`, …),
+            // `/B` is byte-exact binary (alias for `/ENC:latin1`), and `/HEX` writes the raw bytes a hex
+            // string describes (`WF/HEX out.bin "4d5a9000"`).
             "WRITEFILE" | "WF" => {
+                let charset = write_charset_switch(&vswitches);
                 let (path, content) = split_path_and_rest(&args)?;
-                self.ctx.host.write_file(&path, &content)?;
+                self.ctx.host.write_file_enc(&path, charset.as_deref(), &content)?;
                 Ok(Flow::Next)
             }
             // Counters `C1`..`C9` (XyWrite-style, per-document). `Cn <seed>` configures (number /
@@ -6018,6 +6022,22 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "WV",
 ];
 
+/// Resolve `WRITEFILE`'s encoding switches to a charset name (`None` = UTF-8, the default). `/HEX` →
+/// `"hex"` (the raw-bytes-from-hex pseudo-encoding), `/B` → `"latin1"` (byte-exact binary), and
+/// `/ENC:<name>` → that name. The most specific wins if several are given (`HEX` > `B` > `ENC:`).
+fn write_charset_switch(vswitches: &[String]) -> Option<String> {
+    if vswitches.iter().any(|s| s.eq_ignore_ascii_case("HEX")) {
+        return Some("hex".to_string());
+    }
+    if vswitches.iter().any(|s| s.eq_ignore_ascii_case("B")) {
+        return Some("latin1".to_string());
+    }
+    vswitches.iter().find_map(|s| {
+        let (k, v) = s.split_once(':')?;
+        (k.eq_ignore_ascii_case("ENC") && !v.is_empty()).then(|| v.to_string())
+    })
+}
+
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if
 /// present and non-empty. Used by `X/BG` and `RUN/BG`.
 fn return_var_switch(vswitches: &[String]) -> Option<String> {
@@ -6071,6 +6091,9 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "X" => &["NV", "BG", "R"], // `/NV` fire-and-forget; `/BG` background job; `/R:<var>` return
         "RUN" => &["BG", "R"], // `/BG` — background child process; `/R:<var>` — return output to a var
         "RUNCODE" => &["BG", "R"], // run XPL text from a var; `/BG` backgrounds; `/R:<var>` returns
+        // `/ENC:<charset>` encode through a code page; `/B` byte-exact binary (= latin1); `/HEX` write
+        // the bytes a hex string describes. (`validate_switches` strips the `:value` before checking.)
+        "WRITEFILE" | "WF" => &["ENC", "B", "HEX"],
         "HLCOLOR" => &["HSL", "BG"], // `/HSL` triple as H S L; `/BG` set the token's BACKGROUND band
         "HLCOLORS" => &["BG"], // `/BG` — pick the token's BACKGROUND band instead of the foreground
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"
@@ -6607,6 +6630,10 @@ impl EvalContext for Ctx<'_> {
 
     fn read_file(&self, path: &str) -> Result<String, String> {
         self.host.read_file(path).map_err(|e| e.message().to_string())
+    }
+
+    fn read_file_enc(&self, path: &str, charset: Option<&str>) -> Result<String, String> {
+        self.host.read_file_enc(path, charset).map_err(|e| e.message().to_string())
     }
 
     fn random_int(&self, min: i64, max: i64) -> Option<i64> {

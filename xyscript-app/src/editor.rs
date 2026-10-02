@@ -5442,6 +5442,47 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn readfile_writefile_code_pages_hex_and_binary() {
+        // Real disk (not the virtual FS) so we can assert the exact BYTES written.
+        let base = std::env::temp_dir().join(format!("xyscript-rwenc-{:p}", &"enc"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+
+        // Bytes are verified through the host's OWN read (`READFILE(…, "hex")`) — the real user path,
+        // and it avoids a flaky test-side second read of a just-renamed file on Windows.
+        //
+        // Code page: the guillemets « » encode to CP437 bytes 0xAE / 0xAF (the XyWrite markers).
+        e.run_command("SET g = \"«»\"");
+        e.run_command("WF/ENC:cp437 g.xy $g");
+        e.run_command("PR $(READFILE(\"g.xy\", \"hex\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("aeaf"), "CP437 « » → bytes AE AF");
+        e.run_command("PR $(READFILE(\"g.xy\", \"cp437\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("«»"), "decoded back through CP437");
+
+        // HEX write is tolerant of spaces; the raw bytes land on disk; read back as hex. (WF content is
+        // RAW — no quote-stripping — so the hex is given bare, not quoted.)
+        e.run_command("WF/HEX blob.bin de ad be ef 00 ff");
+        e.run_command("PR $(READFILE(\"blob.bin\", \"hex\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("deadbeef00ff"), "hex round-trips bytes");
+
+        // latin1 = byte-exact binary: read every byte (incl. NUL) and write it back unchanged — the copy
+        // must be byte-identical (checked, again, via its hex).
+        e.run_command("SET b = READFILE(\"blob.bin\", \"latin1\")");
+        e.run_command("WF/B copy.bin $b");
+        e.run_command("PR $(READFILE(\"copy.bin\", \"hex\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("deadbeef00ff"), "latin1 round-trips every byte");
+
+        // An unknown charset is a trappable error (sets $ERROR, script continues).
+        e.run_command("SET u = READFILE(\"blob.bin\", \"klingon\")");
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"), "unknown charset → $ERROR");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn write_aliases_insert_and_writeln_adds_a_newline() {
         use crate::document::LineEnding;
         let mut e = ed();

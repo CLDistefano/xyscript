@@ -1792,6 +1792,15 @@ pub trait Host {
         )))
     }
 
+    /// Read a file decoding its bytes through a named `charset` (for `READFILE(path, charset)`).
+    /// `charset == None` (or `"utf-8"`) is the plain [`Self::read_file`] path. Other names are the
+    /// editor's single-byte code pages (`cp437`, `windows-1252`, `latin1`, …) plus the pseudo-encoding
+    /// `"hex"` (the file's raw bytes as a lowercase hex string); `latin1` is the byte-exact "binary"
+    /// read. An unknown charset is a trappable error. The default ignores `charset` (UTF-8 only).
+    fn read_file_enc(&self, path: &str, _charset: Option<&str>) -> VmResult<String> {
+        self.read_file(path)
+    }
+
     /// The full text of the active document (the one on screen, or the blind-edit buffer if one
     /// is open) — used by `PRINTEX` to scan it for `|expr|` soft-fields. Default empty.
     fn active_text(&self) -> String {
@@ -1880,6 +1889,16 @@ pub trait Host {
         Err(crate::error::XplError::trappable(format!(
             "cannot write file: {path}"
         )))
+    }
+
+    /// Write a file encoding `content` through a named `charset` (for `WRITEFILE/ENC:<cp>` / `/B` /
+    /// `/HEX`). `charset == None` (or `"utf-8"`) is the plain [`Self::write_file`] path. Single-byte
+    /// code pages encode text → bytes (characters the page can't represent become `?`); `latin1` is the
+    /// byte-exact "binary" write; `"hex"` parses the content as a hex string and writes those raw bytes
+    /// (odd length / non-hex digit is a trappable error). An unknown charset is a trappable error. The
+    /// default ignores `charset` (UTF-8 only).
+    fn write_file_enc(&mut self, path: &str, _charset: Option<&str>, content: &str) -> VmResult<()> {
+        self.write_file(path, content)
     }
 
     /// Run a shell command to completion; returns `(merged stdout+stderr, exit_code)` and
