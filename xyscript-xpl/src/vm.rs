@@ -1461,6 +1461,22 @@ impl Vm<'_, '_> {
             return Ok(Flow::Next);
         }
 
+        // WRITEFILE parses its own switches (from the RAW `verb`, split on `/` only) BEFORE the generic
+        // `validate_switches` — `peel_verb` also splits on `-`, which would shatter a hyphenated
+        // encoding name like `/ENC:windows-1252` into a bogus `1252` switch. Errors trap into `$ERROR`.
+        if base == "WRITEFILE" || base == "WF" {
+            let (charset, strict) = parse_wf_switches(verb);
+            let (path, content) = split_path_and_rest(&args)?;
+            return match self.ctx.host.write_file_enc(&path, charset.as_deref(), strict, &content) {
+                Ok(()) => Ok(Flow::Next),
+                Err(XplError::Trappable { code, msg }) => {
+                    self.fail_trap(code, msg);
+                    Ok(Flow::Next)
+                }
+                Err(fatal) => Err(fatal),
+            };
+        }
+
         // Reject switches a command doesn't declare (keeps `INSERT/X` from silently
         // doing nothing). Commands that accept switches validate/consume them below.
         validate_switches(base, &vswitches)?;
@@ -1541,23 +1557,7 @@ impl Vm<'_, '_> {
             // UTF-8; `/ENC:<charset>` encodes it through a named code page (`cp437`, `latin1`, …),
             // `/B` is byte-exact binary (alias for `/ENC:latin1`), and `/HEX` writes the raw bytes a hex
             // string describes (`WF/HEX out.bin "4d5a9000"`).
-            "WRITEFILE" | "WF" => {
-                let charset = write_charset_switch(&vswitches);
-                // `/STRICT` — refuse a lossy code-page write (a character the page can't hold is a
-                // trappable error) instead of substituting `?`.
-                let strict = vswitches.iter().any(|s| s.eq_ignore_ascii_case("STRICT"));
-                let (path, content) = split_path_and_rest(&args)?;
-                // Trap a write failure (bad path, unknown encoding, `/STRICT` loss, bad `/HEX`) into
-                // `$ERROR` so the script can recover, rather than letting it unwind the run.
-                match self.ctx.host.write_file_enc(&path, charset.as_deref(), strict, &content) {
-                    Ok(()) => Ok(Flow::Next),
-                    Err(XplError::Trappable { code, msg }) => {
-                        self.fail_trap(code, msg);
-                        Ok(Flow::Next)
-                    }
-                    Err(fatal) => Err(fatal),
-                }
-            }
+            // WRITEFILE / WF are handled earlier (before `validate_switches`), so they never reach here.
             // Counters `C1`..`C9` (XyWrite-style, per-document). `Cn <seed>` configures (number /
             // letter / Roman+`r` + optional decorator); bare `Cn` puts the value and advances;
             // `Cn +n` / `Cn -[n]` / `Cn =` put relative to the last value. `$C1`..`$C9` peek.
@@ -6033,20 +6033,28 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "WV",
 ];
 
-/// Resolve `WRITEFILE`'s encoding switches to a charset name (`None` = UTF-8, the default). `/HEX` →
-/// `"hex"` (the raw-bytes-from-hex pseudo-encoding), `/B` → `"latin1"` (byte-exact binary), and
-/// `/ENC:<name>` → that name. The most specific wins if several are given (`HEX` > `B` > `ENC:`).
-fn write_charset_switch(vswitches: &[String]) -> Option<String> {
-    if vswitches.iter().any(|s| s.eq_ignore_ascii_case("HEX")) {
-        return Some("hex".to_string());
-    }
-    if vswitches.iter().any(|s| s.eq_ignore_ascii_case("B")) {
-        return Some("latin1".to_string());
-    }
-    vswitches.iter().find_map(|s| {
-        let (k, v) = s.split_once(':')?;
-        (k.eq_ignore_ascii_case("ENC") && !v.is_empty()).then(|| v.to_string())
-    })
+/// Parse `WRITEFILE`'s switches from the RAW verb string (`WF/ENC:windows-1252/STRICT`), returning
+/// `(charset, strict)`. It splits on `/` ONLY, so a hyphenated encoding name survives — unlike the
+/// generic `peel_verb`, which also splits switches on `-` and would shatter `windows-1252`. This is why
+/// `WRITEFILE` handles its own switches before the generic `validate_switches` (as `SORT`/`DIR` do).
+/// `/HEX` → `"hex"`, `/B` → `"latin1"` (byte-exact binary), `/ENC:<name>` → that name (most specific
+/// wins: `HEX` > `B` > `ENC:`); `None` = UTF-8. `/STRICT` sets the strict flag.
+fn parse_wf_switches(verb: &str) -> (Option<String>, bool) {
+    let mut parts = verb.split('/');
+    let _base = parts.next(); // WRITEFILE / WF
+    let switches: Vec<&str> = parts.collect();
+    let strict = switches.iter().any(|s| s.eq_ignore_ascii_case("STRICT"));
+    let charset = if switches.iter().any(|s| s.eq_ignore_ascii_case("HEX")) {
+        Some("hex".to_string())
+    } else if switches.iter().any(|s| s.eq_ignore_ascii_case("B")) {
+        Some("latin1".to_string())
+    } else {
+        switches.iter().find_map(|s| {
+            let (k, v) = s.split_once(':')?;
+            (k.eq_ignore_ascii_case("ENC") && !v.trim().is_empty()).then(|| v.trim().to_string())
+        })
+    };
+    (charset, strict)
 }
 
 /// Extract the destination variable from a `/R:<var>` switch (background-job return pipe), if
@@ -6102,10 +6110,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "X" => &["NV", "BG", "R"], // `/NV` fire-and-forget; `/BG` background job; `/R:<var>` return
         "RUN" => &["BG", "R"], // `/BG` — background child process; `/R:<var>` — return output to a var
         "RUNCODE" => &["BG", "R"], // run XPL text from a var; `/BG` backgrounds; `/R:<var>` returns
-        // `/ENC:<charset>` encode through a code page; `/B` byte-exact binary (= latin1); `/HEX` write
-        // the bytes a hex string describes; `/STRICT` error instead of `?`-substituting a character the
-        // code page can't hold. (`validate_switches` strips the `:value` before checking.)
-        "WRITEFILE" | "WF" => &["ENC", "B", "HEX", "STRICT"],
+        // WRITEFILE / WF parse their own switches (incl. the hyphen-bearing `/ENC:windows-1252`) before
+        // `validate_switches` runs, so they need no entry here.
         "HLCOLOR" => &["HSL", "BG"], // `/HSL` triple as H S L; `/BG` set the token's BACKGROUND band
         "HLCOLORS" => &["BG"], // `/BG` — pick the token's BACKGROUND band instead of the foreground
         "FGCOLOR" | "BGCOLOR" | "UIFGCOLOR" | "UIBGCOLOR" | "CRCOLOR" | "CMCRCOLOR" | "SEPCOLOR"

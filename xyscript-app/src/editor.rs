@@ -5490,6 +5490,12 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert_eq!(e.output().last().map(String::as_str), Some("1"), "STRICT refuses the lossy write");
         assert!(!base.join("strict.xy").exists(), "STRICT writes nothing on failure");
 
+        // A HYPHENATED encoding name works as a WF switch (the euro is 0x80 in Windows-1252). This is the
+        // case peel_verb's `-`-split used to shatter; WF now parses its switches from the raw verb.
+        e.run_command("WF/ENC:windows-1252 w.xy $eur");
+        e.run_command("PR $(READFILE(\"w.xy\", \"hex\"))");
+        assert_eq!(e.output().last().map(String::as_str), Some("80"), "Windows-1252 € → 0x80");
+
         let _ = std::fs::remove_dir_all(&base);
     }
 
