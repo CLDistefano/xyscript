@@ -2032,6 +2032,54 @@ looks frozen, since your edits are landing out of sight.)
 #raw("INSERT") / #raw("WRITELN") and #raw("SAVE <path>") to generate a file — a report, a config, a data
 dump — entirely from a script, without disturbing what is on screen.]
 
+== Reading and writing files
+
+Where #raw("BEDIT") hands a file to the *editing* commands, the other way to work with a file in a script
+is to move its *whole contents* in and out of a variable as a string. Two tools pair up for that:
+
+/ #raw("READFILE(path)") (or #raw("RF(path)")): a *function* returning the file's text, so it composes
+  inside an expression — #raw("SET notes = READFILE(\"log.txt\")"), or straight into another call like
+  #raw("SET n = LINES(READFILE(\"list.txt\"))"). Paths resolve against #raw("$CWD"). A missing or
+  unreadable file is a *trappable* error: it sets #raw("$ERROR") rather than halting, so a script can
+  check and recover. (Test #raw("$ERROR") on the very next line — an action verb like #raw("PR") clears it.)
+/ #raw("WRITEFILE <path> <content>") (or #raw("WF")): a *verb* that writes `content` to a file,
+  overwriting it. The content is taken raw after #raw("$")-substitution, like #raw("PUT") — so
+  #raw("WF out.txt $notes") writes the variable's value verbatim. Quote the path if it contains spaces.
+
+#ex("SET body = READFILE(\"draft.txt\")      # read it in
+SET body = UPPER($body)                # transform
+WF draft.txt $body                     # write it back")
+
+=== Other encodings
+
+By default both read and write *UTF-8*. For a legacy file — a DOS/Windows code page, or an old XyWrite
+document — name the encoding and the bytes are decoded or encoded through it. The names are the ones the
+#raw("ENCODING") menu uses (#raw("cp437"), #raw("windows-1252"), #raw("latin1"), #raw("macroman"), …).
+
+#raw("READFILE") takes the encoding as an optional second argument; #raw("WRITEFILE") takes it as a
+switch:
+
+#ex("SET t = READFILE(\"old.xy\", \"cp437\")   # decode a CP437 (DOS) file
+WF/ENC:cp437 old.xy $t                 # ...and write it back as CP437")
+
+On the way out, a character the target code page can't represent is written as #raw("?") (the same as
+#raw("ENCODING")'s \"convert\"); an unknown encoding name is a trappable error.
+
+Two special modes let a script handle *any* file, byte for byte:
+
+/ #raw("latin1"): a byte-exact *binary* read/write — every byte 0–255 becomes exactly one character and
+  back again, with nothing lost. #raw("WF/B") is a shorthand for #raw("/ENC:latin1"). Use it to copy or
+  patch a binary through a variable. (The string then holds raw bytes, including control characters, so
+  it is for transforming and writing back — not for printing to the status line.)
+/ #raw("hex"): the raw bytes as a printable *hex string* (#raw("4d5a9000…")), two digits per byte.
+  #raw("READFILE(path, \"hex\")") dumps a file to hex you can inspect or edit; #raw("WF/HEX <path>
+  <hex>") writes the bytes that a hex string describes. The writer ignores spaces, #raw(":") and
+  #raw("0x"), so a hand-typed or tool-dumped blob pastes cleanly; an odd number of digits or a stray
+  non-hex character is a trappable error.
+
+#ex("WF/HEX magic.bin 89504e470d0a1a0a    # write a PNG signature
+SET sig = READFILE(\"magic.bin\", \"hex\")  # -> \"89504e470d0a1a0a\"")
+
 == Asking the user
 
 #raw("INPUT <var> [prompt]") pauses for a typed line and stores it in a variable. #raw("PICK <var>
