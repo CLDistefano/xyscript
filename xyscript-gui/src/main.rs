@@ -11148,6 +11148,15 @@ impl GuiApp {
         let dir_double = resp.double_clicked() && self.editor.active_is_dir_listing();
         // A double-click on a GREP results tab opens the clicked hit (the mouse equivalent of Enter/GJ).
         let grep_double = resp.double_clicked() && self.editor.active_is_grep_listing();
+        // In an ordinary document, a double-click selects the clicked WORD and a triple-click the LINE
+        // (the mouse equivalent of the right-click "Select word" / "Select line", i.e. `DW` / `DL`).
+        // Excluded on DIR/GREP listings (where double-click opens/jumps) and on the HEX view (handled
+        // separately below).
+        let plain_doc = !self.editor.active_is_dir_listing()
+            && !self.editor.active_is_grep_listing()
+            && !self.editor.hex_view();
+        let word_double = resp.double_clicked() && plain_doc;
+        let line_triple = resp.triple_clicked() && plain_doc;
         // A right-click in a DIR/LS listing copies the clicked entry's full path to the
         // clipboard (the mouse equivalent of the listing's Ctrl+C).
         let dir_rightclick = resp.secondary_clicked() && self.editor.active_is_dir_listing();
@@ -11295,6 +11304,16 @@ impl GuiApp {
                         .unwrap_or(off);
                         self.drag_anchor = Some(anchor);
                         self.editor.host_mut().set_active_caret(anchor, None);
+                    } else if line_triple {
+                        // Triple-click → select the clicked line (drop the caret there first, then `DL`).
+                        self.editor.host_mut().collapse_active_carets();
+                        self.editor.host_mut().click_active_caret(off);
+                        self.editor.run_command("DL");
+                    } else if word_double {
+                        // Double-click → select the clicked word (drop the caret there first, then `DW`).
+                        self.editor.host_mut().collapse_active_carets();
+                        self.editor.host_mut().click_active_caret(off);
+                        self.editor.run_command("DW");
                     } else if click {
                         // A click that just brought the window back into focus only activates it —
                         // leave the caret where it was (consume the one-shot).
