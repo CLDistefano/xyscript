@@ -93,15 +93,21 @@ cargo bundle --release                        # reads [package.metadata.bundle] 
 ### First run (Gatekeeper)
 
 The released macOS binary is **unsigned and un-notarized**, so Gatekeeper blocks it on first launch
-("cannot be opened because it is from an unidentified developer", or "is damaged" for a quarantined
-download). To run it anyway, either right-click the binary (or `XyScript.app`) in Finder and choose
-**Open** (then confirm), or clear the quarantine flag from a terminal:
+("cannot be opened because the developer cannot be verified", or "is damaged" for a quarantined
+download). To run it, open **Terminal**, `cd` into the unzipped folder, and run:
 
 ```sh
-xattr -dr com.apple.quarantine /path/to/xyscript        # or .../XyScript.app
+xattr -rc xyscript     # clear the quarantine (and any other) extended attributes
+chmod +x xyscript      # restore the executable bit (some unzip tools drop it)
+./xyscript             # run it
 ```
 
-Signing + notarization (a paid Apple Developer step) would remove this prompt; see the notes below.
+`xattr -rc` clears every extended attribute, including `com.apple.quarantine` (the one Gatekeeper
+checks); the narrower `xattr -dr com.apple.quarantine xyscript` removes just that flag and works too.
+Right-click ▸ **Open** in Finder also works on some macOS versions, but the Terminal steps are reliable.
+The `.tar.gz` download preserves the executable bit, so taking it usually skips the `chmod +x`. This note
+also ships at the bundle root as `MACOS-READ-ME-FIRST.txt`. Signing + notarization (a paid Apple
+Developer step) would remove the prompt entirely; see the notes below.
 
 ### Icon & `.app` bundle
 

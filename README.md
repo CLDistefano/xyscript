@@ -33,14 +33,14 @@ Grab the latest build from the [**Releases**](https://github.com/CLDistefano/xys
 | Platform | Asset |
 |----------|-------|
 | Windows (x86-64) | `xyscript-windows-x86_64.zip` |
-| macOS (universal — Intel + Apple Silicon) | `xyscript-macos-universal.zip` |
-| Linux (x86-64) | `xyscript-linux-x86_64.zip` |
+| macOS (universal — Intel + Apple Silicon) | `xyscript-macos-universal.zip` — or `.tar.gz` |
+| Linux (x86-64) | `xyscript-linux-x86_64.zip` — or `.tar.gz` |
 
-Unzip and run — the editor ships with its keyboard, config, themes, library, language catalogs, and docs beside the binary, so it works out of the box. Email requires `curl` on your `PATH` (standard on Windows 10+, macOS, and Linux).
+Unzip and run — the editor ships with its keyboard, config, themes, library, language catalogs, and docs beside the binary, so it works out of the box. Email requires `curl` on your `PATH` (standard on Windows 10+, macOS, and Linux). For macOS and Linux a `.tar.gz` is offered alongside the `.zip`; both contain the same files, but the tarball preserves the executable bit through any extractor (some unzip tools drop it), so you may not need the `chmod +x` step below — use whichever format you prefer.
 
 **First-run notes** (details in [`packaging/README.md`](packaging/README.md)):
 
-- **macOS** — the release binary is unsigned, so Gatekeeper blocks it the first time. Right-click ▸ **Open** (then confirm), or clear the quarantine flag: `xattr -dr com.apple.quarantine /path/to/XyScript.app`.
+- **macOS** — the release binary is unsigned, so Gatekeeper quarantines it on first launch ("xyscript cannot be opened because the developer cannot be verified," or "is damaged"). Open **Terminal**, `cd` into the unzipped folder, and run `xattr -rc xyscript` then `chmod +x xyscript` — then start it with `./xyscript`. (The macOS bundle also includes a `MACOS-READ-ME-FIRST.txt` with these steps.) This is a one-time step per download.
 - **Linux** — the binary links against system libraries most desktops already have; a minimal install may need a few (`libxkbcommon-x11-0` is the one most often missing). See the packaging notes for the full `apt` line and a `.desktop` launcher installer.
 
 ## Build from source

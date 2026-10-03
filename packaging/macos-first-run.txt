@@ -1,0 +1,35 @@
+XyScript on macOS — first-run steps
+====================================
+
+XyScript is a small, open-source app that is not signed or notarized by Apple.
+So the first time you try to open it, macOS "quarantines" it and refuses to run
+it — you may see a message like "xyscript cannot be opened because the developer
+cannot be verified" or "xyscript is damaged and can't be opened." This is normal
+for unsigned software and does NOT mean anything is wrong with the download. You
+clear it with two one-time commands in Terminal.
+
+  1. Open Terminal:  Applications > Utilities > Terminal
+
+  2. Go to the folder you unzipped XyScript into, for example:
+
+         cd ~/Downloads/xyscript-macos-universal
+
+     (Type "cd " — with a space — then drag the folder onto the Terminal window
+     to fill in its path, and press Return.)
+
+  3. Clear the quarantine flag and make the program runnable:
+
+         xattr -rc xyscript
+         chmod +x xyscript
+
+  4. Start XyScript:
+
+         ./xyscript
+
+You only need to do step 3 once per download. The app keeps working if you move
+the folder later; when you download a NEW version, run step 3 again on the new
+copy.
+
+Prefer not to use Terminal? You can instead right-click (or Control-click) the
+"xyscript" file in Finder and choose "Open," then confirm "Open" in the dialog —
+but on recent macOS versions the Terminal commands above are the reliable way.

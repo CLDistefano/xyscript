@@ -107,6 +107,9 @@ jobs:
           pkg="staged/${{ matrix.artifact }}"
           mkdir -p "$pkg/lang" "$pkg/themes" "$pkg/examples" "$pkg/grammars" "$pkg/templates" "$pkg/docs"
           cp "xyscript-gui/target/release/${{ matrix.bin }}" "$pkg/${{ matrix.exe }}"
+          # Pin the binary executable in the archive (belt-and-suspenders: cargo already emits 0755,
+          # but keep a future packaging change from silently dropping it). No-op on Windows.
+          if [ "$RUNNER_OS" != "Windows" ]; then chmod 755 "$pkg/${{ matrix.exe }}"; fi
           cp docs/i18n/*.lang "$pkg/lang/"
           cp themes/*.xpl "$pkg/themes/"
           cp packaging/runtime/* "$pkg/"
@@ -128,11 +131,18 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "staged/${{ matrix.artifact }}" -DestinationPath "${{ matrix.artifact }}.zip"
 
+      # ALSO ship a .tar.gz for Linux alongside the .zip: tar preserves the Unix exec bit through any
+      # extractor, where a zip can lose it depending on the tool. Windows gets the .zip only.
+      - name: Tar bundle (Linux)
+        if: runner.os == 'Linux'
+        run: (cd staged && tar czf "../${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}")
+
       - name: Attach bundle to the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ matrix.artifact }}.zip
+          # Every archive built for this platform: the .zip on all runners, plus the .tar.gz on Linux.
+          files: ${{ matrix.artifact }}.*
           fail_on_unmatched_files: true
           # Auto-populate the release body with GitHub's generated notes; a hand-edited body is
           # preserved on re-run (action-gh-release won't overwrite a non-empty body). The three build
@@ -175,6 +185,8 @@ jobs:
             xyscript-gui/target/aarch64-apple-darwin/release/xyscript-gui \
             xyscript-gui/target/x86_64-apple-darwin/release/xyscript-gui
           lipo -info "$pkg/xyscript"
+          # Pin the universal binary executable in the archive (lipo output is 0755, but make it explicit).
+          chmod 755 "$pkg/xyscript"
           cp docs/i18n/*.lang "$pkg/lang/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
           cp themes/*.xpl "$pkg/themes/"
@@ -183,14 +195,22 @@ jobs:
           cp grammars/*.xpl "$pkg/grammars/"
           cp templates/* "$pkg/templates/"
           cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
+          # First-run note at the bundle root: clearing Gatekeeper quarantine (unsigned app) + the exec bit.
+          cp packaging/macos-first-run.txt "$pkg/MACOS-READ-ME-FIRST.txt"
 
       - name: Zip bundle
         run: (cd staged && zip -r "../xyscript-macos-universal.zip" "xyscript-macos-universal")
+
+      # ALSO ship a .tar.gz alongside the .zip — tar preserves the exec bit through any extractor, so a
+      # user who takes the tarball likely won't even need the `chmod +x` step from the first-run note.
+      - name: Tar bundle
+        run: (cd staged && tar czf "../xyscript-macos-universal.tar.gz" "xyscript-macos-universal")
 
       - name: Attach bundle to the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: xyscript-macos-universal.zip
+          # Both archives: the .zip (familiar to Finder users) and the .tar.gz (robust exec bit).
+          files: xyscript-macos-universal.*
           fail_on_unmatched_files: true
           generate_release_notes: true
