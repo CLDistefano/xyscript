@@ -545,7 +545,8 @@ classic X11 / `rgb.txt` set of ~650 (`red`, `SlateGray`, `salmon`, `grey40`, …
 
 == Fonts and spacing
 
-/ #cmd("EDFONT", "EDFONTS") / #cmd("EDFAMILY") / #cmd("EDSTYLE"): the editor font's size / family / style.
+/ #cmd("EDFONT", "EDFONTS") / #cmd("EDFAMILY") / #cmd("EDSTYLE"): the editor font's size / family / style (monospaced).
+/ #cmd("EDPROPFAMILY", "EDPROPFONTS") / #cmd("USEFONT"): a PROPORTIONAL (variable-width) editor font for prose, and the per-document mono/prop override.
 / #cmd("UIFONT", "UIFONTS") / #cmd("UIFAMILY") / #cmd("UISTYLE") / #cmd("UISCALE") / #cmd("UIRESET"): the UI chrome's font size / family / style / scale / reset.
 / #cmd("TXTFONT", "TXTFONTS") / #cmd("TXTFAMILY") / #cmd("TXTSTYLE") / #cmd("TXTSCALE"): the `TXT` window's font.
 / #cmd("DWFONT", "DWFONTS") / #cmd("DWFAMILY") / #cmd("DWSTYLE") / #cmd("DWSCALE") / #cmd("DWRESET"): the `DIR/W` window's font.
@@ -798,7 +799,9 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 == E
 
 / #cmd("END", "ER"): move to the end of the line (`ER` is the "Express Right" name).
-/ #cmd("EDFAMILY") / #cmd("EDSTYLE") / #cmd("EDFONT", "EDFONTS"): the editor font's family / style / size (`EDFONT +n` adjusts; `…S` opens a picker).
+/ #cmd("EDFAMILY") / #cmd("EDSTYLE") / #cmd("EDFONT", "EDFONTS"): the editor font's family / style / size (`EDFONT +n` adjusts; `…S` opens a picker). This is the MONOSPACED editor font — used for code, the DIR/LS listings, the `HEX` view, and the `*Console*`/`*Shell Output*` tabs, whose alignment depends on a fixed pitch.
+/ #cmd("EDPROPFAMILY", "EDPROPFONTS"): a PROPORTIONAL (variable-width) editor font, for WYSIWYG-style *prose* editing on the canvas. `EDPROPFAMILY <name>` names any installed family (not just monospaced); bare or `EDPROPFAMILY default` clears it (prose then stays monospace). `EDPROPFONTS` opens a picker (all families). When one is set, a prose buffer renders in it while code, listings, and the `HEX` view stay monospace (see #cmd("USEFONT")); the caret, clicking, selection, and up/down motion all follow the variable widths. Box-select (Alt+drag) is disabled in a proportional buffer. Size and style are shared with #cmd("EDFONT")/#cmd("EDSTYLE"). The Preview and `TOPDF` output are unaffected (they have always been proportional — see #cmd("PVFAMILY")). Read back via #sv("EDPROPFAMILY"); persists in the config.
+/ #cmd("USEFONT"): override the current document's canvas font MODE — `USEFONT mono` forces the monospaced editor font, `USEFONT prop` the proportional one (#cmd("EDPROPFAMILY")), and `USEFONT auto` (the default) follows the rule: syntax-highlighted buffers (i.e. code) and the structural buffers (listings, `HEX`, `*Console*`) render monospace, prose renders proportional when an `EDPROPFAMILY` is set. A `prop` override has no effect on a structural buffer (it stays monospace). Bare `USEFONT` reports the current mode. Per-document and session-only (not saved with the file). Read back via #sv("USEFONT").
 / #cmd("EMPH"): `EMPH <word|phrase>` — highlight every whole-word occurrence of the word or phrase in the current tab (case-insensitive; a match inside a longer word is skipped), a persistent visual overlay that works even in read-only and `*Console*` tabs. `EMPH/R <regex>` matches a regular expression instead (an invalid pattern is reported and leaves the emphasis unchanged). Bare `EMPH` clears it. Per-tab and session-only (each tab keeps its own emphasis).
 / #cmd("EMPHFGCOLOR", "EMPHFGCOLORS") / #cmd("EMPHBGCOLOR", "EMPHBGCOLORS"): the `EMPH` emphasis text / background color — `EMPHFGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `EMPHFGCOLOR default` clears it so the emphasis follows the selection colors (`SELFGCOLOR`/`SELBGCOLOR`). Read back via #sv("EMPHFGCOLOR") / #sv("EMPHBGCOLOR"); persist in the config.
 / #cmd("ENCODING"): set the file's text encoding view (re-decodes the same bytes). `ENCODING/C <name> [outfile]` *converts* instead — re-encodes the text to `<name>` (lossy → `?`), in place or to a new file.
@@ -1292,6 +1295,7 @@ Colors read back as `R G B`; sizes and scales are numbers; families and styles a
 / #sv("CRCOLOR") / #sv("CRSHAPE"): the caret's color and shape (bar / block / underline).
 / #sv("TABACTIVE") / #sv("TABHOVER") / #sv("TABINACTIVE"): the tab-strip colors (empty when at the theme default).
 / #sv("EDFONT") / #sv("EDFAMILY") / #sv("EDSTYLE"): the editor font's size, family, and style.
+/ #sv("EDPROPFAMILY") / #sv("USEFONT"): the proportional editor font family (empty = unset) and the current document's font mode (`auto`/`mono`/`prop`).
 / #sv("UIFONT") / #sv("UIFAMILY") / #sv("UISTYLE") / #sv("UISCALE"): the UI chrome's font size, family, style, and overall scale.
 / #sv("LSP"): the line spacing. #sv("OFL") / #sv("OF") / #sv("OFR"): the left margin (`$OF` is an alias of `$OFL`) and right margin, in columns.
 

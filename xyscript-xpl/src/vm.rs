@@ -3336,6 +3336,30 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetEditorFontFamily(args.trim().to_string()))?;
                 Ok(Flow::Next)
             }
+            // `EDPROPFAMILY <name>` — the editor's PROPORTIONAL (variable-width) canvas font family (any
+            // family); bare/`default` clears it. `$EDPROPFAMILY`. Prose buffers use it; code/listings/HEX
+            // stay monospace (`EDFAMILY`). `USEFONT mono|prop|auto` overrides per document.
+            "EDPROPFAMILY" => {
+                self.host_op(EditorOp::SetEditorPropFamily(args.trim().to_string()))?;
+                Ok(Flow::Next)
+            }
+            "USEFONT" => {
+                let t = args.trim();
+                if t.is_empty() {
+                    // Bare: REPORT this document's mode (no change); `$USEFONT` carries it.
+                    *self.ctx.status = Some(format!("USEFONT: {}", self.special_str("USEFONT")));
+                    return Ok(Flow::Next);
+                }
+                match crate::host::FontMode::parse(t) {
+                    Some(mode) => {
+                        self.host_op(EditorOp::SetFontMode(mode))?;
+                        Ok(Flow::Next)
+                    }
+                    None => Err(XplError::trappable(format!(
+                        "USEFONT: expected mono, prop, or auto, got {t:?}"
+                    ))),
+                }
+            }
             "UIFAMILY" => {
                 self.host_op(EditorOp::SetUiFontFamily(args.trim().to_string()))?;
                 Ok(Flow::Next)
@@ -3372,6 +3396,10 @@ impl Vm<'_, '_> {
             // (family + size + live preview). The dialog is GUI sugar over the family/size setters.
             "EDFONTS" => {
                 self.host_op(EditorOp::EditorFontPicker)?;
+                Ok(Flow::Next)
+            }
+            "EDPROPFONTS" => {
+                self.host_op(EditorOp::EditorPropFontPicker)?;
                 Ok(Flow::Next)
             }
             "UIFONTS" => {

@@ -55,5 +55,5 @@ pub use style::{Color, Span, Style, StyledLine};
 pub use host::AppHost;
 pub use kbd_sugar::desugar_keymap;
 pub use text::{Buffer, BalMatch};
-pub use xyscript_xpl::{BUILTIN_VERBS, CONTROL_KEYWORDS};
+pub use xyscript_xpl::{BUILTIN_VERBS, CONTROL_KEYWORDS, FontMode};
 pub use viewport::Viewport;

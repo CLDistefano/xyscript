@@ -1344,6 +1344,27 @@ impl Editor {
         self.host.active_is_help_listing()
     }
 
+    // ---- Proportional-font rule (USEFONT / EDPROPFAMILY) --------------------------------------------
+
+    /// The active document's `USEFONT` mode (`Auto`/`Mono`/`Prop`).
+    pub fn active_font_mode(&self) -> xyscript_xpl::FontMode {
+        self.host.active_doc().font_mode()
+    }
+    /// Whether syntax highlighting is active on the active document (→ "code" for the `Auto` rule).
+    pub fn active_is_highlighting(&self) -> bool {
+        self.host.active_doc().is_highlighting()
+    }
+    /// Buffers that MUST stay monospace regardless of `USEFONT` / `EDPROPFAMILY`: the HEX view, the
+    /// DIR/LS, GREP, and HELP listings, and the file-less special tabs (`*Console*`/`*Shell Output*`) —
+    /// their aligned columns / tabular output depend on a fixed pitch.
+    pub fn active_forces_monospace(&self) -> bool {
+        self.hex_view()
+            || self.active_is_dir_listing()
+            || self.active_is_grep_listing()
+            || self.active_is_help_listing()
+            || self.host.active_doc().label().map_or(false, |l| l.starts_with('*'))
+    }
+
     /// A footer line for the active listing (base dir + live express-key), if any.
     pub fn dir_footer(&self) -> Option<String> {
         self.host.dir_footer().map(|(base, find)| {
@@ -11861,6 +11882,38 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert_eq!(e.host().preview_bg_color(), None);
         assert_eq!(e.host().preview_fg_color(), None);
         assert_eq!(e.host().special("PVBGCOLOR"), Some(Value::str("")));
+    }
+
+    #[test]
+    fn edpropfamily_and_usefont_set_read_and_persist() {
+        use xyscript_xpl::FontMode;
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+
+        // EDPROPFAMILY sets the proportional editor font; `$EDPROPFAMILY` reads it; default clears.
+        assert_eq!(e.host().editor_prop_family(), None, "no proportional font by default");
+        e.run_command("EDPROPFAMILY Georgia");
+        assert_eq!(e.host().editor_prop_family(), Some("Georgia"));
+        assert_eq!(e.host().special("EDPROPFAMILY"), Some(Value::str("Georgia")));
+        // It round-trips through the config (SAVECFG/LOADCFG).
+        e.run_command("SAVECFG cfg.cfg");
+        assert!(e.host_mut().files.get("cfg.cfg").unwrap().contains("EDPROPFAMILY Georgia"));
+        e.run_command("EDPROPFAMILY default");
+        assert_eq!(e.host().editor_prop_family(), None);
+
+        // USEFONT sets THIS document's font mode (session-only, default Auto); `$USEFONT` reads it.
+        assert_eq!(e.active_font_mode(), FontMode::Auto);
+        assert_eq!(e.host().special("USEFONT"), Some(Value::str("auto")));
+        e.run_command("USEFONT prop");
+        assert_eq!(e.active_font_mode(), FontMode::Prop);
+        assert_eq!(e.host().special("USEFONT"), Some(Value::str("prop")));
+        e.run_command("USEFONT mono");
+        assert_eq!(e.active_font_mode(), FontMode::Mono);
+        e.run_command("USEFONT auto");
+        assert_eq!(e.active_font_mode(), FontMode::Auto);
+        // A bad argument is a trappable error that leaves the mode unchanged.
+        e.run_command("USEFONT bogus");
+        assert_eq!(e.active_font_mode(), FontMode::Auto, "an invalid USEFONT doesn't change the mode");
     }
 
     #[test]

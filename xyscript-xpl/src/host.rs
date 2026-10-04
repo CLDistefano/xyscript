@@ -59,6 +59,36 @@ pub struct MatchQuery {
     pub in_selection: bool,
 }
 
+/// A document's canvas font MODE (`USEFONT`). `Auto` follows the rule — syntax-highlighted / listing /
+/// HEX buffers render monospace, prose renders proportional when an `EDPROPFAMILY` is set; `Mono`/`Prop`
+/// pin it. Per-document, session-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FontMode {
+    Auto,
+    Mono,
+    Prop,
+}
+
+impl FontMode {
+    /// Parse the `USEFONT` argument (case-insensitive). `""` is `None` (a bare report).
+    pub fn parse(s: &str) -> Option<FontMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(FontMode::Auto),
+            "mono" | "monospace" | "monospaced" | "fixed" => Some(FontMode::Mono),
+            "prop" | "proportional" | "variable" | "var" => Some(FontMode::Prop),
+            _ => None,
+        }
+    }
+    /// The canonical keyword (`$USEFONT`, status reports, `SAVECFG`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FontMode::Auto => "auto",
+            FontMode::Mono => "mono",
+            FontMode::Prop => "prop",
+        }
+    }
+}
+
 /// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"
 /// title text, the box background, or the OK button's text / background.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,6 +418,9 @@ pub enum EditorOp {
     /// to monospaced + size, with a live preview). On OK the GUI applies `EDFAMILY`/`EDFONT`.
     /// Headless hosts just record the request.
     EditorFontPicker,
+    /// `EDPROPFONTS` — request the GUI's font-picker dialog for the editor's PROPORTIONAL canvas font
+    /// (all families). On OK the GUI applies `EDPROPFAMILY` (size/style shared with the mono editor font).
+    EditorPropFontPicker,
     /// `UIFONTS` — request the GUI's font-picker dialog for the UI chrome (`UIFAMILY`/`UIFONT`).
     UiFontPicker,
     /// `TXTFONTS` — request the GUI's font-picker dialog for the `TXT` window (`TXTFAMILY`/`TXTFONT`).
@@ -771,6 +804,16 @@ pub enum EditorOp {
     /// `""`/`default` resets to the built-in default). Read back via `$EDFAMILY`. The GUI renders
     /// with it via cosmic-text. (The `EDFONTS` picker is GUI sugar over this + `EDFONT`.)
     SetEditorFontFamily(String),
+    /// `EDPROPFAMILY <name>` — set the editor's PROPORTIONAL (variable-width) canvas font family by
+    /// name (any family; `""`/`default` clears it). Prose buffers render in it when one is set and the
+    /// per-document font mode resolves to proportional (see [`EditorOp::SetFontMode`]); code, listings,
+    /// and the HEX view always stay monospace (`EDFAMILY`). Read back via `$EDPROPFAMILY`.
+    SetEditorPropFamily(String),
+    /// `USEFONT mono|prop|auto` — override this document's canvas font MODE. `auto` follows the rule
+    /// (syntax-highlighted / listing / hex buffers → monospace, prose → proportional); `mono`/`prop`
+    /// pin it. Structural buffers (listings, HEX, results, console) ignore a `prop` override. Session-
+    /// only, per document. Bare `USEFONT` reports; `$USEFONT` reads it.
+    SetFontMode(FontMode),
     /// `UIFAMILY <name>` — set the UI-chrome font family (menu/status/cmline) by name
     /// (`""`/`default` resets). Read back via `$UIFAMILY`. The GUI loads the face bytes into egui
     /// to apply it. (The `UIFONTS` picker is GUI sugar over this + `UIFONT`.)

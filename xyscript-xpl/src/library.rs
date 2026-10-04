@@ -155,7 +155,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // GUI sizing knobs (B16): UI zoom / chrome+editor font pt / line-spacing / margins,
     // plus reset.
     "UISCALE", "UIFONT", "EDFONT", "LEADING", "LSP", "OF", "OFL", "OFR", "UIRESET",
-    "TXTFONT", "TXTSCALE", "EDFAMILY", "UIFAMILY", "TXTFAMILY", "EDFONTS", "UIFONTS", "TXTFONTS",
+    "TXTFONT", "TXTSCALE", "EDFAMILY", "EDPROPFAMILY", "USEFONT", "UIFAMILY", "TXTFAMILY", "EDFONTS", "EDPROPFONTS", "UIFONTS", "TXTFONTS",
     "EDSTYLE", "UISTYLE", "TXTSTYLE",
     // DIR/W listing window appearance (DW…): font/scale/family/style + reset + picker.
     "DWFONT", "DWSCALE", "DWFAMILY", "DWSTYLE", "DWRESET", "DWFONTS",

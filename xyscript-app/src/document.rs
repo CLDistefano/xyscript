@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use xyscript_xpl::{CaseKind, DirOpts, SortSpec};
+use xyscript_xpl::{CaseKind, DirOpts, FontMode, SortSpec};
 
 /// Process-global source of content generations. Each whole-buffer swap / encoding /
 /// highlighter change pulls a fresh value, so a document's [`revision`](Document::revision)
@@ -333,6 +333,10 @@ pub struct Document {
     /// keeps styling-only changes in autosave and the save-on-close prompt. Cleared by `mark_saved` /
     /// `load`; NOT set by sidecar restore (a freshly-opened styled doc matches disk).
     styling_dirty: bool,
+    /// Canvas font MODE for THIS document (`USEFONT`; session-only, never saved). `Auto` follows the
+    /// rule (code/listing/HEX → monospace, prose → proportional when an `EDPROPFAMILY` is set);
+    /// `Mono`/`Prop` pin it. The GUI consults it to choose the shaping family.
+    font_mode: FontMode,
     /// The `MDA` live-typing mode for THIS document (session-only, never saved): when a layer is set,
     /// each run typed into the doc is styled with it (`apply_typing_style`). Per-document — armed with a
     /// no-selection `MDA` and carried with the tab, so switching files doesn't inherit another's mode.
@@ -469,6 +473,7 @@ impl Clone for Document {
             attr_spans: self.attr_spans.clone(),
             marks: self.marks.clone(),
             styling_dirty: self.styling_dirty,
+            font_mode: self.font_mode,
             mda_type_fg: self.mda_type_fg,
             mda_type_bg: self.mda_type_bg,
             mda_type_attr: self.mda_type_attr,
@@ -514,6 +519,7 @@ impl Default for Document {
             attr_spans: Vec::new(),
             marks: Vec::new(),
             styling_dirty: false,
+            font_mode: FontMode::Auto,
             mda_type_fg: None,
             mda_type_bg: None,
             mda_type_attr: None,
@@ -1439,6 +1445,19 @@ impl Document {
         Self::set_spans_bulk(&mut self.attr_spans, ranges, attrs.filter(|&a| a != 0));
         self.gen = self.gen.wrapping_add(1);
         self.styling_dirty = true;
+    }
+
+    /// This document's canvas font MODE (`USEFONT`; session-only). Not an edit / not undoable.
+    pub fn font_mode(&self) -> FontMode {
+        self.font_mode
+    }
+    pub fn set_font_mode(&mut self, mode: FontMode) {
+        self.font_mode = mode;
+    }
+    /// Whether syntax highlighting is active on this document (a highlighter is assigned). The
+    /// proportional-font rule treats a highlighted buffer as "code" → monospace in `Auto` mode.
+    pub fn is_highlighting(&self) -> bool {
+        self.highlighter.is_some()
     }
 
     /// Shift ALL span layers (both colours + attributes) to follow an edit at byte `at` that removed

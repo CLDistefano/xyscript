@@ -2379,6 +2379,25 @@ fn parse_bare_visual_vmotion(xpl: &str) -> Option<(bool, bool)> {
     Some((down, extend))
 }
 
+/// Parse a bare LOGICAL vertical-motion command — `UP`/`DOWN` (± `SEL`). In PROPORTIONAL mode these are
+/// routed through the same pixel-column visual path as `LU`/`LD`, so the caret holds its visual x across
+/// rows (the engine's character-column goal would drift under a variable-width font). Mirrors
+/// [`parse_bare_visual_vmotion`].
+fn parse_bare_logical_vmotion(xpl: &str) -> Option<(bool, bool)> {
+    let mut words = xpl.split_whitespace();
+    let down = match words.next().map(|w| w.to_ascii_uppercase()).as_deref() {
+        Some("UP") => false,
+        Some("DOWN") => true,
+        _ => return None,
+    };
+    let extend = match words.next() {
+        None => false,
+        Some(w) if w.eq_ignore_ascii_case("SEL") && words.next().is_none() => true,
+        _ => return None,
+    };
+    Some((down, extend))
+}
+
 /// Parse a bare visual LINE-EDGE command — `LB`/`LE`, optionally followed by `SEL` (extend).
 /// Returns `Some((end, extend))` — `end` = true for `LE` (wrapped-row END), false for `LB` (row
 /// START) — for exactly those forms, else `None` (an argument, a `;`-chain, or another verb).
@@ -3460,7 +3479,9 @@ impl GuiApp {
         // listing's aligned columns and natural for a XyWrite-style editor. Shape against
         // the concrete resolved family (by name) rather than the generic `Monospace`,
         // which is far slower per line.
-        let fam = self.editor_family();
+        // Proportional editor font (`USEFONT`/`EDPROPFAMILY`) for prose; monospace otherwise. Shaping,
+        // hit-testing and the raster all read the same family so the caret/clicks stay aligned.
+        let fam = self.editor_render_family();
         // `EDSTYLE` → cosmic weight/slant (cosmic does its own face matching/synthesis).
         let (e_weight, e_style) = editor_cosmic_style(self.editor.editor_font_style());
         let mono = || {
@@ -5009,7 +5030,14 @@ impl GuiApp {
             let cell = (self.font_size * scale * 0.6).max(1.0) as i32; // monospace cell width
             let lh = lh_px as i32;
             let bar = (2.0 * scale).round().max(1.0) as i32; // caret bar width / underline height
-            let shape = self.editor.caret_shape();
+            // A block/underline caret is a fixed monospace-cell concept; over variable-width glyphs it
+            // would mis-size, so in proportional mode the caret degrades to a BAR (always sits exactly at
+            // the caret x). Monospace keeps the user's `CRSHAPE`.
+            let shape = if self.editor_proportional_active() {
+                CaretShape::Bar
+            } else {
+                self.editor.caret_shape()
+            };
             // Paint one caret rect at (cx, cy). Shared by the primary caret and every secondary
             // (multi-caret): each caret draws identically, so the whole set is visible at once.
             let mut paint_caret = |cx: i32, cy: i32| {
@@ -5353,7 +5381,7 @@ impl GuiApp {
         let (br, bgc, bb) = self.editor.bg_color();
         let (fr, fgc, fbc) = self.editor.fg_color();
         let (selr, selg, selb) = self.editor.sel_bg_color();
-        let fam = self.editor_family();
+        let fam = self.editor_render_family(); // proportional for prose, else monospace (matches shaping)
         let (e_weight, e_style) = editor_cosmic_style(self.editor.editor_font_style());
         let cmline_open = self.editor.cmline_open();
         let (crr, crg, crb) = self.editor.caret_color();
@@ -5822,7 +5850,12 @@ impl GuiApp {
     fn try_visual_vmotion(&mut self, xpl: &str) -> bool {
         let (down, extend) = match parse_bare_visual_vmotion(xpl) {
             Some(v) => v,
-            None => return false,
+            // In proportional mode, logical UP/DOWN also move by VISUAL row (pixel-x) so the caret
+            // holds its column; in monospace they fall through to the engine's goal_col path unchanged.
+            None => match parse_bare_logical_vmotion(xpl) {
+                Some(v) if self.editor_proportional_active() => v,
+                _ => return false,
+            },
         };
         if self.editor.cmline_open() || self.modal_owns_keyboard() || self.active_is_dir_listing() {
             return false;
@@ -6468,6 +6501,34 @@ impl GuiApp {
             .map(str::to_string)
             .or_else(|| self.mono_family.clone())
     }
+
+    /// Whether the ACTIVE buffer should render in the PROPORTIONAL editor font right now — the
+    /// `USEFONT`/`EDPROPFAMILY` rule. False unless a proportional family is set, the buffer isn't a
+    /// structural (listing/HEX/console) one, and the per-document mode (or the `Auto` rule) resolves to
+    /// proportional. `Auto` → proportional unless syntax highlighting is active (that's "code").
+    fn editor_proportional_active(&self) -> bool {
+        use xyscript_app::FontMode;
+        let has_prop = self.editor.host().editor_prop_family().map_or(false, |s| !s.is_empty());
+        if !has_prop || self.editor.active_forces_monospace() {
+            return false;
+        }
+        match self.editor.active_font_mode() {
+            FontMode::Prop => true,
+            FontMode::Mono => false,
+            FontMode::Auto => !self.editor.active_is_highlighting(),
+        }
+    }
+
+    /// The family to SHAPE the active document's canvas text with: the proportional editor font when
+    /// [`Self::editor_proportional_active`], else the monospace editor font. Shaping, caret placement,
+    /// hit-testing, and the raster all read this, so they stay consistent.
+    fn editor_render_family(&self) -> Option<String> {
+        if self.editor_proportional_active() {
+            self.editor.host().editor_prop_family().filter(|s| !s.is_empty()).map(str::to_string)
+        } else {
+            self.editor_family()
+        }
+    }
     /// The cosmic font DB (the only source of installed-font bytes available to us). Used to feed
     /// `UIFAMILY`/`TXTFAMILY` faces into egui — egui has no system-font access of its own.
     pub(crate) fn font_db(&self) -> &cosmic_text::fontdb::Database {
@@ -6540,6 +6601,11 @@ impl GuiApp {
                 self.editor.editor_font(),
                 self.editor.editor_font_style(),
             ),
+            FontPickerKind::EditorProp => (
+                self.editor.host().editor_prop_family().map(str::to_string),
+                self.editor.editor_font(), // size/style shared with the mono editor font
+                self.editor.editor_font_style(),
+            ),
             FontPickerKind::Ui => (
                 self.editor.ui_font_family().map(str::to_string),
                 self.editor.chrome_font(),
@@ -6597,6 +6663,7 @@ impl GuiApp {
         };
         let title = match picker.kind {
             FontPickerKind::Editor => "Editor Font",
+            FontPickerKind::EditorProp => "Editor Proportional Font",
             FontPickerKind::Ui => "UI Font",
             FontPickerKind::Txt => "TXT Font",
             FontPickerKind::Dir => "Directory Window Font",
@@ -6739,6 +6806,9 @@ impl GuiApp {
                 _ => {
                     let (fam_verb, size_verb, style_verb) = match picker.kind {
                         FontPickerKind::Editor => ("EDFAMILY", "EDFONT", "EDSTYLE"),
+                        // Proportional: set only the family; size/style stay shared with the mono editor
+                        // font (the seeded size/style are the current ones, so re-applying is a no-op).
+                        FontPickerKind::EditorProp => ("EDPROPFAMILY", "EDFONT", "EDSTYLE"),
                         FontPickerKind::Ui => ("UIFAMILY", "UIFONT", "UISTYLE"),
                         FontPickerKind::Txt => ("TXTFAMILY", "TXTFONT", "TXTSTYLE"),
                         _ => ("DWFAMILY", "DWFONT", "DWSTYLE"), // Dir

@@ -1617,6 +1617,8 @@ struct PendingOpen {
 pub enum FontPickerKind {
     /// `EDFONTS` — editor canvas (`EDFAMILY`/`EDFONT`); family list is monospaced-only.
     Editor,
+    /// `EDPROPFONTS` — editor PROPORTIONAL canvas font (`EDPROPFAMILY`); all families.
+    EditorProp,
     /// `UIFONTS` — UI chrome (`UIFAMILY`/`UIFONT`).
     Ui,
     /// `TXTFONTS` — `TXT` window (`TXTFAMILY`/`TXTFONT`).
@@ -2790,6 +2792,10 @@ pub struct AppHost {
     /// Editor canvas font family (`EDFAMILY`; monospaced). `None` = the GUI's resolved default.
     /// The GUI renders with it via cosmic-text. `$EDFAMILY`.
     editor_font_family: Option<String>,
+    /// Editor PROPORTIONAL (variable-width) canvas font family (`EDPROPFAMILY`; any family). `None` =
+    /// unset → prose buffers stay monospace. The GUI renders prose in it when the per-document font mode
+    /// resolves to proportional (`USEFONT`). `$EDPROPFAMILY`.
+    editor_prop_family: Option<String>,
     /// UI-chrome font family (`UIFAMILY`; menu/status/cmline). `None` = egui's built-in default.
     /// The GUI loads the face bytes into egui to apply it. `$UIFAMILY`.
     ui_font_family: Option<String>,
@@ -3278,6 +3284,7 @@ impl AppHost {
             txt_font: DEF_TXT_FONT,
             txt_scale: DEF_TXT_SCALE,
             editor_font_family: None,
+            editor_prop_family: None,
             ui_font_family: None,
             txt_font_family: None,
             editor_font_style: FontStyle::Normal,
@@ -3443,6 +3450,11 @@ impl AppHost {
     /// Editor canvas font family (`EDFAMILY`), or `None` for the GUI's resolved default.
     pub fn editor_font_family(&self) -> Option<&str> {
         self.editor_font_family.as_deref()
+    }
+    /// Editor PROPORTIONAL canvas font family (`EDPROPFAMILY`), or `None` when unset (prose stays
+    /// monospace). The GUI shapes prose buffers with it when their font mode resolves to proportional.
+    pub fn editor_prop_family(&self) -> Option<&str> {
+        self.editor_prop_family.as_deref()
     }
     /// Body font family for Markdown Preview/`TOPDF` (`PVFAMILY`), or `None` for Typst's default.
     pub fn preview_font_family(&self) -> Option<&str> {
@@ -9350,6 +9362,11 @@ impl AppHost {
             None if full => put(&mut s, "Editor font family (monospaced; EDFAMILY; 'default' = built-in)", "EDFAMILY default".to_string()),
             None => {}
         }
+        match &self.editor_prop_family {
+            Some(fam) => put(&mut s, "Editor PROPORTIONAL font family (prose; EDPROPFAMILY)", format!("EDPROPFAMILY {fam}")),
+            None if full => put(&mut s, "Editor PROPORTIONAL font family (prose; EDPROPFAMILY; 'default' = none, prose stays monospace)", "EDPROPFAMILY default".to_string()),
+            None => {}
+        }
         if self.editor_font_style != FontStyle::Normal {
             put(&mut s, "Editor font style (EDSTYLE)", format!("EDSTYLE {}", self.editor_font_style.keyword()));
         } else if full {
@@ -11097,6 +11114,10 @@ impl Host for AppHost {
                 self.font_picker_request = Some(FontPickerKind::Editor);
                 return Ok(Value::str(""));
             }
+            EditorOp::EditorPropFontPicker => {
+                self.font_picker_request = Some(FontPickerKind::EditorProp);
+                return Ok(Value::str(""));
+            }
             EditorOp::UiFontPicker => {
                 self.font_picker_request = Some(FontPickerKind::Ui);
                 return Ok(Value::str(""));
@@ -12234,6 +12255,19 @@ impl Host for AppHost {
                 }
                 self.editor_font_family = Some(name.to_string());
                 return Ok(Value::str(format!("editor font family = {name}")));
+            }
+            EditorOp::SetEditorPropFamily(name) => {
+                let name = name.trim();
+                if name.is_empty() || name.eq_ignore_ascii_case("default") {
+                    self.editor_prop_family = None;
+                    return Ok(Value::str("editor proportional font = (none — prose stays monospace)"));
+                }
+                self.editor_prop_family = Some(name.to_string());
+                return Ok(Value::str(format!("editor proportional font = {name}")));
+            }
+            EditorOp::SetFontMode(mode) => {
+                self.docs[self.active].set_font_mode(mode);
+                return Ok(Value::str(format!("USEFONT: {} (this document)", mode.as_str())));
             }
             EditorOp::SetUiFontFamily(name) => {
                 let name = name.trim();
@@ -13780,6 +13814,8 @@ impl Host for AppHost {
             "UIFONT" => Some(Value::Float(self.chrome_font as f64)),
             "EDFONT" => Some(Value::Float(self.editor_font as f64)),
             "EDFAMILY" => Some(Value::str(self.editor_font_family.clone().unwrap_or_default())),
+            "EDPROPFAMILY" => Some(Value::str(self.editor_prop_family.clone().unwrap_or_default())),
+            "USEFONT" => Some(Value::str(self.docs[self.active].font_mode().as_str())),
             "UIFAMILY" => Some(Value::str(self.ui_font_family.clone().unwrap_or_default())),
             "TXTFAMILY" => Some(Value::str(self.txt_font_family.clone().unwrap_or_default())),
             "EDSTYLE" => Some(Value::str(self.editor_font_style.keyword())),

@@ -2561,6 +2561,29 @@ picker, #raw("UISCALE") zooms the whole interface, #raw("EDFONT +1") nudges the 
 #raw("LEADING") changes line spacing, and #raw("OF") / #raw("OFL") / #raw("OFR") set the text margins
 (each takes a signed #raw("+n") / #raw("-n") or a bare number).
 
+=== Editing in a proportional font
+
+The editor font above is *monospaced* — a fixed cell per character, which keeps columns and the
+directory listings aligned. For writing *prose*, you can instead edit in a *proportional* (variable-
+width) font — real book type, as it will print — while the editor still behaves like an editor
+(the caret, clicking, selection, and up/down arrows all follow the varying letter widths).
+
+Pick a proportional family with #raw("EDPROPFONTS") (the picker offers every installed font, not just
+the monospaced ones), or name one directly: #raw("EDPROPFAMILY Georgia"). Once it is set, ordinary prose
+documents render in it automatically, while anything that *needs* a fixed pitch stays monospaced — the
+#raw("HEX") view, the directory and search listings, the Console, and any file you are syntax-
+highlighting (your code). Clear it with #raw("EDPROPFAMILY default").
+
+To decide per document, use #raw("USEFONT"): #raw("USEFONT prop") forces the proportional font here,
+#raw("USEFONT mono") forces the fixed font, and #raw("USEFONT auto") (the default) follows the rule
+above. Bare #raw("USEFONT") reports the current mode. It is remembered for the session, per tab, and
+not written into the file.
+
+#tip("A few things to know")[In a proportional buffer the caret shows as a thin bar (a block caret is
+a fixed-cell idea), and column-rectangle *box select* (#kbd("Alt")+drag) is turned off — a normal
+selection takes its place. The Preview pane and #raw("TOPDF") have always used proportional type; this
+just brings the same look to the editing canvas. See #raw("PVFAMILY") for the output font.]
+
 == View toggles
 
 The *View* menu's toggles each have a verb and a read-back, following a *Set* / *Clear* / *Toggle*
