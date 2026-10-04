@@ -1479,6 +1479,31 @@ mod menu_tests {
     }
 
     #[test]
+    fn bound_visual_line_edge_keys_land_on_the_wrapped_row_edge() {
+        let mut app = GuiApp::new();
+        app.editor
+            .run_command(r#"INSERT "alpha bravo charlie delta echo foxtrot golf hotel india juliet""#);
+        app.editor.run_command("TF");
+        app.render_canvas(200, 500); // narrow → line 0 wraps into several rows
+        let line_len = app.editor.document().text().split('\n').next().unwrap().len();
+        // A bound `LE` lands on the end of the FIRST visual row — past the caret but BEFORE the logical
+        // line end (the line wraps), so it's the wrapped-row edge, not the whole line.
+        assert!(app.try_visual_line_edge("LE"));
+        app.render_canvas(200, 500);
+        let at_row_end = app.editor.document().cursor();
+        assert!(at_row_end > 0 && at_row_end < line_len, "LE → visual row end (within the wrapped line)");
+        // A bound `LB` goes back to the visual row start.
+        assert!(app.try_visual_line_edge("LB"));
+        app.render_canvas(200, 500);
+        assert_eq!(app.editor.document().cursor(), 0, "LB → visual row start");
+        // Non-edge verbs, chains, and arg forms are NOT redirected; nor is the command line.
+        assert!(!app.try_visual_line_edge("PR hi"));
+        assert!(!app.try_visual_line_edge("LE 2"));
+        app.editor.run_command("GH");
+        assert!(!app.try_visual_line_edge("LE"));
+    }
+
+    #[test]
     fn parse_bare_visual_vmotion_accepts_only_bare_lu_ld() {
         assert_eq!(parse_bare_visual_vmotion("LU"), Some((false, false)));
         assert_eq!(parse_bare_visual_vmotion("ld"), Some((true, false)));
@@ -5866,6 +5891,28 @@ impl GuiApp {
             return false;
         }
         self.visual_vmove(down, extend);
+        true
+    }
+
+    /// A key bound to a VISUAL line-edge verb (`LB`/`LE`, ± `SEL`) lands on the exact wrapped-row
+    /// start/end via the shaped layout — the pixel-correct counterpart the engine can't compute (it
+    /// knows only logical lines). The keypress analogue of [`Self::try_cmline_visual_line_edge`] /
+    /// [`Self::try_visual_vmotion`]; without it a bound `LB`/`LE` fell back to the engine's approximation
+    /// (noticeable in wrapped text, and in a proportional buffer). Hex/DIR keep their host handling.
+    fn try_visual_line_edge(&mut self, xpl: &str) -> bool {
+        let (end, extend) = match parse_bare_visual_line_edge(xpl) {
+            Some(v) => v,
+            None => return false,
+        };
+        if self.editor.cmline_open()
+            || self.modal_owns_keyboard()
+            || self.active_is_dir_listing()
+            || self.editor.hex_view()
+        {
+            return false;
+        }
+        let from = self.editor.document().cursor(); // the caret whose visual row we take the edge of
+        self.visual_line_edge(end, extend, from);
         true
     }
 

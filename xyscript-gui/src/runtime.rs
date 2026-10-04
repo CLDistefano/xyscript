@@ -820,6 +820,12 @@ impl Handler {
                 self.request_redraw();
                 return true;
             }
+            // A key bound to a visual line-edge verb (LB/LE) lands on the exact wrapped-row edge via the
+            // shaped layout (the engine knows only logical lines) — same treatment as the arrows.
+            if self.app.try_visual_line_edge(&xpl) {
+                self.request_redraw();
+                return true;
+            }
             self.app.run_captured(&xpl);
         }
         consumed
