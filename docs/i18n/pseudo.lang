@@ -274,6 +274,7 @@ menu.settings.preview.page_numbers.plain = [Þĺàìñ (1) ····]   # Plain (
 menu.settings.preview.page_numbers.page_n = [Þàĝè 1 ··]   # Page 1
 menu.settings.preview.page_numbers.dashes = [Đàšĥèš (— 1 —) ······]   # Dashes (— 1 —)
 menu.settings.preview.page_numbers.x_of_n = [Ñ òƒ Ɱ ··]   # N of M
+menu.settings.preview.page_numbers.x_of_n.fmt = [1 òƒ 1 ··]   # 1 of 1
 menu.settings.preview.page_numbers.custom = [Çùšţòɱ… ···]   # Custom…
 menu.settings.preview.position = [Þòšìţìòñ ···]   # Position
 menu.settings.preview.position.bc = [Ɓòţţòɱ çèñţèŕ ·····]   # Bottom center

@@ -272,6 +272,7 @@ menu.settings.preview.page_numbers.plain = Plain (1)
 menu.settings.preview.page_numbers.page_n = Page 1
 menu.settings.preview.page_numbers.dashes = Dashes (— 1 —)
 menu.settings.preview.page_numbers.x_of_n = N of M
+menu.settings.preview.page_numbers.x_of_n.fmt = 1 of 1
 menu.settings.preview.page_numbers.custom = Custom…
 menu.settings.preview.position = Position
 menu.settings.preview.position.bc = Bottom center

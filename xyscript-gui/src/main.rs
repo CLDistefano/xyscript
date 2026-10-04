@@ -1857,6 +1857,41 @@ mod menu_tests {
     }
 
     #[test]
+    fn page_number_presets_localize_the_inserted_pattern() {
+        // The "Page 1" / "N of M" presets feed their pattern straight into the PDF via Typst
+        // `numbering:`, so the pattern itself must localize — not just the menu label. Under a German
+        // catalog the menu must run `PVPAGENUM "Seite 1"` / `PVPAGENUM "1 von 1"`, not the English text.
+        fn commands(nodes: &[MenuNode], out: &mut Vec<String>) {
+            for n in nodes {
+                match n {
+                    MenuNode::Item { act: MenuAct::Run(cmd), .. } => out.push(cmd.clone()),
+                    MenuNode::Sub { children, .. } => commands(children, out),
+                    _ => {}
+                }
+            }
+        }
+        let de = format!(
+            "{}/../docs/i18n/de.lang",
+            env!("CARGO_MANIFEST_DIR").replace('\\', "/")
+        );
+        let mut app = GuiApp::new();
+        app.editor.run_command(&format!("LANG {de}"));
+        assert!(app.editor.lang_get("menubar.file").is_some(), "de.lang did not load");
+        let mut cmds = Vec::new();
+        commands(&app.menu_tree(), &mut cmds);
+        assert!(
+            cmds.iter().any(|c| c == "PVPAGENUM \"Seite 1\""),
+            "page_n preset not localized; got {:?}",
+            cmds.iter().filter(|c| c.starts_with("PVPAGENUM")).collect::<Vec<_>>()
+        );
+        assert!(
+            cmds.iter().any(|c| c == "PVPAGENUM \"1 von 1\""),
+            "x_of_n preset not localized; got {:?}",
+            cmds.iter().filter(|c| c.starts_with("PVPAGENUM")).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn menu_labels_stay_within_width() {
         // Menu columns render with `TextWrapMode::Extend`, so a label never WRAPS — the column widens
         // to fit it. This guard keeps that widening sane: no item (any submenu depth) may exceed a
@@ -8163,9 +8198,12 @@ impl GuiApp {
                     m_sub(self.tr("menu.settings.preview.page_numbers", "Page numbers"), vec![
                         m_item(self.tr("menu.settings.preview.page_numbers.off", "Off"), "PVPAGENUM off"),
                         m_item(self.tr("menu.settings.preview.page_numbers.plain", "Plain (1)"), "PVPAGENUM 1"),
-                        m_item(self.tr("menu.settings.preview.page_numbers.page_n", "Page 1"), "PVPAGENUM \"Page 1\""),
+                        // page_n's label IS the numbering pattern (localized, e.g. "Seite 1"); x_of_n's
+                        // label is descriptive ("N of M"), so its pattern comes from a dedicated .fmt key
+                        // ("1 of 1" → "1 von 1"). PVPAGENUM feeds the pattern straight to Typst `numbering:`.
+                        m_item(self.tr("menu.settings.preview.page_numbers.page_n", "Page 1"), format!("PVPAGENUM \"{}\"", self.tr("menu.settings.preview.page_numbers.page_n", "Page 1"))),
                         m_item(self.tr("menu.settings.preview.page_numbers.dashes", "Dashes (— 1 —)"), "PVPAGENUM \"— 1 —\""),
-                        m_item(self.tr("menu.settings.preview.page_numbers.x_of_n", "N of M"), "PVPAGENUM \"1 of 1\""),
+                        m_item(self.tr("menu.settings.preview.page_numbers.x_of_n", "N of M"), format!("PVPAGENUM \"{}\"", self.tr("menu.settings.preview.page_numbers.x_of_n.fmt", "1 of 1"))),
                         m_stage(self.tr("menu.settings.preview.page_numbers.custom", "Custom…"), "PVPAGENUM "),
                         MenuNode::Sep,
                         m_sub(self.tr("menu.settings.preview.position", "Position"), vec![
