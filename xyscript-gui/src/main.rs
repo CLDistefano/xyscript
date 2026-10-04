@@ -8108,7 +8108,8 @@ impl GuiApp {
                         ]),
                     ]),
                     m_sub(self.tr("menu.settings.appearance.fonts", "Fonts"), vec![
-                        m_item(self.tr("menu.settings.appearance.fonts.editor", "Editor…"), "EDFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.editor", "Editor (monospace)…"), "EDFONTS"),
+                        m_item(self.tr("menu.settings.appearance.fonts.editor_prop", "Editor (proportional)…"), "EDPROPFONTS"),
                         m_item(self.tr("menu.settings.appearance.fonts.ui", "UI…"), "UIFONTS"),
                         m_item(self.tr("menu.settings.appearance.fonts.txt", "TXT window…"), "TXTFONTS"),
                         m_item(self.tr("menu.settings.appearance.fonts.dir", "Directory window…"), "DWFONTS"),
