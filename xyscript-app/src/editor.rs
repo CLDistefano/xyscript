@@ -11900,6 +11900,12 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert!(e.host_mut().files.get("cfg.cfg").unwrap().contains("EDPROPFAMILY Georgia"));
         e.run_command("EDPROPFAMILY default");
         assert_eq!(e.host().editor_prop_family(), None);
+        // Even at its default (unset), a plain SaveCfg still emits EDPROPFAMILY so it's discoverable.
+        e.run_command("SAVECFG cfg2.cfg");
+        assert!(
+            e.host_mut().files.get("cfg2.cfg").unwrap().contains("EDPROPFAMILY default"),
+            "SaveCfg must surface EDPROPFAMILY even when unset"
+        );
 
         // USEFONT sets THIS document's font mode (session-only, default Auto); `$USEFONT` reads it.
         assert_eq!(e.active_font_mode(), FontMode::Auto);

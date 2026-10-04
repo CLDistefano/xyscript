@@ -9362,10 +9362,11 @@ impl AppHost {
             None if full => put(&mut s, "Editor font family (monospaced; EDFAMILY; 'default' = built-in)", "EDFAMILY default".to_string()),
             None => {}
         }
+        // Emitted unconditionally (even at its default) so a plain SaveCfg always surfaces it — matches
+        // the user's "defaults visible in SaveCfg, like PVMARGIN" preference.
         match &self.editor_prop_family {
             Some(fam) => put(&mut s, "Editor PROPORTIONAL font family (prose; EDPROPFAMILY)", format!("EDPROPFAMILY {fam}")),
-            None if full => put(&mut s, "Editor PROPORTIONAL font family (prose; EDPROPFAMILY; 'default' = none, prose stays monospace)", "EDPROPFAMILY default".to_string()),
-            None => {}
+            None => put(&mut s, "Editor PROPORTIONAL font family (prose; EDPROPFAMILY; 'default' = none, prose stays monospace)", "EDPROPFAMILY default".to_string()),
         }
         if self.editor_font_style != FontStyle::Normal {
             put(&mut s, "Editor font style (EDSTYLE)", format!("EDSTYLE {}", self.editor_font_style.keyword()));
