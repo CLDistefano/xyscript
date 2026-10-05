@@ -2561,6 +2561,17 @@ picker, #raw("UISCALE") zooms the whole interface, #raw("EDFONT +1") nudges the 
 #raw("LEADING") changes line spacing, and #raw("OF") / #raw("OFL") / #raw("OFR") set the text margins
 (each takes a signed #raw("+n") / #raw("-n") or a bare number).
 
+#tip("High-DPI and 4K displays")[On a 4K (or other high-DPI) monitor run at your system's recommended
+scaling — typically 150% or 200% on Windows — XyScript sizes itself automatically and renders *sharper*
+than on a standard display: it is per-monitor DPI-aware and draws the text canvas at full device
+resolution, so nothing is blurry and no adjustment is needed. The one case that wants a nudge is running
+a 4K panel at 100% (unscaled), where everything is rendered at true pixel size and so looks small. Then
+#raw("UISCALE") is the knob — it zooms the *entire* interface, editor canvas included
+(#raw("UISCALE 1.75") or #raw("UISCALE 2") is a comfortable starting point; it is also on *Settings ▸
+Appearance ▸ UI zoom*). Pair it with #raw("EDFONT") / #raw("UIFONT") if you want the editing text and the
+chrome at different sizes. Note that #raw("TXTSCALE") only zooms the pop-up #raw("TXT") window, not the
+main editor.]
+
 === Editing in a proportional font
 
 The editor font above is *monospaced* — a fixed cell per character, which keeps columns and the
