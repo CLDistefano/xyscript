@@ -2570,6 +2570,14 @@ pub struct AppHost {
     /// on the host (not just the transient status line) so a `startup.xpl` keymap failure survives to be
     /// surfaced after startup — later commands and nested `LOADCFG`/`THEME` runs can't clobber it.
     last_kbd_error: Option<String>,
+    /// Resident keyboard-layout slots for modal / multi-layout switching (`KBD <name> <file>` loads
+    /// one; `KBDMODE <name>` switches). Each is the parsed `.kbd` kept in memory so a switch is a
+    /// pointer swap (no disk read / parse). The operative keymap is always `kbd_modes[kbd_mode]`.
+    kbd_modes: HashMap<String, Keymap>,
+    /// Name of the active layout slot (`$KBDMODE`). Starts as `default` — the keymap the editor booted
+    /// with (embedded default or a startup `LOADKBD`). A plain `LOADKBD`/`CLEARKBD` replaces whichever
+    /// slot is active; `KBDMODE` selects another resident slot.
+    kbd_mode: String,
     /// The last feedback message surfaced to the status line (`$LS`); the editor records it.
     last_status_line: String,
     /// XPL awaiting execution by the editor after the current script returns (can't
@@ -3125,6 +3133,9 @@ const DEFAULT_CLOSED: &str = "xyscript-reopen.xpl"; // SaveClosed default path (
 const REOPEN_CAP: usize = 50; // max entries kept in the reopen list
 const REOPEN_NAME_COL: usize = 30; // max width of the filename column in the REOPEN chooser
 const DEFAULT_KBD_DUMP: &str = "xyscript.kbd"; // SAVEKBD default path when none is given
+/// Name of the keyboard-layout slot the editor boots into (`$KBDMODE` before any `KBDMODE`). The
+/// base layout a plain `LOADKBD`/`CLEARKBD` targets.
+pub(crate) const DEFAULT_KBD_MODE: &str = "default";
 const SHELL_OUTPUT_NAME: &str = "*Console*"; // the unified Console REPL + X/BG output buffer
 const SHELL_OUTPUT_CAP: usize = 512 * 1024; // scrollback cap (bytes) for *Shell Output*
 
@@ -3190,6 +3201,8 @@ impl AppHost {
             last_rc: 0,
             last_kbd: None,
             last_kbd_error: None,
+            kbd_modes: HashMap::new(),
+            kbd_mode: DEFAULT_KBD_MODE.to_string(),
             last_status_line: String::new(),
             last_output: String::new(),
             pending_run: Vec::new(),
@@ -8773,6 +8786,31 @@ impl AppHost {
         self.keymap_gen = self.keymap_gen.wrapping_add(1);
     }
 
+    /// Register the editor's boot keymap as the `default` layout slot, so `KBDMODE default` can always
+    /// return to it even if the user never issued a `LOADKBD`. Called once at `Editor` construction.
+    pub fn init_kbd_mode(&mut self, km: Keymap) {
+        self.kbd_mode = DEFAULT_KBD_MODE.to_string();
+        self.kbd_modes.insert(DEFAULT_KBD_MODE.to_string(), km);
+    }
+
+    /// The active keyboard-layout slot name (`$KBDMODE`).
+    pub fn kbd_mode(&self) -> &str {
+        &self.kbd_mode
+    }
+
+    /// Number of resident keyboard-layout slots — the GUI shows the mode indicator only when more than
+    /// one layout is loaded (i.e. the user has opted into multi-layout switching).
+    pub fn kbd_mode_count(&self) -> usize {
+        self.kbd_modes.len()
+    }
+
+    /// Resident layout slot names, sorted (`$KBDMODES`).
+    pub fn kbd_mode_names(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.kbd_modes.keys().cloned().collect();
+        v.sort();
+        v
+    }
+
     /// A counter bumped on each keymap install — a cheap cache key for the keyboard chart.
     pub fn keymap_generation(&self) -> u64 {
         self.keymap_gen
@@ -9659,6 +9697,9 @@ impl Host for AppHost {
         let body = self.read_file(path)?;
         match load(&body, VIRTUAL_BASE) {
             LoadOutcome::Installed(km) => {
+                // A plain LOADKBD (re)loads the ACTIVE layout slot, so switching away and back stays
+                // consistent. Non-mode users only ever touch the single `default` slot.
+                self.kbd_modes.insert(self.kbd_mode.clone(), km.clone());
                 self.pending_kbd = Some(km);
                 self.last_kbd = Some(self.resolve_path(path)); // $KB (resolved full path)
                 self.last_kbd_error = None; // a good load clears any prior failure
@@ -9669,6 +9710,47 @@ impl Host for AppHost {
                 self.last_kbd_error = Some(msg.clone()); // survives to the startup status (see field doc)
                 Err(XplError::trappable(msg))
             }
+        }
+    }
+
+    fn load_kbd_named(&mut self, name: &str, path: &str) -> VmResult<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(XplError::trappable("ADDKBD: a layout name is required (ADDKBD <name> <file>)"));
+        }
+        let body = self.read_file(path)?; // virtual FS first, then disk (same as load_kbd)
+        match load(&body, VIRTUAL_BASE) {
+            LoadOutcome::Installed(km) => {
+                // Store the compiled map in its named slot. If it IS the active layout, also install it
+                // operatively (editor post_run picks up pending_kbd); otherwise just keep it resident.
+                if name == self.kbd_mode {
+                    self.pending_kbd = Some(km.clone());
+                }
+                self.kbd_modes.insert(name.to_string(), km);
+                self.last_kbd = Some(self.resolve_path(path));
+                self.last_kbd_error = None;
+                Ok(())
+            }
+            LoadOutcome::Rejected(e) => {
+                let msg = format!("ADDKBD {name} {path}: {e}");
+                self.last_kbd_error = Some(msg.clone());
+                Err(XplError::trappable(msg))
+            }
+        }
+    }
+
+    fn set_kbd_mode(&mut self, name: &str) -> VmResult<()> {
+        let name = name.trim();
+        match self.kbd_modes.get(name) {
+            Some(km) => {
+                let km = km.clone();
+                self.kbd_mode = name.to_string();
+                self.pending_kbd = Some(km); // editor post_run installs into resolver + GUI capture
+                Ok(())
+            }
+            None => Err(XplError::trappable(format!(
+                "KBDMODE: no keyboard layout named '{name}' — load it with ADDKBD {name} <file>"
+            ))),
         }
     }
 
@@ -11007,6 +11089,7 @@ impl Host for AppHost {
                 // via take_pending_kbd / take_reloaded_keymap, same path as LOADKBD.
                 match load(MINIMAL_KBD, VIRTUAL_BASE) {
                     LoadOutcome::Installed(km) => {
+                        self.kbd_modes.insert(self.kbd_mode.clone(), km.clone()); // reset the active slot
                         self.pending_kbd = Some(km);
                         self.last_kbd = None; // built in, not a file on disk — $KB clears
                         return Ok(Value::str("keyboard reset to the built-in default"));
@@ -14284,6 +14367,10 @@ impl Host for AppHost {
             "KB" => Some(Value::str(
                 self.last_kbd.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
             )),
+            // Active keyboard-layout slot (`$KBDMODE`) and the space-joined list of resident slots
+            // (`$KBDMODES`) — for modal / multi-layout switching (KBD / KBDMODE).
+            "KBDMODE" => Some(Value::str(self.kbd_mode.clone())),
+            "KBDMODES" => Some(Value::str(self.kbd_mode_names().join(" "))),
             "LS" => Some(Value::str(self.last_status_line.clone())),
             // The running XyScript executable's full path (`$ED`) and its directory (`$XSDIR`).
             "ED" => Some(Value::str(

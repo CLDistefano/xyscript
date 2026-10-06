@@ -96,6 +96,7 @@ impl Editor {
         let km = crate::kbd_sugar::desugar_keymap(keymap);
         let mut host = AppHost::new();
         host.set_keymap(km.clone()); // keep the host's copy in sync for SAVEKBD
+        host.init_kbd_mode(km.clone()); // register it as the `default` layout slot (KBDMODE can return here)
         Editor {
             resolver: Resolver::new(km),
             interp: Interpreter::new(),
@@ -433,6 +434,17 @@ impl Editor {
     /// editor's internal resolver, not the one the GUI intercepts keystrokes with.
     pub fn take_reloaded_keymap(&mut self) -> Option<Keymap> {
         self.reloaded_keymap.take()
+    }
+
+    /// Active keyboard-layout slot name (`$KBDMODE`) — for the GUI's status-line mode indicator.
+    pub fn kbd_mode(&self) -> &str {
+        self.host.kbd_mode()
+    }
+
+    /// Number of resident keyboard-layout slots. The GUI shows the mode indicator only when this is
+    /// > 1 (i.e. the user has loaded named layouts for multi-layout / modal switching).
+    pub fn kbd_mode_count(&self) -> usize {
+        self.host.kbd_mode_count()
     }
 
     /// Dismiss the command line without running it; focus returns to the document.
@@ -5689,6 +5701,40 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_startup("loadkbd custom.kbd", "startup.xpl");
         e.feed_key(KeyEvent::down(16));
         assert_eq!(e.document().text(), "S");
+    }
+
+    #[test]
+    fn kbd_modes_switch_instantly_between_resident_layouts() {
+        let mut e = ed();
+        // Two named layouts where key 16 inserts "A" / "B" (default inserts "h").
+        e.host_mut().files.insert("a.kbd".into(), "KEYS=104\nTABLE=\n16=insert \"A\"\n".into());
+        e.host_mut().files.insert("b.kbd".into(), "KEYS=104\nTABLE=\n16=insert \"B\"\n".into());
+        e.run_command("ADDKBD alpha a.kbd");
+        e.run_command("ADDKBD beta b.kbd");
+        assert!(e.last_error().is_none(), "load failed: {:?}", e.last_error());
+        // Loading named slots does NOT switch away from the active (default) layout.
+        assert_eq!(e.kbd_mode(), "default");
+        e.feed_key(KeyEvent::down(16));
+        assert_eq!(e.document().text(), "h");
+        // Switch to alpha — instant; key 16 now inserts "A". `$KBDMODE` tracks it.
+        e.run_command("KBDMODE alpha");
+        assert_eq!(e.kbd_mode(), "alpha");
+        assert_eq!(e.special_str("KBDMODE"), "alpha");
+        e.feed_key(KeyEvent::down(16));
+        assert_eq!(e.document().text(), "hA");
+        // Switch to beta, then back to default — each swap is a resident-map swap.
+        e.run_command("KBDMODE beta");
+        e.feed_key(KeyEvent::down(16));
+        assert_eq!(e.document().text(), "hAB");
+        e.run_command("KBDMODE default");
+        e.feed_key(KeyEvent::down(16));
+        assert_eq!(e.document().text(), "hABh");
+        // Unknown layout → trappable error, active layout unchanged; three slots resident.
+        e.run_command("KBDMODE nope");
+        assert_ne!(e.special_str("ERROR"), "0", "switching to a missing layout is trappable");
+        assert_eq!(e.kbd_mode(), "default");
+        assert_eq!(e.special_str("KBDMODES"), "alpha beta default");
+        assert_eq!(e.kbd_mode_count(), 3);
     }
 
     // ---- CMline ------------------------------------------------------------

@@ -1755,6 +1755,20 @@ pub enum CalcContext {
 pub trait Host {
     /// `LOADKBD <path>` — hand off to the transactional keymap loader.
     fn load_kbd(&mut self, path: &str) -> VmResult<()>;
+    /// `ADDKBD <name> <path>` — load a `.kbd` into a RESIDENT named layout slot (for modal / multi-
+    /// layout switching), compiled and kept in memory so `KBDMODE` can switch to it instantly. Loading
+    /// the slot that is already active also installs it operatively; otherwise it is only stored. Same
+    /// transactional / last-known-good rule as `load_kbd`. Default: treat as a plain `load_kbd` of the
+    /// path (hosts without the mode registry still load the keyboard).
+    fn load_kbd_named(&mut self, _name: &str, path: &str) -> VmResult<()> {
+        self.load_kbd(path)
+    }
+    /// `KBDMODE <name>` — switch the operative keyboard to the resident layout slot `name` (loaded
+    /// earlier with `ADDKBD`). Trappable error if no such slot. Instant: swaps the compiled map, no
+    /// disk read or parse. Default: no-op success (hosts without the registry have a single layout).
+    fn set_kbd_mode(&mut self, _name: &str) -> VmResult<()> {
+        Ok(())
+    }
     /// `$SC` / `READKEY` — the canonical scan code of the last captured key.
     fn last_scan_code(&self) -> i64 {
         0

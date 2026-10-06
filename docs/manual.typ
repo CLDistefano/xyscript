@@ -2501,6 +2501,43 @@ you what a key _does_, #raw("GETKEY(scc)") tells you what it is _called_ — #ra
 the readable name of the key, the same string #raw("READKEY/D") would capture (#raw("CTRL+Y"),
 #raw("Enter"), #raw("Backspace")), or the empty string if the number names no key.
 
+== Multiple keyboard layouts
+
+#raw("LOADKBD") replaces the whole keyboard. If you want to *switch* between layouts — a second-language
+layout, a Dvorak layer, a navigation or command layer that reworks the letter keys — keep them all loaded
+at once and flip between them instantly:
+
+/ #raw("ADDKBD <name> <file>"): load a #raw(".kbd") into a named, *resident* layout slot (named the way
+  #raw("ADDLIB") adds a library). It is compiled and kept in memory; nothing about the active keyboard
+  changes (unless the name you load is the one already active). Load as many as you like —
+  #raw("ADDKBD greek greek.kbd"), #raw("ADDKBD dvorak dvorak.kbd").
+/ #raw("KBDMODE <name>"): switch the keyboard to that slot. The swap is *instant* — a compiled-map
+  pointer change, no file read and no re-parse — so you can bounce between layouts as often as you like.
+  Bare #raw("KBDMODE") reports the active layout.
+
+The layout you boot with is the slot named #raw("default"), so #raw("KBDMODE default") always returns to
+it. Only the key→action table swaps: your document, selection, bookmarks, and binders are shared across
+every layout. Once more than one layout is loaded, the *status line* shows the active one. Switching to a
+name you have not loaded is a harmless error that leaves the current keyboard in place, so a typo can
+never strand you — and #kbd("Ctrl+Q") quits regardless of the layout.
+
+Switching is itself just a command, so you bind it *inside* the layouts. If #raw("insert.kbd") binds
+#kbd("Esc") to #raw("KBDMODE command") and #raw("command.kbd") binds #kbd("i") to #raw("KBDMODE insert"),
+you have modal editing. Set it all up in #raw("startup.xpl") so it is ready each session:
+
+#ex("ADDKBD insert   insert.kbd
+ADDKBD command  command.kbd
+KBDMODE insert")
+
+The active layout is #raw("$KBDMODE") and the full list is #raw("$KBDMODES"), so a script or status
+display can read them. (These layout slots live in #raw("startup.xpl"), alongside #raw("LOADKBD"); they
+are not written by #raw("SAVECFG").)
+
+#tip("Layouts are keymaps, not modes-with-memory")[A richer *modal* editor in the Vim sense — where
+#raw("d") waits for a motion and #raw("3dd") repeats — needs a little state machine on top of the
+layouts, which you can build in XPL (a key reads the next keystroke with #raw("READKEY")). The layout
+switch gives you the *modes*; the grammar that composes operators and motions is a layer above it.]
+
 == Binders: registers you can re-fill at runtime
 
 Editing the #raw(".kbd") file sets *permanent* bindings. For the throwaway kind — "remember this text,"

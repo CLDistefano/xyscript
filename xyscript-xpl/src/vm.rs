@@ -1502,6 +1502,45 @@ impl Vm<'_, '_> {
                 }
                 Ok(Flow::Next)
             }
+            // `ADDKBD <name> <file>` — load a `.kbd` into a RESIDENT named layout slot (multi-layout /
+            // modal switching), the way `ADDLIB` adds a library. The slot stays in memory so
+            // `KBDMODE <name>` switches to it instantly (no disk read / parse). Loading the active slot
+            // also installs it operatively.
+            "ADDKBD" => {
+                let rest = args.trim();
+                let (name, path) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                let name = name.to_string();
+                // Strip one surrounding quote pair from the file path (a spaced path may be quoted).
+                let path = path.trim();
+                let path = path
+                    .strip_prefix('"')
+                    .and_then(|p| p.strip_suffix('"'))
+                    .unwrap_or(path)
+                    .to_string();
+                if path.is_empty() {
+                    self.fail_trap(1, "ADDKBD: usage is ADDKBD <name> <file>".to_string());
+                    return Ok(Flow::Next);
+                }
+                self.host_call(|h| h.load_kbd_named(&name, &path))?;
+                if self.ctx.env.error == 0 {
+                    *self.ctx.status = Some(format!("loaded keyboard layout '{name}' from {path}"));
+                }
+                Ok(Flow::Next)
+            }
+            // `KBDMODE [<name>]` — switch the operative keyboard to resident layout slot `<name>`
+            // (instant pointer swap). Bare `KBDMODE` reports the active layout.
+            "KBDMODE" => {
+                let name = args.trim().to_string();
+                if name.is_empty() {
+                    *self.ctx.status = Some(format!("keyboard layout: {}", self.special_str("KBDMODE")));
+                    return Ok(Flow::Next);
+                }
+                self.host_call(|h| h.set_kbd_mode(&name))?;
+                if self.ctx.env.error == 0 {
+                    *self.ctx.status = Some(format!("keyboard layout: {name}"));
+                }
+                Ok(Flow::Next)
+            }
             // Reset the keyboard to the built-in baseline.
             "CLEARKBD" => {
                 self.host_op(EditorOp::ClearKbd)?;

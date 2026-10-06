@@ -10347,8 +10347,16 @@ impl GuiApp {
                 format!("{disp}  │  ")
             };
             cwd_len = cwd_prefix.len(); // colour just this leading span (PAFGCOLOR/PABGCOLOR)
+            // Active keyboard layout (`KBDMODE`), shown only once the user has loaded more than one
+            // layout — so ordinary single-layout users see no extra clutter. "·" is a Latin-1 glyph
+            // present in the chrome font (no tofu risk), matching the status line's other separators.
+            let kbd = if self.editor.kbd_mode_count() > 1 {
+                format!("  ·  {}", self.editor.kbd_mode())
+            } else {
+                String::new()
+            };
             format!(
-                "{cwd_prefix}{name}{flags}  {}:{}  {}{ime}{msg}",
+                "{cwd_prefix}{name}{flags}  {}:{}  {}{kbd}{ime}{msg}",
                 doc.line(),
                 doc.column(),
                 doc.encoding_name(),

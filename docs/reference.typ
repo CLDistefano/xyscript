@@ -617,6 +617,7 @@ self-contained element to convert.
 == Keyboard files and binders
 
 / #cmd("LOADKBD") / #cmd("SAVEKBD") / #cmd("CLEARKBD"): load / save / reset the keyboard map. #cmd("KBDDOC"): annotate a KBD file with a key-name column.
+/ #cmd("ADDKBD") / #cmd("KBDMODE"): load a `.kbd` into a named, resident layout slot (`ADDKBD <name> <file>`) and switch to it instantly (`KBDMODE <name>`) — multi-layout / modal switching. #sv("KBDMODE") is the active layout, #sv("KBDMODES") lists the loaded ones.
 / #cmd("LDTX") / #cmd("LDSC", "LDPM"): load a text / script binder register.
 / #cmd("SAVELDTX") / #cmd("SAVELDSC", "SAVELDPM"): save the text / script binder registers as a runnable program.
 
@@ -694,6 +695,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. If the buffer is showing in a split pane, that pane is undone too (its space goes back to the neighbor) — closing the file and its pane is a single operation. To un-split *without* closing the file, use #cmd("TUS"). By default the close lands on the tab to the *left*; #cmd("CLOSEBACK") makes it return to the last-visited tab instead.
 / #cmd("CLOSEBACK"): when on, closing a tab (#cmd("AB")) returns to the LAST-VISITED tab rather than the left neighbor — `CLOSEBACK on|off` (bare toggles). Off by default. So opening a file from a #cmd("DIR") listing (or any other tab) and then closing it drops you back on the tab you launched it from, not whichever tab happens to sit to its left. It is a single level — after returning, a further close falls back to the left neighbor. Read back via #sv("CLOSEBACK"); persists in the config.
 / #cmd("ABD"): delete the active document's file from disk and close it — `/V` confirms first.
+/ #cmd("ADDKBD"): load a `.kbd` file into a RESIDENT named layout slot — `ADDKBD <name> <file>` (named like #cmd("ADDLIB")). The slot is compiled and kept in memory, so #cmd("KBDMODE") can switch to it instantly (no disk read or re-parse), for multi-layout or modal editing (a second language layout, Dvorak, a Vim-style command layer, …). Loading the slot that is already active also installs it operatively; loading any other slot just keeps it ready. Same last-known-good rule as #cmd("LOADKBD") — a bad file leaves every resident layout untouched. The document, selection, marks, and binders are shared across layouts; only the key→action table swaps.
 / #cmd("ADDLIB"): merge a `.lib` library into the loaded user library.
 / #cmd("ADDSUM"): cursor addition — add the number the caret is on to the running total (#sv("RUNSUM")). The number token at (or just after) the caret on the current line is taken; a leading currency sign (`$`, `€`, `£`, `¥`, `₩`, `₹`) and thousands-separating commas are stripped, a leading `-` is kept, and integers and floats may be mixed. The status line shows what was added and the new total, both honouring #cmd("DECIMALS"). It is an error (no edit) if the caret is not on a number. Reset with #cmd("CLRSUM"); write the total with #cmd("PUTSUM"). #ex("CLRSUM ; INSERT \"1,024\" ; ADDSUM ; PR $RUNSUM", "1024")
 / #cmd("APPEND"): add the selection to the end of the clipboard.
@@ -863,6 +865,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("KBCHART"): show the loaded keymap's chart in a scrollable text box — one section per modifier table (Normal / SHIFT / CTRL / …) listing each table's `scan → command` bindings. Under `CAPTURE`, the text goes to the variable instead.
 / #cmd("KBDDOC"): annotate a `.kbd` file in place with a key-NAME column — each table row gains a `<layer> <keyname>  :` prefix (from #func("GETKEY")), so `1=KF` reads `unmod Esc  :1=KF` and you can see at a glance which physical key each scan code is. `KBDDOC` (no argument) annotates the KBD file in the current tab; `KBDDOC <file>` opens it (blind-editing and saving it if it isn't already open). It refuses a non-KBD file, and is a no-op on an already-annotated one. #cmd("LOADKBD") ignores the annotations, so an annotated file still loads.
+/ #cmd("KBDMODE"): switch the operative keyboard to a resident layout slot loaded with #cmd("ADDKBD") — `KBDMODE <name>`. The swap is instant (a compiled-map pointer swap). Bare `KBDMODE` reports the active layout. Switching to an unknown slot is a trappable error that leaves the current layout in place (so a bad switch can't strand the keyboard). The active layout is #sv("KBDMODE"); the status line shows it once more than one layout is loaded. A plain #cmd("LOADKBD") / #cmd("CLEARKBD") replaces whichever layout is active. Layouts are configured in `startup.xpl` (`ADDKBD`/`KBDMODE`), the same place #cmd("LOADKBD") lives — they are not written by #cmd("SAVECFG").
 
 == L
 
@@ -1211,6 +1214,7 @@ plain alphabetical index.
 / #sv("NL"): the document's line-ending *characters* (a real newline) — the character form of #sv("NEWLINE"), for building text or file content that matches the document. (A string `\n` escape is always a lone LF; #sv("NL") is `\r\n` in a CRLF document.) New documents adopt the OS default.
 / #sv("CF") / #sv("CFA"): path of the last config loaded with `LOADCFG` / the file `AUTOCFG` is tracking (empty if off).
 / #sv("KB"): full path of the last keymap loaded with `LOADKBD`.
+/ #sv("KBDMODE") / #sv("KBDMODES"): the active keyboard-layout slot, and a space-separated list of all resident layout slots (see #cmd("ADDKBD") / #cmd("KBDMODE")).
 / #sv("LANG"): path of the loaded `LANG` UI-translation catalog (empty when the interface is built-in English).
 / #sv("ED") / #sv("XSDIR"): full path of the running XyScript program / the folder it lives in.
 / #sv("VE") / #sv("OS"): the XyScript version / the operating-system name.
@@ -1458,6 +1462,8 @@ Every special variable in one list, for quick lookup.
 / #sv("INDENTED"): current line's indentation, in columns.
 / #sv("JOBS"): running background-job count.
 / #sv("KB"): last `LOADKBD` file path.
+/ #sv("KBDMODE"): active keyboard-layout slot.
+/ #sv("KBDMODES"): space-separated list of resident keyboard-layout slots.
 / #sv("LANG"): loaded `LANG` UI-translation catalog path (empty = English).
 / #sv("LC"): caret's column (1-based).
 / #sv("LI"): text of the line under the caret.
