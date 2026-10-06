@@ -6445,6 +6445,20 @@ impl GuiApp {
             || self.editor.open_prompt().is_some()
             || self.editor.verify_active()
     }
+    /// True when an open overlay (a blocking modal, or an egui dialog `Window`) dismisses on `Esc`.
+    /// Physical Esc must reach egui so that handler fires — even when the keymap binds Esc to a command
+    /// (e.g. `1=KBDMODE nav` for modal editing), which would otherwise capture it and leave the modal
+    /// stuck. A TXT box is a separate OS window with its own Esc, so it is NOT here (and is unaffected);
+    /// a DIR/LS listing is excluded too (Esc there is an ordinary editor key, free to run its binding).
+    fn overlay_wants_escape(&self) -> bool {
+        self.modal_blocks_bindings()
+            || self.find_dialog.is_some()
+            || self.grep_dialog.is_some()
+            || self.run_dialog.is_some()
+            || self.color_picker.is_some()
+            || self.font_picker.is_some()
+            || self.about_open
+    }
     fn dir_window_copy_path(&mut self) {
         self.editor.host_mut().dir_window_copy_path();
     }

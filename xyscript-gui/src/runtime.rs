@@ -551,6 +551,16 @@ impl Handler {
             self.request_redraw();
             return true;
         }
+        // Esc must ALWAYS dismiss an open modal / dialog, even when the keymap binds Esc to a command
+        // (e.g. `1=KBDMODE nav` for modal editing — otherwise the capture logic would run the command
+        // and the modal would never see Esc). Let the native Esc fall through to egui so the modal's
+        // own `key_pressed(Escape)` handler fires; don't run the binding. Both edges pass through (Esc
+        // isn't a modifier, so skipping the resolver here can't unbalance its state). A parked READKEY
+        // is handled above (it still receives Esc); a TXT window owns its own Esc; and with no overlay
+        // open, Esc runs its binding normally (mode switch, or passes through for a `KF` cell).
+        if matches!(ev.logical_key, Key::Named(NamedKey::Escape)) && self.app.overlay_wants_escape() {
+            return false;
+        }
         // Writer's View: `Esc` exits the distraction-free mode (restoring the previous view). It takes
         // priority over the editor's ordinary Esc, but NOT over a parked READKEY (handled above), so a
         // script waiting on a key still receives Esc.
