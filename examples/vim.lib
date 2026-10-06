@@ -1,0 +1,151 @@
+# ============================================================================
+# vim.lib  —  a Vim-style modal-editing layer for XyScript (PROTOTYPE)
+# ============================================================================
+# The XPL-on-top approach to Vim's composable grammar: operators (d/c/y) that
+# apply to a following motion or text object, counts, and the common motions —
+# all built from existing XyScript verbs, no engine changes. Load it with the
+# companion keyboards:
+#
+#     ADDLIB  examples/vim.lib
+#     ADDKBD  vimnorm examples/vim-nav.kbd       # normal mode
+#     ADDKBD  viminsert examples/vim-insert.kbd  # insert mode
+#     KBDMODE viminsert
+#
+# COUNT MODEL: a pending count lives in the global `vim_count`. Digit keys in
+# normal mode append to it (vim_digit); a motion or operator consumes it and
+# clears it. So `3j`, `3dw`, `d` then `iw`, `dd`, `3dd` all work. (A count is a
+# SINGLE source here — typed BEFORE the operator, Vim's `3dw`, not `d3w`.)
+# ============================================================================
+
+# -- the pending count ------------------------------------------------------
+# A digit key (1-9) appends to the pending count. `0` is a motion (line start)
+# UNLESS a count is already building, where it is the digit 0 (vim_zero).
+SUB vim_digit
+  SET vim_count = $vim_count . $1
+ENDSUB
+
+SUB vim_zero
+  IF LEN($vim_count)
+    SET vim_count = $vim_count . "0"
+  ELSE
+    EL
+  EI
+ENDSUB
+
+# Fold the pending count into a number (default 1) and clear it. Result in the
+# global `vim_n` (XPL routines share state through globals; there is no return
+# value to a caller invoked as a command).
+SUB vim_takecount
+  IF LEN($vim_count)
+    SET vim_n = INT($vim_count)
+  ELSE
+    SET vim_n = 1
+  EI
+  SET vim_count = ""
+ENDSUB
+
+# -- motions (normal mode) --------------------------------------------------
+# `vim_move <h|j|k|l|w|b>` — repeat the motion by the pending count. Every
+# normal-mode motion key routes through here so counts work uniformly. (This
+# indirection — one SUB per keystroke just to honour a count — is exactly the
+# boilerplate a NATIVE operator-pending layer would absorb into the input loop.)
+SUB vim_move
+  LOCAL ch i
+  SET ch = $1
+  vim_takecount
+  FOR i = 1 TO $vim_n
+    SWITCH $ch
+      CASE "h" ; CL
+      CASE "j" ; LD
+      CASE "k" ; LU
+      CASE "l" ; CR
+      CASE "w" ; NW
+      CASE "b" ; PW
+    ESW
+  EF
+ENDSUB
+
+# `gg` — a tiny two-key sub-grammar: g then g -> top of file.
+SUB vim_g
+  LOCAL k
+  RK k
+  IF $k == "g" ; TF ; EI
+  SET vim_count = ""
+ENDSUB
+
+# -- the operators: d / c / y ----------------------------------------------
+# `vim_op <d|c|y>` reads the motion (or a text object) that follows and builds
+# the selection it applies to, honouring the pending count. Vim's whole point:
+# ONE operator composes with ANY motion/object.
+SUB vim_op
+  LOCAL kind k i
+  SET kind = $1
+  vim_takecount                 # count typed before the operator (3dw)
+  RK k                          # the motion / object / doubled-operator key
+
+  # doubled operator -> linewise: dd / cc / yy (count = number of lines)
+  IF $k == $kind
+    DL
+    FOR i = 2 TO $vim_n
+      LD
+      DM
+    EF
+    vim_finish $kind
+    RETURN
+  EI
+
+  # text object: i w | i s | i p   (a SECOND keystroke after `i`)
+  IF $k == "i"
+    RK k
+    SWITCH $k
+      CASE "w" ; DW
+      CASE "s" ; DS
+      CASE "p" ; DP
+      DEFAULT  ; DZ ; RETURN     # unknown object: cancel, change nothing
+    ESW
+    vim_finish $kind
+    RETURN
+  EI
+
+  # operator + motion: dw, d$, 3dw, cj, yb, …
+  DF
+  FOR i = 1 TO $vim_n
+    SWITCH $k
+      CASE "w" ; NW
+      CASE "b" ; PW
+      CASE "h" ; CL
+      CASE "l" ; CR
+      CASE "j" ; LD
+      CASE "k" ; LU
+      CASE "$" ; ER
+      CASE "0" ; EL
+      DEFAULT  ; DZ ; RETURN     # unknown motion: cancel, change nothing
+    ESW
+  EF
+  DM
+  vim_finish $kind
+ENDSUB
+
+# Apply the operator to the now-built selection. The system clipboard is the
+# "unnamed register", so a later `p` pastes what d/c/y took.
+SUB vim_finish
+  LOCAL kind
+  SET kind = $1
+  SWITCH $kind
+    CASE "d" ; CUT
+    CASE "y" ; COPY ; DZ
+    CASE "c" ; CUT ; KBDMODE viminsert
+  ESW
+ENDSUB
+
+# `x` — delete the character under the caret (count-aware) to the clipboard.
+SUB vim_x
+  LOCAL i
+  vim_takecount
+  DF
+  FOR i = 1 TO $vim_n
+    CR
+  EF
+  DM
+  CUT
+ENDSUB
