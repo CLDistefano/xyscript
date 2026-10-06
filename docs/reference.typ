@@ -385,6 +385,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 
 / #cmd("DF"): start (or close) a defined selection. #cmd("DFA"): select the whole document. #cmd("DM"): extend it to the caret. #cmd("DZ"): close it.
 / #cmd("DW", "DW+") / #cmd("DS", "DS+") / #cmd("DP", "DP+") / #cmd("DL"): define the word / sentence / paragraph (`+` takes the trailing break) / line.
+/ #cmd("DIB") / #cmd("DIQ"): define INSIDE the enclosing brackets / quotes (Vim's `ci(` / `ci"` text objects).
 / #cmd("DB") / #cmd("DE"): move to the start / end of the selection. #cmd("XD", "YD"): cancel the selection.
 / #cmd("SPS", "CPS", "TPS"): persistent selection — on / off / toggle.
 / #cmd("SV"): save the selection's text into a variable.
@@ -788,6 +789,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("DF"): start a defined-text selection — or close it if text is already selected. #cmd("DFA"): select the whole document. #cmd("DM"): extend the defined selection to the caret.
 / #cmd("DZ"): close the current selection; a no-op if nothing is selected.
 / #cmd("DW", "DW+") / #cmd("DS", "DS+") / #cmd("DP", "DP+"): define the word / sentence / paragraph at the caret (`+` also takes the trailing break). #cmd("DL"): define the whole line.
+/ #cmd("DIB"): define the text INSIDE the bracket pair enclosing the caret — the nearest `()`, `[]`, or `{}`, delimiters excluded (Vim's `i(` / `ib` text object). Scans outward from the caret, so it works anywhere inside the pair, not just on a bracket. A no-op if the caret isn't inside a matching pair. Compose with an operator the usual way, e.g. select-and-delete `DIB;RD` (a `di(`) or select-and-change `DIB;RD` then type.
+/ #cmd("DIQ"): define the text INSIDE the quote pair enclosing the caret on its line — the nearest `"`, `'`, or `` ` `` pair, delimiters excluded (Vim's `i"` / `i'`). Confined to the caret's line and non-nesting (nearest quote left = open, next matching quote right = close). A no-op if not inside a matching pair.
 / #cmd("DIMONBLUR"): dim the window slightly when it loses focus — `DIMONBLUR on|off` (bare toggles). Off by default. When on, a faint translucent veil covers the whole window while another *application* has focus, so an inactive window is easy to tell apart from the active one — particularly useful with `TITLEBAR off`, where the window looks the same either way. Switching to one of XyScript's own windows (the `FIND` or `DIR/W` window) does *not* dim the editor — only leaving the app altogether does. A pure display cue; nothing about the document changes. Read back via #sv("DIMONBLUR"); persists in the config.
 / #cmd("DIR", "LS"): open a directory-listing browser — `/W` in a separate window, `/H` / `/V` in a new split pane (stacked / side-by-side) (`/B` bare, `/O…` sort, `/A…` attributes, `/S` recurse).
 / #cmd("DIRNW"): `DIRNW on|off` — whether opening a file from an in-TAB listing lands in a new tab (`on`) or replaces the listing in place (`off`, the default). For the separate `DIR/W` window see #cmd("DIRWNW").

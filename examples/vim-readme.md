@@ -29,6 +29,7 @@ the status line shows which one is active (`vimnorm` / `viminsert`).
 | `d` `c` `y` + motion | **operators**: `dw`, `cj`, `yb`, `d$`, `3dw`, … |
 | `dd` `cc` `yy` | linewise (count = lines) |
 | `diw` `ciw` `yiw`, `dip`, `dis` | **text objects**: inner word / paragraph / sentence |
+| `di(` `ci"` `di{` `ci'` `yi[` … | **inner-delimiter objects** — inside the brackets / quotes (native `DIB`/`DIQ`) |
 | `x` | delete char (count-aware) |
 | `p` | paste |
 | `u` | undo |
@@ -41,8 +42,9 @@ accident. This is a *starter* — copy and extend it.
 
 ## Where it strains (the point of the prototype)
 
-These are the spots where a **native** operator-pending layer would do better,
-and the reason this is a prototype rather than a finished feature:
+Spots where a **native** operator-pending layer would still do better. Two of
+the gaps the prototype surfaced have since been filled by small native
+primitives (noted below); the rest remain:
 
 1. **Counts are one-sided.** A count typed *before* the operator works (`3dw`);
    a count *inside* it (`d3w`) does not. Vim allows both and multiplies them
@@ -54,14 +56,17 @@ and the reason this is a prototype rather than a finished feature:
    boilerplate a native layer would absorb.
 3. **No dot-repeat (`.`)**, no **visual mode**, no named **registers**. Each
    would be its own XPL sub-system; natively they fall out of the edit/record
-   layer.
-4. **Text objects are word/sentence/paragraph only** (`iw`/`is`/`ip`, via
-   XyScript's `DW`/`DS`/`DP`). Delimiter objects — `ci"`, `ci(`, `cit` — have no
-   native primitive; they'd need custom search / `BALPAIRS` code.
-5. **Undo granularity.** A `dw` runs several verbs (`DF … DM CUT`); whether `u`
-   undoes the whole thing as one step depends on the engine's undo grouping. A
-   native operator would be one undo unit by construction. *(A small native
-   "undo-group begin/end" verb would fix this for XPL too — a good hybrid.)*
+   layer. *(Dot-repeat is the next step: a pure-XPL refactor that records each
+   operator's resolved action, no engine change needed.)*
+4. ✅ **Inner-delimiter objects — DONE.** `ci"`, `di(`, `ci{`, `yi[` … now work,
+   backed by the native `DIB` (define inside brackets) and `DIQ` (define inside
+   quotes) verbs, which scan outward from the caret. (Still missing: tag objects
+   `cit` and the "around" variants `ca(`/`ci"` → `a`.)
+5. ✅ **Undo granularity — addressed.** The native `UNDOBEGIN`/`UNDOEND` verbs
+   fold a multi-edit command into one undo step. (The simple operators here turn
+   out to be a single edit already — a select-then-delete is one unit — so they
+   need no wrapping; the group matters once a command makes two or more edits,
+   and it's what dot-repeat will build on.)
 6. **No operator-pending feedback.** After `d` you're waiting for a motion with
    no cue; a native mode could show a pending indicator.
 7. **Completeness is manual.** Every normal-mode key must be mapped or `NOP`'d
@@ -72,10 +77,11 @@ and the reason this is a prototype rather than a finished feature:
 
 The common 80–90% (operators over word/sentence/para/line + motions + counts)
 is genuinely clean in XPL *because the verbs already exist*. The awkward parts
-cluster around three missing primitives: an **undo-group** verb, a **dot-repeat**
-capture/replay, and **inner-delimiter** define verbs (`ci"`/`ci(`). Adding just
-those three natively — each useful on its own — and letting XPL compose them
-would give real Vim feel without a bespoke modal engine baked into the editor.
+clustered around three small primitives: an **undo-group** verb
+(`UNDOBEGIN`/`UNDOEND` — done), **inner-delimiter** define verbs (`DIB`/`DIQ` —
+done), and a **dot-repeat** capture/replay (next, as an XPL refactor). Each is
+useful on its own, and letting XPL compose them gives real Vim feel without a
+bespoke modal engine baked into the editor.
 
 > Status: prototype. Loading, compilation, and mode-switching are verified; the
 > interactive operator/motion behaviour is meant to be driven from the keyboard.

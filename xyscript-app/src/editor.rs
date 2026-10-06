@@ -5630,6 +5630,31 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn inner_delimiter_text_objects_select_inside_brackets_and_quotes() {
+        let mut e = ed();
+        e.run_command(r#"INSERT "say \"hello\" and (world)""#); // say "hello" and (world)
+        // DIQ: caret inside the quotes selects the quoted text (delimiters excluded).
+        e.run_command("JMP 6"); // on the 'e' of hello
+        e.run_command("DIQ");
+        assert_eq!(e.special_str("SE"), "hello");
+        // DIB: caret inside the parens selects the inner text.
+        e.run_command("XD");
+        e.run_command("JMP 18"); // on the 'o' of world
+        e.run_command("DIB");
+        assert_eq!(e.special_str("SE"), "world");
+        // Not inside any pair -> no-op (selection stays empty).
+        e.run_command("XD");
+        e.run_command("JMP 0");
+        e.run_command("DIB");
+        assert_eq!(e.special_str("SE"), "");
+        // Nesting: innermost pair wins.
+        e.run_command(r#"NE nest; INSERT "a(b(c)d)e""#);
+        e.run_command("JMP 4"); // on 'c', inside the inner parens
+        e.run_command("DIB");
+        assert_eq!(e.special_str("SE"), "c");
+    }
+
+    #[test]
     fn embedded_default_bare_letters_type_via_desugar() {
         // Before D4, the embedded default's bare `q`/`w` cells errored as unknown
         // verbs. After desugaring they self-insert.

@@ -78,7 +78,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Define a unit (word / line / sentence / paragraph) at the cursor; the `+`
     // forms include the trailing separator.
-    "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
+    "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+", "DIB", "DIQ",
     // Persistent selection.
     "SPS", "CPS", "TPS",
     // Deletion buffer, strict delete, case; char + whole-unit deletes.

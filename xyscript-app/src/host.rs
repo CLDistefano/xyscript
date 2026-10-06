@@ -10239,6 +10239,8 @@ impl Host for AppHost {
                     DefineKind::WordPlus => d.define_word_plus(),
                     DefineKind::SentencePlus => d.define_sentence_plus(),
                     DefineKind::ParagraphPlus => d.define_paragraph_plus(),
+                    DefineKind::InsideBracket => d.define_inside_bracket(),
+                    DefineKind::InsideQuote => d.define_inside_quote(),
                 }
             }
             EditorOp::Persistent(kind) => {

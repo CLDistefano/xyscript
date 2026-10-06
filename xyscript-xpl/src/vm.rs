@@ -3108,7 +3108,7 @@ impl Vm<'_, '_> {
             // Define a selection: DF toggle, DM modify, DZ close, DFA all, XD/YD
             // cancel; DW/DL/DS/DP define the word/line/sentence/paragraph at the cursor.
             "DF" | "DM" | "DZ" | "DFA" | "XD" | "YD" | "DW" | "DL" | "DS" | "DP" | "DW+"
-            | "DS+" | "DP+" => {
+            | "DS+" | "DP+" | "DIB" | "DIQ" => {
                 let kind = match base {
                     "DF" => DefineKind::Toggle,
                     "DM" => DefineKind::Modify,
@@ -3121,6 +3121,8 @@ impl Vm<'_, '_> {
                     "DW+" => DefineKind::WordPlus,
                     "DS+" => DefineKind::SentencePlus,
                     "DP+" => DefineKind::ParagraphPlus,
+                    "DIB" => DefineKind::InsideBracket, // text object: inside the enclosing (){}[]
+                    "DIQ" => DefineKind::InsideQuote,   // text object: inside the enclosing quotes
                     _ => DefineKind::Cancel, // XD / YD
                 };
                 self.host_op(EditorOp::Define(kind))?;
@@ -6089,7 +6091,7 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "NW", "PW", "NS", "PS", "NP", "PP", "NL", "PL", "PD", "PU", "HM", "BS", "TF", "BF", "TOP",
     "BOTTOM", "JMP", "DB", "DE",
     // Define group (full): toggle / modify / close / all / cancel + word·line·sentence·paragraph.
-    "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+",
+    "DF", "DM", "DZ", "DFA", "XD", "YD", "DW", "DL", "DS", "DP", "DW+", "DS+", "DP+", "DIB", "DIQ",
     // Delete group (full R-family): selection / word / line / sentence / paragraph / to-EOL.
     "DELSEL", "RW", "RL", "RLL", "RS", "RP", "RE",
     // Reflow edits the document at the caret/selection — land the caret in the text.

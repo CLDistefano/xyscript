@@ -3059,6 +3059,21 @@ impl Document {
         let (s, e) = self.buffer.para_span();
         self.buffer.define_range(s, e);
     }
+    /// `DIB` — select INSIDE the bracket pair enclosing the caret. No-op (selection unchanged) if the
+    /// caret isn't inside a matching `()`/`[]`/`{}`.
+    pub fn define_inside_bracket(&mut self) {
+        self.coalescing = false;
+        if let Some((s, e)) = self.buffer.inside_bracket_span(None) {
+            self.buffer.define_range(s, e);
+        }
+    }
+    /// `DIQ` — select INSIDE the quote pair enclosing the caret on its line. No-op if not inside one.
+    pub fn define_inside_quote(&mut self) {
+        self.coalescing = false;
+        if let Some((s, e)) = self.buffer.inside_quote_span(None) {
+            self.buffer.define_range(s, e);
+        }
+    }
     /// True while a `DF` defined-text selection is open.
     pub fn is_defining(&self) -> bool {
         self.buffer.is_defining()

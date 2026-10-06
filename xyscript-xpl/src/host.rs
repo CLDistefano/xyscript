@@ -1171,6 +1171,12 @@ pub enum DefineKind {
     SentencePlus,
     /// `DP+` — define the paragraph **plus** the separating blank line(s).
     ParagraphPlus,
+    /// `DIB` — define INSIDE the bracket pair enclosing the caret (Vim's `i(`/`ib` text object):
+    /// the nearest enclosing `()`/`[]`/`{}`, delimiters excluded. No-op if the caret isn't inside one.
+    InsideBracket,
+    /// `DIQ` — define INSIDE the quote pair enclosing the caret on its line (Vim's `i"`/`i'`): the
+    /// nearest enclosing `"`/`'`/`` ` `` pair, delimiters excluded. No-op if not inside one.
+    InsideQuote,
 }
 
 /// A `DOCTYPE` request for [`EditorOp::DocType`]. `Query` reports the effective kind without changing

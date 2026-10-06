@@ -2430,6 +2430,108 @@ impl Buffer {
         BalMatch::Unmatched(bp, ch)
     }
 
+    /// The INNER byte span `(start, end)` of the bracket pair enclosing the caret — the Vim `i(`/`ib`
+    /// text object. Unlike [`bracket_match`](Buffer::bracket_match) (which needs the caret ON a
+    /// bracket), this scans OUTWARD from the caret: left past balanced pairs to the nearest enclosing
+    /// opener, then forward to its nesting-aware partner. `want` optionally restricts to one bracket
+    /// TYPE (pass an opener or closer byte); `None` matches the nearest of `()`/`[]`/`{}`. The span
+    /// EXCLUDES the delimiters (an empty pair `()` yields an empty span at the gap). `None` if the
+    /// caret isn't inside a matching pair. ASCII bytes, so encoding-independent.
+    pub fn inside_bracket_span(&self, want: Option<u8>) -> Option<(usize, usize)> {
+        const CAP: usize = 200_000;
+        let len = self.rope.len();
+        let is_open = |b: u8| matches!(b, b'(' | b'[' | b'{');
+        let is_close = |b: u8| matches!(b, b')' | b']' | b'}');
+        let partner = |b: u8| match b {
+            b'(' => b')', b'[' => b']', b'{' => b'}',
+            b')' => b'(', b']' => b'[', b'}' => b'{', _ => 0,
+        };
+        // A type filter accepts either side of the wanted pair (a closer collapses to its opener).
+        let want_open = want.map(|b| if is_close(b) { partner(b) } else { b });
+        let match_open = |b: u8| is_open(b) && want_open.map_or(true, |w| b == w);
+        let match_close = |b: u8| is_close(b) && want_open.map_or(true, |w| partner(b) == w);
+
+        let cur = self.cursor().min(len);
+        // The enclosing opener: the caret may sit ON it; otherwise scan left, skipping balanced pairs.
+        let (open_pos, open_b) = if cur < len && match_open(self.rope.byte(cur)) {
+            (cur, self.rope.byte(cur))
+        } else {
+            let stop = cur.saturating_sub(CAP);
+            let mut depth = 0usize;
+            let mut i = cur;
+            let mut found = None;
+            while i > stop {
+                i -= 1;
+                let b = self.rope.byte(i);
+                if match_close(b) {
+                    depth += 1;
+                } else if match_open(b) {
+                    if depth == 0 {
+                        found = Some((i, b));
+                        break;
+                    }
+                    depth -= 1;
+                }
+            }
+            found?
+        };
+        // Forward-match its partner, nesting-aware on the SAME bracket type.
+        let close_b = partner(open_b);
+        let end = (open_pos + 1 + CAP).min(len);
+        let mut depth = 0usize;
+        let mut j = open_pos + 1;
+        while j < end {
+            let b = self.rope.byte(j);
+            if b == open_b {
+                depth += 1;
+            } else if b == close_b {
+                if depth == 0 {
+                    return Some((open_pos + 1, j));
+                }
+                depth -= 1;
+            }
+            j += 1;
+        }
+        None
+    }
+
+    /// The INNER byte span of the quote pair enclosing the caret on its line — the Vim `i"`/`i'`
+    /// object. `want` optionally restricts to one quote byte; `None` matches the nearest of `"` `'`
+    /// `` ` ``. Confined to the caret's line (quotes rarely span lines) and non-nesting: the opener is
+    /// the nearest quote to the LEFT on the line, the closer the next matching quote to the RIGHT.
+    /// `None` if not inside a matching pair on the line.
+    pub fn inside_quote_span(&self, want: Option<u8>) -> Option<(usize, usize)> {
+        let len = self.rope.len();
+        let is_quote = |b: u8| match want {
+            Some(q) => b == q,
+            None => matches!(b, b'"' | b'\'' | b'`'),
+        };
+        let cur = self.cursor().min(len);
+        let line = self.line_at_byte(cur);
+        let (ls, le) = self.line_byte_range(line);
+        // Opener: nearest quote to the left of the caret, on this line.
+        let mut i = cur.min(le);
+        let mut opener = None;
+        while i > ls {
+            i -= 1;
+            let b = self.rope.byte(i);
+            if is_quote(b) {
+                opener = Some((i, b));
+                break;
+            }
+        }
+        let (op, q) = opener?;
+        // Closer: the next matching quote to the right of the caret (or of the opener).
+        let mut j = cur.max(op + 1);
+        while j < le {
+            if self.rope.byte(j) == q {
+                return Some((op + 1, j));
+            }
+            j += 1;
+        }
+        None
+    }
+
     /// The leading whitespace (spaces/tabs) of the line containing `pos`, from the line start UP TO
     /// `pos` — the string an auto-indent copies onto the next line when `ENTER` splits here.
     pub fn indent_at(&self, pos: usize) -> String {

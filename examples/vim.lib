@@ -94,13 +94,24 @@ SUB vim_op
     RETURN
   EI
 
-  # text object: i w | i s | i p   (a SECOND keystroke after `i`)
+  # text object: i {w|s|p} words/sentences/paras, i {(|)|b|{|}|[|]} inside brackets (DIB),
+  # i {"|'|`} inside quotes (DIQ) — a SECOND keystroke after `i`. So ciw, di(, ci", yi} ...
   IF $k == "i"
     RK k
     SWITCH $k
       CASE "w" ; DW
       CASE "s" ; DS
       CASE "p" ; DP
+      CASE "(" ; DIB
+      CASE ")" ; DIB
+      CASE "b" ; DIB
+      CASE "{" ; DIB
+      CASE "}" ; DIB
+      CASE "[" ; DIB
+      CASE "]" ; DIB
+      CASE "\"" ; DIQ
+      CASE "'" ; DIQ
+      CASE "`" ; DIQ
       DEFAULT  ; DZ ; RETURN     # unknown object: cancel, change nothing
     ESW
     vim_finish $kind
