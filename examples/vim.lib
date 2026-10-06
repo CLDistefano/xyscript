@@ -50,11 +50,11 @@ ENDSUB
 # indirection — one SUB per keystroke just to honour a count — is exactly the
 # boilerplate a NATIVE operator-pending layer would absorb into the input loop.)
 SUB vim_move
-  LOCAL ch i
-  SET ch = $1
+  LOCAL mkey i
+  SET mkey = $1
   vim_takecount
   FOR i = 1 TO $vim_n
-    SWITCH $ch
+    SWITCH $mkey
       CASE "h" ; CL
       CASE "j" ; LD
       CASE "k" ; LU
