@@ -33,6 +33,7 @@ the status line shows which one is active (`vimnorm` / `viminsert`).
 | `x` | delete char (count-aware) |
 | `p` | paste |
 | `u` | undo |
+| `.` | repeat the last change (`d`/`x`/`y`) at the caret |
 | `i a o` / `I A` | enter insert mode (at caret / after / open-below / line-start / line-end) |
 
 The system clipboard is the "unnamed register", so `dw` then `p` pastes what
@@ -54,10 +55,12 @@ primitives (noted below); the rest remain:
 2. **Every motion is a SUB.** To honour counts, each motion key routes through
    `vim_move` instead of being a one-line keymap cell. That indirection is pure
    boilerplate a native layer would absorb.
-3. **No dot-repeat (`.`)**, no **visual mode**, no named **registers**. Each
-   would be its own XPL sub-system; natively they fall out of the edit/record
-   layer. *(Dot-repeat is the next step: a pure-XPL refactor that records each
-   operator's resolved action, no engine change needed.)*
+3. ✅ **Dot-repeat (`.`) — DONE (pure XPL).** Each operator stashes its resolved
+   action (op + how + a SAFE key token + count), and `.` replays it through the
+   shared `vim_apply` with no new keypress — no engine change. Still missing:
+   `.` after a change (`c`) is a no-op (its re-typed text isn't recorded), plus
+   no **visual mode** or named **registers** — those would each be their own XPL
+   sub-system, and natively would fall out of the edit/record layer.
 4. ✅ **Inner-delimiter objects — DONE.** `ci"`, `di(`, `ci{`, `yi[` … now work,
    backed by the native `DIB` (define inside brackets) and `DIQ` (define inside
    quotes) verbs, which scan outward from the caret. (Still missing: tag objects
@@ -77,11 +80,15 @@ primitives (noted below); the rest remain:
 
 The common 80–90% (operators over word/sentence/para/line + motions + counts)
 is genuinely clean in XPL *because the verbs already exist*. The awkward parts
-clustered around three small primitives: an **undo-group** verb
-(`UNDOBEGIN`/`UNDOEND` — done), **inner-delimiter** define verbs (`DIB`/`DIQ` —
-done), and a **dot-repeat** capture/replay (next, as an XPL refactor). Each is
-useful on its own, and letting XPL compose them gives real Vim feel without a
-bespoke modal engine baked into the editor.
+clustered around three small primitives — and all three are now in hand: an
+**undo-group** verb (`UNDOBEGIN`/`UNDOEND` — native), **inner-delimiter** define
+verbs (`DIB`/`DIQ` — native), and **dot-repeat** (pure XPL, in this library).
+Together they give real Vim feel without a bespoke modal engine baked into the
+editor. What's left is the genuinely-stateful stuff (two-sided counts, visual
+mode, registers, an operator-pending indicator) — worth a native layer only if
+the appetite grows beyond this.
 
-> Status: prototype. Loading, compilation, and mode-switching are verified; the
-> interactive operator/motion behaviour is meant to be driven from the keyboard.
+> Status: prototype, but functionally complete for everyday modal editing.
+> Loading, compilation, mode-switching, the inner-delimiter objects, and
+> dot-repeat are verified; the live operator/motion behaviour is driven from the
+> keyboard.

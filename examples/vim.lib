@@ -73,90 +73,144 @@ SUB vim_g
   SET vim_count = ""
 ENDSUB
 
-# -- the operators: d / c / y ----------------------------------------------
-# `vim_op <d|c|y>` reads the motion (or a text object) that follows and builds
-# the selection it applies to, honouring the pending count. Vim's whole point:
-# ONE operator composes with ANY motion/object.
+# -- the operators: d / c / y, + dot-repeat --------------------------------
+# An operator READS the motion/object that follows (and the pending count) and
+# stashes the resolved action in globals, then calls vim_apply to perform it.
+# `.` (vim_dot) replays that action via vim_apply with NO new keypress — so
+# dot-repeat is pure XPL, no engine change. Object/motion keys are stashed as
+# SAFE TOKENS (w s p B Q / w b h j k l 0 E) so a replayed `"` or `$` is never
+# re-parsed as a string/variable.
 SUB vim_op
-  LOCAL kind k i
+  LOCAL kind k
   SET kind = $1
   vim_takecount                 # count typed before the operator (3dw)
+  SET vim_last_op = $kind
+  SET vim_last_n = $vim_n
   RK k                          # the motion / object / doubled-operator key
 
   # doubled operator -> linewise: dd / cc / yy (count = number of lines)
   IF $k == $kind
-    DL
-    FOR i = 2 TO $vim_n
-      LD
-      DM
-    EF
-    vim_finish $kind
+    SET vim_last_how = "line"
+    SET vim_last_key = "-"
+    vim_apply
     RETURN
   EI
 
-  # text object: i {w|s|p} words/sentences/paras, i {(|)|b|{|}|[|]} inside brackets (DIB),
-  # i {"|'|`} inside quotes (DIQ) — a SECOND keystroke after `i`. So ciw, di(, ci", yi} ...
+  # text object: i {w|s|p} + inner-delimiter i {(|)|b|{|}|[|]}->B, i {"|'|`}->Q
   IF $k == "i"
     RK k
+    SET vim_last_how = "obj"
     SWITCH $k
-      CASE "w" ; DW
-      CASE "s" ; DS
-      CASE "p" ; DP
-      CASE "(" ; DIB
-      CASE ")" ; DIB
-      CASE "b" ; DIB
-      CASE "{" ; DIB
-      CASE "}" ; DIB
-      CASE "[" ; DIB
-      CASE "]" ; DIB
-      CASE "\"" ; DIQ
-      CASE "'" ; DIQ
-      CASE "`" ; DIQ
+      CASE "w" ; SET vim_last_key = "w"
+      CASE "s" ; SET vim_last_key = "s"
+      CASE "p" ; SET vim_last_key = "p"
+      CASE "(" ; SET vim_last_key = "B"
+      CASE ")" ; SET vim_last_key = "B"
+      CASE "b" ; SET vim_last_key = "B"
+      CASE "{" ; SET vim_last_key = "B"
+      CASE "}" ; SET vim_last_key = "B"
+      CASE "[" ; SET vim_last_key = "B"
+      CASE "]" ; SET vim_last_key = "B"
+      CASE "\"" ; SET vim_last_key = "Q"
+      CASE "'" ; SET vim_last_key = "Q"
+      CASE "`" ; SET vim_last_key = "Q"
       DEFAULT  ; DZ ; RETURN     # unknown object: cancel, change nothing
     ESW
-    vim_finish $kind
+    vim_apply
     RETURN
   EI
 
   # operator + motion: dw, d$, 3dw, cj, yb, …
-  DF
-  FOR i = 1 TO $vim_n
-    SWITCH $k
-      CASE "w" ; NW
-      CASE "b" ; PW
-      CASE "h" ; CL
-      CASE "l" ; CR
-      CASE "j" ; LD
-      CASE "k" ; LU
-      CASE "$" ; ER
-      CASE "0" ; EL
-      DEFAULT  ; DZ ; RETURN     # unknown motion: cancel, change nothing
-    ESW
-  EF
-  DM
-  vim_finish $kind
+  SET vim_last_how = "motion"
+  SWITCH $k
+    CASE "w" ; SET vim_last_key = "w"
+    CASE "b" ; SET vim_last_key = "b"
+    CASE "h" ; SET vim_last_key = "h"
+    CASE "l" ; SET vim_last_key = "l"
+    CASE "j" ; SET vim_last_key = "j"
+    CASE "k" ; SET vim_last_key = "k"
+    CASE "$" ; SET vim_last_key = "E"
+    CASE "0" ; SET vim_last_key = "0"
+    DEFAULT  ; DZ ; RETURN       # unknown motion: cancel, change nothing
+  ESW
+  vim_apply
+ENDSUB
+
+# `x` — delete the character under the caret (count-aware), repeatable with `.`.
+SUB vim_x
+  vim_takecount
+  SET vim_last_op = "x"
+  SET vim_last_how = "char"
+  SET vim_last_key = "-"
+  SET vim_last_n = $vim_n
+  vim_apply
+ENDSUB
+
+# Build the stashed selection (NO keypress) and perform the op. Called live by
+# the operators and on replay by vim_dot — the one place the action is realized.
+SUB vim_apply
+  LOCAL i
+  SWITCH $vim_last_how
+    CASE "line"
+      DL
+      FOR i = 2 TO $vim_last_n
+        LD
+        DM
+      EF
+    CASE "obj"
+      SWITCH $vim_last_key
+        CASE "w" ; DW
+        CASE "s" ; DS
+        CASE "p" ; DP
+        CASE "B" ; DIB
+        CASE "Q" ; DIQ
+        DEFAULT  ; DZ ; RETURN
+      ESW
+    CASE "char"
+      DF
+      FOR i = 1 TO $vim_last_n
+        CR
+      EF
+      DM
+    DEFAULT
+      DF
+      FOR i = 1 TO $vim_last_n
+        SWITCH $vim_last_key
+          CASE "w" ; NW
+          CASE "b" ; PW
+          CASE "h" ; CL
+          CASE "l" ; CR
+          CASE "j" ; LD
+          CASE "k" ; LU
+          CASE "E" ; ER
+          CASE "0" ; EL
+          DEFAULT  ; DZ ; RETURN
+        ESW
+      EF
+      DM
+  ESW
+  vim_finish $vim_last_op
 ENDSUB
 
 # Apply the operator to the now-built selection. The system clipboard is the
-# "unnamed register", so a later `p` pastes what d/c/y took.
+# "unnamed register", so a later `p` pastes what d/x/c/y took.
 SUB vim_finish
   LOCAL kind
   SET kind = $1
   SWITCH $kind
     CASE "d" ; CUT
+    CASE "x" ; CUT
     CASE "y" ; COPY ; DZ
     CASE "c" ; CUT ; KBDMODE viminsert
   ESW
 ENDSUB
 
-# `x` — delete the character under the caret (count-aware) to the clipboard.
-SUB vim_x
-  LOCAL i
-  vim_takecount
-  DF
-  FOR i = 1 TO $vim_n
-    CR
-  EF
-  DM
-  CUT
+# `.` — repeat the last change. Replays the stashed delete/yank at the current
+# caret via vim_apply (no new keypress). A change (`c`) is NOT repeated (its
+# re-typed text isn't recorded), so `.` right after a `c` is a no-op.
+SUB vim_dot
+  SET vim_count = ""
+  IF LEN($vim_last_op) == 0 ; RETURN ; EI
+  IF $vim_last_op == "c" ; RETURN ; EI
+  vim_apply
 ENDSUB
