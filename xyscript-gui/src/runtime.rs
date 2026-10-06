@@ -719,8 +719,19 @@ impl Handler {
                         let egui_owns = ALWAYS_EGUI.contains(&code)
                             || hex_edit_key
                             || (nav_key && !modified && is_gui_motion(&xpl) && !self.app.hex_view());
+                        // A typing self-insert normally falls through to egui so the OS layout + IME
+                        // produce the character — but that is only right when the cell types what the OS
+                        // key would anyway (a US `.kbd` on a US layout). A REMAPPING layout (Cyrillic,
+                        // Dvorak, another language) binds a self-insert whose text DIFFERS from the OS
+                        // key — e.g. `insert "а"` on a key the OS types as "a". Capture those so the
+                        // layout's character wins instead of the OS's; cells that match the OS key still
+                        // defer to egui (keeping dead-keys / IME working for a layout that mirrors it).
+                        let typing_remaps = is_typing_cell(&xpl)
+                            && !egui_owns
+                            && typing_cell_remaps_os(&xpl, ev.text.as_ref().map(|s| s.as_str()));
                         let capture = should_capture(code, &key.resolver, key.passthrough_mask)
-                            || (!is_typing_cell(&xpl) && !egui_owns);
+                            || (!is_typing_cell(&xpl) && !egui_owns)
+                            || typing_remaps;
                         if capture {
                             key.consumed.insert(code);
                             to_run = Some(xpl);
@@ -3183,6 +3194,19 @@ fn typing_cell_text(xpl: &str) -> Option<String> {
     None // unterminated
 }
 
+/// Whether a typing self-insert cell (`insert "…"`) types a DIFFERENT character than the one the OS
+/// produced for this key (`os_text` = winit's `KeyEvent.text`). When true, the loaded layout REMAPS the
+/// key (a Cyrillic / Dvorak / other-language `.kbd`), so the cell must be captured and run instead of
+/// deferred to egui's OS-layout text input. False when the OS produced nothing (`None`/empty — a dead
+/// key or IME composition, which egui must keep) or when the cell matches the OS key (a layout that
+/// mirrors the physical one, where deferring to egui preserves dead-keys / IME).
+fn typing_cell_remaps_os(xpl: &str, os_text: Option<&str>) -> bool {
+    match os_text {
+        Some(os) if !os.is_empty() => typing_cell_text(xpl).as_deref() != Some(os),
+        _ => false,
+    }
+}
+
 /// The command text BEFORE a trailing `ENTER` verb in a resolved binding — so a chain like
 /// `AR;ENTER` can run its prefix (`AR`) and then submit the command line. Returns `Some("")` for a
 /// bare `ENTER`, `Some(prefix)` when the LAST `;`-separated token is `ENTER` (case-insensitive), or
@@ -3303,7 +3327,7 @@ fn should_capture(code: u8, resolver: &Resolver, passthrough_mask: u32) -> bool 
 mod tests {
     use super::{
         describe_key, edit_code_egui_key, enter_submit_prefix, is_gui_motion, is_modifier_key,
-        is_typing_cell, nav_verb_egui_key,
+        is_typing_cell, nav_verb_egui_key, typing_cell_remaps_os,
     };
 
     #[test]
@@ -3419,5 +3443,19 @@ mod tests {
         for cmd in ["XC", "TH", "BD", "LB", "call foo", "@A", "&B", "INSERT \"x\""] {
             assert!(!is_typing_cell(cmd), "{cmd:?} should be a command, not typing");
         }
+    }
+
+    #[test]
+    fn remapping_typing_cells_are_captured_not_passed_to_the_os() {
+        // A layout that REMAPS a key (Cyrillic/Dvorak) must be captured so its character wins over the
+        // OS key. A Cyrillic cell on a US key that types "a"/"A":
+        assert!(typing_cell_remaps_os("insert \"а\"", Some("a"))); // а (Cyrillic) vs a (Latin)
+        assert!(typing_cell_remaps_os("insert \"Ф\"", Some("A"))); // shift layer
+        // A layout that MIRRORS the OS key defers to egui (dead-keys / IME preserved):
+        assert!(!typing_cell_remaps_os("insert \"a\"", Some("a")));
+        assert!(!typing_cell_remaps_os("insert \"A\"", Some("A")));
+        // No OS character (dead key / IME compose / a key the OS gives no text): leave it to egui.
+        assert!(!typing_cell_remaps_os("insert \"а\"", None));
+        assert!(!typing_cell_remaps_os("insert \"а\"", Some("")));
     }
 }
