@@ -50,6 +50,7 @@ unmod ;         :39=;
 unmod '         :40=ь
 unmod `         :41=`
 unmod \         :43=\
+unmod Z         :44=з
 unmod X         :45=ж
 unmod C         :46=RK scan;SWITCH $SC;CASE 32;PUT ц;CASE 35;PUT ч;DEFAULT;PUT ц;ESW;CLEAR scan
 unmod V         :47=в
