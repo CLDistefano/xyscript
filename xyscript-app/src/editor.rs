@@ -5605,6 +5605,31 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn undo_group_folds_a_composite_into_one_step() {
+        let mut e = ed();
+        e.run_command(r#"INSERT "abc""#);
+        assert_eq!(e.document().text(), "abc");
+        // A heterogeneous composite (inserts + a backspace) bracketed as ONE undo group.
+        e.run_command(r#"UNDOBEGIN; INSERT "X"; INSERT "Y"; BD; INSERT "Z"; UNDOEND"#);
+        assert_eq!(e.document().text(), "abcXZ"); // abc + X + Y, BD removes Y, + Z
+        // ONE undo reverts the ENTIRE group (not just the last edit).
+        e.run_command("UNDO");
+        assert_eq!(e.document().text(), "abc");
+        // A second undo reverts the original insert — proof the group was exactly one unit.
+        e.run_command("UNDO");
+        assert_eq!(e.document().text(), "");
+        // Redo re-applies the original insert, then the whole group, each as one step.
+        e.run_command("REDO");
+        assert_eq!(e.document().text(), "abc");
+        e.run_command("REDO");
+        assert_eq!(e.document().text(), "abcXZ");
+        // Caret rides back with the group: one more undo lands the caret where the group began (3).
+        e.run_command("UNDO");
+        assert_eq!(e.document().text(), "abc");
+        assert_eq!(e.document().cursor(), 3);
+    }
+
+    #[test]
     fn embedded_default_bare_letters_type_via_desugar() {
         // Before D4, the embedded default's bare `q`/`w` cells errored as unknown
         // verbs. After desugaring they self-insert.

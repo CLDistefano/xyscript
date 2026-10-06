@@ -848,7 +848,9 @@ The clipboard verbs — #raw("CUT"), #raw("COPY"), #raw("PASTE") — are the usu
 #raw("APPEND") adds the selection to the end of the clipboard and #raw("PREPEND") to the front, so you
 can gather several pieces before pasting. #raw("UNDO") and #raw("REDO") step through the edit history;
 a sweeping change such as a global #raw("CH") collapses to a single undo step, so one #raw("UNDO")
-rolls the whole pass back.
+rolls the whole pass back. If you write a keyboard macro that makes *several* edits and you want them to
+undo together, bracket them with #raw("UNDOBEGIN") … #raw("UNDOEND") — every edit in between folds into
+one undo step (a single edit needs no bracketing; it is already one step).
 
 // ===================================================================================================
 = Working with Multiple Carets

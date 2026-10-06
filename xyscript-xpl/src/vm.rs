@@ -1898,6 +1898,17 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::Redo(levels))?;
                 Ok(Flow::Next)
             }
+            // `UNDOBEGIN` / `UNDOEND` — bracket a composite edit so it undoes as ONE step. Depth-counted:
+            // nested begins need matching ends. A keybinding/macro wraps its edits, e.g.
+            // `UNDOBEGIN;DF;NW;DM;RD;UNDOEND` (one Ctrl+Z reverts the whole change).
+            "UNDOBEGIN" => {
+                self.host_op(EditorOp::BeginUndoGroup)?;
+                Ok(Flow::Next)
+            }
+            "UNDOEND" => {
+                self.host_op(EditorOp::EndUndoGroup)?;
+                Ok(Flow::Next)
+            }
             // File verbs (unguarded primitives; safety policy is composable XPL).
             // `NEW [<path>]` — bare opens a fresh unnamed buffer; with a path, a fresh buffer named
             // for it (ready to SAVE). Forgiving: an existing file is opened instead (see NewNamed).

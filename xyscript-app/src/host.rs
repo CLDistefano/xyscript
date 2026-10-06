@@ -10313,6 +10313,8 @@ impl Host for AppHost {
                     }
                 }
             }
+            EditorOp::BeginUndoGroup => self.active().begin_undo_group(),
+            EditorOp::EndUndoGroup => self.active().end_undo_group(),
             EditorOp::NewDoc => {
                 self.add_or_reuse(Document::new());
                 self.set_focus(Target::Document); // land the caret in the new buffer, not the cmline

@@ -270,6 +270,15 @@ pub struct Document {
     redo: Vec<Unit>,
     /// True when the top undo unit is still open for coalescing.
     coalescing: bool,
+    /// Open-undo-group nesting depth (`UNDOBEGIN`/`UNDOEND`). While > 0, every recorded edit folds into
+    /// ONE undo unit instead of pushing its own — so a composite command (e.g. a Vim `dw` = `DF;NW;DM;RD`)
+    /// undoes in a single step. Depth-counted so nested groups collapse to the outermost. Per-document,
+    /// like the undo stack itself; `UNDO`/`REDO` force-close any open group.
+    group_depth: usize,
+    /// True once the open group has pushed its (shared) unit — the first edit opens it, later edits
+    /// extend it. Reset when the group closes, and self-heals if the undo stack is cleared mid-group
+    /// (the extend path re-opens a fresh unit when the stack is empty).
+    group_active: bool,
     /// The `CARETPOP` undo ring: caret-set snapshots taken before each caret-set-changing verb, so
     /// popping restores the previous set. Transient (selection state only, no content) and cleared by
     /// any document edit. Capped at [`CARET_RING_CAP`].
@@ -454,6 +463,8 @@ impl Clone for Document {
             undo: self.undo.clone(),
             redo: self.redo.clone(),
             coalescing: self.coalescing,
+            group_depth: self.group_depth,
+            group_active: self.group_active,
             caret_ring: self.caret_ring.clone(),
             saved_len: self.saved_len,
             path: self.path.clone(),
@@ -500,6 +511,8 @@ impl Default for Document {
             undo: Vec::new(),
             redo: Vec::new(),
             coalescing: false,
+            group_depth: 0,
+            group_active: false,
             caret_ring: Vec::new(),
             saved_len: Some(0), // a fresh document is unmodified
             path: None,
@@ -3066,11 +3079,74 @@ impl Document {
         self.buffer.click_caret(off);
     }
 
+    // ---- undo grouping -----------------------------------------------------
+
+    /// `UNDOBEGIN` — open an undo group: every edit until the matching `UNDOEND` folds into ONE undo
+    /// unit. Depth-counted, so nested begins need matching ends; the first edit opens the shared unit.
+    pub fn begin_undo_group(&mut self) {
+        self.coalescing = false; // close any open typing run so the group starts a clean unit
+        self.group_depth += 1;
+    }
+
+    /// `UNDOEND` — close one level of undo grouping. Closing the outermost level finalizes the group so
+    /// the next edit starts a fresh unit. Unbalanced `UNDOEND`s are harmless (saturating).
+    pub fn end_undo_group(&mut self) {
+        self.group_depth = self.group_depth.saturating_sub(1);
+        if self.group_depth == 0 {
+            self.group_active = false;
+            self.coalescing = false;
+        }
+    }
+
+    /// Fold an edit's op(s) into the open group's single unit — opening that unit on the first edit,
+    /// extending it thereafter. Self-heals if the undo stack was cleared mid-group (re-opens a unit).
+    /// A grouped unit is `Kind::Other` so normal coalescing never merges across its boundary.
+    #[allow(clippy::too_many_arguments)]
+    fn group_push(
+        &mut self,
+        mut ops: Vec<Op>,
+        cursor_before: usize,
+        anchor_before: Option<usize>,
+        cursor_after: usize,
+        anchor_after: Option<usize>,
+        secondary_before: Vec<Caret>,
+        secondary_after: Vec<Caret>,
+    ) {
+        if self.group_active {
+            if let Some(last) = self.undo.last_mut() {
+                last.ops.append(&mut ops);
+                last.cursor_after = cursor_after;
+                last.anchor_after = anchor_after;
+                // Keep the group's own caret restore target current; adopt a multi-caret set if this
+                // edit brought one (a single-caret group leaves `secondary_after` empty throughout).
+                if !secondary_after.is_empty() {
+                    last.secondary_after = secondary_after;
+                }
+                return;
+            }
+        }
+        self.undo.push(Unit {
+            ops,
+            kind: Kind::Other,
+            cursor_before,
+            anchor_before,
+            cursor_after,
+            anchor_after,
+            secondary_before,
+            secondary_after,
+        });
+        self.group_active = true;
+    }
+
     // ---- undo / redo -------------------------------------------------------
 
     /// Undo the most recent unit. Returns `false` if there was nothing to undo.
     pub fn undo(&mut self) -> bool {
         self.coalescing = false;
+        // A manual UNDO force-closes any open group (a script that began a group and never ended it
+        // must not keep folding later edits into a unit that was just undone).
+        self.group_depth = 0;
+        self.group_active = false;
         if let Some(unit) = self.undo.pop() {
             // Reverse each op in REVERSE application order — the ops were recorded low-to-high with
             // apply-time offsets, so undoing high-to-low keeps every stored offset valid.
@@ -3081,8 +3157,10 @@ impl Document {
                 self.adjust_color_spans(op.at, remove, op.removed.len());
             }
             self.buffer.set_caret(unit.cursor_before, unit.anchor_before);
-            // Multi-caret edits restore the whole set; single-op units leave the caret set alone.
-            if unit.ops.len() > 1 {
+            // Restore the whole caret SET only for a genuine multi-caret edit (one that recorded a
+            // secondary set); a single-caret edit OR an undo-group of single-caret edits (which also
+            // has ops.len() > 1) leaves the caret set alone.
+            if !unit.secondary_before.is_empty() {
                 self.buffer.set_secondary_carets(unit.secondary_before.clone());
             }
             self.redo.push(unit);
@@ -3096,6 +3174,8 @@ impl Document {
     /// Redo the most recently undone unit. Returns `false` if nothing to redo.
     pub fn redo(&mut self) -> bool {
         self.coalescing = false;
+        self.group_depth = 0; // force-close any open group (mirrors undo)
+        self.group_active = false;
         if let Some(unit) = self.redo.pop() {
             // Re-apply the ops in their original (forward) order.
             for op in unit.ops.iter() {
@@ -3105,7 +3185,7 @@ impl Document {
                 self.adjust_color_spans(op.at, remove, op.inserted.len());
             }
             self.buffer.set_caret(unit.cursor_after, unit.anchor_after);
-            if unit.ops.len() > 1 {
+            if !unit.secondary_after.is_empty() {
                 self.buffer.set_secondary_carets(unit.secondary_after.clone());
             }
             self.undo.push(unit);
@@ -3359,6 +3439,13 @@ impl Document {
             }
         }
         self.redo.clear();
+        // Inside an undo group, fold the multi-caret edit's ops into the group's single unit too.
+        if self.group_depth > 0 {
+            self.group_push(ops, cursor_before, anchor_before, cursor_after, anchor_after, secondary_before, secondary_after);
+            self.coalescing = false;
+            self.refresh_highlights();
+            return;
+        }
         // Coalesce a continuing multi-caret typing run: same kind + same op count + the carets are
         // exactly where the last run left them (nothing moved/clicked between). Extend each op's
         // inserted bytes by caret index; the carets stay in the same order across a run.
@@ -3428,6 +3515,15 @@ impl Document {
             }
         }
         self.redo.clear(); // a new edit invalidates the redo stack
+
+        // Inside an undo group (UNDOBEGIN…UNDOEND), fold this edit into the group's single unit
+        // instead of pushing its own — so the whole composite undoes as one step.
+        if self.group_depth > 0 {
+            self.group_push(vec![op], cursor_before, anchor_before, cursor_after, anchor_after, Vec::new(), Vec::new());
+            self.coalescing = false;
+            self.note_edit(edit_at, edit_ins);
+            return;
+        }
 
         if self.coalescing && kind != Kind::Other {
             if let Some(last) = self.undo.last_mut() {

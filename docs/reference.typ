@@ -418,6 +418,7 @@ Bookmarks are per-document, marked by a dot in the left gutter, and saved in the
 == Undo and redo
 
 / #cmd("UNDO") / #cmd("REDO"): undo / redo edits (a count or `ALL`).
+/ #cmd("UNDOBEGIN") / #cmd("UNDOEND"): bracket a composite edit so it undoes as ONE step (depth-counted).
 
 == Finding and changing text
 
@@ -1054,6 +1055,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("UIFGCOLOR", "UIFGCOLORS") / #cmd("UIBGCOLOR", "UIBGCOLORS"): the UI chrome's text / background color (`/HSL`; `…S` opens a picker).
 / #cmd("UIFAMILY") / #cmd("UISTYLE") / #cmd("UIFONT", "UIFONTS") / #cmd("UISCALE"): the UI chrome's font family / style / size / zoom (`+n`/`-n` adjusts). #cmd("UIRESET"): reset the UI sizing knobs to their defaults.
 / #cmd("UNDO") / #cmd("REDO"): undo / redo edits (argument: a count or `ALL`).
+/ #cmd("UNDOBEGIN") / #cmd("UNDOEND"): open / close an UNDO GROUP on the active document. Every edit between a matching `UNDOBEGIN` and `UNDOEND` folds into ONE undo unit, so a keybinding or macro that makes SEVERAL buffer edits undoes in a single `UNDO`. Depth-counted (nested begins need matching ends); the first edit opens the shared unit, and one `UNDO` restores the caret to where the group began. A bare `UNDO`/`REDO` force-closes any open group. Example — surround the caret's word with brackets using two inserts, reverted together: `UNDOBEGIN ; DW ; EL ; INSERT "[" ; ER ; INSERT "]" ; UNDOEND`. (A command that makes just ONE edit — e.g. a select-then-delete like `DF;NW;DM;RD` — is already a single undo step; grouping only matters once there are two or more edits.) The grouping is per-document and should open and close within the same buffer.
 / #cmd("UP") / #cmd("DOWN"): move one *logical* line up / down — see #cmd("DOWN") under _D_. (For visual, wrapped-row motion use #cmd("LU") / #cmd("LD").)
 
 == W

@@ -222,6 +222,12 @@ pub enum EditorOp {
     /// Redo the last `levels` undone edits on the active document (1 = the most recent;
     /// stops early when there is nothing left to redo).
     Redo(usize),
+    /// `UNDOBEGIN` — open an undo group on the active document: every edit until the matching
+    /// `UNDOEND` folds into ONE undo unit (so a composite command undoes in a single step).
+    /// Depth-counted; `UNDO`/`REDO` force-close any open group.
+    BeginUndoGroup,
+    /// `UNDOEND` — close one level of the active document's undo group.
+    EndUndoGroup,
     /// Start a fresh, empty document (`NEW`).
     NewDoc,
     /// `NEW <path>` — start a fresh buffer named for `path`, ready to `SAVE`. Forgiving: if the file
