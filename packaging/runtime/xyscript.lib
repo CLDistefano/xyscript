@@ -30,13 +30,14 @@ SUB typst
 		PDFread $fnm
 	ELSE
 		SET fnm = "https://github.com/typst/typst/releases/download/v0.15.0/typst-documentation.pdf"
-		IF $OS == "windows"
-			X/NV start $fnm
-		ELSE IF $OS == "linux"
-			X/NV xdg-open $fnm
-		ELSE
-			X/NV open $fnm
-		EI
+		SWITCH $OS
+			CASE "windows"
+				X/NV start $fnm
+			CASE "linux"
+				X/NV xdg-open $fnm
+			CASE "macos"
+				X/NV open $fnm
+		ENDSWITCH
 	EI
 ENDSUB
 
@@ -245,36 +246,75 @@ SUB xe
 	# DOC: Open file in external editor
 	# DOC: User Variable: ExternalEditor
 	LOCAL fn
+	IF NOT $ExternalEditor
+		PR User variable $ExternalEditor is not configured.
+		RETURN
+	EI
 	IF $1
 		SET fn = $1
 	ELSE
 		SET fn = $FP
 	EI
-	X/NV start $ExternalEditor $fn
+	SWITCH $OS
+		CASE "linux"
+			X/nv $ExternalEditor $fn
+		CASE "macos"
+			X/nv open -a $ExternalEditor $fn
+		CASE "windows"
+			X/nv start $ExternalEditor $fn
+		DEFAULT
+			X/nv $ExternalEditor $fn
+	ENDSWITCH
 ENDSUB
 
 SUB xe2
 	# DOC: Open file in external editor #2
 	# DOC: User Variable: ExternalEditor2
 	LOCAL fn
+	IF NOT $ExternalEditor2
+		PR User variable $ExternalEditor2 is not configured.
+		RETURN
+	EI
 	IF $1
 		SET fn = $1
 	ELSE
 		SET fn = $FP
 	EI
-	X/NV start $ExternalEditor2 $fn
+	SWITCH $OS
+		CASE "linux"
+			X/nv $ExternalEditor2 $fn
+		CASE "macos"
+			X/nv open -a $ExternalEditor2 $fn
+		CASE "windows"
+			X/nv start $ExternalEditor2 $fn
+		DEFAULT
+			X/nv $ExternalEditor2 $fn
+	ENDSWITCH
 ENDSUB
 
 SUB xe3
 	# DOC: Open file in external editor #3
 	# DOC: User Variable: ExternalEditor3
 	LOCAL fn
+	IF NOT $ExternalEditor3
+		PR User variable $ExternalEditor3 is not configured.
+		RETURN
+	EI
 	IF $1
 		SET fn = $1
 	ELSE
 		SET fn = $FP
 	EI
-	X/NV start $ExternalEditor3 $fn
+	SWITCH $OS
+		CASE "linux"
+			X/nv $ExternalEditor3 $fn
+		CASE "macos"
+			X/nv open -a $ExternalEditor3 $fn
+		CASE "windows"
+			X/nv start $ExternalEditor3 $fn
+		DEFAULT
+			X/nv $ExternalEditor3 $fn
+	ENDSWITCH
 ENDSUB
 
 SUB linecount
@@ -335,7 +375,8 @@ SUB af
 	# DOC: Open a new temp/throwaway (autonamed) file
 	LOCAL alpha base dnm fnm i
 	QUIET/NV
-	IF NOT $TempDir SET TempDir = $XSDIR
+	IF NOT $TempDir SET TempDir = $XSDIR.$DC."_tmp"
+	IF NOT EXISTS($TempDir) X/nv mkdir $TempDir
 	SET base = $TempDir.$DC.Date("yymmdd").Time("hh.mm")
 	SET alpha = Chars("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	:a
@@ -553,7 +594,7 @@ SUB locate
 	# UserVar: $Path_to_Locate_exe (without trailing "\")
 	quiet
 	LOCAL cmnd
-	SET cmnd = $Path_to_Locate_exe.$DC."locate.exe -lfd -w ".$1
+	SET cmnd = $Path_to_Locate_exe.$DC."locate.exe -lfd -w ".$*
 	X/BG $cmnd
 	if $FE and $CP == 0 ab
 ENDSUB
@@ -1589,13 +1630,14 @@ ENDSUB
 
 SUB colors
 	# DOC: Change color settings on the fly
-	# DOC: Usage: COLORS <setting> <n>
-	# DOC: Default setting: BGCOLOR; n: increment/decrement value
+	# DOC: Usage: RGB <setting> <n>
+	# DOC:   <setting>: FGCOLOR, BGCOLOR, UIFGCOLOR, UIBGCOLOR, et al
+	# DOC:   <n>: increment|decrement value
+	# DOC: Default setting: BGCOLOR; default n: 1
 	# DOC: E.g.:  COLORS UIBGCOLOR 5
 	# DOC: Then follow the prompts:
 	# DOC: ↑ Lighter ↓ Darker
-	# DOC: ← More Red → More Blue
-	# DOC: shift← Less Green shift→ More Green
+	# DOC: R|r: more|less Red  G|g: more|less Green  B|b: more|less Blue
 	# DOC: Home: Revert to original color
 	# DOC: Esc: Set current color and exit script
 	# quiet
@@ -1608,39 +1650,41 @@ SUB colors
 	runcode set rgb = $cstr
 	set rgb_array = split($rgb, " ")
 	while 1
-		rk k  > Setting: $(upper($str)) <$NL ↑ Lighter ↓ Darker$NL ← More Red $NL → More Blue $NL shift← Less Green$NL shift→ More Green$NL Home: Revert original color$NL Esc: Set current color and exit script$NL
-		switch $SC
-			case 1             # Esc
+		rk k  > Setting: $(upper($str)) <$NL ↑ Lighter ↓ Darker$NL R|r G|g B|b: more|less Red Green Blue$NL Home: Revert original color$NL Esc: Set current color and exit script$NL
+		switch $k
+			case "r"
+				set $rgb_array[0] -= $incr
+			case "R"
+				set $rgb_array[0] += $incr
+			case "g"
+				set $rgb_array[1] -= $incr
+			case "G"
+				set $rgb_array[1] += $incr
+			case "b"
+				set $rgb_array[2] -= $incr
+			case "B"
+				set $rgb_array[2] += $incr
+			default
+			if $SC == 1
 				set cstr = $str." ".$rgb_array[0]." ".$rgb_array[1]." ".$rgb_array[2]
 				clip $(upper($cstr))
 				pr Copied: $(upper($cstr))
 				return
-			case 71, 92        # Home
+			else if $SC == 71 or $SC == 92
 				set cstr = $str . " ". $rgb
 				runcode $cstr
 				continue
-			case 72, 100       # Up
+			else if $SC == 72 or $SC == 100
 				set $rgb_array[0] += $incr
 				set $rgb_array[1] += $incr
 				set $rgb_array[2] += $incr
-			case 80, 102       # Down
+			else if $SC == 80 or $SC == 102
 				set $rgb_array[0] -= $incr
 				set $rgb_array[1] -= $incr
 				set $rgb_array[2] -= $incr
-			case 75, 101       # Left
-				if $SCC > $SC
-					set $rgb_array[1] -= $incr
-				else
-					set $rgb_array[0] += $incr
-				ei
-			case 77, 103       # Right
-				if $SCC > $SC
-					set $rgb_array[1] += $incr
-				else
-					set $rgb_array[2] += $incr
-				ei
-			default
-				nop
+			else
+				continue
+			ei
 		endswitch
 		for n = 0 to 2
 			if $rgb_array[$n] < 0 set $rgb_array[$n] = 0
@@ -1649,7 +1693,6 @@ SUB colors
 		runcode $str $rgb_array[0] $rgb_array[1] $rgb_array[2]		
 	endwhile
 ENDSUB
-
 
 SUB GetIP
 	# DOC: Get current IP address
@@ -1897,6 +1940,66 @@ ENDSUB
 SUB values
 	# DOC: List XyScript internal variables & their current values
 	NE; ListSpecials; PRINTEX; BUFPREV; AB
+ENDSUB
+
+SUB viewimg
+	# DOC: View an image in the Preview pane
+	# DOC: Usage: VIEWIMG <image_file>|DIR_entry [zoom[%]]
+	# DOC: +/- to zoom in/out; any other key exits
+	quiet
+	local ifnm isiz ispv text tfnm urfgcolor
+	if right($1, 1) == "%"; set isiz = trimright($1, 1); goto a; ei
+	if right($2, 1) == "%"; set isiz = trimright($2, 1); goto b; ei
+	if not $1 or isdec($1)
+		:a
+		if $D1
+			set ifnm = $DR
+			if not $isiz; if isdec($1) set isiz = $1; ei
+		else
+			pr Usage: VIEWIMG <image_file>|DIR_entry [zoom[%]]
+			return
+		ei
+	ei
+	:b
+	if not $ifnm
+		set ifnm = $1
+	ei
+	set ifnm = replace($ifnm, "\\", "/")
+	if not exists($ifnm)
+		pr Error: '$ifnm' does not exist.
+		return
+	ei
+	if not $TempDir
+		set TempDir = $XSDIR.$DC."_tmp"
+		if not exists($TempDir) X/nv mkdir $TempDir
+	ei
+	set tfnm = $TempDir.$DC."viewimg.typ"
+	if exists($tfnm) ernv $tfnm
+	set ispv = 1
+	if not $pv; set ispv = 0; pv; ei
+	if not $isiz
+		if not isdec($2); set isiz = 95; else; set isiz = $2; ei
+	ei
+	:c
+	set text = "#set page(".$NL."	paper: \"us-letter\",".$NL."	margin: (x: 0.25in, y: 0.25in),".$NL.");#set text(".$NL."	font: \"Cascadia Mono\",".$NL."	size: 12pt);#show image: set align(center);#image(\"".$ifnm."\", width: ".$isiz."%)".$NL
+	wf $tfnm $text
+	gof $tfnm; if not $error ab
+	set urfgcolor = $FGCOLOR
+	fgcolor $BGCOLOR
+	ca $tfnm
+	pr $ifnm | + | - | Esc
+	rk key
+	if $SC == 74 or $key == "-"
+		set isiz -= 5
+		goto :c
+	ei
+	if $SC == 78 or $key == "+"
+		set isiz += 5
+		goto :c
+	ei
+	ab
+	fgcolor $URFGCOLOR
+	if not $ispv pv
 ENDSUB
 
 #####  User Library  #####
