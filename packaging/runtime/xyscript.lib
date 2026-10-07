@@ -1630,7 +1630,7 @@ ENDSUB
 
 SUB colors
 	# DOC: Change color settings on the fly
-	# DOC: Usage: RGB <setting> <n>
+	# DOC: Usage: COLORS <setting> <n>
 	# DOC:   <setting>: FGCOLOR, BGCOLOR, UIFGCOLOR, UIBGCOLOR, et al
 	# DOC:   <n>: increment|decrement value
 	# DOC: Default setting: BGCOLOR; default n: 1
