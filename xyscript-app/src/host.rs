@@ -4417,6 +4417,30 @@ impl AppHost {
             .collect()
     }
 
+    /// The FOCUSED pane's tab group for the GUI strip, as `(global-docs-index, info)` pairs in strip
+    /// order. The single top strip shows only the focused pane's tabs, so opening/closing/switching in
+    /// one pane never rearranges another's strip. Click/close act on the returned global index.
+    pub fn focused_tabs(&self) -> Vec<(usize, TabInfo)> {
+        self.panes
+            .focused_tab_docs()
+            .into_iter()
+            .filter_map(|id| {
+                let i = self.docs.iter().position(|d| d.id() == id)?;
+                let d = &self.docs[i];
+                Some((
+                    i,
+                    TabInfo {
+                        name: d.file_name().unwrap_or_else(|| "untitled".to_string()),
+                        path: d.path().map(|p| p.display().to_string()),
+                        modified: d.is_modified(),
+                        read_only: d.read_only(),
+                        dir_listing: d.is_dir_listing(),
+                    },
+                ))
+            })
+            .collect()
+    }
+
     /// Make buffer `i` active (clicking a tab); focuses the document. Out-of-range is ignored.
     /// Change the user's input focus (cmline vs text): sets both the operating `target` and the
     /// persistent `input_focus` that `$TX` reads. Use for GENUINE focus changes — NOT the
@@ -4455,20 +4479,43 @@ impl AppHost {
         self.sync_panes();
     }
 
-    /// Keep the split-pane tree consistent with `active`: the focused pane shows the active document.
-    /// Called after any change to `active` (tab switch, close, open-to-front). In single-pane mode
-    /// this simply repoints the one pane; in a multi-pane layout it repoints the focused pane unless
-    /// that document is already shown in another pane (the ≤1-pane-per-doc guard, which then holds the
-    /// focused pane's current content — the GUI's tab strip still reflects `active`). Cheap; safe to
-    /// over-call.
-    pub(crate) fn sync_panes(&mut self) {
-        let id = self.docs[self.active].id();
-        // If the newly-active buffer is already shown in a pane, move focus to THAT pane (so the
-        // focus border follows `BUFNEXT`/`BUFALT`/a tab click into the visible pane). Otherwise repoint
-        // the focused pane's content to the active buffer.
-        if !self.panes.focus_doc_if_shown(id) {
-            self.panes.set_focused_doc(id);
+    /// `BUFNEXT`/`BUFPREV`: move to the next/previous tab WITHIN the focused pane's group (wrapping).
+    /// A single-tab group has nowhere to go (no-op); crossing panes is `TW`, not buffer nav.
+    fn buf_cycle(&mut self, forward: bool) {
+        if let Some(doc) = self.panes.focused_cycle_target(forward) {
+            if let Some(i) = self.doc_index_by_id(doc) {
+                self.switch_buffer(i);
+            }
         }
+    }
+
+    /// Keep the split-pane tree consistent with the open-doc set and `active` — the self-healing
+    /// reconcile that upholds the partition invariant (every open doc lives in exactly one pane's tab
+    /// group). Called after any change to `docs`/`active` (tab switch, open, close): it drops closed
+    /// docs from their groups, collapses any pane left empty, files any newly-opened doc into the
+    /// FOCUSED pane's group (so an open or switch disturbs no other pane), and moves focus to the pane
+    /// that owns the active doc. Cheap; safe to over-call. (Name kept for its many call sites.)
+    pub(crate) fn sync_panes(&mut self) {
+        self.reconcile_panes();
+    }
+
+    /// Reconcile the pane tree with `self.docs`/`self.active`. See [`sync_panes`](Self::sync_panes).
+    pub(crate) fn reconcile_panes(&mut self) {
+        if self.docs.is_empty() {
+            return;
+        }
+        if self.active >= self.docs.len() {
+            self.active = self.docs.len() - 1;
+        }
+        let ids: Vec<crate::panes::DocId> = self.docs.iter().map(|d| d.id()).collect();
+        let active = self.docs[self.active].id();
+        self.panes.reconcile(&ids, active);
+    }
+
+    /// Whether `id` is the ACTIVE (visible) tab of some pane — as opposed to merely a background tab in
+    /// a group. Used by `UNTITLEDTAB` pruning (a background scratch can be pruned; a visible one can't).
+    fn doc_is_pane_active(&self, id: crate::panes::DocId) -> bool {
+        self.panes.panes().iter().any(|&(_, d)| d == id)
     }
 
     /// The split-pane layout tree (read by the GUI to lay out and render; Phase 2).
@@ -4555,23 +4602,17 @@ impl AppHost {
     ) -> Result<(crate::panes::DocId, bool), String> {
         if let Some(t) = target {
             match self.docs.iter().position(|d| d.file_name().as_deref() == Some(t)) {
-                Some(i) => {
-                    let id = self.docs[i].id();
-                    if self.panes.contains_doc(id) {
-                        return Err(format!("{t} is already shown in a pane"));
-                    }
-                    Ok((id, false))
-                }
+                // The split MOVES this tab into its own new pane (out of whatever group holds it now),
+                // so a doc already open anywhere is a valid partner — no "already shown" guard.
+                Some(i) => Ok((self.docs[i].id(), false)),
                 None => Err(format!("{t}: no open tab by that name — open it first")),
             }
         } else {
-            // Prefer the alternate buffer (the BUFALT target) when it's open and not already paned.
+            // Prefer the alternate buffer (the BUFALT target) when it's open and distinct from the
+            // current buffer; the split relocates it into the new pane.
             if let Some(alt) = self.alt_active {
-                if alt < self.docs.len() {
-                    let id = self.docs[alt].id();
-                    if !self.panes.contains_doc(id) {
-                        return Ok((id, false));
-                    }
+                if alt < self.docs.len() && alt != self.active {
+                    return Ok((self.docs[alt].id(), false));
                 }
             }
             Ok((self.push_fresh_buffer(), true)) // nothing suitable → a fresh empty buffer
@@ -4585,8 +4626,11 @@ impl AppHost {
         let idx = self.shell_output_doc_index(); // find-or-create the SO buffer
         self.shell_output_visible = true; // showing it in a pane implies it's visible
         let so_id = self.docs[idx].id();
-        if self.panes.focus_doc_if_shown(so_id) {
-            self.adopt_pane_focus(); // already in a pane → just focus it
+        // Already the VISIBLE tab of some pane → just focus that pane (don't open a second one). A SO
+        // buffer that's merely a background tab in a group still gets split out below.
+        if let Some(&(pid, _)) = self.panes.panes().iter().find(|&&(_, d)| d == so_id) {
+            self.panes.set_focus(pid);
+            self.adopt_pane_focus();
             return Ok(());
         }
         match self.panes.split(dir, so_id, crate::panes::Side::Second) {
@@ -5021,6 +5065,9 @@ impl AppHost {
                 let mut d = Document::new();
                 d.set_label(SHELL_OUTPUT_NAME.to_string());
                 self.docs.push(d);
+                // File the new buffer into a pane group (as a background tab) so the partition holds;
+                // `active` is unchanged, so the focused pane keeps showing its current tab.
+                self.reconcile_panes();
                 self.docs.len() - 1
             }
         }
@@ -7568,21 +7615,22 @@ impl AppHost {
                     }
                 }
                 self.panes = tree;
-            } else {
-                // Repoint the single pane at the restored active tab FIRST, so the blank scratch the
-                // editor started with is no longer shown in a pane — otherwise `prune_untitled_tabs`
-                // spares it (it won't remove a doc a pane is displaying).
-                self.sync_panes();
             }
+            // Reconcile either way: file any still-open doc the saved layout didn't mention (the blank
+            // scratch the editor started with, a transient listing, …) into the focused group so the
+            // partition holds, then prune the leftover scratch (now a background tab, not a pane's
+            // visible tab, so pruning will remove it).
+            self.reconcile_panes();
             self.prune_untitled_tabs();
             self.auto_highlight_all(); // light EVERY restored tab, not just the focused one
         }
         Ok(restored)
     }
 
-    /// Append `doc` as a NEW active tab (no reuse). Shares the grammar registry and repoints the
-    /// focused pane, like [`add_or_reuse`](Self::add_or_reuse)'s push path.
-    fn add_doc_new(&mut self, mut doc: Document) {
+    /// Append `doc` as a NEW active tab (no reuse). Shares the grammar registry and reconciles the
+    /// pane tree (filing it into the focused group). Returns the inserted doc's `DocId` — callers that
+    /// need to find the doc again afterward must use THIS, not an id captured before the call.
+    fn add_doc_new(&mut self, mut doc: Document) -> crate::panes::DocId {
         doc.share_grammars(self.highlight_grammars.clone());
         // Opening a new tab LEAVES the current one — record it as the last-visited tab so `CLOSEBACK`
         // returns here when the new tab is closed (e.g. open a file from a DIR listing, then `AB`).
@@ -7591,33 +7639,43 @@ impl AppHost {
         self.active = self.docs.len() - 1;
         self.auto_highlight_active();
         self.sync_panes();
+        self.docs[self.active].id()
     }
 
-    /// Add `doc` as a buffer and make it active — reusing the active slot if it
-    /// is an empty scratch (so opening a file from a blank start doesn't leave a
-    /// junk empty buffer behind).
-    fn add_or_reuse(&mut self, mut doc: Document) {
+    /// Add `doc` as a buffer and make it active — reusing the active slot if it is an empty scratch (so
+    /// opening a file from a blank start doesn't leave a junk empty buffer behind). Returns the
+    /// inserted doc's resulting `DocId`. NOTE: when a scratch slot is reused the doc INHERITS that
+    /// slot's id (not the id it was built with), so callers that look the doc up afterward MUST use the
+    /// returned id — a `doc.id()` captured before the call is stale.
+    fn add_or_reuse(&mut self, mut doc: Document) -> crate::panes::DocId {
         if self.active_is_empty_scratch() {
             // Every editor document shares the host's grammar registry so it can resolve its own
             // highlighter by extension (on open/reload).
             doc.share_grammars(self.highlight_grammars.clone());
+            // Inherit the scratch slot's DocId so the pane-tree leaf that points at it stays valid
+            // (otherwise reconcile would see the old id vanish and collapse the pane — which broke
+            // open-into-split `OPEN/V`, where a fresh pane's scratch is reused by the opened file).
+            let keep_id = self.docs[self.active].id();
+            doc.set_id(keep_id);
             self.docs[self.active] = doc;
             self.auto_highlight_active();
             self.sync_panes(); // the focused pane shows the newly opened/replaced document
+            keep_id
         } else {
-            self.add_doc_new(doc);
+            self.add_doc_new(doc)
         }
     }
 
     /// Add an OPENED document, honouring `UNTITLEDTAB`. On (default): reuse the blank scratch slot and
     /// then prune any leftover pristine untitled tabs, so no scratch lingers beside the file. Off: keep
-    /// the untitled tab — the file opens as its own new tab.
-    fn add_opened_doc(&mut self, doc: Document) {
+    /// the untitled tab — the file opens as its own new tab. Returns the inserted doc's resulting id.
+    fn add_opened_doc(&mut self, doc: Document) -> crate::panes::DocId {
         if self.untitled_auto_close {
-            self.add_or_reuse(doc);
+            let id = self.add_or_reuse(doc);
             self.prune_untitled_tabs();
+            id
         } else {
-            self.add_doc_new(doc);
+            self.add_doc_new(doc)
         }
     }
 
@@ -7638,7 +7696,7 @@ impl AppHost {
             .docs
             .iter()
             .filter(|d| {
-                Self::is_pristine_untitled(d) && d.id() != keep && !self.panes.contains_doc(d.id())
+                Self::is_pristine_untitled(d) && d.id() != keep && !self.doc_is_pane_active(d.id())
             })
             .map(|d| d.id())
             .collect();
@@ -8510,9 +8568,6 @@ impl AppHost {
                 self.record_closed(path, caret);
             }
         }
-        // If the closed buffer was showing in a split pane, that pane is removed too — its space goes
-        // back to the neighbor. So `AB`/`AB/V` close the file AND undo its pane in a SINGLE operation.
-        let in_split = self.panes.pane_count() > 1;
         // `CLOSEBACK on`: land on the LAST-VISITED tab (resolved by stable id, so it survives the index
         // shift) rather than the left neighbor — e.g. return to the DIR listing a file was opened from.
         let back_target = self.close_back.then_some(self.focus_prev).flatten();
@@ -8532,14 +8587,10 @@ impl AppHost {
             self.active = self.active.saturating_sub(1);
         }
         self.set_focus(Target::Document);
-        if in_split {
-            // The focused pane still references the just-removed buffer — drop that pane (hoisting its
-            // sibling), then let `active` follow the surviving focused pane's document.
-            self.panes.close_focused();
-            self.adopt_pane_focus();
-        } else {
-            self.sync_panes(); // single pane: repoint it at the new active buffer
-        }
+        // Reconcile drops the closed doc from its group. If that was the pane's LAST tab, the pane
+        // collapses (its space returns to the neighbor); otherwise the pane stays put and shows the
+        // next tab in its group — other panes are untouched. Focus follows the new active doc.
+        self.sync_panes();
         name
     }
 
@@ -10503,8 +10554,10 @@ impl Host for AppHost {
                 // streams hits into it via `poll_grep`.
                 let mut doc = Document::new();
                 doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, perl, false);
-                let doc_id = doc.id();
-                self.add_or_reuse(doc);
+                // Use the id `add_or_reuse` RETURNS: reusing a scratch slot makes the doc inherit that
+                // slot's id, so a pre-captured `doc.id()` would be stale (emphasis + hit streaming
+                // below both look the doc up by this id).
+                let doc_id = self.add_or_reuse(doc);
                 // Highlight the matches with EMPH — in the results tab now, and (via `grep_jump`) in
                 // any file opened with `GJ`. Map the GREP pattern to an EMPH phrase so the highlight
                 // covers exactly what GREP matched: a regex GREP → `EMPH/R`; a whole-word GREP → EMPH's
@@ -11548,6 +11601,7 @@ impl Host for AppHost {
                     self.active = self.docs.len() - 1;
                 }
                 self.set_focus(Target::Document);
+                self.sync_panes(); // drop the closed docs from their groups; collapse emptied panes
                 let closed = before - kept;
                 return Ok(Value::str(format!("saved {saved}, closed {closed}, kept {kept} unsaved")));
             }
@@ -13596,19 +13650,25 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("line endings: {}", target.label())));
             }
             EditorOp::BufNext => {
-                self.switch_buffer((self.active + 1) % self.docs.len());
+                self.buf_cycle(true);
             }
             EditorOp::BufPrev => {
-                self.switch_buffer((self.active + self.docs.len() - 1) % self.docs.len());
+                self.buf_cycle(false);
             }
             EditorOp::BufAlt => {
-                // Toggle to the alternate buffer (the one active before the last switch);
-                // seed it from BUFPREV on first use or if it's gone stale.
+                // Toggle to the alternate buffer (the one active before the last switch); seed it from
+                // the FOCUSED GROUP's previous tab on first use or if it's gone stale, so the bounce
+                // stays within the pane rather than jumping across panes.
                 let target = match self.alt_active {
-                    Some(i) if i < self.docs.len() && i != self.active => i,
-                    _ => (self.active + self.docs.len() - 1) % self.docs.len(),
+                    Some(i) if i < self.docs.len() && i != self.active => Some(i),
+                    _ => self
+                        .panes
+                        .focused_cycle_target(false)
+                        .and_then(|d| self.doc_index_by_id(d)),
                 };
-                self.switch_buffer(target);
+                if let Some(t) = target {
+                    self.switch_buffer(t);
+                }
             }
             EditorOp::BufGo(arg) => {
                 let arg = arg.trim();
@@ -15419,8 +15479,9 @@ mod tests {
         let mut h = AppHost::new();
         h.docs.push(Document::new());
         h.docs.push(Document::new()); // 3 buffers; on 0, no alternate yet
+        h.sync_panes(); // file the directly-pushed buffers into the (single) focused group
         assert_eq!(h.alt_active, None);
-        // With no stored alternate, the first BUFALT acts like BUFPREV: 0 -> 2 (wrap).
+        // With no stored alternate, the first BUFALT acts like BUFPREV within the group: 0 -> 2 (wrap).
         h.editor_op(EditorOp::BufAlt).unwrap();
         assert_eq!(h.active, 2);
         // A BUFNEXT records its own alternate, which a close must invalidate.
@@ -15707,24 +15768,34 @@ mod tests {
     }
 
     #[test]
-    fn buffer_nav_moves_focus_to_a_visible_pane() {
-        use super::{AppHost, EditorOp};
+    fn bufnext_cycles_within_focused_group_not_across_panes() {
+        use super::{AppHost, Document, EditorOp};
         use xyscript_xpl::Host;
         let mut h = AppHost::new();
+        // Three open buffers in one pane's group: A (active), B, C.
+        h.docs.push(Document::new());
+        h.docs.push(Document::new());
+        h.sync_panes();
         let a = h.docs[0].id();
-        // Split: two panes — A (left) and a fresh empty buffer E (right, focused).
-        h.editor_op(EditorOp::PaneSplitTile { stacked: false, target: None }).unwrap();
-        assert_eq!(h.pane_count(), 2);
-        let e = h.panes().focused_doc();
-        assert_ne!(e, a);
-        // BUFNEXT lands on A, which is already shown in the left pane → focus (border) moves THERE
-        // rather than the guard blocking a content swap.
-        h.editor_op(EditorOp::BufNext).unwrap();
-        assert_eq!(h.panes().focused_doc(), a);
+        let b = h.docs[1].id();
+        let c = h.docs[2].id();
         assert_eq!(h.docs[h.active].id(), a);
-        // BUFNEXT again lands on E (right pane) → focus jumps back to it.
+        // Split C off into its own pane → left group [A,B], right [C]. Then focus the left group.
+        h.panes_mut()
+            .split(crate::panes::Split::SideBySide, c, crate::panes::Side::Second)
+            .unwrap();
+        h.panes_mut().focus_doc_if_shown(a);
+        h.adopt_pane_focus();
+        let group = h.panes().focused_tab_docs();
+        assert!(group.contains(&a) && group.contains(&b)); // A and B share the focused group
+        assert!(!group.contains(&c)); // C was split into the other pane
+        // BUFNEXT/BUFPREV stay inside the focused group (never jump to C's pane — that's TW's job).
         h.editor_op(EditorOp::BufNext).unwrap();
-        assert_eq!(h.panes().focused_doc(), e);
+        let after = h.docs[h.active].id();
+        assert!(h.panes().focused_tab_docs().contains(&after));
+        assert_ne!(after, c);
+        h.editor_op(EditorOp::BufNext).unwrap();
+        assert_ne!(h.docs[h.active].id(), c);
     }
 
     #[test]

@@ -596,6 +596,10 @@ impl Editor {
     pub fn tabs(&self) -> Vec<crate::host::TabInfo> {
         self.host.tabs()
     }
+    /// The focused pane's tab group for the GUI strip, as `(global-index, info)` in strip order.
+    pub fn focused_tabs(&self) -> Vec<(usize, crate::host::TabInfo)> {
+        self.host.focused_tabs()
+    }
     /// Make buffer `i` active (clicking a tab).
     pub fn set_active_buffer(&mut self, i: usize) {
         self.host.set_active(i);
@@ -3074,6 +3078,45 @@ mod tests {
             .map(|(pid, _)| e4.host().pane_scroll(*pid).unwrap().0)
             .collect();
         assert_eq!(restored, [10, 20].into_iter().collect(), "each pane's scroll restored");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Per-pane tab groups: opening or closing a file leaves the OTHER panes put (the user-reported
+    /// bug). Opening a file into the focused pane adds it to that pane's group only; closing it keeps
+    /// the pane and shows the group's next tab. No pane is displaced, collapsed, or reshuffled.
+    #[test]
+    fn opening_and_closing_files_leaves_other_panes_put() {
+        let base = std::env::temp_dir().join(format!("xyscript-stayput-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(base.join(f), b"x\n").unwrap();
+        }
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("OPEN a.txt");
+        let a = e.active_doc_id();
+        e.run_command("OPEN/V b.txt"); // side-by-side split: left a, right b (focused)
+        assert_eq!(e.host().panes().pane_count(), 2, "split created");
+        let b = e.active_doc_id();
+        assert_ne!(a, b);
+
+        // Open c.txt (no split switch) → it joins the FOCUSED (right) pane's group and shows there.
+        e.run_command("OPEN c.txt");
+        let c = e.active_doc_id();
+        let shown: Vec<_> = e.host().panes().panes().into_iter().map(|(_, d)| d).collect();
+        assert_eq!(shown.len(), 2, "opening a file did NOT add or collapse a pane");
+        assert!(shown.contains(&a), "the left pane still shows a — it stayed put");
+        assert_eq!(e.host().panes().focused_doc(), c, "the focused pane now shows c");
+        assert!(e.host().panes().contains_doc(b), "b is still open as a tab in the focused group");
+
+        // Close c → the focused pane stays put and falls back to b; the left pane still shows a.
+        e.run_command("AB");
+        let shown2: Vec<_> = e.host().panes().panes().into_iter().map(|(_, d)| d).collect();
+        assert_eq!(shown2.len(), 2, "closing a file kept both panes");
+        assert!(shown2.contains(&a), "the left pane is still a after the close");
+        assert_eq!(e.host().panes().focused_doc(), b, "the focused pane fell back to b, in place");
 
         std::fs::remove_dir_all(&base).ok();
     }

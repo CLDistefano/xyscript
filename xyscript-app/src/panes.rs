@@ -1,13 +1,19 @@
-//! Split-pane layout tree (split-panes-plan Phase 1).
+//! Split-pane layout tree (split-panes-plan Phase 1; **tab-group model** since 0.1.8).
 //!
-//! A **pure data model** — no GUI, no rendering. The tree describes which document (`DocId`) each
-//! visible pane shows and how the panes are arranged; `layout_rects` turns it into on-screen
-//! rectangles. The GUI (Phase 2, pragmatic path) renders each pane by pointing the existing renderer
-//! at that pane's doc + view; the verbs (Phase 3) call the operations here.
+//! A **pure data model** — no GUI, no rendering. The tree describes the panes' arrangement; each
+//! pane now owns an ordered **tab group** (a list of `DocId`s plus which one is active), not a single
+//! document. `layout_rects` turns the tree into on-screen rectangles, each showing its pane's ACTIVE
+//! tab. The GUI renders each pane by pointing the existing renderer at that pane's active doc + view;
+//! the verbs call the operations here.
 //!
-//! v1 invariant: **≤ 1 pane per `DocId`** — the same *buffer* can't appear in two panes at once (two
-//! panes would fight over one caret). Two `OPEN/NV` copies of a file are *distinct* `DocId`s, so
-//! splitting them is fine. See the plan's "Locked decisions".
+//! **Partition invariant:** every open document lives in exactly ONE pane's group — the groups
+//! partition the set of open docs. A single pane therefore holds *all* the tabs (exactly the classic
+//! single-strip behaviour); splitting moves a tab into its own group. The host keeps the invariant by
+//! calling [`PaneTree::reconcile`] after it adds or removes documents — a self-healing pass that drops
+//! closed docs, collapses emptied panes, and files any newly-opened doc into the focused group.
+//!
+//! The ≤1-pane-per-`DocId` rule (a buffer can't be in two groups at once — two panes would fight over
+//! its one caret) falls straight out of the partition. Two `OPEN/NV` copies are distinct `DocId`s.
 
 /// A stable per-document handle. Indices into `AppHost.docs` shift when tabs close, so the tree
 /// references documents by this id instead (assigned once, in `Document::default`).
@@ -18,8 +24,8 @@ pub struct DocId(pub u32);
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct PaneId(pub u32);
 
-/// Per-pane viewport state (scroll only — the caret/selection stay on the shared `Document` in v1,
-/// one caret per buffer). Mirrored into the GUI's scratch viewport when a pane is rendered.
+/// Per-pane viewport state (scroll only — the caret/selection stay on the shared `Document`, one
+/// caret per buffer). Mirrored into the GUI's scratch viewport when a pane is rendered.
 #[derive(Clone, Copy, Debug)]
 pub struct ViewState {
     pub scroll_line: usize,
@@ -62,7 +68,7 @@ pub struct Rect {
     pub h: f32,
 }
 
-/// One laid-out pane: its id, the document it shows, and its on-screen rectangle.
+/// One laid-out pane: its id, the document it shows (its ACTIVE tab), and its on-screen rectangle.
 #[derive(Clone, Copy, Debug)]
 pub struct PaneRect {
     pub pane: PaneId,
@@ -84,17 +90,49 @@ pub struct Divider {
     pub area: Rect,
 }
 
-/// A leaf: one pane showing one document, with its own scroll view.
-#[derive(Clone, Copy, Debug)]
+/// A leaf: one pane owning an ordered TAB GROUP (its `tabs`, with `active` the shown one) and a scroll
+/// view. `tabs` is non-empty except transiently inside a tree mutation (reconcile/prune restore it).
+#[derive(Clone, Debug)]
 struct Pane {
     id: PaneId,
-    doc: DocId,
+    tabs: Vec<DocId>,
+    active: usize,
     view: ViewState,
 }
 
 impl Default for Pane {
     fn default() -> Self {
-        Pane { id: PaneId(0), doc: DocId(0), view: ViewState::default() }
+        // A transient placeholder (empty group) used only by `mem::take`/`unwrap_or_default` during a
+        // tree mutation; a following prune/reconcile replaces or fills it.
+        Pane { id: PaneId(0), tabs: Vec::new(), active: 0, view: ViewState::default() }
+    }
+}
+
+impl Pane {
+    fn single(id: PaneId, doc: DocId) -> Pane {
+        Pane { id, tabs: vec![doc], active: 0, view: ViewState::default() }
+    }
+
+    /// The pane's visible document (its active tab). `DocId(0)` only for an empty transient group.
+    fn active_doc(&self) -> DocId {
+        self.tabs.get(self.active).copied().unwrap_or_default()
+    }
+
+    fn contains(&self, doc: DocId) -> bool {
+        self.tabs.contains(&doc)
+    }
+
+    /// Remove `doc` from the group, keeping `active` pointed at the same tab where possible (and
+    /// otherwise clamped). Returns whether anything was removed.
+    fn remove(&mut self, doc: DocId) -> bool {
+        let Some(i) = self.tabs.iter().position(|d| *d == doc) else { return false };
+        self.tabs.remove(i);
+        if self.active > i {
+            self.active -= 1;
+        } else if self.active >= self.tabs.len() {
+            self.active = self.tabs.len().saturating_sub(1);
+        }
+        true
     }
 }
 
@@ -112,12 +150,28 @@ impl Default for Node {
 }
 
 impl Node {
+    /// `(pane, active-doc)` per leaf — what the GUI lays out and renders (one visible doc per pane).
     fn leaves(&self, out: &mut Vec<(PaneId, DocId)>) {
         match self {
-            Node::Leaf(p) => out.push((p.id, p.doc)),
+            Node::Leaf(p) => out.push((p.id, p.active_doc())),
             Node::Split { a, b, .. } => {
                 a.leaves(out);
                 b.leaves(out);
+            }
+        }
+    }
+
+    /// Every `(pane, doc)` pair across all tab groups — for collapse/merge and diagnostics.
+    fn all_tabs(&self, out: &mut Vec<(PaneId, DocId)>) {
+        match self {
+            Node::Leaf(p) => {
+                for &d in &p.tabs {
+                    out.push((p.id, d));
+                }
+            }
+            Node::Split { a, b, .. } => {
+                a.all_tabs(out);
+                b.all_tabs(out);
             }
         }
     }
@@ -139,25 +193,102 @@ impl Node {
         }
     }
 
+    /// The id of the pane whose group holds `doc` (groups partition the docs, so at most one).
+    fn pane_of_doc(&self, doc: DocId) -> Option<PaneId> {
+        match self {
+            Node::Leaf(p) => p.contains(doc).then_some(p.id),
+            Node::Split { a, b, .. } => a.pane_of_doc(doc).or_else(|| b.pane_of_doc(doc)),
+        }
+    }
+
     fn contains_doc(&self, doc: DocId) -> bool {
         match self {
-            Node::Leaf(p) => p.doc == doc,
+            Node::Leaf(p) => p.contains(doc),
             Node::Split { a, b, .. } => a.contains_doc(doc) || b.contains_doc(doc),
+        }
+    }
+
+    fn collect_docs(&self, out: &mut std::collections::HashSet<DocId>) {
+        match self {
+            Node::Leaf(p) => {
+                out.extend(p.tabs.iter().copied());
+            }
+            Node::Split { a, b, .. } => {
+                a.collect_docs(out);
+                b.collect_docs(out);
+            }
+        }
+    }
+
+    /// Drop from every group any doc not in `keep` (closed buffers), keeping each group's active tab
+    /// pointed at the same doc where it survives.
+    fn retain_docs(&mut self, keep: &[DocId]) {
+        match self {
+            Node::Leaf(p) => {
+                let active_doc = p.tabs.get(p.active).copied();
+                p.tabs.retain(|d| keep.contains(d));
+                p.active = active_doc
+                    .and_then(|ad| p.tabs.iter().position(|d| *d == ad))
+                    .unwrap_or_else(|| p.active.min(p.tabs.len().saturating_sub(1)));
+            }
+            Node::Split { a, b, .. } => {
+                a.retain_docs(keep);
+                b.retain_docs(keep);
+            }
+        }
+    }
+
+    /// Remove `doc` from every group EXCEPT the pane `keep` (used after a split moves a doc into its
+    /// new pane — it must leave its old group so the partition holds).
+    fn remove_doc_except(&mut self, doc: DocId, keep: PaneId) {
+        match self {
+            Node::Leaf(p) => {
+                if p.id != keep {
+                    p.remove(doc);
+                }
+            }
+            Node::Split { a, b, .. } => {
+                a.remove_doc_except(doc, keep);
+                b.remove_doc_except(doc, keep);
+            }
+        }
+    }
+
+    /// Consume this subtree and rebuild it dropping any leaf whose group is empty; the removed leaf's
+    /// sibling is hoisted into its place. `None` = the whole subtree was empty.
+    fn prune_empty(self) -> Option<Node> {
+        match self {
+            Node::Leaf(p) => (!p.tabs.is_empty()).then_some(Node::Leaf(p)),
+            Node::Split { dir, ratio, a, b } => match (a.prune_empty(), b.prune_empty()) {
+                (Some(a), Some(b)) => {
+                    Some(Node::Split { dir, ratio, a: Box::new(a), b: Box::new(b) })
+                }
+                (Some(n), None) | (None, Some(n)) => Some(n), // sibling hoisted
+                (None, None) => None,
+            },
+        }
+    }
+
+    fn clamp_actives(&mut self) {
+        match self {
+            Node::Leaf(p) => {
+                if p.active >= p.tabs.len() {
+                    p.active = p.tabs.len().saturating_sub(1);
+                }
+            }
+            Node::Split { a, b, .. } => {
+                a.clamp_actives();
+                b.clamp_actives();
+            }
         }
     }
 
     /// Replace the leaf `target` with a split of `(new)` and `(current)` per `new_on`. Returns whether
     /// the target was found.
-    fn do_split(
-        &mut self,
-        target: PaneId,
-        dir: Split,
-        new_pane: Pane,
-        new_on: Side,
-    ) -> bool {
+    fn do_split(&mut self, target: PaneId, dir: Split, new_pane: Pane, new_on: Side) -> bool {
         match self {
             Node::Leaf(p) if p.id == target => {
-                let cur = Box::new(Node::Leaf(*p)); // `Pane: Copy`
+                let cur = Box::new(Node::Leaf(p.clone()));
                 let new = Box::new(Node::Leaf(new_pane));
                 let (a, b) = match new_on {
                     Side::First => (new, cur),
@@ -168,7 +299,7 @@ impl Node {
             }
             Node::Leaf(_) => false,
             Node::Split { a, b, .. } => {
-                a.do_split(target, dir, new_pane, new_on)
+                a.do_split(target, dir, new_pane.clone(), new_on)
                     || b.do_split(target, dir, new_pane, new_on)
             }
         }
@@ -206,7 +337,7 @@ impl Node {
 
     fn layout(&self, area: Rect, out: &mut Vec<PaneRect>) {
         match self {
-            Node::Leaf(p) => out.push(PaneRect { pane: p.id, doc: p.doc, rect: area }),
+            Node::Leaf(p) => out.push(PaneRect { pane: p.id, doc: p.active_doc(), rect: area }),
             Node::Split { dir, ratio, a, b } => {
                 let (ra, rb) = split_rect(area, *dir, *ratio);
                 a.layout(ra, out);
@@ -251,6 +382,13 @@ impl Node {
         }
         false
     }
+
+    fn max_pane_id(&self) -> u32 {
+        match self {
+            Node::Leaf(p) => p.id.0,
+            Node::Split { a, b, .. } => a.max_pane_id().max(b.max_pane_id()),
+        }
+    }
 }
 
 /// Split `area` into the two child rects by `ratio` (child `a`'s share), per direction.
@@ -274,7 +412,8 @@ fn split_rect(area: Rect, dir: Split, ratio: f32) -> (Rect, Rect) {
     }
 }
 
-/// The split-pane layout for the main window. One `Leaf` = the classic single-pane view.
+/// The split-pane layout for the main window. One `Leaf` holding every tab = the classic single-pane
+/// single-strip view.
 pub struct PaneTree {
     root: Node,
     focus: PaneId,
@@ -284,15 +423,10 @@ pub struct PaneTree {
 }
 
 impl PaneTree {
-    /// A fresh tree: one pane showing `doc`.
+    /// A fresh tree: one pane whose group is just `doc`.
     pub fn new(doc: DocId) -> PaneTree {
         let id = PaneId(1);
-        PaneTree {
-            root: Node::Leaf(Pane { id, doc, view: ViewState::default() }),
-            focus: id,
-            zoom: None,
-            next_pane: 2,
-        }
+        PaneTree { root: Node::Leaf(Pane::single(id, doc)), focus: id, zoom: None, next_pane: 2 }
     }
 
     /// Number of panes (leaves).
@@ -302,7 +436,7 @@ impl PaneTree {
         v.len()
     }
 
-    /// The `(pane, doc)` pairs in layout order (left→right, top→bottom).
+    /// The `(pane, active-doc)` pairs in layout order (left→right, top→bottom).
     pub fn panes(&self) -> Vec<(PaneId, DocId)> {
         let mut v = Vec::new();
         self.root.leaves(&mut v);
@@ -313,9 +447,27 @@ impl PaneTree {
         self.focus
     }
 
-    /// The document shown in the focused pane.
+    /// The document shown in the focused pane (its active tab).
     pub fn focused_doc(&self) -> DocId {
-        self.root.find(self.focus).map(|p| p.doc).unwrap_or(DocId(0))
+        self.root.find(self.focus).map(|p| p.active_doc()).unwrap_or_default()
+    }
+
+    /// The focused pane's tab group, in strip order.
+    pub fn focused_tab_docs(&self) -> Vec<DocId> {
+        self.root.find(self.focus).map(|p| p.tabs.clone()).unwrap_or_default()
+    }
+
+    /// The doc that `BUFNEXT`/`BUFPREV` would move to: the next/previous tab in the FOCUSED group,
+    /// wrapping. `None` when the group has fewer than two tabs (nothing to cycle to).
+    pub fn focused_cycle_target(&self, forward: bool) -> Option<DocId> {
+        let p = self.root.find(self.focus)?;
+        let n = p.tabs.len();
+        if n < 2 {
+            return None;
+        }
+        let i = p.active.min(n - 1);
+        let j = if forward { (i + 1) % n } else { (i + n - 1) % n };
+        Some(p.tabs[j])
     }
 
     /// Set focus to `pane` if it exists.
@@ -325,22 +477,24 @@ impl PaneTree {
         }
     }
 
-    /// Whether `doc` is already shown in some pane (the ≤1-pane-per-doc guard).
+    /// Whether `doc` is a tab in some pane's group.
     pub fn contains_doc(&self, doc: DocId) -> bool {
         self.root.contains_doc(doc)
     }
 
-    /// If `doc` is shown in some pane, move focus to that pane and return `true`; otherwise leave focus
-    /// alone and return `false`. Used when the active buffer changes (`BUFNEXT`/`BUFALT`/tab click): if
-    /// the newly-active buffer is already visible, the focus (and its border) should jump to it rather
-    /// than the guard silently blocking a content swap.
+    /// If `doc` is a tab in some pane, move focus to that pane, make `doc` that pane's active tab, and
+    /// return `true`; otherwise leave the tree alone and return `false`. This is how the active buffer
+    /// (tab click / `BUFNEXT` / `BUFALT` / `BUFGO`) drives the tree: the focus border and the pane's
+    /// shown tab both follow the active doc into whichever pane owns it.
     pub fn focus_doc_if_shown(&mut self, doc: DocId) -> bool {
-        if let Some((pid, _)) = self.panes().into_iter().find(|&(_, d)| d == doc) {
-            self.focus = pid;
-            true
-        } else {
-            false
+        let Some(pid) = self.root.pane_of_doc(doc) else { return false };
+        self.focus = pid;
+        if let Some(p) = self.root.find_mut(pid) {
+            if let Some(i) = p.tabs.iter().position(|d| *d == doc) {
+                p.active = i;
+            }
         }
+        true
     }
 
     /// The focused pane's view state (for the GUI to read/mirror).
@@ -360,51 +514,104 @@ impl PaneTree {
         }
     }
 
-    /// Point the focused pane at a different document (tab activation swaps content in place — it does
-    /// NOT open a new pane). No-op if `doc` is already shown elsewhere (would violate the guard).
-    pub fn set_focused_doc(&mut self, doc: DocId) {
-        if self.root.find(self.focus).map(|p| p.doc) == Some(doc) {
-            return;
+    /// Reconcile the tree with the host's authoritative open-doc set — the self-healer that keeps the
+    /// partition invariant without a precise tree edit at every `docs` push/remove. It (1) drops any
+    /// tab whose doc is no longer open, (2) collapses panes left empty, (3) files any newly-opened doc
+    /// (present in `all` but in no group) into the focused group, in `all` order, and (4) moves focus
+    /// to the pane that owns `active` and makes it that pane's active tab. `all` must be non-empty and
+    /// contain `active`.
+    pub fn reconcile(&mut self, all: &[DocId], active: DocId) {
+        // 1. Drop closed docs from every group.
+        self.root.retain_docs(all);
+        // 2. Collapse any pane whose group emptied.
+        let root = std::mem::take(&mut self.root);
+        match root.prune_empty() {
+            Some(n) => self.root = n,
+            None => {
+                // Every group emptied — start over with one pane holding everything.
+                let id = PaneId(self.next_pane);
+                self.next_pane += 1;
+                self.root = Node::Leaf(Pane { id, tabs: Vec::new(), active: 0, view: ViewState::default() });
+                self.focus = id;
+            }
         }
-        if self.contains_doc(doc) {
-            return; // shown in another pane already — don't duplicate
+        if self.root.find(self.focus).is_none() {
+            self.focus = self.first_pane();
         }
-        if let Some(p) = self.root.find_mut(self.focus) {
-            p.doc = doc;
-            p.view = ViewState::default();
+        // 3. File newly-opened docs into the focused group (in `all` order).
+        let mut placed = std::collections::HashSet::new();
+        self.root.collect_docs(&mut placed);
+        let missing: Vec<DocId> = all.iter().copied().filter(|d| !placed.contains(d)).collect();
+        if !missing.is_empty() {
+            if let Some(p) = self.root.find_mut(self.focus) {
+                p.tabs.extend(missing);
+            }
         }
+        self.root.clamp_actives();
+        // 4. Focus the pane owning `active` and show it there.
+        self.focus_doc_if_shown(active);
+        if let Some(z) = self.zoom {
+            if self.root.find(z).is_none() {
+                self.zoom = None;
+            }
+        }
+        self.bump_next_pane();
     }
 
-    /// Split the focused pane, giving the new pane `incoming`; the new pane takes focus. Errs if
-    /// `incoming` is already shown (≤1 pane per doc).
+    fn bump_next_pane(&mut self) {
+        self.next_pane = self.next_pane.max(self.root.max_pane_id() + 1);
+    }
+
+    /// Split the focused pane, giving the new pane a group of just `incoming`; the new pane takes
+    /// focus. `incoming` is MOVED out of whatever group currently holds it (the partition stays clean);
+    /// any pane emptied by that move collapses. Errs only on an impossible tree state.
     pub fn split(&mut self, dir: Split, incoming: DocId, new_on: Side) -> Result<PaneId, &'static str> {
-        if self.contains_doc(incoming) {
-            return Err("that buffer is already shown in a pane");
-        }
         let new_id = PaneId(self.next_pane);
-        let new_pane = Pane { id: new_id, doc: incoming, view: ViewState::default() };
+        let new_pane = Pane::single(new_id, incoming);
         if !self.root.do_split(self.focus, dir, new_pane, new_on) {
             return Err("no focused pane to split");
         }
         self.next_pane += 1;
-        self.focus = new_id;
+        // `incoming` now lives only in the new pane — strip it from every other group.
+        self.root.remove_doc_except(incoming, new_id);
+        let root = std::mem::take(&mut self.root);
+        self.root = root
+            .prune_empty()
+            .unwrap_or_else(|| Node::Leaf(Pane::single(new_id, incoming)));
+        self.root.clamp_actives();
+        if self.root.find(new_id).is_some() {
+            self.focus = new_id;
+        } else {
+            self.focus = self.first_pane();
+        }
         self.zoom = None; // a new split leaves zoom (a full-window state) behind
-        Ok(new_id)
+        self.bump_next_pane();
+        Ok(self.focus)
     }
 
-    /// Close (un-split) the focused pane, hoisting its sibling. No-op if it's the only pane. Focus
-    /// moves to the first remaining pane.
+    /// Close (un-split) the focused pane, hoisting its sibling. The focused pane's tabs are MERGED into
+    /// the pane that receives focus (the documents stay open — only the pane goes away). No-op if it's
+    /// the only pane. Focus moves to the first remaining pane.
     pub fn close_focused(&mut self) -> bool {
         if self.pane_count() <= 1 {
             return false;
         }
         let removed = self.focus;
+        let salvage = self.root.find(removed).map(|p| p.tabs.clone()).unwrap_or_default();
         let root = std::mem::take(&mut self.root);
         self.root = root.without(removed).unwrap_or_default();
         self.focus = self.first_pane();
+        if let Some(p) = self.root.find_mut(self.focus) {
+            for d in salvage {
+                if !p.tabs.contains(&d) {
+                    p.tabs.push(d);
+                }
+            }
+        }
         if self.zoom == Some(removed) {
             self.zoom = None;
         }
+        self.bump_next_pane();
         true
     }
 
@@ -413,21 +620,24 @@ impl PaneTree {
     }
 
     /// Release the FOCUSED pane to full window (`FS`): discard the whole split structure, leaving the
-    /// focused pane as the sole full-window pane. Unlike [`close_focused`](PaneTree::close_focused)
-    /// (which removes the focused pane and shows its sibling), this KEEPS the focused pane and drops
-    /// the others. The dropped panes' buffers stay open as tabs. Permanent, unlike the [`toggle_zoom`]
-    /// (PaneTree::toggle_zoom) preview. No-op (returns `false`) when already a single pane.
+    /// focused pane as the sole pane. The OTHER panes' tabs are merged into the focused group (their
+    /// documents stay open), appended after the focused pane's own tabs so its active tab is unchanged.
+    /// Permanent, unlike the [`toggle_zoom`](PaneTree::toggle_zoom) preview. No-op when already single.
     pub fn collapse_to_focused(&mut self) -> bool {
         if self.pane_count() <= 1 {
             return false;
         }
-        if let Some(&p) = self.root.find(self.focus) {
-            self.root = Node::Leaf(p); // `Pane: Copy`
-            self.zoom = None;
-            true
-        } else {
-            false
+        let Some(mut keep) = self.root.find(self.focus).cloned() else { return false };
+        let mut every = Vec::new();
+        self.root.all_tabs(&mut every);
+        for (pid, d) in every {
+            if pid != self.focus && !keep.tabs.contains(&d) {
+                keep.tabs.push(d);
+            }
         }
+        self.root = Node::Leaf(keep);
+        self.zoom = None;
+        true
     }
 
     /// Move focus to the next (or previous) pane in layout order, wrapping.
@@ -460,7 +670,7 @@ impl PaneTree {
     pub fn layout_rects(&self, area: Rect) -> Vec<PaneRect> {
         if let Some(z) = self.zoom {
             if let Some(p) = self.root.find(z) {
-                return vec![PaneRect { pane: z, doc: p.doc, rect: area }];
+                return vec![PaneRect { pane: z, doc: p.active_doc(), rect: area }];
             }
         }
         let mut out = Vec::new();
@@ -487,13 +697,19 @@ impl PaneTree {
         self.root.set_nth_ratio(index, &mut idx, ratio.clamp(0.05, 0.95))
     }
 
-    /// Serialize the layout as whitespace-separated prefix tokens, for `SESSION` restore. Each node is
-    /// a leaf `L <docid>` or a split `S <h|v> <ratio> <a> <b>` (`h`=Stacked, `v`=SideBySide). Structure
-    /// + divider ratios + doc-per-pane only; focus/zoom/scroll are handled separately by the caller.
+    /// Serialize the layout as whitespace-separated prefix tokens, for `$PANES` and the session
+    /// structure signature. Each node is a leaf `L <k> <active> <doc0> … <dock-1>` (k tabs, `active`
+    /// the shown index) or a split `S <h|v> <ratio> <a> <b>` (`h`=Stacked, `v`=SideBySide). Structure +
+    /// ratios + each group's tabs; focus/zoom/scroll handled separately by the caller.
     pub fn serialize(&self) -> String {
         fn go(n: &Node, out: &mut String) {
             match n {
-                Node::Leaf(p) => out.push_str(&format!("L {} ", p.doc.0)),
+                Node::Leaf(p) => {
+                    out.push_str(&format!("L {} {} ", p.tabs.len(), p.active));
+                    for d in &p.tabs {
+                        out.push_str(&format!("{} ", d.0));
+                    }
+                }
                 Node::Split { dir, ratio, a, b } => {
                     let d = match dir {
                         Split::Stacked => 'h',
@@ -510,21 +726,26 @@ impl PaneTree {
         s.trim_end().to_string()
     }
 
-    /// Like [`serialize`](Self::serialize) but each leaf also carries its [`ViewState`]
-    /// (`L <docid> <scroll_line> <scroll_vertical> <follow>`), so `SESSION` restore brings back each
-    /// pane's exact scroll offset — not just its document + the shared caret. Splits are unchanged.
-    /// Parsed by [`from_serialized`](Self::from_serialized), which still also accepts the view-less
-    /// `L <docid>` form the `$PANES` special (and older sessions) emit.
+    /// Like [`serialize`](Self::serialize) but each leaf also carries its [`ViewState`], using the `Lv`
+    /// token: `Lv <k> <active> <scroll_line> <scroll_vertical> <follow> <doc0> … <dock-1>`. So `SESSION`
+    /// restore brings back each pane's exact scroll offset. Splits are unchanged. Parsed by
+    /// [`from_serialized`](Self::from_serialized), which also accepts the view-less `L …` form.
     pub fn serialize_session(&self) -> String {
         fn go(n: &Node, out: &mut String) {
             match n {
-                Node::Leaf(p) => out.push_str(&format!(
-                    "L {} {} {:.4} {} ",
-                    p.doc.0,
-                    p.view.scroll_line,
-                    p.view.scroll_vertical,
-                    if p.view.follow { 1 } else { 0 },
-                )),
+                Node::Leaf(p) => {
+                    out.push_str(&format!(
+                        "Lv {} {} {} {:.4} {} ",
+                        p.tabs.len(),
+                        p.active,
+                        p.view.scroll_line,
+                        p.view.scroll_vertical,
+                        if p.view.follow { 1 } else { 0 },
+                    ));
+                    for d in &p.tabs {
+                        out.push_str(&format!("{} ", d.0));
+                    }
+                }
                 Node::Split { dir, ratio, a, b } => {
                     let d = match dir {
                         Split::Stacked => 'h',
@@ -542,11 +763,11 @@ impl PaneTree {
     }
 
     /// Rebuild a tree from [`serialize`](Self::serialize) or [`serialize_session`](Self::serialize_session)
-    /// tokens, mapping each saved `DocId` to a live one via `remap` — `None` if `remap` rejects any leaf
-    /// (a pane that showed a doc we didn't restore, e.g. a transient listing) or the tokens don't parse,
-    /// so the caller can fall back to flat tabs. Fresh `PaneId`s are assigned; focus lands on the first
-    /// leaf (the caller repoints it). A leaf's `ViewState` is read from the optional
-    /// `<scroll_line> <scroll_vertical> <follow>` tokens after its docid, defaulting when they're absent.
+    /// tokens, mapping each saved `DocId` to a live one via `remap`. A tab whose doc `remap` rejects
+    /// (not restored — e.g. a transient listing) is DROPPED from its group; a group left empty collapses;
+    /// `None` only if the tokens don't parse or nothing survives. The caller then [`reconcile`](Self::reconcile)s
+    /// to file any still-open docs the layout didn't mention. Fresh `PaneId`s are assigned; focus lands
+    /// on the first leaf (the caller repoints it).
     pub fn from_serialized<F: Fn(DocId) -> Option<DocId>>(s: &str, remap: &F) -> Option<PaneTree> {
         fn parse<'a, I, F>(toks: &mut std::iter::Peekable<I>, next_pane: &mut u32, remap: &F) -> Option<Node>
         where
@@ -554,13 +775,10 @@ impl PaneTree {
             F: Fn(DocId) -> Option<DocId>,
         {
             match toks.next()? {
-                "L" => {
-                    let old: u32 = toks.next()?.parse().ok()?;
-                    let doc = remap(DocId(old))?;
-                    // Optional ViewState. Present only in `serialize_session` output; in the view-less
-                    // form the next token is a sibling `L`/`S` or the end — neither parses as a line
-                    // number, so peeking a `usize` reliably tells the two apart.
-                    let view = if toks.peek().and_then(|t| t.parse::<usize>().ok()).is_some() {
+                tok @ ("L" | "Lv") => {
+                    let k: usize = toks.next()?.parse().ok()?;
+                    let active: usize = toks.next()?.parse().ok()?;
+                    let view = if tok == "Lv" {
                         let scroll_line: usize = toks.next()?.parse().ok()?;
                         let scroll_vertical: f32 = toks.next()?.parse().ok()?;
                         let follow = toks.next()? != "0";
@@ -568,9 +786,24 @@ impl PaneTree {
                     } else {
                         ViewState::default()
                     };
+                    // Read k doc ids; drop any the remap rejects, tracking where `active` lands.
+                    let mut tabs = Vec::with_capacity(k);
+                    let mut new_active = 0usize;
+                    for j in 0..k {
+                        let old: u32 = toks.next()?.parse().ok()?;
+                        if let Some(nd) = remap(DocId(old)) {
+                            if j <= active {
+                                new_active = tabs.len();
+                            }
+                            tabs.push(nd);
+                        }
+                    }
+                    if new_active >= tabs.len() {
+                        new_active = tabs.len().saturating_sub(1);
+                    }
                     let id = PaneId(*next_pane);
                     *next_pane += 1;
-                    Some(Node::Leaf(Pane { id, doc, view }))
+                    Some(Node::Leaf(Pane { id, tabs, active: new_active, view }))
                 }
                 "S" => {
                     let dir = match toks.next()? {
@@ -592,9 +825,11 @@ impl PaneTree {
         if toks.next().is_some() {
             return None; // trailing tokens → malformed
         }
+        let root = root.prune_empty()?; // nothing survived the remap → caller falls back
         let mut leaves = Vec::new();
         root.leaves(&mut leaves);
         let focus = leaves.first().map(|(pid, _)| *pid)?;
+        let next_pane = root.max_pane_id() + 1;
         Some(PaneTree { root, focus, zoom: None, next_pane })
     }
 }
@@ -605,6 +840,11 @@ mod tests {
 
     fn area() -> Rect {
         Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 }
+    }
+
+    /// The active doc shown in each pane, in layout order.
+    fn docs_of(t: &PaneTree) -> Vec<DocId> {
+        t.panes().into_iter().map(|(_, d)| d).collect()
     }
 
     #[test]
@@ -622,41 +862,45 @@ mod tests {
         assert_eq!(back.pane_count(), 3);
         let docs: std::collections::HashSet<u32> = back.panes().iter().map(|(_, d)| d.0).collect();
         assert_eq!(docs, [101, 102, 103].into_iter().collect());
-        // Structure preserved: re-serializing the remapped tree matches the original with +100 ids.
-        assert_eq!(back.serialize(), s.replace("L 1", "L 101").replace("L 2", "L 102").replace("L 3", "L 103"));
 
-        // A remap that rejects any leaf → None (the caller falls back to flat tabs).
-        assert!(PaneTree::from_serialized(&s, &|d| (d.0 != 2).then_some(d)).is_none());
+        // A remap that rejects one single-tab pane's doc → that pane collapses; the rest survive.
+        let back2 = PaneTree::from_serialized(&s, &|d| (d.0 != 2).then_some(d)).expect("still parses");
+        assert_eq!(back2.pane_count(), 2);
+        assert!(!back2.contains_doc(DocId(2)));
+        assert!(back2.contains_doc(DocId(1)) && back2.contains_doc(DocId(3)));
+
         // Garbage tokens → None, not a panic.
         assert!(PaneTree::from_serialized("S x", &|d| Some(d)).is_none());
         assert!(PaneTree::from_serialized("", &|d| Some(d)).is_none());
     }
 
     #[test]
-    fn serialize_session_round_trips_view_state() {
-        // Two panes with distinct, non-default scroll offsets (one following the caret, one not).
+    fn serialize_session_round_trips_view_state_and_groups() {
+        // Two panes; the left pane has TWO tabs (a group), the right one.
         let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(9)], DocId(1)); // doc 9 joins the (single) focused group
         let p2 = t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
         let p1 = t.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
         t.set_view(p1, ViewState { scroll_line: 42, scroll_vertical: 7.5, follow: false });
         t.set_view(p2, ViewState { scroll_line: 0, scroll_vertical: 0.0, follow: true });
+        // Left pane (p1) holds docs 1 and 9; right pane (p2) holds doc 2.
+        assert!(t.contains_doc(DocId(1)) && t.contains_doc(DocId(9)) && t.contains_doc(DocId(2)));
 
         let s = t.serialize_session();
         let back = PaneTree::from_serialized(&s, &|d| Some(d)).expect("parses");
-        let bp1 = back.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
-        let bp2 = back.panes().into_iter().find(|&(_, d)| d == DocId(2)).unwrap().0;
+        assert!(back.contains_doc(DocId(1)) && back.contains_doc(DocId(9)) && back.contains_doc(DocId(2)));
+        let bp1 = back.root.pane_of_doc(DocId(1)).unwrap();
+        // doc 9 shares doc 1's pane (the group survived).
+        assert_eq!(back.root.pane_of_doc(DocId(9)), Some(bp1));
         let v1 = back.view(bp1).unwrap();
         assert_eq!(v1.scroll_line, 42);
         assert!((v1.scroll_vertical - 7.5).abs() < 1e-3);
         assert!(!v1.follow);
-        let v2 = back.view(bp2).unwrap();
-        assert_eq!(v2.scroll_line, 0);
-        assert!(v2.follow);
 
-        // The view-less form (what `$PANES`/older sessions emit) still parses, with default views.
+        // The view-less `L` form still parses, with default views.
         let plain = t.serialize();
         let back2 = PaneTree::from_serialized(&plain, &|d| Some(d)).expect("parses");
-        let bp = back2.panes().into_iter().find(|&(_, d)| d == DocId(1)).unwrap().0;
+        let bp = back2.root.pane_of_doc(DocId(1)).unwrap();
         assert!(back2.view(bp).unwrap().follow); // default
     }
 
@@ -680,12 +924,115 @@ mod tests {
         assert_eq!(t.focused_doc(), DocId(2));
         let rects = t.layout_rects(area());
         assert_eq!(rects.len(), 2);
-        // Side-by-side: doc 1 on the left, doc 2 on the right, halves.
         assert_eq!(rects[0].doc, DocId(1));
         assert_eq!(rects[1].doc, DocId(2));
         assert_eq!(rects[0].rect.w, 400.0);
         assert_eq!(rects[1].rect.x, 400.0);
-        assert_eq!(rects[0].rect.h, 600.0); // full height (left/right split)
+        assert_eq!(rects[0].rect.h, 600.0);
+    }
+
+    #[test]
+    fn reconcile_files_new_docs_into_focused_group_and_drops_closed() {
+        let mut t = PaneTree::new(DocId(1));
+        // Open two more docs: they join the (sole) focused group.
+        t.reconcile(&[DocId(1), DocId(2), DocId(3)], DocId(3));
+        assert_eq!(t.pane_count(), 1);
+        assert_eq!(t.focused_tab_docs(), vec![DocId(1), DocId(2), DocId(3)]);
+        assert_eq!(t.focused_doc(), DocId(3)); // active followed
+
+        // Split doc 2 into its own pane, then close doc 1 (still in the left group).
+        t.focus_doc_if_shown(DocId(2));
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
+        // Left group now [1,3], right group [2].
+        assert!(t.contains_doc(DocId(1)) && t.contains_doc(DocId(3)) && t.contains_doc(DocId(2)));
+        // Close doc 1: the LEFT pane stays (still shows doc 3); no collapse, no reshuffle.
+        t.reconcile(&[DocId(2), DocId(3)], DocId(3));
+        assert_eq!(t.pane_count(), 2);
+        assert!(!t.contains_doc(DocId(1)));
+        assert_eq!(docs_of(&t), vec![DocId(3), DocId(2)]); // left shows 3, right shows 2
+    }
+
+    #[test]
+    fn closing_a_paned_tab_keeps_the_pane_when_group_has_more() {
+        // Left pane group [1,4], right pane [2]. Close doc 1 → left pane stays, shows doc 4.
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(4)], DocId(1));
+        t.focus_doc_if_shown(DocId(2)); // not shown yet → false; reconcile adds it next
+        t.reconcile(&[DocId(1), DocId(4), DocId(2)], DocId(2));
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // right = [2]; left = [1,4]
+        assert_eq!(t.pane_count(), 2);
+        t.reconcile(&[DocId(4), DocId(2)], DocId(4)); // closed doc 1
+        assert_eq!(t.pane_count(), 2); // left pane survived
+        assert!(t.contains_doc(DocId(4)) && t.contains_doc(DocId(2)));
+    }
+
+    #[test]
+    fn split_moves_tab_out_of_its_old_group() {
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(2)], DocId(1)); // one pane, group [1,2]
+        // Split doc 2 into a new pane: it must LEAVE the left group.
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
+        assert_eq!(t.pane_count(), 2);
+        let left = t.root.pane_of_doc(DocId(1)).unwrap();
+        let right = t.root.pane_of_doc(DocId(2)).unwrap();
+        assert_ne!(left, right);
+        // Left group is just [1] now (2 moved out).
+        t.set_focus(left);
+        assert_eq!(t.focused_tab_docs(), vec![DocId(1)]);
+    }
+
+    #[test]
+    fn one_pane_per_doc_guard_via_partition() {
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(2)], DocId(1));
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
+        // Each doc appears in exactly one pane.
+        assert_eq!(t.root.pane_of_doc(DocId(1)).is_some(), true);
+        assert_eq!(t.root.pane_of_doc(DocId(2)).is_some(), true);
+        assert_ne!(t.root.pane_of_doc(DocId(1)), t.root.pane_of_doc(DocId(2)));
+        let mut all = Vec::new();
+        t.root.all_tabs(&mut all);
+        assert_eq!(all.len(), 2); // no duplicates
+    }
+
+    #[test]
+    fn close_focused_merges_tabs_into_sibling() {
+        // Left [1,3], right [2] (focused). TUS (close_focused) → one pane holding all three.
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(3)], DocId(1));
+        t.reconcile(&[DocId(1), DocId(3), DocId(2)], DocId(2));
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // right = [2] focused
+        assert!(t.close_focused());
+        assert_eq!(t.pane_count(), 1);
+        // All three docs survive as tabs in the remaining pane.
+        assert!(t.contains_doc(DocId(1)) && t.contains_doc(DocId(2)) && t.contains_doc(DocId(3)));
+    }
+
+    #[test]
+    fn collapse_to_focused_keeps_all_docs_as_tabs() {
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(2), DocId(3)], DocId(1));
+        t.focus_doc_if_shown(DocId(2));
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // left [1,3], right [2]
+        t.focus_doc_if_shown(DocId(2));
+        assert!(t.collapse_to_focused()); // FS keeps the right pane (doc 2), merges 1 & 3
+        assert_eq!(t.pane_count(), 1);
+        assert_eq!(t.focused_doc(), DocId(2)); // the kept pane's active tab unchanged
+        assert!(t.contains_doc(DocId(1)) && t.contains_doc(DocId(3)));
+    }
+
+    #[test]
+    fn bufnext_cycles_within_focused_group() {
+        let mut t = PaneTree::new(DocId(1));
+        t.reconcile(&[DocId(1), DocId(2), DocId(3)], DocId(1)); // group [1,2,3], active 1
+        assert_eq!(t.focused_cycle_target(true), Some(DocId(2)));
+        assert_eq!(t.focused_cycle_target(false), Some(DocId(3))); // wraps backward
+        // Put doc 3 in its own pane; the left group is [1,2] → next from 1 is 2, wrap.
+        t.focus_doc_if_shown(DocId(3));
+        t.split(Split::SideBySide, DocId(3), Side::Second).unwrap(); // right [3] focused
+        assert_eq!(t.focused_cycle_target(true), None); // single-tab group: nothing to cycle
+        t.focus_doc_if_shown(DocId(1)); // focus the left group [1,2]
+        assert_eq!(t.focused_cycle_target(true), Some(DocId(2)));
     }
 
     #[test]
@@ -695,43 +1042,7 @@ mod tests {
         let r = t.layout_rects(area());
         assert_eq!(r[0].rect.h, 300.0);
         assert_eq!(r[1].rect.y, 300.0);
-        assert_eq!(r[0].rect.w, 800.0); // full width (top/bottom split)
-    }
-
-    #[test]
-    fn one_pane_per_doc_guard() {
-        let mut t = PaneTree::new(DocId(1));
-        assert!(t.split(Split::SideBySide, DocId(1), Side::Second).is_err()); // doc 1 already shown
-        assert_eq!(t.pane_count(), 1);
-        assert!(t.split(Split::SideBySide, DocId(2), Side::Second).is_ok());
-        assert!(t.split(Split::Stacked, DocId(1), Side::Second).is_err()); // still shown
-    }
-
-    #[test]
-    fn split_then_close_round_trips() {
-        let mut t = PaneTree::new(DocId(1));
-        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // focus = doc 2's pane
-        assert_eq!(t.pane_count(), 2);
-        assert!(t.close_focused()); // remove the focused (doc 2) pane
-        assert_eq!(t.pane_count(), 1);
-        assert_eq!(t.focused_doc(), DocId(1)); // back to the original, focused
-        let r = t.layout_rects(area());
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0].rect, area());
-        assert!(!t.close_focused()); // can't close the last pane
-    }
-
-    #[test]
-    fn nested_collapse_keeps_the_sibling_subtree() {
-        // (1 | (2 / 3)) — split doc1's pane side-by-side with 2, then split 2's pane stacked with 3.
-        let mut t = PaneTree::new(DocId(1));
-        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // focus doc2
-        t.split(Split::Stacked, DocId(3), Side::Second).unwrap(); // focus doc3, nested under doc2
-        assert_eq!(t.pane_count(), 3);
-        // Close doc3 → doc2's subtree collapses back to a single leaf; doc1 untouched.
-        assert!(t.close_focused());
-        let docs: Vec<DocId> = t.panes().into_iter().map(|(_, d)| d).collect();
-        assert_eq!(docs, vec![DocId(1), DocId(2)]);
+        assert_eq!(r[0].rect.w, 800.0);
     }
 
     #[test]
@@ -741,7 +1052,7 @@ mod tests {
         let p1 = t.panes()[0].0;
         assert_eq!(t.focus(), p2);
         t.focus_cycle(true);
-        assert_eq!(t.focus(), p1); // wrapped
+        assert_eq!(t.focus(), p1);
         t.focus_cycle(true);
         assert_eq!(t.focus(), p2);
         t.focus_cycle(false);
@@ -752,24 +1063,22 @@ mod tests {
     fn swap_focused_swaps_the_two_panes() {
         let mut t = PaneTree::new(DocId(1));
         t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
-        // Order is [doc1, doc2]; swap → [doc2, doc1].
         assert!(t.swap_focused());
-        let docs: Vec<DocId> = t.panes().into_iter().map(|(_, d)| d).collect();
-        assert_eq!(docs, vec![DocId(2), DocId(1)]);
+        assert_eq!(docs_of(&t), vec![DocId(2), DocId(1)]);
     }
 
     #[test]
     fn zoom_shows_only_the_focused_pane_and_toggles_back() {
         let mut t = PaneTree::new(DocId(1));
-        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // focus doc2
+        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap();
         t.toggle_zoom();
         let r = t.layout_rects(area());
-        assert_eq!(r.len(), 1); // only the zoomed (focused) pane
+        assert_eq!(r.len(), 1);
         assert_eq!(r[0].doc, DocId(2));
         assert_eq!(r[0].rect, area());
-        assert_eq!(t.pane_count(), 2); // the tree is untouched
+        assert_eq!(t.pane_count(), 2);
         t.toggle_zoom();
-        assert_eq!(t.layout_rects(area()).len(), 2); // restored
+        assert_eq!(t.layout_rects(area()).len(), 2);
     }
 
     #[test]
@@ -779,26 +1088,12 @@ mod tests {
         let ds = t.dividers(area());
         assert_eq!(ds.len(), 1);
         assert!(ds[0].side_by_side);
-        // The bar sits at the 50% seam (x ≈ 400 in an 800-wide area).
         assert!((ds[0].bar.x + ds[0].bar.w / 2.0 - 400.0).abs() < 1.0);
-        // Resize the split to 25% and re-layout: the left pane shrinks to a quarter.
         assert!(t.set_divider_ratio(0, 0.25));
         let r = t.layout_rects(area());
         assert_eq!(r[0].rect.w, 200.0);
         assert_eq!(r[1].rect.x, 200.0);
-        // A zoomed tree exposes no dividers.
         t.toggle_zoom();
         assert!(t.dividers(area()).is_empty());
-    }
-
-    #[test]
-    fn set_focused_doc_swaps_content_not_pane_count() {
-        let mut t = PaneTree::new(DocId(1));
-        t.split(Split::SideBySide, DocId(2), Side::Second).unwrap(); // focus doc2
-        t.set_focused_doc(DocId(9)); // activate a different tab in the focused pane
-        assert_eq!(t.pane_count(), 2); // no new pane
-        assert_eq!(t.focused_doc(), DocId(9));
-        t.set_focused_doc(DocId(1)); // doc1 is shown in the OTHER pane → guard blocks the swap
-        assert_eq!(t.focused_doc(), DocId(9));
     }
 }

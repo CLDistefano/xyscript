@@ -10110,10 +10110,13 @@ impl GuiApp {
         //     are deferred past the render borrow. The *Shell Output* tab is hidden while `SW`/`$SW`
         //     is off (the buffer keeps streaming; we just skip its tab — and keep `enumerate`
         //     indices = real buffer order).
-        let tabs = self.editor.tabs();
+        // The strip shows only the FOCUSED pane's tab group (per-pane tab sets): `(global-index, info)`
+        // in strip order. Switch/close act on the global index. Opening/closing/switching in one pane
+        // never rearranges another pane's strip.
+        let tabs = self.editor.focused_tabs();
         let shell_visible = self.editor.shell_output_visible();
         let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Console*";
-        let visible_tabs = tabs.iter().filter(|t| !is_hidden(t)).count();
+        let visible_tabs = tabs.iter().filter(|(_, t)| !is_hidden(t)).count();
         // The tab strip's on-screen rect (set below when it's shown), so the mouse-wheel handler can
         // tell when the pointer is over the *scrollable* strip and NOT also scroll the canvas.
         let mut tab_strip_rect: Option<egui::Rect> = None;
@@ -10170,9 +10173,9 @@ impl GuiApp {
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    for (i, t) in tabs.iter().enumerate() {
-                        // Skip the *Shell Output* tab while SW is off — but keep `i` as the real
-                        // buffer index so switch/close still target the right buffer.
+                    for (i, t) in tabs.iter().map(|(gi, t)| (*gi, t)) {
+                        // Skip the *Shell Output* tab while SW is off — `i` is the real global buffer
+                        // index so switch/close still target the right buffer.
                         if is_hidden(t) {
                             continue;
                         }
