@@ -10110,13 +10110,10 @@ impl GuiApp {
         //     are deferred past the render borrow. The *Shell Output* tab is hidden while `SW`/`$SW`
         //     is off (the buffer keeps streaming; we just skip its tab — and keep `enumerate`
         //     indices = real buffer order).
-        // The strip shows only the FOCUSED pane's tab group (per-pane tab sets): `(global-index, info)`
-        // in strip order. Switch/close act on the global index. Opening/closing/switching in one pane
-        // never rearranges another pane's strip.
-        let tabs = self.editor.focused_tabs();
+        let tabs = self.editor.tabs();
         let shell_visible = self.editor.shell_output_visible();
         let is_hidden = |t: &xyscript_app::host::TabInfo| !shell_visible && t.name == "*Console*";
-        let visible_tabs = tabs.iter().filter(|(_, t)| !is_hidden(t)).count();
+        let visible_tabs = tabs.iter().filter(|t| !is_hidden(t)).count();
         // The tab strip's on-screen rect (set below when it's shown), so the mouse-wheel handler can
         // tell when the pointer is over the *scrollable* strip and NOT also scroll the canvas.
         let mut tab_strip_rect: Option<egui::Rect> = None;
@@ -10173,9 +10170,9 @@ impl GuiApp {
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    for (i, t) in tabs.iter().map(|(gi, t)| (*gi, t)) {
-                        // Skip the *Shell Output* tab while SW is off — `i` is the real global buffer
-                        // index so switch/close still target the right buffer.
+                    for (i, t) in tabs.iter().enumerate() {
+                        // Skip the *Shell Output* tab while SW is off — but keep `i` as the real
+                        // buffer index so switch/close still target the right buffer.
                         if is_hidden(t) {
                             continue;
                         }
@@ -10849,8 +10846,18 @@ impl GuiApp {
                     self.doc_scroll.insert(old, self.pane_view.clone());
                     self.pane_view = match self.doc_scroll.remove(&cur_doc) {
                         Some(mut v) => {
-                            v.follow = false; // honour the saved scroll, don't jump to the caret
-                            v
+                            // Guard against a STALE scroll that lands past the doc's end — it would
+                            // render the pane blank. This happens when a batch command (`OPENALL`) runs
+                            // time-sliced: the GUI renders between slices and can stash the outgoing
+                            // (longer) doc's scroll under a freshly-opened short one. If the saved line
+                            // is at/beyond the doc, snap to the caret (top) instead of showing blank.
+                            let lc = self.editor.doc(self.editor.active_index()).line_count();
+                            if v.scroll_line >= lc {
+                                PaneView { follow: true, ..PaneView::default() }
+                            } else {
+                                v.follow = false; // honour the saved scroll, don't jump to the caret
+                                v
+                            }
                         }
                         None => PaneView { follow: true, ..PaneView::default() },
                     };

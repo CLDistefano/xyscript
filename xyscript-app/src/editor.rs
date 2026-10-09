@@ -596,10 +596,6 @@ impl Editor {
     pub fn tabs(&self) -> Vec<crate::host::TabInfo> {
         self.host.tabs()
     }
-    /// The focused pane's tab group for the GUI strip, as `(global-index, info)` in strip order.
-    pub fn focused_tabs(&self) -> Vec<(usize, crate::host::TabInfo)> {
-        self.host.focused_tabs()
-    }
     /// Make buffer `i` active (clicking a tab).
     pub fn set_active_buffer(&mut self, i: usize) {
         self.host.set_active(i);
@@ -3082,12 +3078,13 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
-    /// Per-pane tab groups: opening or closing a file leaves the OTHER panes put (the user-reported
-    /// bug). Opening a file into the focused pane adds it to that pane's group only; closing it keeps
-    /// the pane and shows the group's next tab. No pane is displaced, collapsed, or reshuffled.
+    /// Phase 2 crash resilience: repeated snapshots are CHANGED-ONLY (an unchanged buffer's shadow
+    /// Stable-views model: opening or closing a file leaves OTHER panes put. Opening shows the file in
+    /// the focused pane only; closing keeps the pane (it backfills to another open doc) rather than
+    /// collapsing. The shared tab list means every file stays reachable via the strip / BUFNEXT.
     #[test]
     fn opening_and_closing_files_leaves_other_panes_put() {
-        let base = std::env::temp_dir().join(format!("xyscript-stayput-{:p}", &"tag"));
+        let base = std::env::temp_dir().join(format!("xyscript-stayput2-{:p}", &"tag"));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         for f in ["a.txt", "b.txt", "c.txt"] {
@@ -3097,31 +3094,29 @@ mod tests {
         e.run_command(&format!("CD {}", base.display()));
         e.run_command("OPEN a.txt");
         let a = e.active_doc_id();
-        e.run_command("OPEN/V b.txt"); // side-by-side split: left a, right b (focused)
+        e.run_command("OPEN/V b.txt"); // side-by-side: left a, right b (focused)
         assert_eq!(e.host().panes().pane_count(), 2, "split created");
         let b = e.active_doc_id();
         assert_ne!(a, b);
+        let shown = |e: &Editor| e.host().panes().panes().into_iter().map(|(_, d)| d).collect::<Vec<_>>();
 
-        // Open c.txt (no split switch) → it joins the FOCUSED (right) pane's group and shows there.
+        // Open c.txt (no split switch) → shows in the FOCUSED (right) pane; the LEFT pane keeps a.
         e.run_command("OPEN c.txt");
         let c = e.active_doc_id();
-        let shown: Vec<_> = e.host().panes().panes().into_iter().map(|(_, d)| d).collect();
-        assert_eq!(shown.len(), 2, "opening a file did NOT add or collapse a pane");
-        assert!(shown.contains(&a), "the left pane still shows a — it stayed put");
-        assert_eq!(e.host().panes().focused_doc(), c, "the focused pane now shows c");
-        assert!(e.host().panes().contains_doc(b), "b is still open as a tab in the focused group");
+        assert_eq!(e.host().panes().pane_count(), 2, "opening a file didn't add or collapse a pane");
+        assert!(shown(&e).contains(&a), "left pane stayed put showing a");
+        assert_eq!(e.host().panes().focused_doc(), c, "focused pane now shows c");
+        // b is still open (a background tab in the shared list), just not currently shown in a pane.
+        assert_eq!(e.buffer_count(), 3, "a, b, c all still open");
+        let _ = b;
 
-        // Close c → the focused pane stays put and falls back to b; the left pane still shows a.
+        // Close c → the right pane stays put and backfills to another open doc; left still shows a.
         e.run_command("AB");
-        let shown2: Vec<_> = e.host().panes().panes().into_iter().map(|(_, d)| d).collect();
-        assert_eq!(shown2.len(), 2, "closing a file kept both panes");
-        assert!(shown2.contains(&a), "the left pane is still a after the close");
-        assert_eq!(e.host().panes().focused_doc(), b, "the focused pane fell back to b, in place");
-
-        std::fs::remove_dir_all(&base).ok();
+        assert_eq!(e.host().panes().pane_count(), 2, "closing a file kept both panes");
+        assert!(shown(&e).contains(&a), "left pane is still a after the close");
+        assert_ne!(e.host().panes().focused_doc(), c, "the closed doc is no longer shown");
     }
 
-    /// Phase 2 crash resilience: repeated snapshots are CHANGED-ONLY (an unchanged buffer's shadow
     /// isn't rewritten) and stale backups are garbage-collected. Verified by sentinelling the shadow
     /// file on disk and watching whether a snapshot overwrites it.
     #[test]

@@ -732,14 +732,6 @@ impl Document {
         self.id
     }
 
-    /// Adopt another slot's `DocId`. Used ONLY when a freshly-built `Document` replaces an existing
-    /// scratch buffer in place (`add_or_reuse`): inheriting the scratch's id keeps the pane-tree leaf
-    /// that referenced it valid, so reusing the slot doesn't orphan (and collapse) its pane. The caller
-    /// guarantees the previous holder of `id` is being dropped, so uniqueness still holds.
-    pub(crate) fn set_id(&mut self, id: crate::panes::DocId) {
-        self.id = id;
-    }
-
     /// Run a `Cn` counter invocation (`idx` 0-based for `C1`..`C9`). Returns `Ok(Some(text))` to
     /// insert at the caret (an emit), `Ok(None)` for a configure-only `Cn <seed>`, or `Err(msg)`.
     pub fn counter_op(&mut self, idx: usize, arg: &str) -> Result<Option<String>, String> {

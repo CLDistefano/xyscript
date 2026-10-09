@@ -616,17 +616,24 @@ ENDSUB
 SUB openall
 	# DOC: Open all files matching a filespec
 	# DOC: Usage: OPENALL <filespec>
-	# DOC: E.g.: OPENALL d:\path\my*.txt
-	local aspec fspec fils fnm 
+	# DOC: E.g.: OPENALL d:\path\my*.txt   (or a bare *.txt for the current dir)
+	local aspec fspec fils fnm bp dir
 	if not $1
 		pr Usage: OPENALL <filespec>
 		return
 	ei
 	set fspec = $1
 	set aspec = GetPath($fspec)
+	set dir = $aspec[0]
+	if not $dir
+		set dir = $CWD
+	ei
 	capture fils dir/b $fspec
 	for fnm in lines($fils)
-		open/nv $aspec[0]/$fnm
+		if right($fnm, 1) != $DC
+			set bp = FORMAT("{}{}{}", $dir, $DC, $fnm)
+			open/nv $bp
+		ei
 	ef
 ENDSUB
 
