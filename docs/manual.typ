@@ -408,10 +408,13 @@ To put a split away again there are three moves, depending on what you want to k
 / #raw("FS"): *full screen* — collapse the whole layout down to the pane you are in (the other panes' files stay open as tabs). Where #raw("TUS") keeps the neighbour, #raw("FS") keeps you.
 / #raw("TZ"): *zoom* — temporarily show the focused pane full-window and hide the rest; press again to bring the split back. Nothing is closed, so it is the quick "let me see this one full size" toggle.
 
-Closing a file with #raw("AB") also undoes its pane in the same step (the space returns to the
-neighbour) — so #raw("AB") means "close the file *and* its pane," while #raw("TUS") means "keep the
-file, drop the pane." For scripts that adapt to the layout, #raw("$PANES") reads how many panes are
-open and #raw("$PANE") which one has focus.
+Panes *stay put* as you work: opening or switching to a file shows it in the *focused* pane and
+leaves every other pane exactly where and what it was, and closing a file never reshuffles the
+layout. Closing a file with #raw("AB") leaves the split in place — the pane that was showing it
+falls back to another open file; the pane only disappears when there is no other file left to fill
+it (fewer open files than panes). So a pane changes or goes away only when you act on it: split it,
+focus it and open something, or remove it with #raw("TUS") / #raw("FS"). For scripts that adapt to
+the layout, #raw("$PANES") reads how many panes are open and #raw("$PANE") which one has focus.
 
 Each pane draws its own document in full: a #raw("FIND") or #raw("EMPH") highlight lights up only the
 pane whose file it belongs to, and a pane whose file has bookmarks carries its own gutter dots (see

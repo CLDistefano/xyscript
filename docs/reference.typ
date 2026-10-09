@@ -482,6 +482,8 @@ its row to the new name and re-sorts it into place, with the caret following the
 / #cmd("TUS") / #cmd("FS"): un-split the focused pane / release it to full screen.
 / #cmd("TZ"): toggle zoom of the focused pane (the split is preserved).
 
+Panes are *stable views* onto the one shared set of open tabs: opening or switching to a file shows it in the *focused* pane and leaves every other pane exactly where and what it was, and closing a file never reshuffles the layout (see #cmd("AB")). A pane changes or disappears only when you act on it — split, focus-and-open, #cmd("TUS"), or #cmd("FS").
+
 Each pane renders its own document independently: a #cmd("FIND") / #cmd("EMPH") highlight appears only in the pane whose file owns the match, and a pane whose file has bookmarks shows its own #cmd("MARKGUTTER") strip — neither bleeds across the divider.
 
 == The command line
@@ -694,7 +696,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 == A
 
-/ #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. If the buffer is showing in a split pane, that pane is undone too (its space goes back to the neighbor) — closing the file and its pane is a single operation. To un-split *without* closing the file, use #cmd("TUS"). By default the close lands on the tab to the *left*; #cmd("CLOSEBACK") makes it return to the last-visited tab instead.
+/ #cmd("AB"): close the active buffer, discarding changes — `/V` asks to save first. Split panes *stay put*: the pane that was showing the closed file falls back to another open file rather than collapsing. A pane disappears on a close only when there is no other file left to fill it (fewer open files than panes). To remove a pane deliberately, use #cmd("TUS") (keep the file, drop the pane) or #cmd("FS"). By default the close lands on the tab to the *left*; #cmd("CLOSEBACK") makes it return to the last-visited tab instead.
 / #cmd("CLOSEBACK"): when on, closing a tab (#cmd("AB")) returns to the LAST-VISITED tab rather than the left neighbor — `CLOSEBACK on|off` (bare toggles). Off by default. So opening a file from a #cmd("DIR") listing (or any other tab) and then closing it drops you back on the tab you launched it from, not whichever tab happens to sit to its left. It is a single level — after returning, a further close falls back to the left neighbor. Read back via #sv("CLOSEBACK"); persists in the config.
 / #cmd("ABD"): delete the active document's file from disk and close it — `/V` confirms first.
 / #cmd("ADDKBD"): load a `.kbd` file into a RESIDENT named layout slot — `ADDKBD <name> <file>` (named like #cmd("ADDLIB")). The slot is compiled and kept in memory, so #cmd("KBDMODE") can switch to it instantly (no disk read or re-parse), for multi-layout or modal editing (a second language layout, Dvorak, a Vim-style command layer, …). Loading the slot that is already active also installs it operatively; loading any other slot just keeps it ready. Same last-known-good rule as #cmd("LOADKBD") — a bad file leaves every resident layout untouched. The document, selection, marks, and binders are shared across layouts; only the key→action table swaps.
