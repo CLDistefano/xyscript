@@ -1654,6 +1654,7 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("togs"): a menu of interface toggles.
 / #lib("inspect"): inspect and adjust the Appearance settings.
 / #lib("colors"): adjust a colour setting live with the arrow keys (default #raw("BGCOLOR"); an increment argument, e.g. #raw("colors UIBGCOLOR 5")).
+/ #lib("viewimg"): view an image in the Preview pane --- #raw("viewimg pic.png"), or a #raw("DIR") entry, with an optional #raw("zoom%"); #raw("+")/#raw("-") zoom, any other key exits.
 
 == Dates and the calendar
 
@@ -1817,6 +1818,7 @@ Every bundled routine, alphabetical.
 
 / #lib("v3"): identify the character under the cursor.
 / #lib("values"): list XyScript's internal variables and their current values.
+/ #lib("viewimg"): view an image in the Preview pane --- #raw("viewimg pic.png"), or a #raw("DIR") entry, with an optional #raw("zoom%"); #raw("+")/#raw("-") zoom, any other key exits.
 
 == W
 
