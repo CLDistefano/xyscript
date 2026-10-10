@@ -1145,8 +1145,57 @@ impl Buffer {
     /// the exact bytes). Does **not** touch the cursor/selection — the caller
     /// restores the caret explicitly.
     pub fn replace_range_bytes(&mut self, at: usize, remove: usize, insert: &[u8]) {
+        // Maintain the sparse decoded-offset index ACROSS the edit instead of letting the revision
+        // bump retire it. Retiring it degrades the next `decoded_offset`/`rope_offset` to a cold walk
+        // from byte 0 (O(position)) — which the incremental highlighter's `note_edit` hits on every
+        // keystroke, making deep edits in a big non-UTF-8 file crawl. Shifting the checkpoints keeps
+        // walks bounded to one 256 KB span while editing. The decoded delta needs the removed bytes,
+        // so capture it BEFORE the rope mutates; apply the shift after, tagged with the new revision.
+        // See the `xyscript-nonutf8-offset-perf` note.
+        let d_dec = {
+            let idx = self.dec_index.borrow();
+            if !self.utf8_identity && idx.0 == self.rope.rev() && !idx.1.is_empty() {
+                let end = (at + remove).min(self.rope.len());
+                let ins = self.enc.decode(insert).len() as isize;
+                let rem = self.enc.decode(&self.rope.slice_to_vec(at.min(end), end)).len() as isize;
+                Some(ins - rem)
+            } else {
+                None
+            }
+        };
         self.rope.delete(at, remove);
         self.rope.insert(at, insert);
+        if let Some(d_dec) = d_dec {
+            let d_bytes = insert.len() as isize - remove as isize;
+            self.shift_dec_index(at, remove, d_bytes, d_dec);
+        }
+    }
+
+    /// Translate the sparse [`dec_index`](Buffer::dec_index) across an edit at rope offset `at` that
+    /// removed `remove` bytes and inserted bytes with net byte delta `d_bytes` and net decoded-byte
+    /// delta `d_dec`. Checkpoints before the edit are unchanged, checkpoints inside the removed span
+    /// are dropped, and checkpoints after it translate by the deltas — exact, because the content
+    /// after the edit is byte-identical and just relocated. Retags the index to the post-edit
+    /// revision so it's usable again. Called from [`replace_range_bytes`](Buffer::replace_range_bytes)
+    /// AFTER the rope mutates (so `rope.rev()` is the new revision).
+    fn shift_dec_index(&self, at: usize, remove: usize, d_bytes: isize, d_dec: isize) {
+        let mut idx = self.dec_index.borrow_mut();
+        let end = at + remove; // end of the removed span, in pre-edit rope coords
+        let shifted: Vec<(usize, usize)> = idx
+            .1
+            .iter()
+            .filter_map(|&(r, d)| {
+                if r <= at {
+                    Some((r, d)) // before the edit — fixed
+                } else if r < end {
+                    None // inside the deleted span — gone
+                } else {
+                    Some(((r as isize + d_bytes) as usize, (d as isize + d_dec) as usize)) // after — relocated
+                }
+            })
+            .collect();
+        idx.0 = self.rope.rev();
+        idx.1 = shifted;
     }
 
     /// Switch the encoding view. The bytes — the document's truth — are untouched;
@@ -3532,6 +3581,38 @@ mod tests {
         assert_eq!(b.decoded_offset(n), n * 3);
         assert_eq!(b.decoded_offset(0), 0);
         assert_eq!(b.decoded_offset(n), n * 3);
+    }
+
+    #[test]
+    fn dec_index_survives_edits_and_stays_exact() {
+        // Deep editing a big NON-UTF-8 doc must KEEP the index valid (bounded walks) rather than
+        // retiring it — the fix for "syntax highlighting is sluggish deep in a 14 MB CP437 file."
+        // Retiring it degraded the next `decoded_offset`/`rope_offset` (which the incremental
+        // highlighter's `note_edit` runs every keystroke) to an O(position) walk from byte 0. Each
+        // edit now SHIFTS the checkpoints; conversions stay exact and the index stays tagged live.
+        let n = 1_200_000usize;
+        let mut b = Buffer::from_bytes(vec![0xCB; n], cp437()); // 0xCB → '╦' = 3 UTF-8 bytes
+        assert!(!b.dec_index.borrow().1.is_empty(), "index built for a >1MB non-UTF-8 buffer");
+
+        // Insert "AA" (two 1-byte-decoded chars) DEEP in the file.
+        let at = 1_000_000usize;
+        b.replace_range_bytes(at, 0, b"AA");
+        {
+            let idx = b.dec_index.borrow();
+            assert_eq!(idx.0, b.rope.rev(), "index retagged to the post-edit revision (still usable)");
+            assert!(!idx.1.is_empty(), "index retained across the edit, not retired");
+        }
+        assert_eq!(b.decoded_offset(at), at * 3, "decoded offset before the insert");
+        assert_eq!(b.decoded_offset(at + 2), at * 3 + 2, "just after the 2 inserted bytes");
+        assert_eq!(b.decoded_offset(at + 3), at * 3 + 5, "next CP437 char after the insert");
+        assert_eq!(b.decoded_offset(b.rope.len()), n * 3 + 2, "end of file");
+        assert_eq!(b.rope_offset(at * 3 + 2), at + 2, "rope_offset round-trips through the shifted index");
+
+        // A DELETE deep in the file stays exact too (any checkpoint inside the removed span is dropped).
+        b.replace_range_bytes(at, 2, &[]); // remove the "AA"
+        assert_eq!(b.dec_index.borrow().0, b.rope.rev(), "index retagged after the delete");
+        assert_eq!(b.decoded_offset(b.rope.len()), n * 3, "back to the all-CP437 decoded length");
+        assert_eq!(b.decoded_offset(1_100_000), 1_100_000 * 3, "a deep offset is still exact");
     }
 
     #[test]
