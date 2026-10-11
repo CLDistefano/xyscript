@@ -1145,57 +1145,107 @@ impl Buffer {
     /// the exact bytes). Does **not** touch the cursor/selection — the caller
     /// restores the caret explicitly.
     pub fn replace_range_bytes(&mut self, at: usize, remove: usize, insert: &[u8]) {
-        // Maintain the sparse decoded-offset index ACROSS the edit instead of letting the revision
-        // bump retire it. Retiring it degrades the next `decoded_offset`/`rope_offset` to a cold walk
-        // from byte 0 (O(position)) — which the incremental highlighter's `note_edit` hits on every
-        // keystroke, making deep edits in a big non-UTF-8 file crawl. Shifting the checkpoints keeps
-        // walks bounded to one 256 KB span while editing. The decoded delta needs the removed bytes,
-        // so capture it BEFORE the rope mutates; apply the shift after, tagged with the new revision.
-        // See the `xyscript-nonutf8-offset-perf` note.
-        let d_dec = {
-            let idx = self.dec_index.borrow();
-            if !self.utf8_identity && idx.0 == self.rope.rev() && !idx.1.is_empty() {
-                let end = (at + remove).min(self.rope.len());
-                let ins = self.enc.decode(insert).len() as isize;
-                let rem = self.enc.decode(&self.rope.slice_to_vec(at.min(end), end)).len() as isize;
-                Some(ins - rem)
-            } else {
-                None
-            }
-        };
-        self.rope.delete(at, remove);
-        self.rope.insert(at, insert);
-        if let Some(d_dec) = d_dec {
-            let d_bytes = insert.len() as isize - remove as isize;
-            self.shift_dec_index(at, remove, d_bytes, d_dec);
-        }
+        self.rope_delete(at, remove);
+        self.rope_insert(at, insert);
     }
 
-    /// Translate the sparse [`dec_index`](Buffer::dec_index) across an edit at rope offset `at` that
-    /// removed `remove` bytes and inserted bytes with net byte delta `d_bytes` and net decoded-byte
-    /// delta `d_dec`. Checkpoints before the edit are unchanged, checkpoints inside the removed span
-    /// are dropped, and checkpoints after it translate by the deltas — exact, because the content
-    /// after the edit is byte-identical and just relocated. Retags the index to the post-edit
-    /// revision so it's usable again. Called from [`replace_range_bytes`](Buffer::replace_range_bytes)
-    /// AFTER the rope mutates (so `rope.rev()` is the new revision).
-    fn shift_dec_index(&self, at: usize, remove: usize, d_bytes: isize, d_dec: isize) {
-        let mut idx = self.dec_index.borrow_mut();
-        let end = at + remove; // end of the removed span, in pre-edit rope coords
-        let shifted: Vec<(usize, usize)> = idx
-            .1
-            .iter()
-            .filter_map(|&(r, d)| {
-                if r <= at {
-                    Some((r, d)) // before the edit — fixed
-                } else if r < end {
-                    None // inside the deleted span — gone
-                } else {
-                    Some(((r as isize + d_bytes) as usize, (d as isize + d_dec) as usize)) // after — relocated
-                }
-            })
-            .collect();
-        idx.0 = self.rope.rev();
-        idx.1 = shifted;
+    /// The single INSERT choke point: splice `bytes` in at rope offset `at` AND maintain the non-UTF-8
+    /// offset anchors (`dec_index` + warm `dec_hint`/`rope_hint`) so conversions stay bounded WHILE
+    /// editing. `decoded_offset`/`rope_offset` are checkpoint-relative; a raw rope edit bumps the
+    /// revision, which would retire the index and stale the hints, so the next conversion restarts
+    /// from the nearest surviving anchor (≤256 KB with the index, or byte 0 without). The incremental
+    /// highlighter's `note_edit` runs several conversions at the caret on EVERY keystroke, so on a big
+    /// CP437 file that made deep editing crawl. We translate the checkpoints AND the warm hints past
+    /// the edit and retag them to the new revision. EVERY insert path (typing, paste, `CP`, undo of a
+    /// delete, `replace_range_bytes`) funnels here. See the `xyscript-nonutf8-offset-perf` note.
+    fn rope_insert(&mut self, at: usize, bytes: &[u8]) {
+        if self.utf8_identity || bytes.is_empty() {
+            self.rope.insert(at, bytes); // offsets coincide (or nothing to do) → no anchors to keep
+            return;
+        }
+        let pre_rev = self.rope.rev();
+        let index_live = {
+            let idx = self.dec_index.borrow();
+            idx.0 == pre_rev && !idx.1.is_empty()
+        };
+        let d_dec = self.enc.decode(bytes).len() as isize;
+        self.rope.insert(at, bytes);
+        self.shift_offset_anchors(pre_rev, self.rope.rev(), at, 0, bytes.len() as isize, d_dec, index_live);
+    }
+
+    /// The single DELETE choke point, the counterpart to [`rope_insert`](Buffer::rope_insert): remove
+    /// `len` bytes at `at` and translate the offset anchors across the deletion. The decoded delta
+    /// needs the removed bytes, so it's measured BEFORE the rope mutates.
+    fn rope_delete(&mut self, at: usize, len: usize) {
+        if self.utf8_identity || len == 0 {
+            self.rope.delete(at, len);
+            return;
+        }
+        let pre_rev = self.rope.rev();
+        let index_live = {
+            let idx = self.dec_index.borrow();
+            idx.0 == pre_rev && !idx.1.is_empty()
+        };
+        let end = (at + len).min(self.rope.len());
+        let d_dec = -(self.enc.decode(&self.rope.slice_to_vec(at.min(end), end)).len() as isize);
+        self.rope.delete(at, len);
+        self.shift_offset_anchors(pre_rev, self.rope.rev(), at, len, -(len as isize), d_dec, index_live);
+    }
+
+    /// Translate the non-UTF-8 offset anchors (`dec_hint`, `rope_hint`, and the sparse `dec_index`)
+    /// across an edit at rope offset `at` that removed `remove` bytes with net byte delta `d_bytes`
+    /// and net decoded-byte delta `d_dec`. An anchor before the edit is fixed, one inside the removed
+    /// span is dropped, and one after is relocated by the deltas — exact, because the post-edit
+    /// content is byte-identical and merely shifted. Only anchors tagged with the pre-edit revision
+    /// `pre_rev` are touched; they are retagged to `new_rev` so they're usable again. Called from
+    /// [`replace_range_bytes`](Buffer::replace_range_bytes) AFTER the rope mutates.
+    fn shift_offset_anchors(
+        &self,
+        pre_rev: u64,
+        new_rev: u64,
+        at: usize,
+        remove: usize,
+        d_bytes: isize,
+        d_dec: isize,
+        index_live: bool,
+    ) {
+        let end = at + remove; // removed span end, in pre-edit rope coords
+        // Relocate a rope position across the edit → `Some((new_rope, decoded_shift))`, or `None` if
+        // it fell inside the deleted span.
+        let relocate = |rope_pos: usize| -> Option<(usize, isize)> {
+            if rope_pos <= at {
+                Some((rope_pos, 0)) // before the edit — fixed
+            } else if rope_pos < end {
+                None // inside the deletion — gone
+            } else {
+                Some(((rope_pos as isize + d_bytes) as usize, d_dec)) // after — relocated
+            }
+        };
+        // dec_hint = (rev, rope, dec); rope_hint = (rev, dec, rope). Shift only a hint still valid for
+        // the pre-edit content — otherwise leave it (it's already stale / unset and will be ignored).
+        let (hr, hrope, hdec) = self.dec_hint.get();
+        if hr == pre_rev {
+            self.dec_hint.set(match relocate(hrope) {
+                Some((nr, ds)) => (new_rev, nr, (hdec as isize + ds) as usize),
+                None => NO_HINT,
+            });
+        }
+        let (rr, rdec, rrope) = self.rope_hint.get();
+        if rr == pre_rev {
+            self.rope_hint.set(match relocate(rrope) {
+                Some((nr, ds)) => (new_rev, (rdec as isize + ds) as usize, nr),
+                None => NO_HINT,
+            });
+        }
+        if index_live {
+            let mut idx = self.dec_index.borrow_mut();
+            idx.1 = idx
+                .1
+                .iter()
+                .filter_map(|&(r, d)| relocate(r).map(|(nr, ds)| (nr, (d as isize + ds) as usize)))
+                .collect();
+            idx.0 = new_rev;
+        }
     }
 
     /// Switch the encoding view. The bytes — the document's truth — are untouched;
@@ -1434,7 +1484,7 @@ impl Buffer {
         }
         let ins = self.enc.encode(s);
         let n = ins.len();
-        self.rope.insert(self.cursor, &ins);
+        self.rope_insert(self.cursor, &ins);
         self.cursor += n;
         if keep {
             self.shift_selection_for_insert(at, n);
@@ -1452,7 +1502,7 @@ impl Buffer {
         let at = self.cursor;
         let ins = self.enc.encode(s);
         let n = ins.len();
-        self.rope.insert(self.cursor, &ins);
+        self.rope_insert(self.cursor, &ins);
         self.cursor += n;
         self.shift_selection_for_insert(at, n);
         n
@@ -1478,7 +1528,7 @@ impl Buffer {
             // (== `prev_boundary`).
             let prev = self.step_left(self.cursor);
             let m = self.cursor - prev;
-            self.rope.delete(prev, m);
+            self.rope_delete(prev, m);
             self.cursor = prev;
             if keep {
                 self.shift_selection_for_delete(prev, m);
@@ -1505,7 +1555,7 @@ impl Buffer {
             // deleting at a line end strips only the `\r`, leaving a bare `\n` (a mixed-ending file).
             let next = self.step_right(self.cursor);
             let m = next - self.cursor;
-            self.rope.delete(self.cursor, m);
+            self.rope_delete(self.cursor, m);
             if keep {
                 self.shift_selection_for_delete(self.cursor, m);
             }
@@ -1563,7 +1613,7 @@ impl Buffer {
     /// Delete the current selection. Returns `true` if anything was deleted.
     pub fn delete_selection(&mut self) -> bool {
         if let Some((a, b)) = self.selection_range() {
-            self.rope.delete(a, b - a);
+            self.rope_delete(a, b - a);
             self.cursor = a;
             self.anchor = None;
             self.defining = false;
@@ -3613,6 +3663,40 @@ mod tests {
         assert_eq!(b.dec_index.borrow().0, b.rope.rev(), "index retagged after the delete");
         assert_eq!(b.decoded_offset(b.rope.len()), n * 3, "back to the all-CP437 decoded length");
         assert_eq!(b.decoded_offset(1_100_000), 1_100_000 * 3, "a deep offset is still exact");
+
+        // The WARM hint must also survive an edit (this is what makes typing-at-caret O(screen), not
+        // O(index-span)). Warm the hint at a deep spot, edit just after it, then convert right there:
+        // the result must stay exact — proving the shifted hint is used correctly, not corrupting.
+        let warm = 900_000usize;
+        assert_eq!(b.decoded_offset(warm), warm * 3); // sets dec_hint at (warm, warm*3) for this rev
+        assert_eq!(b.dec_hint.get().0, b.rope.rev(), "hint is warm for the current rev");
+        b.replace_range_bytes(warm + 30, 0, b"X"); // tiny insert just past the warm hint
+        assert_eq!(b.dec_hint.get().0, b.rope.rev(), "hint retagged across the edit (still usable)");
+        assert_eq!(b.decoded_offset(warm), warm * 3, "offset before the edit unchanged");
+        assert_eq!(b.decoded_offset(warm + 30), (warm + 30) * 3, "offset at the insert point (all CP437 before)");
+        assert_eq!(b.decoded_offset(warm + 31), (warm + 30) * 3 + 1, "offset just after the inserted 'X'");
+    }
+
+    #[test]
+    fn dec_index_stays_live_through_typing() {
+        // The real bug: TYPING and BACKSPACE go through `insert`/`delete_back` (→ rope_insert/rope_delete),
+        // NOT `replace_range_bytes`. If those don't maintain the index it goes stale on the first
+        // keystroke and never recovers (idx.0 != rope.rev()), degrading every later conversion to a cold
+        // walk. Assert the index stays tagged live across both, deep in a >1MB CP437 buffer.
+        let n = 1_200_000usize;
+        let mut b = Buffer::from_bytes(vec![0xCB; n], cp437()); // '╦' = 3 UTF-8 bytes
+        assert!(!b.dec_index.borrow().1.is_empty());
+        b.set_caret(900_000, None); // deep in the file
+
+        b.insert("x"); // the typing path
+        assert_eq!(b.dec_index.borrow().0, b.rope.rev(), "index LIVE after a typed insert");
+        assert_eq!(b.cursor(), 900_001);
+        assert_eq!(b.decoded_offset(b.cursor()), 900_000 * 3 + 1, "offset at caret exact after typing");
+
+        b.delete_back(); // the backspace path
+        assert_eq!(b.dec_index.borrow().0, b.rope.rev(), "index LIVE after a backspace");
+        assert_eq!(b.cursor(), 900_000);
+        assert_eq!(b.decoded_offset(b.rope.len()), n * 3, "decoded length back to all-CP437");
     }
 
     #[test]
