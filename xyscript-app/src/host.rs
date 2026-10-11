@@ -3940,6 +3940,30 @@ impl AppHost {
             })
             .collect()
     }
+
+    /// URL spans within the rope range `[rope_lo, rope_hi)` only — the windowed form the GUI calls
+    /// each frame so URL highlighting never scans the whole buffer (a 263 MB file took ~25 s to scan
+    /// whole on the first paint). Rope offsets, trimmed like [`url_highlights`](Host::url_highlights).
+    pub fn url_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        if !self.url_highlight {
+            return Vec::new();
+        }
+        let pattern = match Pattern::build(URL_PATTERN, false, false, true, false) {
+            Ok(p) => p,
+            Err(_) => return Vec::new(),
+        };
+        let buffer = self.active_doc().buffer();
+        const CAP: usize = 5000;
+        buffer
+            .find_all_in_range(&pattern, rope_lo, rope_hi, CAP)
+            .into_iter()
+            .filter_map(|(s, e)| {
+                let raw = buffer.slice_bytes(s, e);
+                let trimmed = trim_url_len(&raw);
+                (trimmed > 0).then_some((s, s + trimmed))
+            })
+            .collect()
+    }
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
@@ -4986,6 +5010,24 @@ impl AppHost {
         // literal. Either way, whole document; `find_all` yields nothing for an invalid regex.
         let regex = doc.emph_is_regex();
         self.find_all(&phrase, false, !regex, regex, false)
+    }
+
+    /// EMPH spans within the rope range `[rope_lo, rope_hi)` only — the windowed form (same whole-file
+    /// hazard as [`url_highlights_in`](Host::url_highlights_in): a standing EMPH on a huge file would
+    /// otherwise re-scan the whole buffer on the first paint and every edit).
+    pub fn emph_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        let doc = &self.docs[self.active];
+        let phrase = match doc.emph() {
+            Some(p) if !p.is_empty() => p.to_string(),
+            _ => return Vec::new(),
+        };
+        let regex = doc.emph_is_regex();
+        let pattern = match Pattern::build(&phrase, false, !regex, regex, false) {
+            Ok(p) => p,
+            Err(_) => return Vec::new(),
+        };
+        const CAP: usize = 5000;
+        doc.buffer().find_all_in_range(&pattern, rope_lo, rope_hi, CAP)
     }
     /// The bracket match at the active document's caret, for the GUI to highlight. Returns
     /// [`BalMatch::None`] when `BALPAIRS` is off (so the GUI can skip all bracket work in one check).

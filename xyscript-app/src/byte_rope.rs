@@ -240,6 +240,29 @@ impl ByteRope {
         out
     }
 
+    /// Sum a per-byte table over the byte range `[start, end)`, streamed across chunks with no
+    /// allocation. For a SINGLE-byte encoding, feeding a byte→decoded-UTF-8-length table gives the
+    /// decoded length of the range without decoding it into a `String` — the fast path
+    /// [`Buffer::build_dec_index`](crate::text::Buffer) uses on big non-UTF-8 files.
+    pub fn sum_table_range(&self, start: usize, end: usize, tbl: &[usize; 256]) -> usize {
+        let mut sum = 0usize;
+        let mut cum = 0usize;
+        for c in &self.chunks {
+            let cstart = cum;
+            let cend = cum + c.data.len();
+            cum = cend;
+            if cend <= start || cstart >= end {
+                continue;
+            }
+            let a = start.max(cstart) - cstart;
+            let b = end.min(cend) - cstart;
+            for &byte in &c.data[a..b] {
+                sum += tbl[byte as usize];
+            }
+        }
+        sum
+    }
+
     /// Materialize all bytes (the byte-exact save path / whole-document decode).
     pub fn to_vec(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.len);

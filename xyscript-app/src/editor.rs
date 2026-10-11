@@ -318,6 +318,11 @@ impl Editor {
     pub fn url_highlights(&self) -> Vec<(usize, usize)> {
         self.host.url_highlights()
     }
+    /// URL spans within the visible rope range only (the per-frame windowed form — never scans the
+    /// whole buffer). See [`Host::url_highlights_in`](crate::host::Host::url_highlights_in).
+    pub fn url_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        self.host.url_highlights_in(rope_lo, rope_hi)
+    }
     /// The EFFECTIVE URL-highlight text colour (`URLFGCOLOR`, default link blue).
     pub fn url_fg_color(&self) -> (u8, u8, u8) {
         self.host.url_fg_color()
@@ -877,6 +882,11 @@ impl Editor {
     /// Rope-offset spans of every occurrence of the active document's `EMPH` phrase (case-insensitive).
     pub fn emph_highlights(&self) -> Vec<(usize, usize)> {
         self.host.emph_highlights()
+    }
+    /// EMPH spans within the visible rope range only (the per-frame windowed form). See
+    /// [`Host::emph_highlights_in`](crate::host::Host::emph_highlights_in).
+    pub fn emph_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        self.host.emph_highlights_in(rope_lo, rope_hi)
     }
     /// Spelling-issue underline colour (`SPELLCOLOR`).
     pub fn spell_color(&self) -> (u8, u8, u8) {

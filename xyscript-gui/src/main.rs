@@ -2269,6 +2269,9 @@ struct DocWindow {
     /// window-local offset to/from a global rope offset walks only the window (~a page), never
     /// from a document-global checkpoint (which is O(file) at the bottom of a big non-UTF-8 doc).
     start_byte: usize,
+    /// Rope byte offset just past the window's last line (the window is `[start_byte, end_byte)`).
+    /// Lets the per-frame URL/EMPH highlight scan bound itself to the visible rope span.
+    end_byte: usize,
     start_decoded: usize,
     decoded_len: usize,
     at_eof: bool,
@@ -2705,14 +2708,18 @@ struct GuiApp {
     /// highlight (unlike `find_highlights`, which the Find dialog drives). Painted behind + over the
     /// glyphs with `EMPHBGCOLOR`/`EMPHFGCOLOR`. Cached via `emph_key`.
     emph_highlights: Vec<(usize, usize)>,
-    /// Cache key for `emph_highlights` = (active index, doc revision, phrase, is-regex). `None` = no
-    /// emphasis. The regex flag is in the key so toggling `EMPH/R` on the same phrase re-searches.
-    emph_key: Option<(usize, u64, String, bool)>,
+    /// Cache key for `emph_highlights` = (active index, doc revision, phrase, is-regex, window rope
+    /// range). `None` = no emphasis. The regex flag is in the key so toggling `EMPH/R` on the same
+    /// phrase re-searches; the window range is in the key because the scan is windowed (recompute on
+    /// scroll), which keeps it off the whole-buffer path on a huge file.
+    emph_key: Option<(usize, u64, String, bool, usize, usize)>,
     /// `URLHIGHLIGHT` match spans (rope offsets) in the active doc — coloured with `URLFGCOLOR`/
     /// `URLBGCOLOR` and hit-tested for Ctrl+click-to-open. Cached via `url_key`.
     url_highlights: Vec<(usize, usize)>,
-    /// Cache key for `url_highlights` = (active index, doc revision). `None` = off / not yet computed.
-    url_key: Option<(usize, u64)>,
+    /// Cache key for `url_highlights` = (active index, doc revision, window rope range). `None` = off
+    /// / not yet computed. The window range is in the key because the scan is windowed (recompute on
+    /// scroll) — which is what keeps URL highlighting off the whole-buffer path on a huge file.
+    url_key: Option<(usize, u64, usize, usize)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -3499,6 +3506,7 @@ impl GuiApp {
         DocWindow {
             start_line,
             start_byte,
+            end_byte,
             start_decoded,
             decoded_len: decoded.len(),
             at_eof: end_line >= total,
@@ -3512,8 +3520,14 @@ impl GuiApp {
     /// (tokens overlapping the window, rebased to window-local display offsets). Cheap —
     /// the window is only a few dozen `BufferLine`s, not the whole document.
     fn build_window_cosmic(&mut self, w: usize, h: usize, win: &DocWindow) -> Buffer {
-        self.refresh_emph(); // keep the active tab's EMPH match set current before drawing
-        self.refresh_url(); // and the URLHIGHLIGHT match set
+        // URL/EMPH highlight sets only ever draw what's on screen, so scan only the visible rope span
+        // (padded, so a match straddling an edge isn't clipped). This is what keeps URLHIGHLIGHT /
+        // EMPH off the whole-buffer path — scanning a 263 MB doc whole took ~25 s on the first paint.
+        const HL_SCAN_PAD: usize = 64 * 1024;
+        let rope_lo = win.start_byte.saturating_sub(HL_SCAN_PAD);
+        let rope_hi = win.end_byte.saturating_add(HL_SCAN_PAD); // find_all_in_range clamps to len
+        self.refresh_emph(rope_lo, rope_hi); // keep the active tab's EMPH match set current before drawing
+        self.refresh_url(rope_lo, rope_hi); // and the URLHIGHLIGHT match set
         let lo = win.start_decoded;
         let hi = win.start_decoded + win.decoded_len;
         // Highlight only what's on screen: make sure the token cache covers this window (a windowed,
@@ -4173,7 +4187,7 @@ impl GuiApp {
     /// off-screen contribute nothing; a match wrapped across visual rows yields one rect per row.
     /// Refresh the `EMPH` emphasis match set for the active document (cached on `emph_key`, so we
     /// only re-search when the active tab, its text, or its phrase changes). Cheap when unchanged.
-    fn refresh_emph(&mut self) {
+    fn refresh_emph(&mut self, rope_lo: usize, rope_hi: usize) {
         // While a GREP streams into the active results tab, its buffer grows every frame, so its
         // revision changes every frame — recomputing the whole-buffer emphasis (a `find_all` scan)
         // each frame would be O(buffer) per frame, i.e. O(n²) over the search, which is what made a
@@ -4187,12 +4201,18 @@ impl GuiApp {
         let ai = self.editor.active_index();
         let phrase = self.editor.active_emph();
         let regex = self.editor.active_emph_is_regex();
-        let key = phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone(), regex));
+        let key =
+            phrase.as_ref().map(|p| (ai, self.editor.doc_revision(), p.clone(), regex, rope_lo, rope_hi));
         if key != self.emph_key {
-            // Delegate to the host's `emph_highlights` so the match semantics (case-insensitive,
-            // whole-word) live in ONE place — never re-spell the flags here.
-            self.emph_highlights =
-                if phrase.is_some() { self.editor.emph_highlights() } else { Vec::new() };
+            // Delegate to the host's windowed `emph_highlights_in` so the match semantics
+            // (case-insensitive, whole-word) live in ONE place — never re-spell the flags here. The
+            // scan is bounded to the visible rope span so a standing EMPH on a huge file can't re-scan
+            // the whole buffer each frame.
+            self.emph_highlights = if phrase.is_some() {
+                self.editor.emph_highlights_in(rope_lo, rope_hi)
+            } else {
+                Vec::new()
+            };
             self.emph_key = key;
         }
     }
@@ -4200,7 +4220,7 @@ impl GuiApp {
     /// Refresh the `URLHIGHLIGHT` match set for the active document (cached on `url_key`, like
     /// `refresh_emph`). Empty when highlighting is off. Suppressed while a GREP streams (same O(n²)
     /// concern as EMPH).
-    fn refresh_url(&mut self) {
+    fn refresh_url(&mut self, rope_lo: usize, rope_hi: usize) {
         if !self.editor.url_highlight()
             || (self.editor.grep_in_progress() && self.editor.active_is_grep_listing())
         {
@@ -4208,9 +4228,11 @@ impl GuiApp {
             self.url_key = None;
             return;
         }
-        let key = Some((self.editor.active_index(), self.editor.doc_revision()));
+        let key = Some((self.editor.active_index(), self.editor.doc_revision(), rope_lo, rope_hi));
         if key != self.url_key {
-            self.url_highlights = self.editor.url_highlights();
+            // Windowed scan: only the visible rope span, so even a 263 MB doc colours its on-screen
+            // URLs in microseconds instead of scanning the whole buffer (which took ~25 s).
+            self.url_highlights = self.editor.url_highlights_in(rope_lo, rope_hi);
             self.url_key = key;
         }
     }

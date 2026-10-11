@@ -834,8 +834,23 @@ impl Buffer {
         }
     }
 
+    /// A 256-entry table mapping each raw byte to the length (in UTF-8 bytes) of its decoded form,
+    /// for a SINGLE-byte encoding. `None` when the decoded length isn't a per-byte sum — a
+    /// UTF-8-identity view (no index needed) or a lossy UTF-8 view of invalid bytes (multi-byte).
+    /// Lets decoded-length math become an allocation-free table sum over the rope's bytes.
+    fn dec_len_table(&self) -> Option<[usize; 256]> {
+        if self.enc.name() == "utf-8" {
+            return None;
+        }
+        let mut t = [0usize; 256];
+        for (b, slot) in t.iter_mut().enumerate() {
+            *slot = self.enc.decode(&[b as u8]).len();
+        }
+        Some(t)
+    }
+
     /// Build the sparse decoded-offset index for the current content, but only for a LARGE
-    /// non-identity buffer (a UTF-8-identity view needs none — offsets coincide). One decode pass
+    /// non-identity buffer (a UTF-8-identity view needs none — offsets coincide). One pass
     /// over the rope in [`DEC_INDEX_SPACING`] steps; called on a whole-buffer load / encoding
     /// switch, so the O(file) cost lands at open, not on the first scroll to the bottom.
     fn build_dec_index(&self) {
@@ -845,12 +860,21 @@ impl Buffer {
         }
         let rev = self.rope.rev();
         let len = self.rope.len();
+        // Every non-UTF-8 encoding in the catalog is single-byte, so a byte's decoded UTF-8 length
+        // is independent of its neighbours: precompute a 256-entry byte→length table once and SUM it
+        // over each span (streamed across rope chunks, no per-chunk `String`) instead of decoding.
+        // A lossy UTF-8 *view* (enc is utf-8 but the bytes aren't valid) is multi-byte, so it keeps
+        // the decode path.
+        let tbl = self.dec_len_table();
         let mut cps: Vec<(usize, usize)> = Vec::with_capacity(len / DEC_INDEX_SPACING + 2);
         let (mut rope_pos, mut dec_pos) = (0usize, 0usize);
         cps.push((0, 0));
         while rope_pos < len {
             let next = self.snap_boundary((rope_pos + DEC_INDEX_SPACING).min(len)).max(rope_pos + 1).min(len);
-            dec_pos += self.enc.decode(&self.rope.slice_to_vec(rope_pos, next)).len();
+            dec_pos += match &tbl {
+                Some(t) => self.rope.sum_table_range(rope_pos, next, t),
+                None => self.enc.decode(&self.rope.slice_to_vec(rope_pos, next)).len(),
+            };
             rope_pos = next;
             cps.push((rope_pos, dec_pos));
         }
@@ -2724,6 +2748,35 @@ impl Buffer {
             .map(|(s, e)| (self.rope_offset(s), self.rope_offset(e)))
             .collect()
     }
+
+    /// Like [`find_all`](Buffer::find_all) but decodes and scans ONLY the rope range `[rope_lo,
+    /// rope_hi)` — never materializing the whole decoded buffer. For a huge file this is the
+    /// difference between scanning a screenful and scanning hundreds of megabytes: the per-frame
+    /// URL/EMPH highlight sets only ever need what's on screen, so they pass the visible window
+    /// (padded for matches straddling an edge). Returned spans are absolute ROPE offsets.
+    pub fn find_all_in_range(
+        &self,
+        pattern: &Pattern,
+        rope_lo: usize,
+        rope_hi: usize,
+        cap: usize,
+    ) -> Vec<(usize, usize)> {
+        let rope_lo = rope_lo.min(self.rope.len());
+        let rope_hi = rope_hi.min(self.rope.len());
+        if rope_hi <= rope_lo {
+            return Vec::new();
+        }
+        // Decode just the slice (a few screenfuls at most). Match offsets are byte offsets INTO this
+        // decoded slice; `d_lo` rebases them to absolute decoded offsets, then `rope_offset` (bounded
+        // by the `dec_index`) maps each of the handful of on-screen matches back to a rope offset.
+        let slice = self.enc.decode(&self.rope.slice_to_vec(rope_lo, rope_hi));
+        let d_lo = self.decoded_offset(rope_lo);
+        pattern
+            .find_all_bounded(&slice, 0, cap)
+            .into_iter()
+            .map(|(s, e)| (self.rope_offset(d_lo + s), self.rope_offset(d_lo + e)))
+            .collect()
+    }
 }
 
 /// Options for literal matching.
@@ -3316,6 +3369,37 @@ mod tests {
     }
 
     #[test]
+    fn find_all_in_range_matches_whole_buffer_scan_within_range() {
+        // The windowed scan (URL/EMPH per-frame path) must agree with the whole-buffer `find_all`
+        // restricted to the same range — WITHOUT ever decoding the whole buffer. Uses a big CP437
+        // doc (rope≠decoded offsets) with sparse matches, the exact shape that made whole-buffer
+        // URL highlighting take ~25 s on a 263 MB file.
+        let mut bytes = Vec::with_capacity(2_000_000);
+        for i in 0..2_000_000u32 {
+            // Mostly CP437 '╦' (0xCB → 3 UTF-8 bytes) so rope and decoded offsets diverge; sprinkle
+            // the literal "FOO" every ~100 KB as the sparse match.
+            if i % 100_000 == 0 {
+                bytes.extend_from_slice(b"FOO");
+            } else {
+                bytes.push(0xCB);
+            }
+        }
+        let b = Buffer::from_bytes(bytes, cp437());
+        let pat = Pattern::build("FOO", false, false, false, false).unwrap();
+        // A window deep in the file: everything in [lo, hi) must match the whole-buffer scan filtered
+        // to that rope range, and nothing outside it should leak in.
+        let (lo, hi) = (900_000usize, 1_300_000usize);
+        let whole = b.find_all(&pat, 0, b.rope.len(), 100_000);
+        let expected: Vec<_> = whole.into_iter().filter(|&(s, _)| s >= lo && s < hi).collect();
+        let windowed = b.find_all_in_range(&pat, lo, hi, 100_000);
+        assert_eq!(windowed, expected, "windowed scan == whole-buffer scan within the range");
+        assert!(!windowed.is_empty(), "the window should contain at least one match");
+        // An empty / inverted range yields nothing and never panics.
+        assert!(b.find_all_in_range(&pat, 500, 500, 100).is_empty());
+        assert!(b.find_all_in_range(&pat, 999, 10, 100).is_empty());
+    }
+
+    #[test]
     fn encoding_offset_conversions_are_direction_independent() {
         // CP437 high bytes decode to multi-byte UTF-8, so rope and decoded offsets
         // diverge. The checkpoint memo must give identical results whether queried
@@ -3631,6 +3715,30 @@ mod tests {
         assert_eq!(b.decoded_offset(n), n * 3);
         assert_eq!(b.decoded_offset(0), 0);
         assert_eq!(b.decoded_offset(n), n * 3);
+    }
+
+    #[test]
+    fn dec_len_table_sum_equals_full_decode() {
+        // The table-driven index path must agree with a naive whole-buffer decode for a MIXED
+        // single-byte buffer — bytes that decode to 1-, 2- and 3-byte UTF-8 all present.
+        let mut bytes = Vec::with_capacity(1_300_000);
+        // 0x41 'A' → 1 byte, 0xE9 → 'é' (2 bytes) in win-1252, 0xCB → '╦'-ish, mix via cp437.
+        for i in 0..1_300_000u32 {
+            bytes.push(match i % 3 {
+                0 => 0x41, // 'A' (1 UTF-8 byte)
+                1 => 0xC7, // CP437 'Ç' (2 UTF-8 bytes)
+                _ => 0xCB, // CP437 '╦' (3 UTF-8 bytes)
+            });
+        }
+        let b = Buffer::from_bytes(bytes.clone(), cp437());
+        assert!(!b.dec_index.borrow().1.is_empty(), "index built for the >1MB mixed buffer");
+        let ground_truth = cp437().decode(&bytes).len();
+        assert_eq!(b.decoded_len(), ground_truth, "table-summed decoded length == full decode");
+        // And the index checkpoints themselves land on the true decoded offset at each boundary.
+        let idx = b.dec_index.borrow();
+        for &(rope, dec) in idx.1.iter() {
+            assert_eq!(cp437().decode(&bytes[..rope]).len(), dec, "checkpoint at rope {rope}");
+        }
     }
 
     #[test]
