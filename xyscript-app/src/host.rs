@@ -2424,6 +2424,10 @@ pub struct AppHost {
     /// DISTRIBUTES piece i → caret i; otherwise paste falls back to `clipboard` at every caret. Any
     /// single-caret copy or external (OS) clipboard change collapses this to one piece.
     clipboard_pieces: Vec<String>,
+    /// MDA styling of the last in-app single-caret CUT/COPY, carried so a subsequent PASTE restores it
+    /// (`None` when the copy was unstyled, multi-caret, or the clipboard was set externally). Dropped
+    /// whenever the clipboard text is replaced from any source that can't carry styling.
+    clipboard_style: Option<crate::document::StyleClip>,
     /// Deletion buffer (`$XB`) — a single-slot "kill register" filled by `RD` and
     /// pasted by `UD`; kept until the next `RD` (distinct from the OS clipboard).
     deletion_buffer: String,
@@ -3161,6 +3165,7 @@ impl AppHost {
             explicit_focus: false,
             clipboard: String::new(),
             clipboard_pieces: Vec::new(),
+            clipboard_style: None,
             hex_clipboard: Vec::new(),
             deletion_buffer: String::new(),
             last_selection: String::new(),
@@ -7171,6 +7176,7 @@ impl AppHost {
             ClipKind::Set(text) => {
                 self.clipboard = text;
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                self.clipboard_style = None; // programmatic text carries no styling
                 String::new() // programmatic (`CLIP`) — no status message
             }
             ClipKind::Copy => {
@@ -7179,12 +7185,14 @@ impl AppHost {
                     // single caret
                     self.clipboard = selection.ok_or_else(need_selection)?;
                     self.clipboard_pieces = vec![self.clipboard.clone()];
+                    self.clipboard_style = self.active().selection_style_clip();
                 } else {
                     if pieces.iter().all(|p| p.is_empty()) {
                         return Err(need_selection());
                     }
                     self.clipboard = pieces.join(self.active().line_ending().as_str());
                     self.clipboard_pieces = pieces;
+                    self.clipboard_style = None; // per-piece multi-caret styling not carried yet
                 }
                 format!("copied {}", chars(self.clipboard.chars().count()))
             }
@@ -7193,6 +7201,7 @@ impl AppHost {
                 if pieces.is_empty() {
                     self.clipboard = selection.ok_or_else(need_selection)?;
                     self.clipboard_pieces = vec![self.clipboard.clone()];
+                    self.clipboard_style = self.active().selection_style_clip(); // BEFORE the delete
                     self.active().delete_selection();
                 } else {
                     if pieces.iter().all(|p| p.is_empty()) {
@@ -7200,6 +7209,7 @@ impl AppHost {
                     }
                     self.clipboard = pieces.join(self.active().line_ending().as_str());
                     self.clipboard_pieces = pieces;
+                    self.clipboard_style = None;
                     self.active().delete_all_selections();
                 }
                 format!("cut {}", chars(self.clipboard.chars().count()))
@@ -7207,18 +7217,21 @@ impl AppHost {
             ClipKind::Append => {
                 self.clipboard.push_str(&selection.ok_or_else(need_selection)?);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                self.clipboard_style = None; // the concatenation no longer maps to one styled run
                 "appended the selection to the clipboard".to_string()
             }
             ClipKind::Prepend => {
                 self.clipboard =
                     format!("{}{}", selection.ok_or_else(need_selection)?, self.clipboard);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
+                self.clipboard_style = None;
                 "prepended the selection to the clipboard".to_string()
             }
             ClipKind::Paste => {
                 let n = self.active().caret_count();
                 // Distribute one stored piece per caret only on an exact count match (and >1 piece);
-                // otherwise paste the joined clipboard at every caret (the ordinary path).
+                // otherwise paste the joined clipboard at every caret (the ordinary path, which carries
+                // any single-run MDA styling the copy/cut captured).
                 let pasted = if self.clipboard_pieces.len() >= 2 && self.clipboard_pieces.len() == n {
                     let pieces = self.clipboard_pieces.clone();
                     let count = pieces.iter().map(|p| p.chars().count()).sum::<usize>();
@@ -7227,7 +7240,8 @@ impl AppHost {
                 } else {
                     let text = self.clipboard.clone();
                     let count = text.chars().count();
-                    self.active().insert(&text);
+                    let style = self.clipboard_style.clone();
+                    self.active().insert_styled(&text, style.as_ref());
                     count
                 };
                 format!("pasted {}", chars(pasted))
@@ -7269,6 +7283,7 @@ impl AppHost {
     pub fn set_clipboard(&mut self, text: String) {
         self.clipboard = text;
         self.clipboard_pieces = vec![self.clipboard.clone()];
+        self.clipboard_style = None; // external text carries no MDA styling
     }
 
     /// Begin an interactive change-verify walk: find the first match (cursor→end,
@@ -12691,11 +12706,7 @@ impl Host for AppHost {
                 let sel = self.docs[self.active].selection_range();
                 let msg = match sel {
                     Some((s, e)) => {
-                        if background {
-                            self.docs[self.active].set_bg_color_span(s, e, rgb);
-                        } else {
-                            self.docs[self.active].set_color_span(s, e, rgb);
-                        }
+                        self.docs[self.active].style_selection_color(s, e, background, rgb);
                         let layer = if background { "background" } else { "foreground" };
                         match rgb {
                             Some((r, g, b)) => format!("selection {layer}: {r} {g} {b}"),
@@ -12731,7 +12742,7 @@ impl Host for AppHost {
                 let sel = self.docs[self.active].selection_range();
                 let msg = match sel {
                     Some((s, e)) => {
-                        self.docs[self.active].set_attr_span(s, e, attrs);
+                        self.docs[self.active].style_selection_attr(s, e, attrs);
                         match attrs {
                             Some(a) => format!("selection: {}", mda_attr_names(a)),
                             None => "selection attributes cleared".to_string(),
@@ -12758,15 +12769,9 @@ impl Host for AppHost {
                     return Err(XplError::trappable(format!("MDALL: no matches for {:?}", find.pattern)));
                 }
                 let n = spans.len();
-                if background {
-                    self.docs[self.active].set_bg_color_spans_bulk(&spans, rgb);
-                } else {
-                    self.docs[self.active].set_color_spans_bulk(&spans, rgb);
-                    // Bare `MDALL off` mirrors bare `MDA`: clearing the foreground clears attributes too.
-                    if rgb.is_none() {
-                        self.docs[self.active].set_attr_spans_bulk(&spans, None);
-                    }
-                }
+                // Bare `MDALL off` mirrors bare `MDA`: clearing the foreground clears attributes too.
+                let also_clear_attr = !background && rgb.is_none();
+                self.docs[self.active].style_all_color(&spans, background, rgb, also_clear_attr);
                 let layer = if background { "background" } else { "foreground" };
                 let capped = if n >= Self::MDALL_CAP { " (capped)" } else { "" };
                 return Ok(Value::str(match rgb {
@@ -12781,7 +12786,7 @@ impl Host for AppHost {
                     return Err(XplError::trappable(format!("MDALL: no matches for {:?}", find.pattern)));
                 }
                 let n = spans.len();
-                self.docs[self.active].set_attr_spans_bulk(&spans, attrs);
+                self.docs[self.active].style_all_attr(&spans, attrs);
                 let capped = if n >= Self::MDALL_CAP { " (capped)" } else { "" };
                 return Ok(Value::str(match attrs {
                     Some(a) => format!("MDALL {}: {n} match(es){capped}", mda_attr_names(a)),

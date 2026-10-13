@@ -144,15 +144,55 @@ fn normalize_newlines(bytes: &[u8], target: LineEnding) -> Vec<u8> {
     }
 }
 
+/// MDA styling (fg/bg/attr spans) over an edit's affected region, REBASED so offset 0 is the op's
+/// `at`. Carried in the undo [`Op`] so styling survives the edit instead of being torn out
+/// irrecoverably: `removed_spans` is what the edit removed (restored when undo re-inserts `removed`),
+/// `inserted_spans` is styling to (re)apply over `inserted` on the forward edit and on redo — which is
+/// how `MV`, COPY-to-cursor and a styled paste carry the style along with the relocated text. Empty
+/// for an ordinary edit, so the hot typing path pays nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct SpanSnapshot {
+    fg: Vec<(usize, usize, (u8, u8, u8))>,
+    bg: Vec<(usize, usize, (u8, u8, u8))>,
+    attr: Vec<(usize, usize, u8)>,
+}
+
+impl SpanSnapshot {
+    fn is_empty(&self) -> bool {
+        self.fg.is_empty() && self.bg.is_empty() && self.attr.is_empty()
+    }
+}
+
+/// The MDA styling of a COPIED/CUT selection, held on the clipboard alongside the text so a paste can
+/// restore it. The spans are rebased to the selection start; `byte_len` is the selection's byte length
+/// so a paste into a DIFFERENT encoding (where the re-encoded text has a different byte length, and the
+/// rebased offsets would no longer line up) can decline to apply the styling rather than smear it.
+/// Opaque to the host, which just carries it between copy/cut and paste.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StyleClip {
+    snap: SpanSnapshot,
+    byte_len: usize,
+}
+
+impl StyleClip {
+    /// Whether the clip carries any styling (an unstyled copy produces `None`, not an empty clip).
+    pub fn is_empty(&self) -> bool {
+        self.snap.is_empty()
+    }
+}
+
 /// A primitive change: at byte offset `at`, `removed` bytes were deleted and
 /// `inserted` bytes were added. Inverse: delete `inserted` at `at`, insert
 /// `removed`. Storing raw bytes (not strings) keeps undo byte-exact and is what
-/// multi-byte encodings will need later.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// multi-byte encodings will need later. `removed_spans`/`inserted_spans` carry the MDA styling
+/// across the edit (see [`SpanSnapshot`]).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct Op {
     at: usize,
     removed: Vec<u8>,
     inserted: Vec<u8>,
+    removed_spans: SpanSnapshot,
+    inserted_spans: SpanSnapshot,
 }
 
 /// The kind of edit, for coalescing decisions.
@@ -169,10 +209,23 @@ enum Kind {
     Other,
 }
 
+/// A pure STYLING change (`MDA`/`MDALL`) recorded for undo: over the ROPE region `[lo, hi)`, the MDA
+/// styling went from `before` to `after` (both rebased to `lo`). Undo restores `before`, redo `after`.
+/// Carried on a [`Unit`] with no text ops, so Ctrl+Z reverts an applied style — the piece previously
+/// deferred (styling was off the undo stack entirely).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StyleDelta {
+    lo: usize,
+    hi: usize,
+    before: SpanSnapshot,
+    after: SpanSnapshot,
+}
+
 /// One undo step. Usually ONE op (single caret), but a multi-caret keystroke records N ops that
 /// undo together as this one unit — applied in order, reversed on undo. `secondary_before/after`
 /// snapshot the multi-caret set so undo/redo restore the carets (EMPTY for single-caret edits,
-/// which leave the current caret set untouched).
+/// which leave the current caret set untouched). A unit with no `ops` but a `style` is a pure
+/// styling step (`MDA`/`MDALL`).
 #[derive(Debug, Clone)]
 struct Unit {
     ops: Vec<Op>,
@@ -183,6 +236,8 @@ struct Unit {
     anchor_after: Option<usize>,
     secondary_before: Vec<Caret>,
     secondary_after: Vec<Caret>,
+    /// Set for a pure styling step; `None` for an ordinary text edit.
+    style: Option<StyleDelta>,
 }
 
 /// `MDA` text-attribute bits, stored per span in [`Document::attr_spans`] and persisted in the
@@ -1330,6 +1385,28 @@ impl Document {
         if let Some(a) = at {
             self.set_attr_span(from, to, Some(a));
         }
+        // Make the typed run's styling ride the undo record so REDO restores it (this runs right after
+        // the insert, so the top undo unit's last op IS that insert — or the coalescing run it merged
+        // into). Recompute the op's whole inserted-run styling from the doc each keystroke, so a
+        // coalescing run accumulates correctly.
+        self.stamp_typed_run_styling();
+    }
+
+    /// Snapshot the current styling of the TOP undo unit's last op's inserted run into its
+    /// `inserted_spans`, so a redo of that (typing-mode) insert re-applies the style. A no-op when the
+    /// top isn't a plain insert (nothing to stamp). See [`apply_typing_style`](Self::apply_typing_style).
+    fn stamp_typed_run_styling(&mut self) {
+        let Some((at, len)) = self.undo.last().and_then(|u| u.ops.last()).map(|o| (o.at, o.inserted.len()))
+        else {
+            return;
+        };
+        if len == 0 {
+            return;
+        }
+        let snap = self.capture_spans(at, len);
+        if let Some(op) = self.undo.last_mut().and_then(|u| u.ops.last_mut()) {
+            op.inserted_spans = snap;
+        }
     }
 
     /// Apply (or, with `attrs == None`, CLEAR) `MDA` text attributes over ROPE range `[start, end)`.
@@ -1481,6 +1558,143 @@ impl Document {
         Self::shift_spans(&mut self.bg_spans, at, removed, inserted);
         Self::shift_spans(&mut self.attr_spans, at, removed, inserted);
         Self::shift_marks(&mut self.marks, at, removed, inserted);
+    }
+
+    /// Snapshot the MDA styling over the ROPE range `[at, at+len)` from all three layers, clipped to
+    /// the region and rebased so offset 0 is `at`. The inverse of [`apply_span_snapshot`]. Empty (and
+    /// cheap) when no span overlaps — the usual case, so the typing/undo path pays nothing.
+    fn capture_spans(&self, at: usize, len: usize) -> SpanSnapshot {
+        SpanSnapshot {
+            fg: Self::clip_rebase(&self.color_spans, at, len),
+            bg: Self::clip_rebase(&self.bg_spans, at, len),
+            attr: Self::clip_rebase(&self.attr_spans, at, len),
+        }
+    }
+
+    /// Collect one span list's overlap with `[at, at+len)`, clipped to the region and rebased to 0.
+    fn clip_rebase<P: Copy>(list: &[(usize, usize, P)], at: usize, len: usize) -> Vec<(usize, usize, P)> {
+        if len == 0 {
+            return Vec::new();
+        }
+        let end = at + len;
+        list.iter()
+            .filter_map(|&(s, e, v)| {
+                let (s2, e2) = (s.max(at), e.min(end));
+                (s2 < e2).then_some((s2 - at, e2 - at, v))
+            })
+            .collect()
+    }
+
+    /// Re-apply a captured [`SpanSnapshot`] with offset 0 mapped to the ROPE offset `at`. Used by undo
+    /// (restore the styling an edit removed) and by MV / COPY-to-cursor / styled paste + redo (style
+    /// the inserted text). A no-op for an empty snapshot.
+    fn apply_span_snapshot(&mut self, at: usize, snap: &SpanSnapshot) {
+        if snap.is_empty() {
+            return;
+        }
+        for &(s, e, c) in &snap.fg {
+            Self::set_span_in(&mut self.color_spans, at + s, at + e, Some(c));
+        }
+        for &(s, e, c) in &snap.bg {
+            Self::set_span_in(&mut self.bg_spans, at + s, at + e, Some(c));
+        }
+        for &(s, e, a) in &snap.attr {
+            Self::set_span_in(&mut self.attr_spans, at + s, at + e, Some(a));
+        }
+        self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
+    }
+
+    /// Replace ALL styling in the ROPE region `[lo, hi)` with `snap` (rebased to `lo`) — used by
+    /// undo/redo of a [`StyleDelta`] to put the region back exactly as it was before/after the command.
+    fn restore_style_region(&mut self, lo: usize, hi: usize, snap: &SpanSnapshot) {
+        Self::set_span_in(&mut self.color_spans, lo, hi, None);
+        Self::set_span_in(&mut self.bg_spans, lo, hi, None);
+        Self::set_span_in(&mut self.attr_spans, lo, hi, None);
+        self.apply_span_snapshot(lo, snap); // also bumps gen + styling_dirty
+        self.gen = self.gen.wrapping_add(1);
+        self.styling_dirty = true;
+    }
+
+    /// Finish an undoable styling command: snapshot the region AGAIN (its `after` state) and, if it
+    /// actually changed, push a pure styling [`Unit`] so Ctrl+Z reverts it. `before` is the snapshot
+    /// taken just before the change. Mirrors [`record`](Self::record)'s bookkeeping (redo-clear,
+    /// saved-state tracking) but carries a [`StyleDelta`] instead of text ops. A styling change inside
+    /// an open undo GROUP still records its own step (groups fold TEXT edits; styling is standalone).
+    fn record_style_change(&mut self, lo: usize, hi: usize, before: SpanSnapshot) {
+        let after = self.capture_spans(lo, hi);
+        if before == after {
+            return; // a no-op command (e.g. clearing an already-unstyled run) adds no undo step
+        }
+        self.caret_ring.clear();
+        self.coalescing = false;
+        if let Some(sl) = self.saved_len {
+            if sl > self.undo.len() {
+                self.saved_len = None;
+            }
+        }
+        self.redo.clear();
+        let (cursor, anchor) = (self.buffer.cursor(), self.buffer.anchor());
+        self.undo.push(Unit {
+            ops: Vec::new(),
+            kind: Kind::Other,
+            cursor_before: cursor,
+            anchor_before: anchor,
+            cursor_after: cursor,
+            anchor_after: anchor,
+            secondary_before: Vec::new(),
+            secondary_after: Vec::new(),
+            style: Some(StyleDelta { lo, hi, before, after }),
+        });
+    }
+
+    /// `MDA`/`MDA/B` colour on a selection, as an UNDOABLE step. `rgb == None` clears the layer.
+    pub fn style_selection_color(&mut self, lo: usize, hi: usize, background: bool, rgb: Option<(u8, u8, u8)>) {
+        let before = self.capture_spans(lo, hi);
+        if background {
+            self.set_bg_color_span(lo, hi, rgb);
+        } else {
+            self.set_color_span(lo, hi, rgb);
+        }
+        self.record_style_change(lo, hi, before);
+    }
+
+    /// `MDA <attr>` on a selection, as an UNDOABLE step. `attrs == None` (or `NM`) clears attributes.
+    pub fn style_selection_attr(&mut self, lo: usize, hi: usize, attrs: Option<u8>) {
+        let before = self.capture_spans(lo, hi);
+        self.set_attr_span(lo, hi, attrs);
+        self.record_style_change(lo, hi, before);
+    }
+
+    /// `MDALL` colour over many match `ranges`, as ONE undoable step (the whole-document styling is
+    /// snapshotted before/after — matches are scattered, so the region is the whole buffer).
+    /// `also_clear_attr` mirrors bare `MDALL off` clearing attributes alongside the foreground.
+    pub fn style_all_color(
+        &mut self,
+        ranges: &[(usize, usize)],
+        background: bool,
+        rgb: Option<(u8, u8, u8)>,
+        also_clear_attr: bool,
+    ) {
+        let (lo, hi) = (0, self.buffer.len());
+        let before = self.capture_spans(lo, hi);
+        if background {
+            self.set_bg_color_spans_bulk(ranges, rgb);
+        } else {
+            self.set_color_spans_bulk(ranges, rgb);
+            if also_clear_attr {
+                self.set_attr_spans_bulk(ranges, None);
+            }
+        }
+        self.record_style_change(lo, hi, before);
+    }
+
+    /// `MDALL <attr>` over many match `ranges`, as ONE undoable step.
+    pub fn style_all_attr(&mut self, ranges: &[(usize, usize)], attrs: Option<u8>) {
+        let (lo, hi) = (0, self.buffer.len());
+        let before = self.capture_spans(lo, hi);
+        self.set_attr_spans_bulk(ranges, attrs);
+        self.record_style_change(lo, hi, before);
     }
 
     /// Edit-follow the bookmark points (live anchors), so a mark stays on its text as you type/delete.
@@ -1896,7 +2110,7 @@ impl Document {
         // The bytes actually inserted are everything from `at` to the new cursor
         // (the view encoded `s`; an unrepresentable char became `?`).
         let inserted = self.buffer.slice_bytes(at, ca);
-        self.record(Op { at, removed, inserted }, kind, cb, ab, ca, aa);
+        self.record(Op { at, removed, inserted, ..Default::default() }, kind, cb, ab, ca, aa);
     }
 
     /// Insert a newline in this document's line-ending style (`\n` or `\r\n`) — what the
@@ -1930,7 +2144,7 @@ impl Document {
             let removed = self.buffer.slice_bytes(a, b);
             self.buffer.delete_back();
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-            self.record(Op { at: a, removed, inserted: Vec::new() }, Kind::Other, cb, ab, ca, aa);
+            self.record(Op { at: a, removed, inserted: Vec::new(), ..Default::default() }, Kind::Other, cb, ab, ca, aa);
             return;
         }
         if cb > 0 {
@@ -1938,7 +2152,7 @@ impl Document {
             self.buffer.delete_back();
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
             self.record(
-                Op { at: cb - 1, removed, inserted: Vec::new() },
+                Op { at: cb - 1, removed, inserted: Vec::new(), ..Default::default() },
                 Kind::DeleteBack,
                 cb,
                 ab,
@@ -1964,7 +2178,7 @@ impl Document {
             let removed = self.buffer.slice_bytes(a, b);
             self.buffer.delete_forward();
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-            self.record(Op { at: a, removed, inserted: Vec::new() }, Kind::Other, cb, ab, ca, aa);
+            self.record(Op { at: a, removed, inserted: Vec::new(), ..Default::default() }, Kind::Other, cb, ab, ca, aa);
             return;
         }
         if cb < self.buffer.len() {
@@ -1972,7 +2186,7 @@ impl Document {
             self.buffer.delete_forward();
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
             self.record(
-                Op { at: cb, removed, inserted: Vec::new() },
+                Op { at: cb, removed, inserted: Vec::new(), ..Default::default() },
                 Kind::DeleteForward,
                 cb,
                 ab,
@@ -2026,7 +2240,7 @@ impl Document {
             self.buffer.set_caret(a + inserted.len(), None);
         }
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at: a, removed, inserted }, Kind::Other, cb, ab, ca, aa);
+        self.record(Op { at: a, removed, inserted, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
     }
 
     /// `CP` — copy the selected text to the cursor position. Inserts a copy at the
@@ -2041,6 +2255,8 @@ impl Document {
             return false;
         }
         let s = self.buffer.slice(a, b);
+        // The copied block's MDA styling (rebased to the block start) rides the copy to the drop point.
+        let moved_spans = self.capture_spans(a, b - a);
         let at = self.buffer.cursor();
         // Undo must restore the ORIGINAL SELECTION, not (drop point, block anchor) — a DEFINED block
         // persists while the caret roams to the drop point. See `move_selection_to_cursor`.
@@ -2048,8 +2264,61 @@ impl Document {
         let n = self.buffer.insert_keeping_selection(&s);
         let inserted = self.buffer.slice_bytes(at, at + n);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at, removed: Vec::new(), inserted }, Kind::Other, cb, ab, ca, aa);
+        self.record(
+            Op { at, removed: Vec::new(), inserted, inserted_spans: moved_spans, ..Default::default() },
+            Kind::Other,
+            cb,
+            ab,
+            ca,
+            aa,
+        );
         true
+    }
+
+    /// Snapshot the MDA styling over the current selection for the clipboard (`CUT`/`COPY`), rebased to
+    /// the selection start. `None` when there's no selection or it carries no styling (so an ordinary
+    /// unstyled copy clears any stale clip). Call it BEFORE a cut's delete.
+    pub fn selection_style_clip(&self) -> Option<StyleClip> {
+        let (a, b) = self.buffer.selection_span()?;
+        if a >= b {
+            return None;
+        }
+        let snap = self.capture_spans(a, b - a);
+        (!snap.is_empty()).then_some(StyleClip { snap, byte_len: b - a })
+    }
+
+    /// `PASTE` carrying clipboard styling: like [`insert`](Self::insert) but, when `clip` lines up with
+    /// the text actually inserted (same byte length — the destination encoding produced the same bytes),
+    /// the pasted text keeps the copied MDA styling. A mismatch (different encoding) or an empty/absent
+    /// clip pastes plain. Single-caret only; the multi-caret distribute path stays plain for now.
+    pub fn insert_styled(&mut self, s: &str, clip: Option<&StyleClip>) {
+        let clip = match clip {
+            Some(c) if !c.is_empty() && !self.buffer.is_multi() => c,
+            _ => return self.insert(s),
+        };
+        if s.is_empty() {
+            return;
+        }
+        self.buffer.commit_define();
+        self.buffer.snap_caret();
+        let keep = self.buffer.is_persistent() && self.buffer.has_selection();
+        let replace = !keep && self.buffer.has_selection() && self.buffer.sel_head().is_none();
+        let (cb, ab) = (self.buffer.cursor(), self.buffer.anchor());
+        let (at, removed) = if replace {
+            let (a, b) = self.buffer.selection_span().unwrap();
+            (a, self.buffer.slice_bytes(a, b))
+        } else {
+            (cb, Vec::new())
+        };
+        self.buffer.insert(s);
+        let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
+        let inserted = self.buffer.slice_bytes(at, ca);
+        // Apply styling only when the re-encoded paste has the same byte length as the source — else the
+        // rebased span offsets wouldn't line up (a cross-encoding paste), so paste plain.
+        let inserted_spans =
+            if inserted.len() == clip.byte_len { clip.snap.clone() } else { SpanSnapshot::default() };
+        // A styled paste is always its own undo unit (`Kind::Other`) — never coalesced.
+        self.record(Op { at, removed, inserted, inserted_spans, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
     }
 
     /// `MV` — move the selected text to the cursor position (delete from origin,
@@ -2071,6 +2340,10 @@ impl Document {
         }
         let removed = self.buffer.slice_bytes(a, b);
         let s = self.buffer.slice(a, b);
+        // Capture the moved block's MDA styling BEFORE the delete tears it out, rebased to the block
+        // start, so it can ride the text to the drop point (and the delete op's auto-captured
+        // `removed_spans` restores it at the origin on undo).
+        let moved_spans = self.capture_spans(a, b - a);
         let dest = if c > b { c - (b - a) } else { c };
 
         // Unit 1: delete the selection from its origin, caret to the destination.
@@ -2083,7 +2356,7 @@ impl Document {
         self.buffer.set_caret(dest, None);
         let (ca1, aa1) = (self.buffer.cursor(), self.buffer.anchor());
         self.record(
-            Op { at: a, removed, inserted: Vec::new() },
+            Op { at: a, removed, inserted: Vec::new(), ..Default::default() },
             Kind::Other,
             cb1,
             ab1,
@@ -2098,7 +2371,14 @@ impl Document {
         self.buffer.replace_range_bytes(dest, 0, &ins);
         self.buffer.set_caret(dest + len, Some(dest));
         let (ca2, aa2) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at: dest, removed: Vec::new(), inserted: ins }, Kind::Other, cb2, ab2, ca2, aa2);
+        self.record(
+            Op { at: dest, removed: Vec::new(), inserted: ins, inserted_spans: moved_spans, ..Default::default() },
+            Kind::Other,
+            cb2,
+            ab2,
+            ca2,
+            aa2,
+        );
         true
     }
 
@@ -2248,7 +2528,7 @@ impl Document {
             let new_e = (e as isize + inserted.len() as isize - (rle - rfs) as isize) as usize;
             self.buffer.set_caret(new_e, Some(s)); // re-select the modified region as the scope
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-            self.record(Op { at: rfs, removed, inserted }, Kind::Other, cb, ab, ca, aa);
+            self.record(Op { at: rfs, removed, inserted, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
             return count;
         }
 
@@ -2280,7 +2560,7 @@ impl Document {
         };
         self.buffer.set_caret(restored.min(self.buffer.len()), None);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at: rfs, removed, inserted }, Kind::Other, cb, ab, ca, aa);
+        self.record(Op { at: rfs, removed, inserted, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
         count
     }
 
@@ -2296,7 +2576,7 @@ impl Document {
         let new_end = start + inserted.len();
         self.buffer.set_caret(new_end, None);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at: start, removed, inserted }, Kind::Other, cb, ab, ca, aa);
+        self.record(Op { at: start, removed, inserted, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
         new_end
     }
 
@@ -2321,7 +2601,7 @@ impl Document {
         let new_caret = caret.min(self.buffer.len());
         self.buffer.set_caret(new_caret, None);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at, removed, inserted: insert.to_vec() }, Kind::Other, cb, ab, ca, aa);
+        self.record(Op { at, removed, inserted: insert.to_vec(), ..Default::default() }, Kind::Other, cb, ab, ca, aa);
     }
 
     /// Set the hi or lo nibble of the byte at the caret to `val` (`0x0..=0xF`) — hex-column entry.
@@ -2489,7 +2769,7 @@ impl Document {
         self.buffer.replace_range_bytes(start, end - start, &inserted);
         self.buffer.set_caret(new_cursor, new_anchor);
         let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-        self.record(Op { at: start, removed, inserted }, Kind::Other, cb, ab, ca, aa);
+        self.record(Op { at: start, removed, inserted, ..Default::default() }, Kind::Other, cb, ab, ca, aa);
         self.refresh_highlights();
     }
 
@@ -2887,7 +3167,7 @@ impl Document {
             let removed = self.buffer.slice_bytes(a, b);
             self.buffer.delete_selection();
             let (ca, aa) = (self.buffer.cursor(), self.buffer.anchor());
-            self.record(Op { at: a, removed, inserted: Vec::new() }, Kind::Other, cb, ab, ca, aa);
+            self.record(Op { at: a, removed, inserted: Vec::new(), ..Default::default() }, Kind::Other, cb, ab, ca, aa);
             true
         } else {
             false
@@ -3149,6 +3429,7 @@ impl Document {
             anchor_after,
             secondary_before,
             secondary_after,
+            style: None,
         });
         self.group_active = true;
     }
@@ -3168,8 +3449,15 @@ impl Document {
             for op in unit.ops.iter().rev() {
                 let remove = op.inserted.len();
                 self.buffer.replace_range_bytes(op.at, remove, &op.removed);
-                // Colour spans follow the undo edit (it removes `inserted`, restores `removed`).
+                // Colour spans follow the undo edit (it removes `inserted`, restores `removed`), then
+                // the styling the original edit tore out of `removed` is restored over the gap.
                 self.adjust_color_spans(op.at, remove, op.removed.len());
+                self.apply_span_snapshot(op.at, &op.removed_spans);
+            }
+            // A pure styling step (MDA/MDALL): restore the region's PRE-command styling.
+            if let Some(sd) = &unit.style {
+                let (lo, hi, before) = (sd.lo, sd.hi, sd.before.clone());
+                self.restore_style_region(lo, hi, &before);
             }
             self.buffer.set_caret(unit.cursor_before, unit.anchor_before);
             // Restore the whole caret SET only for a genuine multi-caret edit (one that recorded a
@@ -3196,8 +3484,15 @@ impl Document {
             for op in unit.ops.iter() {
                 let remove = op.removed.len();
                 self.buffer.replace_range_bytes(op.at, remove, &op.inserted);
-                // Colour spans follow the redo edit (removes `removed`, re-inserts `inserted`).
+                // Colour spans follow the redo edit (removes `removed`, re-inserts `inserted`), then
+                // the inserted text's styling is re-applied (MV/COPY/paste carry it here).
                 self.adjust_color_spans(op.at, remove, op.inserted.len());
+                self.apply_span_snapshot(op.at, &op.inserted_spans);
+            }
+            // A pure styling step (MDA/MDALL): re-apply the region's POST-command styling.
+            if let Some(sd) = &unit.style {
+                let (lo, hi, after) = (sd.lo, sd.hi, sd.after.clone());
+                self.restore_style_region(lo, hi, &after);
             }
             self.buffer.set_caret(unit.cursor_after, unit.anchor_after);
             if !unit.secondary_after.is_empty() {
@@ -3249,7 +3544,7 @@ impl Document {
             let removed = self.buffer.slice_bytes(at, end);
             self.buffer.replace_range_bytes(at, end - at, &ins);
             let after = at + ins.len();
-            ops.push(Op { at, removed, inserted: ins.clone() });
+            ops.push(Op { at, removed, inserted: ins.clone(), ..Default::default() });
             shift += ins.len() as i64 - (end - at) as i64;
             if is_primary {
                 new_primary = after;
@@ -3305,7 +3600,7 @@ impl Document {
             if end > at {
                 let removed = self.buffer.slice_bytes(at, end);
                 self.buffer.replace_range_bytes(at, end - at, &[]);
-                ops.push(Op { at, removed, inserted: Vec::new() });
+                ops.push(Op { at, removed, inserted: Vec::new(), ..Default::default() });
                 shift -= (end - at) as i64;
             }
             // The caret lands at the span start (BOF/EOF no-ops leave it where it was).
@@ -3361,7 +3656,7 @@ impl Document {
             let removed = self.buffer.slice_bytes(at, end);
             self.buffer.replace_range_bytes(at, end - at, &ins);
             let after = at + ins.len();
-            ops.push(Op { at, removed, inserted: ins.clone() });
+            ops.push(Op { at, removed, inserted: ins.clone(), ..Default::default() });
             shift += ins.len() as i64 - (end - at) as i64;
             if is_primary {
                 new_primary = after;
@@ -3409,7 +3704,7 @@ impl Document {
             if end > at {
                 let removed = self.buffer.slice_bytes(at, end);
                 self.buffer.replace_range_bytes(at, end - at, &[]);
-                ops.push(Op { at, removed, inserted: Vec::new() });
+                ops.push(Op { at, removed, inserted: Vec::new(), ..Default::default() });
                 shift -= (end - at) as i64;
             }
             if is_primary {
@@ -3433,7 +3728,7 @@ impl Document {
     #[allow(clippy::too_many_arguments)]
     fn record_multi(
         &mut self,
-        ops: Vec<Op>,
+        mut ops: Vec<Op>,
         kind: Kind,
         cursor_before: usize,
         anchor_before: Option<usize>,
@@ -3443,9 +3738,12 @@ impl Document {
         secondary_after: Vec<Caret>,
     ) {
         self.caret_ring.clear(); // any edit invalidates the transient CARETPOP snapshots
-        // Colour spans + lint underlines follow each op, in application order.
-        for op in &ops {
+        // Colour spans + lint underlines follow each op, in application order; snapshot the styling
+        // each op removes (for undo) before the shift tears it out, and style any inserted text.
+        for op in &mut ops {
+            op.removed_spans = self.capture_spans(op.at, op.removed.len());
             self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());
+            self.apply_span_snapshot(op.at, &op.inserted_spans);
             self.adjust_lints(op.at, op.removed.len(), op.inserted.len());
         }
         if let Some(sl) = self.saved_len {
@@ -3496,6 +3794,7 @@ impl Document {
             anchor_after,
             secondary_before,
             secondary_after,
+            style: None,
         });
         self.refresh_highlights();
     }
@@ -3505,7 +3804,7 @@ impl Document {
     #[allow(clippy::too_many_arguments)]
     fn record(
         &mut self,
-        op: Op,
+        mut op: Op,
         kind: Kind,
         cursor_before: usize,
         anchor_before: Option<usize>,
@@ -3516,9 +3815,16 @@ impl Document {
         // the incremental highlighter re-tokenizes just the changed line(s) from these.
         let (edit_at, edit_ins) = (op.at, op.inserted.len());
         self.caret_ring.clear(); // any edit invalidates the transient CARETPOP snapshots
+        // Snapshot the MDA styling the edit is about to tear out, BEFORE `adjust_color_spans` destroys
+        // it, so undo can restore it. An edit touching no styled text snapshots nothing (free).
+        op.removed_spans = self.capture_spans(op.at, op.removed.len());
+        let op_has_spans = !op.removed_spans.is_empty() || !op.inserted_spans.is_empty();
         // Transient FGCOLOR-on-selection spans follow the edit (typing before a coloured word
         // shifts its colour along, an edit inside grows/shrinks it, a deletion over it clips it).
         self.adjust_color_spans(op.at, op.removed.len(), op.inserted.len());
+        // Style the inserted text (MV / COPY-to-cursor / styled paste carry a non-empty snapshot);
+        // a no-op for ordinary typing.
+        self.apply_span_snapshot(op.at, &op.inserted_spans);
         // Live spelling/grammar underlines follow the edit too — otherwise every keystroke redraws
         // them one byte out of place until the async re-check lands (a screen-wide flicker).
         self.adjust_lints(op.at, op.removed.len(), op.inserted.len());
@@ -3540,9 +3846,14 @@ impl Document {
             return;
         }
 
-        if self.coalescing && kind != Kind::Other {
+        // An op that REMOVED styled text never coalesces — merging two ops would have to merge their
+        // `removed_spans` too (fiddly, and rare). A clean undo boundary there is fine. `inserted_spans`
+        // (typing-mode styling, stamped onto the op AFTER this runs) is fine to coalesce: a styled typed
+        // run still undoes as one unit, and `stamp_typed_run_styling` recomputes the whole run each key.
+        let blocks_coalesce = !op.removed_spans.is_empty();
+        if self.coalescing && kind != Kind::Other && !blocks_coalesce {
             if let Some(last) = self.undo.last_mut() {
-                if last.kind == kind && coalesces(last, &op) {
+                if last.kind == kind && last.ops.last().is_some_and(|o| o.removed_spans.is_empty()) && coalesces(last, &op) {
                     merge(last, op, cursor_after, anchor_after);
                     self.note_edit(edit_at, edit_ins);
                     return;
@@ -3559,8 +3870,9 @@ impl Document {
             anchor_after,
             secondary_before: Vec::new(),
             secondary_after: Vec::new(),
+            style: None,
         });
-        self.coalescing = kind != Kind::Other;
+        self.coalescing = kind != Kind::Other && !op_has_spans;
         self.note_edit(edit_at, edit_ins);
     }
 }
@@ -4704,5 +5016,102 @@ mod tests {
         d.undo();
         d.undo();
         assert_eq!(d.buffer().text(), "café\r\nx");
+    }
+
+    #[test]
+    fn mda_fg_span_survives_delete_then_undo_then_redo() {
+        // The reported bug: styling an edit DELETES is torn out irrecoverably. It must now ride the
+        // undo record — undo restores both the text and the styling, redo tears it out again.
+        let mut d = Document::from_str("hello world");
+        d.set_color_span(0, 5, Some((255, 0, 0))); // "hello" red
+        assert_eq!(d.color_spans_decoded(), vec![(0, 5, (255, 0, 0))]);
+        d.replace_span(0, 6, ""); // delete "hello " — the styled span is gone from the doc
+        assert_eq!(d.buffer().text(), "world");
+        assert!(d.color_spans_decoded().is_empty(), "delete tore the styling out");
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "hello world");
+        assert_eq!(d.color_spans_decoded(), vec![(0, 5, (255, 0, 0))], "undo restored the styling");
+        assert!(d.redo());
+        assert_eq!(d.buffer().text(), "world");
+        assert!(d.color_spans_decoded().is_empty(), "redo tore it out again");
+    }
+
+    #[test]
+    fn mda_bg_and_attr_spans_also_restore_on_undo() {
+        let mut d = Document::from_str("ABCDEFGHIJ");
+        d.set_bg_color_span(2, 8, Some((10, 20, 30)));
+        d.set_attr_span(2, 8, Some(ATTR_BOLD));
+        d.replace_span(0, 10, ""); // wipe the whole line
+        assert!(d.bg_color_spans_decoded().is_empty());
+        assert!(d.attr_spans_decoded().is_empty());
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "ABCDEFGHIJ");
+        assert_eq!(d.bg_color_spans_decoded(), vec![(2, 8, (10, 20, 30))], "bg restored");
+        assert_eq!(d.attr_spans_decoded(), vec![(2, 8, ATTR_BOLD)], "attrs restored");
+    }
+
+    #[test]
+    fn mda_partial_delete_inside_a_span_restores_exactly_on_undo() {
+        // Deleting a chunk from the MIDDLE of a styled run shrinks the span; undo must rebuild the
+        // original span, not leave a hole.
+        let mut d = Document::from_str("ABCDEFGHIJ");
+        d.set_color_span(2, 8, Some((7, 7, 7))); // "CDEFGH"
+        d.replace_span(4, 6, ""); // delete "EF" from inside the span
+        assert_eq!(d.buffer().text(), "ABCDGHIJ");
+        assert_eq!(d.color_spans_decoded(), vec![(2, 6, (7, 7, 7))], "span shrank with the edit");
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "ABCDEFGHIJ");
+        assert_eq!(d.color_spans_decoded(), vec![(2, 8, (7, 7, 7))], "span rebuilt exactly");
+    }
+
+    #[test]
+    fn mda_span_rides_a_move_and_undo_restores_the_origin() {
+        let mut d = Document::from_str("hello world");
+        d.set_color_span(0, 5, Some((1, 2, 3))); // "hello"
+        // Define "hello" as a block, roam the caret to EOF, then MV it there.
+        d.move_doc_start(false);
+        d.define_toggle();
+        for _ in 0..5 {
+            d.move_right(false);
+        }
+        d.define_close();
+        d.move_doc_end(false);
+        assert!(d.move_selection_to_cursor());
+        assert_eq!(d.buffer().text(), " worldhello");
+        assert_eq!(d.color_spans_decoded(), vec![(6, 11, (1, 2, 3))], "styling rode the move");
+        // MV = two units (delete + insert): undo both → origin restored AND styled.
+        assert!(d.undo());
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "hello world");
+        assert_eq!(d.color_spans_decoded(), vec![(0, 5, (1, 2, 3))], "origin styling restored");
+        // Redo both → back at the drop point, styled.
+        assert!(d.redo());
+        assert!(d.redo());
+        assert_eq!(d.buffer().text(), " worldhello");
+        assert_eq!(d.color_spans_decoded(), vec![(6, 11, (1, 2, 3))], "redo re-applies at the drop point");
+    }
+
+    #[test]
+    fn mda_span_is_copied_with_copy_to_cursor() {
+        let mut d = Document::from_str("hello world");
+        d.set_color_span(0, 5, Some((9, 9, 9)));
+        d.move_doc_start(false);
+        d.define_toggle();
+        for _ in 0..5 {
+            d.move_right(false);
+        }
+        d.define_close();
+        d.move_doc_end(false);
+        assert!(d.copy_selection_to_cursor());
+        assert_eq!(d.buffer().text(), "hello worldhello");
+        // Source keeps its style; the copy at the end is styled too.
+        assert_eq!(
+            d.color_spans_decoded(),
+            vec![(0, 5, (9, 9, 9)), (11, 16, (9, 9, 9))],
+            "both the source and the copy are styled"
+        );
+        assert!(d.undo());
+        assert_eq!(d.buffer().text(), "hello world");
+        assert_eq!(d.color_spans_decoded(), vec![(0, 5, (9, 9, 9))], "copy removed, source intact");
     }
 }

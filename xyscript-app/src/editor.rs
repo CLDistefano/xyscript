@@ -4514,6 +4514,103 @@ mod tests {
     }
 
     #[test]
+    fn mda_styling_survives_clipboard_cut_and_paste() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW"); // select "hello"
+        e.run_command("MDA 255 0 0"); // style it red
+        assert_eq!(e.color_spans(), vec![(0, 5, (255, 0, 0))]);
+        // CUT the styled word, then paste it at end of file — the styling must ride the clipboard.
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("CUT");
+        assert_eq!(e.document().text(), " world");
+        assert!(e.color_spans().is_empty(), "cut removed the styled text");
+        e.run_command("BF");
+        e.run_command("PASTE");
+        assert_eq!(e.document().text(), " worldhello");
+        assert_eq!(e.color_spans(), vec![(6, 11, (255, 0, 0))], "paste restored the styling");
+        // A plain copy of UNSTYLED text clears the carried style, so the next paste is plain.
+        e.run_command("TF");
+        e.run_command("DW"); // select " world"? actually the leading space+word
+        e.run_command("COPY");
+        e.run_command("BF");
+        e.run_command("PASTE");
+        // Whatever got copied, its paste carries no new colour spans beyond the one already present.
+        assert_eq!(e.color_spans(), vec![(6, 11, (255, 0, 0))], "unstyled copy/paste adds no styling");
+    }
+
+    #[test]
+    fn mda_command_is_undoable() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW"); // select "hello"
+        e.run_command("MDA 255 0 0"); // style it red
+        assert_eq!(e.color_spans(), vec![(0, 5, (255, 0, 0))]);
+        e.run_command("UNDO");
+        assert!(e.color_spans().is_empty(), "UNDO reverts the MDA styling command");
+        e.run_command("REDO");
+        assert_eq!(e.color_spans(), vec![(0, 5, (255, 0, 0))], "REDO re-applies it");
+        // The text itself was not touched by the styling command.
+        assert_eq!(e.document().text(), "hello world");
+    }
+
+    #[test]
+    fn mda_undo_restores_a_prior_style_not_just_clears() {
+        // Re-styling a run then undoing must return it to the EARLIER colour, not to unstyled.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA 255 0 0"); // red
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA 0 255 0"); // green over the same run
+        assert_eq!(e.color_spans(), vec![(0, 5, (0, 255, 0))]);
+        e.run_command("UNDO");
+        assert_eq!(e.color_spans(), vec![(0, 5, (255, 0, 0))], "undo returns to the red, not to unstyled");
+        e.run_command("UNDO");
+        assert!(e.color_spans().is_empty(), "second undo removes the red too");
+    }
+
+    #[test]
+    fn mda_typing_mode_styling_survives_undo_and_redo() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command("MDA 255 0 0"); // arm fg-red typing mode (no selection)
+        e.insert_str("red"); // interactive TypeText path; styled + coalesced into one unit
+        assert_eq!(e.color_spans(), vec![(0, 3, (255, 0, 0))]);
+        e.run_command("UNDO");
+        assert_eq!(e.document().text(), "", "undo removed the typed run");
+        assert!(e.color_spans().is_empty(), "and its styling");
+        e.run_command("REDO");
+        assert_eq!(e.document().text(), "red");
+        assert_eq!(
+            e.color_spans(),
+            vec![(0, 3, (255, 0, 0))],
+            "redo restored the typing-mode styling, not just the text"
+        );
+    }
+
+    #[test]
+    fn mdall_command_is_undoable() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.run_command(r#"INSERT "cat Cat dog cat""#);
+        e.run_command("MDALL 255 0 0 cat"); // every whole-word cat/Cat
+        assert_eq!(e.color_spans().len(), 3);
+        e.run_command("UNDO");
+        assert!(e.color_spans().is_empty(), "one UNDO reverts the whole bulk MDALL");
+        e.run_command("REDO");
+        assert_eq!(e.color_spans().len(), 3, "REDO re-applies all matches");
+    }
+
+    #[test]
     fn mdall_styles_every_match_with_emph_defaults() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
