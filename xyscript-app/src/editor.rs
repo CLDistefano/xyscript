@@ -4579,6 +4579,34 @@ mod tests {
     }
 
     #[test]
+    fn undoing_a_style_change_back_to_saved_clears_the_modified_flag() {
+        // The save-prompt-noise fix: styling is "modified" only when it genuinely differs from the
+        // saved baseline, so undoing an MDA command back to the saved state reports clean again.
+        let base = std::env::temp_dir().join(format!("xyscript-mda-dirty-{:p}", &"md"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let mut e = ed();
+        e.run_command(&format!("CD {}", base.display()));
+        e.run_command("NEW doc.txt");
+        e.run_command(r#"INSERT "hello world""#);
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA 255 0 0"); // red
+        e.run_command("SAVE"); // persists text + the red styling to the sidecar → baseline = red
+        assert!(!e.modified(), "clean right after save");
+        // Recolour → modified; undo back to the saved red → clean; redo → modified again.
+        e.run_command("TF");
+        e.run_command("DW");
+        e.run_command("MDA 0 255 0"); // green
+        assert!(e.modified(), "a new style change marks the doc modified");
+        e.run_command("UNDO");
+        assert!(!e.modified(), "undo back to the saved (red) styling clears the modified flag");
+        e.run_command("REDO");
+        assert!(e.modified(), "redo re-applies the green → modified again");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn mda_typing_mode_styling_survives_undo_and_redo() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;

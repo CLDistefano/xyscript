@@ -392,11 +392,16 @@ pub struct Document {
     /// non-overlapping model as the colour layers; rendered as glyph weight/slant + a drawn underline.
     /// Persisted to the `.xymeta` sidecar's `[attrs]` section. `attr_spans_decoded` for the renderer.
     attr_spans: Vec<(usize, usize, u8)>,
-    /// Set when `MDA`/`FGCOLOR` styling changes but the buffer text hasn't — styling doesn't ride the
-    /// undo stack, so it wouldn't otherwise flip [`is_modified`](Self::is_modified). Making it count
-    /// keeps styling-only changes in autosave and the save-on-close prompt. Cleared by `mark_saved` /
-    /// `load`; NOT set by sidecar restore (a freshly-opened styled doc matches disk).
+    /// A cheap gate: set the moment any `MDA`/`FGCOLOR`/mark styling is TOUCHED, so a never-styled doc
+    /// skips the signature compare in [`is_modified`](Self::is_modified) entirely. Once set it stays set
+    /// for the session; whether the styling is *actually* unsaved is then decided by comparing
+    /// [`styling_sig`](Self::styling_sig) to [`saved_styling_sig`](Self::saved_styling_sig) — which is
+    /// what lets an UNDO back to the saved styling clear the modified flag (the signature matches again).
     styling_dirty: bool,
+    /// Signature of the styling (fg/bg/attr spans + marks) at the last saved / freshly-opened baseline.
+    /// `is_modified` compares the live signature against it, so styling is "modified" only when the
+    /// content genuinely differs — undoing a style change back to the baseline reports clean again.
+    saved_styling_sig: u64,
     /// Canvas font MODE for THIS document (`USEFONT`; session-only, never saved). `Auto` follows the
     /// rule (code/listing/HEX → monospace, prose → proportional when an `EDPROPFAMILY` is set);
     /// `Mono`/`Prop` pin it. The GUI consults it to choose the shaping family.
@@ -539,6 +544,7 @@ impl Clone for Document {
             attr_spans: self.attr_spans.clone(),
             marks: self.marks.clone(),
             styling_dirty: self.styling_dirty,
+            saved_styling_sig: self.saved_styling_sig,
             font_mode: self.font_mode,
             mda_type_fg: self.mda_type_fg,
             mda_type_bg: self.mda_type_bg,
@@ -587,6 +593,7 @@ impl Default for Document {
             attr_spans: Vec::new(),
             marks: Vec::new(),
             styling_dirty: false,
+            saved_styling_sig: 0,
             font_mode: FontMode::Auto,
             mda_type_fg: None,
             mda_type_bg: None,
@@ -832,9 +839,64 @@ impl Document {
 
     // ---- file identity -----------------------------------------------------
 
-    /// Whether the document has unsaved changes (`$MO`).
+    /// Whether the document has unsaved changes (`$MO`). Text changes are tracked by the undo position
+    /// (`saved_len`); styling changes (which also ride the undo stack now, but are persisted to a
+    /// SEPARATE sidecar) are tracked by comparing the live styling signature to the saved baseline —
+    /// so undoing a style change back to the saved state correctly reports the doc clean again.
     pub fn is_modified(&self) -> bool {
-        self.saved_len != Some(self.undo.len()) || self.styling_dirty
+        if self.saved_len != Some(self.undo.len()) {
+            return true;
+        }
+        // `styling_dirty` is only a gate: a doc whose styling was never touched this session skips the
+        // signature compare. Once touched, the signature decides (so an undo-to-baseline clears it).
+        self.styling_dirty && self.styling_sig() != self.saved_styling_sig
+    }
+
+    /// A cheap order-independent-enough signature of the styling persisted to the `.xymeta` sidecar —
+    /// the fg/bg/attr spans and the bookmark points. `is_modified` compares it to the saved baseline.
+    /// (The span lists are kept sorted + coalesced, so equal styling yields an equal signature.)
+    fn styling_sig(&self) -> u64 {
+        // FNV-1a over the three span lists and the marks (offset + context, not the session-only
+        // `moved` flag). Span lists are small in practice; this runs only when `styling_dirty`.
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut mix = |x: u64| {
+            h ^= x;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        };
+        for &(s, e, (r, g, b)) in &self.color_spans {
+            mix(s as u64);
+            mix(e as u64);
+            mix(((r as u64) << 16) | ((g as u64) << 8) | b as u64);
+        }
+        mix(0xF0); // layer separator, so an fg span can't alias a bg span at the same coords
+        for &(s, e, (r, g, b)) in &self.bg_spans {
+            mix(s as u64);
+            mix(e as u64);
+            mix(((r as u64) << 16) | ((g as u64) << 8) | b as u64);
+        }
+        mix(0xA7);
+        for &(s, e, a) in &self.attr_spans {
+            mix(s as u64);
+            mix(e as u64);
+            mix(a as u64);
+        }
+        mix(0x3C);
+        for m in &self.marks {
+            mix(m.off as u64);
+            mix(m.split as u64);
+            for &byte in &m.ctx {
+                mix(byte as u64);
+            }
+            mix(0xFF); // terminator between marks
+        }
+        h
+    }
+
+    /// Record the current styling as the saved baseline (styling now matches disk / the sidecar).
+    /// Clears the `styling_dirty` gate too. Called on save and on a freshly-opened/ restored doc.
+    fn mark_styling_baseline(&mut self) {
+        self.styling_dirty = false;
+        self.saved_styling_sig = self.styling_sig();
     }
 
     /// The backing file path, if any.
@@ -1835,6 +1897,10 @@ impl Document {
         self.bg_spans.sort_by_key(|s| s.0);
         self.attr_spans.sort_by_key(|s| s.0);
         self.gen = self.gen.wrapping_add(1);
+        // This installs the persisted (sidecar/session) styling, which IS the saved baseline — so a
+        // freshly-opened styled doc reports clean. (On a clean open, `set_marks_restored` runs right
+        // after and re-baselines to include the marks too.)
+        self.mark_styling_baseline();
     }
 
     // ---- bookmarks (`MARK*`) -----------------------------------------------
@@ -1946,7 +2012,9 @@ impl Document {
     pub fn set_marks_restored(&mut self, marks: Vec<Bookmark>) {
         self.marks = marks;
         self.reconcile_marks();
-        // Restored marks match what was last SAVED, so this is not an unsaved change.
+        // Restored marks match what was last SAVED, so fold them into the styling baseline (they are
+        // persisted in the same sidecar) — this is not an unsaved change.
+        self.mark_styling_baseline();
     }
 
     /// Verify each mark still sits on its captured context; relocate the ones that don't (see
@@ -2042,7 +2110,9 @@ impl Document {
         self.bg_spans.clear();
         self.attr_spans.clear();
         self.marks.clear(); // old content's bookmarks; restored from the sidecar right after
-        self.styling_dirty = false; // a freshly-loaded doc matches disk (restore-from-sidecar won't set it)
+        // A freshly-loaded doc matches disk; the host restores sidecar styling right after, which
+        // re-baselines. (This empty baseline holds for a file with no sidecar.)
+        self.mark_styling_baseline();
         self.undo.clear();
         self.redo.clear();
         self.coalescing = false;
@@ -2076,7 +2146,7 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.saved_len = Some(self.undo.len());
         self.coalescing = false;
-        self.styling_dirty = false; // styling was just persisted to the sidecar
+        self.mark_styling_baseline(); // styling was just persisted to the sidecar
     }
 
     // ---- recorded mutations ------------------------------------------------
