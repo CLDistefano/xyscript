@@ -9016,6 +9016,39 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn grep_alltabs_searches_open_buffers_and_gj_jumps_to_the_live_tab() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // Three open docs with in-memory (unsaved) content; two contain "cat".
+        e.run_command("NEW one.txt");
+        e.run_command(r#"INSERT "hello cat world""#);
+        e.run_command("NEW two.txt");
+        e.run_command(r#"INSERT "no feline here""#);
+        e.run_command("NEW three.txt");
+        e.run_command(r#"INSERT "another cat sits""#);
+        // Search EVERY open tab (in memory — no files on disk), not the filesystem.
+        e.run_command("GREP cat ALLTABS");
+        assert!(e.active_is_grep_listing(), "a results tab opened");
+        // Pump the streaming worker to completion (the GUI would call this each frame).
+        for _ in 0..2000 {
+            let _ = e.poll_grep();
+            if !e.grep_in_progress() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(!e.grep_in_progress(), "grep finished");
+        let results = e.document().text();
+        assert!(results.contains("one.txt:1:"), "match in one.txt — results:\n{results}");
+        assert!(results.contains("three.txt:1:"), "match in three.txt");
+        assert!(!results.contains("two.txt:"), "two.txt has no 'cat'");
+        // GJ from the first result line switches to the LIVE one.txt tab (its in-memory content).
+        e.run_command("TF");
+        e.run_command("GJ");
+        assert_eq!(e.document().text(), "hello cat world", "GJ landed on the live one.txt buffer");
+    }
+
+    #[test]
     fn run_grep_dispatches_a_search_like_the_dialog() {
         use std::fs;
         use std::sync::atomic::{AtomicU32, Ordering};

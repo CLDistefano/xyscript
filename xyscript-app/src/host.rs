@@ -8225,8 +8225,24 @@ impl AppHost {
         // light up there. (The active buffer IS the results tab — `grep_hit_at_cursor` guaranteed it.)
         let emph = self.docs[self.active].emph().map(str::to_string);
         let emph_regex = self.docs[self.active].emph_is_regex();
-        // Open, or switch to it if already open — either way, no prompt.
-        if let Some(idx) = self.find_open_tab(&path_str) {
+        // An `ALLTABS`/`ALLBUFS` hit carries its SOURCE document id: switch to that exact live tab
+        // (its in-memory content, with any unsaved edits, is what was searched) rather than reopening
+        // a path from disk — which would miss edits and can't resolve an untitled buffer.
+        if let Some(src_id) = hit.source {
+            match self.docs.iter().position(|d| d.id().0 == src_id) {
+                Some(idx) => self.set_active(idx),
+                // The source tab was closed since the search — fall back to the path if it has one.
+                None if !path_str.is_empty() && PathBuf::from(&path_str).is_file() => {
+                    self.open_doc(&path_str, false, false)?;
+                }
+                None => {
+                    return Err(XplError::trappable(format!(
+                        "GJ: the tab for this result ({path_str}) is no longer open"
+                    )))
+                }
+            }
+        } else if let Some(idx) = self.find_open_tab(&path_str) {
+            // Filesystem hit: open, or switch to it if already open — either way, no prompt.
             self.set_active(idx);
         } else {
             self.open_doc(&path_str, false, false)?;
@@ -10538,17 +10554,49 @@ impl Host for AppHost {
                 // Validate the pattern up front so a bad `/R`/`/P` errors immediately — no tab, no thread.
                 crate::grep::compile_check(&pattern, regex, case, whole, perl)
                     .map_err(|e| XplError::trappable(format!("GREP: {e}")))?;
+                // Special filespec `ALLTABS`/`ALLBUFS`: search the in-memory content of every open
+                // document (unsaved edits included) instead of walking the filesystem.
+                let all_tabs = path.as_deref().map(str::trim).is_some_and(|p| {
+                    p.eq_ignore_ascii_case("ALLTABS") || p.eq_ignore_ascii_case("ALLBUFS")
+                });
+                // Snapshot the buffers to search BEFORE opening the results tab (so it can't search
+                // itself). Skip the machinery tabs — GREP/DIR listings, HEX views and the file-less
+                // *Console*/*Shell Output* (they carry a synthetic label) — keeping real text docs:
+                // saved files (even with unsaved edits) and plain untitled buffers.
+                let sources: Vec<crate::grep::GrepSource> = if all_tabs {
+                    self.docs
+                        .iter()
+                        .filter(|d| {
+                            !d.is_grep_listing()
+                                && !d.is_dir_listing()
+                                && !d.hex_view()
+                                && d.label().is_none()
+                        })
+                        .map(|d| crate::grep::GrepSource {
+                            label: d.path().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("Untitled")),
+                            id: d.id().0,
+                            bytes: d.save_bytes(),
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 // Resolve the optional path/glob into a search root + file-name mask, exactly like a
                 // `DIR` filespec: a directory searches it; a glob (`*.rs`) filters `$CWD`; `dir/*.rs`
-                // does both; absent = `$CWD`.
-                let (base, mask) = self.resolve_dir_spec(path.as_deref());
-                let base = lexical_abs(&self.cwd, &base);
-                if !base.is_dir() {
-                    return Err(XplError::trappable(format!(
-                        "GREP: {}: not a directory",
-                        base.display()
-                    )));
-                }
+                // does both; absent = `$CWD`. For `ALLTABS` the base is empty (labels show verbatim).
+                let (base, mask) = if all_tabs {
+                    (PathBuf::new(), None)
+                } else {
+                    let (base, mask) = self.resolve_dir_spec(path.as_deref());
+                    let base = lexical_abs(&self.cwd, &base);
+                    if !base.is_dir() {
+                        return Err(XplError::trappable(format!(
+                            "GREP: {}: not a directory",
+                            base.display()
+                        )));
+                    }
+                    (base, mask)
+                };
                 // Supersede any search already running.
                 if let Some(job) = self.grep_job.take() {
                     job.cancel.store(true, Ordering::Relaxed);
@@ -10582,27 +10630,42 @@ impl Host for AppHost {
                 self.set_focus(Target::Document); // land the caret in the results, ready for GJ
 
                 // Spawn the search on a worker thread; it sends batches of hits over the channel.
+                // Either a filesystem walk (`base`/`mask`) or the snapshotted open buffers (`sources`).
+                enum GrepTarget {
+                    Files { base: PathBuf, mask: Option<String> },
+                    Buffers(Vec<crate::grep::GrepSource>),
+                }
                 let cancel = std::sync::Arc::new(AtomicBool::new(false));
                 let (tx, rx) = std::sync::mpsc::channel::<GrepMsg>();
                 {
-                    let (cancel, base, pat, mask) =
-                        (cancel.clone(), base.clone(), pattern.clone(), mask.clone());
+                    let (cancel, pat) = (cancel.clone(), pattern.clone());
+                    let target = if all_tabs {
+                        GrepTarget::Buffers(sources)
+                    } else {
+                        GrepTarget::Files { base: base.clone(), mask: mask.clone() }
+                    };
                     // Context/blank options (`GREPBEFORE`/`GREPAFTER`/`GREPBLANK`), captured for the worker.
                     let (before, after, blank) = (self.grep_before, self.grep_after, self.grep_blank);
                     std::thread::spawn(move || {
                         let mut batch: Vec<crate::grep::GrepHit> = Vec::new();
-                        let summary = crate::grep::search(
-                            &base, &pat, regex, case, whole, perl, mask.as_deref(), GREP_CAP, before,
-                            after, blank, &cancel,
-                            |hit| {
-                                batch.push(hit);
-                                if batch.len() >= GREP_BATCH {
-                                    // A send error means the receiver is gone (tab closed) → stop.
-                                    return tx.send(GrepMsg::Hits(std::mem::take(&mut batch))).is_ok();
-                                }
-                                true
-                            },
-                        );
+                        let emit = |hit| {
+                            batch.push(hit);
+                            if batch.len() >= GREP_BATCH {
+                                // A send error means the receiver is gone (tab closed) → stop.
+                                return tx.send(GrepMsg::Hits(std::mem::take(&mut batch))).is_ok();
+                            }
+                            true
+                        };
+                        let summary = match target {
+                            GrepTarget::Files { base, mask } => crate::grep::search(
+                                &base, &pat, regex, case, whole, perl, mask.as_deref(), GREP_CAP,
+                                before, after, blank, &cancel, emit,
+                            ),
+                            GrepTarget::Buffers(srcs) => crate::grep::search_slices(
+                                &srcs, &pat, regex, case, whole, perl, GREP_CAP, before, after, blank,
+                                &cancel, emit,
+                            ),
+                        };
                         if !batch.is_empty() {
                             let _ = tx.send(GrepMsg::Hits(batch));
                         }

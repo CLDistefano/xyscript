@@ -1214,6 +1214,12 @@ linear-time. Point it somewhere else with a second argument — a folder (#raw("
 a file-name glob over the current folder (#raw("GREP cat *.rs")), or both at once (#raw("GREP cat src/*.rs")) —
 just like a #raw("DIR") filespec; and quote a pattern with spaces (#raw("GREP \"foo bar\" src")).
 
+To search what you have *open* rather than what's on disk, make the second argument #raw("ALLTABS")
+(or #raw("ALLBUFS")): #raw("GREP cat ALLTABS") scans the live content of every open document — so it
+finds matches in your *unsaved edits* and in untitled buffers, which a disk search can't see. (It
+skips the housekeeping tabs — the results list itself, directory listings, HEX views, the Console.)
+#raw("GJ") on one of those results jumps straight back to the open tab it came from.
+
 Prefer a form to fill in? A bare #raw("GREP") (or #raw("Search ▸ Grep…")) pops the GREP dialog — a
 companion to Find with fields for the pattern and the folder/glob, and the same three options as
 checkboxes — and runs the search into a results tab just the same.

@@ -32,13 +32,34 @@ pub struct GrepHit {
     pub col: usize,
     pub text: String,
     pub kind: HitKind,
+    /// For an `ALLTABS`/`ALLBUFS` search (in-memory open buffers), the raw id of the source document,
+    /// so `GJ` switches to that exact live tab instead of (re)opening `path` from disk — which would
+    /// miss unsaved edits and can't resolve an untitled buffer. `None` for a filesystem search.
+    pub source: Option<u32>,
 }
 
 impl GrepHit {
     /// A blank separator line (`GREPBLANK`), which `GJ` skips.
     fn separator() -> GrepHit {
-        GrepHit { path: PathBuf::new(), line: 0, col: 0, text: String::new(), kind: HitKind::Separator }
+        GrepHit {
+            path: PathBuf::new(),
+            line: 0,
+            col: 0,
+            text: String::new(),
+            kind: HitKind::Separator,
+            source: None,
+        }
     }
+}
+
+/// One open buffer to search for an `ALLTABS`/`ALLBUFS` `GREP`: its display `label` (file path, or an
+/// untitled name), the source document's raw `id` (for `GJ` to switch to the live tab), and a snapshot
+/// of its in-memory bytes (the raw encoded form, exactly what a disk search of the same file would see
+/// — but reflecting unsaved edits). Snapshotted on the main thread, then searched on the worker.
+pub struct GrepSource {
+    pub label: PathBuf,
+    pub id: u32,
+    pub bytes: Vec<u8>,
 }
 
 /// Per-tab state for a `GREP` results listing (analogous to [`crate::document::DirState`]): the search
@@ -256,6 +277,7 @@ fn walk<M: Matcher, F: FnMut(GrepHit) -> bool>(
         let started = emitted > 0; // whether any prior file emitted a line (for cross-file GREPBLANK)
         let mut sink = HitSink {
             path,
+            source: None, // filesystem search — no source document
             matcher,
             emit: &mut emit,
             emitted: &mut emitted,
@@ -268,6 +290,82 @@ fn walk<M: Matcher, F: FnMut(GrepHit) -> bool>(
         };
         // A read error on one file (permissions, vanished mid-walk) isn't fatal — skip it.
         let _ = searcher.search_path(matcher, path, &mut sink);
+    }
+    GrepSummary { files_searched, capped: emitted >= cap }
+}
+
+/// Like [`search`] but over the in-memory bytes of OPEN BUFFERS (`GREP … ALLTABS`/`ALLBUFS`) instead
+/// of a filesystem walk. Each [`GrepSource`] is searched with `search_slice`; hits carry the source
+/// document id so `GJ` jumps to the live tab. Same matcher/searcher pipeline as the file search, so
+/// flags, context lines and blank separators behave identically.
+#[allow(clippy::too_many_arguments)]
+pub fn search_slices<F: FnMut(GrepHit) -> bool>(
+    sources: &[GrepSource],
+    pattern: &str,
+    regex: bool,
+    case: bool,
+    whole: bool,
+    perl: bool,
+    cap: usize,
+    before: usize,
+    after: usize,
+    blank: bool,
+    cancel: &AtomicBool,
+    emit: F,
+) -> Result<GrepSummary, String> {
+    let searcher = SearcherBuilder::new()
+        .line_number(true)
+        .before_context(before)
+        .after_context(after)
+        .binary_detection(BinaryDetection::quit(0))
+        .build();
+    if perl {
+        let matcher = build_fancy(pattern, case, whole)?;
+        Ok(walk_slices(sources, &matcher, searcher, cap, before, after, blank, cancel, emit))
+    } else {
+        let matcher = build_matcher(pattern, regex, case, whole)?;
+        Ok(walk_slices(sources, &matcher, searcher, cap, before, after, blank, cancel, emit))
+    }
+}
+
+/// The per-buffer search shared by both engines for [`search_slices`] (mirrors [`walk`] but over
+/// in-memory [`GrepSource`] slices rather than a directory walk).
+#[allow(clippy::too_many_arguments)]
+fn walk_slices<M: Matcher, F: FnMut(GrepHit) -> bool>(
+    sources: &[GrepSource],
+    matcher: &M,
+    mut searcher: Searcher,
+    cap: usize,
+    before: usize,
+    after: usize,
+    blank: bool,
+    cancel: &AtomicBool,
+    mut emit: F,
+) -> GrepSummary {
+    let mut emitted = 0usize;
+    let mut files_searched = 0usize;
+    let mut stopped = false;
+    for src in sources {
+        if stopped || cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        files_searched += 1;
+        let started = emitted > 0;
+        let mut sink = HitSink {
+            path: &src.label,
+            source: Some(src.id),
+            matcher,
+            emit: &mut emit,
+            emitted: &mut emitted,
+            cap,
+            stopped: &mut stopped,
+            before,
+            after,
+            blank,
+            emitted_any: started,
+        };
+        // An in-memory search can't fail on I/O; a matcher error on one buffer just skips it.
+        let _ = searcher.search_slice(matcher, &src.bytes, &mut sink);
     }
     GrepSummary { files_searched, capped: emitted >= cap }
 }
@@ -303,6 +401,9 @@ pub fn run_grep(
 /// returns `false`.
 struct HitSink<'a, M: Matcher, F: FnMut(GrepHit) -> bool> {
     path: &'a Path,
+    /// Source document id for an `ALLTABS` buffer search (stamped on each hit for `GJ`); `None` for a
+    /// filesystem search.
+    source: Option<u32>,
     matcher: &'a M,
     emit: &'a mut F,
     emitted: &'a mut usize,
@@ -365,6 +466,7 @@ impl<M: Matcher, F: FnMut(GrepHit) -> bool> Sink for HitSink<'_, M, F> {
             col,
             text: Self::line_text(bytes),
             kind: HitKind::Match,
+            source: self.source,
         };
         Ok(self.push(hit))
     }
@@ -386,6 +488,7 @@ impl<M: Matcher, F: FnMut(GrepHit) -> bool> Sink for HitSink<'_, M, F> {
             col: 1,
             text: Self::line_text(ctx.bytes()),
             kind: HitKind::Context,
+            source: self.source,
         };
         Ok(self.push(hit))
     }
@@ -437,6 +540,36 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn search_slices_searches_in_memory_buffers_and_stamps_source_ids() {
+        // `GREP … ALLTABS`: search open buffers in memory (no filesystem), each hit tagged with its
+        // source document id so `GJ` can switch to the live tab.
+        let sources = vec![
+            GrepSource { label: PathBuf::from("one.txt"), id: 7, bytes: b"hello cat world\n".to_vec() },
+            GrepSource { label: PathBuf::from("two.txt"), id: 9, bytes: b"no feline here\n".to_vec() },
+            GrepSource { label: PathBuf::from("Untitled"), id: 42, bytes: b"a\nanother cat sits\n".to_vec() },
+        ];
+        let cancel = AtomicBool::new(false);
+        let mut hits = Vec::new();
+        let summary = search_slices(
+            &sources, "cat", false, false, false, false, 1000, 0, 0, false, &cancel,
+            |h| {
+                hits.push(h);
+                true
+            },
+        )
+        .unwrap();
+        assert_eq!(summary.files_searched, 3, "every source is searched");
+        let matches: Vec<_> = hits.iter().filter(|h| h.kind == HitKind::Match).collect();
+        assert_eq!(matches.len(), 2, "two buffers contain 'cat'");
+        assert_eq!(matches[0].source, Some(7));
+        assert_eq!(matches[0].path, PathBuf::from("one.txt"));
+        assert_eq!(matches[0].line, 1);
+        assert_eq!(matches[0].col, 7); // "hello " then "cat"
+        assert_eq!(matches[1].source, Some(42), "untitled buffer tagged by its doc id");
+        assert_eq!(matches[1].line, 2);
     }
 
     #[test]
