@@ -4249,6 +4249,8 @@ impl GuiApp {
         &self,
         buffer: &Buffer,
         win: &DocWindow,
+        win_lo: usize,
+        win_hi: usize,
         w_px: i32,
         lh_px: i32,
     ) -> Vec<(i32, i32, i32, i32, bool)> {
@@ -4256,7 +4258,109 @@ impl GuiApp {
         if self.find_hl_doc != Some(self.editor.active_doc_id()) {
             return Vec::new();
         }
-        self.highlight_rects(&self.find_highlights, self.find_current, buffer, win, w_px, lh_px)
+        self.highlight_rects(&self.find_highlights, self.find_current, buffer, win, win_lo, win_hi, w_px, lh_px)
+    }
+
+    /// Window-local cosmic cursor for a DECODED offset — pure arithmetic + the window's own `cr`/`nl`
+    /// tables, NO offset walk (unlike [`win_cursor_clamped`], which converts a rope offset). The fast
+    /// path for band rects whose spans are already decoded (syntax tokens, `MDA` spans).
+    fn dec_cursor(win: &DocWindow, dec_off: usize) -> Cursor {
+        let wd = dec_off.saturating_sub(win.start_decoded).min(win.decoded_len);
+        byte_to_cursor(&win.display, decoded_to_display(wd, &win.cr), &win.nl)
+    }
+
+    /// Emit the wrap-aware band rect(s) for a window-local span `[sc, ec)` via `emit(x0,y0,x1,y1)` —
+    /// the shared geometry behind every highlight/band layer (one rect per visual row; first row to the
+    /// margin and last row from the left when the span wraps; hanging-indent `x` baked in).
+    fn emit_span_rects(
+        &self,
+        sc: Cursor,
+        ec: Cursor,
+        buffer: &Buffer,
+        w_px: i32,
+        lh_px: i32,
+        emit: &mut dyn FnMut(i32, i32, i32, i32),
+    ) {
+        let (Some((sxf, syf)), Some((exf, eyf))) =
+            (buffer.cursor_position(&sc), buffer.cursor_position(&ec))
+        else {
+            return;
+        };
+        let (sx, sy, ex, ey) = (sxf as i32, syf as i32, exf as i32, eyf as i32);
+        let lh_f = lh_px as f32;
+        if sy == ey {
+            let o = self.wi_offset_at_y(syf) as i32;
+            if ex > sx {
+                emit(sx + o, sy, ex + o, sy + lh_px);
+            }
+        } else {
+            let o0 = self.wi_offset_at_y(syf) as i32;
+            emit(sx + o0, sy, w_px + o0, sy + lh_px);
+            let (mut y, mut yf) = (sy + lh_px, syf + lh_f);
+            while y < ey {
+                let o = self.wi_offset_at_y(yf) as i32;
+                emit(o, y, w_px + o, y + lh_px);
+                y += lh_px;
+                yf += lh_f;
+            }
+            if ex > 0 {
+                let oe = self.wi_offset_at_y(eyf) as i32;
+                emit(oe, ey, ex + oe, ey + lh_px);
+            }
+        }
+    }
+
+    /// Band rects for DECODED-offset `spans`, each tagged with its colour, in ONE pass with no
+    /// per-span offset walk. This is the hot path for syntax-token backgrounds (`HLCOLOR/BG`) — on a
+    /// dense `«MD…»` grammar there are thousands of them per frame, and the old rope round-trip
+    /// (`rope_offset` per token in the host, then `decoded_offset_from` back in `highlight_rects`)
+    /// cost ~2.3 s/frame. Spans outside the window are skipped with a plain integer compare.
+    fn band_rects_decoded_colored(
+        &self,
+        spans: &[(usize, usize, (u8, u8, u8))],
+        buffer: &Buffer,
+        win: &DocWindow,
+        w_px: i32,
+        lh_px: i32,
+    ) -> Vec<(i32, i32, i32, i32, (u8, u8, u8))> {
+        let lh_px = lh_px.max(1);
+        let (lo, hi) = (win.start_decoded, win.start_decoded + win.decoded_len);
+        let mut rects = Vec::new();
+        for &(ds, de, rgb) in spans {
+            if de <= ds || de <= lo || ds >= hi {
+                continue;
+            }
+            let (sc, ec) = (Self::dec_cursor(win, ds), Self::dec_cursor(win, de));
+            self.emit_span_rects(sc, ec, buffer, w_px, lh_px, &mut |x0, y0, x1, y1| {
+                rects.push((x0, y0, x1, y1, rgb))
+            });
+        }
+        rects
+    }
+
+    /// Like [`band_rects_decoded_colored`] but untagged (for `MDA`/`HLMODE` underline + reverse-video
+    /// spans, which all draw in one colour).
+    fn band_rects_decoded(
+        &self,
+        spans: &[(usize, usize)],
+        buffer: &Buffer,
+        win: &DocWindow,
+        w_px: i32,
+        lh_px: i32,
+    ) -> Vec<(i32, i32, i32, i32)> {
+        let lh_px = lh_px.max(1);
+        let (lo, hi) = (win.start_decoded, win.start_decoded + win.decoded_len);
+        let mut rects = Vec::new();
+        for &(ds, de) in spans {
+            if de <= ds || de <= lo || ds >= hi {
+                continue;
+            }
+            let (sc, ec) = (Self::dec_cursor(win, ds), Self::dec_cursor(win, de));
+            self.emit_span_rects(sc, ec, buffer, w_px, lh_px, &mut |x0, y0, x1, y1| {
+                rects.push((x0, y0, x1, y1))
+            });
+        }
+        rects
     }
 
     /// Rects (per visual row) for a set of rope-offset match `spans`, clamped to the visible window;
@@ -4267,17 +4371,17 @@ impl GuiApp {
         current: Option<(usize, usize)>,
         buffer: &Buffer,
         win: &DocWindow,
+        win_lo: usize,
+        win_hi: usize,
         w_px: i32,
         lh_px: i32,
     ) -> Vec<(i32, i32, i32, i32, bool)> {
         let lh_px = lh_px.max(1);
-        // The visible window's rope-offset range (two cheap conversions). Matches outside it are
-        // skipped with a plain integer compare — CRUCIAL: the per-match cursor lookups below are
-        // expensive, and a common letter can have thousands of hits, almost all off-screen. Without
-        // this pre-filter, every caret-blink repaint would re-look-up all of them and hang the UI.
-        let doc = self.editor.doc(self.editor.active_index());
-        let win_lo = doc.rope_offset(win.start_decoded);
-        let win_hi = doc.rope_offset(win.start_decoded + win.decoded_len);
+        // `win_lo`/`win_hi` (the window's rope-offset range) are computed ONCE per frame by the caller
+        // and passed in — previously each call recomputed them with two `rope_offset` walks, which on a
+        // big non-UTF-8 doc is bounded-but-costly; the per-span callers (MDA/token bands) multiplied
+        // that by thousands. Matches outside the window are skipped with a plain integer compare (the
+        // per-match cursor lookups below are the expensive part).
         let mut rects = Vec::new();
         for &(ms, me) in spans {
             if me <= ms || me < win_lo || ms > win_hi {
@@ -4285,40 +4389,10 @@ impl GuiApp {
             }
             let sc = self.win_cursor_clamped(win, ms);
             let ec = self.win_cursor_clamped(win, me);
-            let (Some((sxf, syf)), Some((exf, eyf))) =
-                (buffer.cursor_position(&sc), buffer.cursor_position(&ec))
-            else {
-                continue;
-            };
-            let (sx, sy, ex, ey) = (sxf as i32, syf as i32, exf as i32, eyf as i32);
             let current = current == Some((ms, me));
-            // Bake the hanging-indent (`WRAPINDENT`/`WRAPHANG`) x-offset in HERE, from the RAW f32 row
-            // top — not from the i32 `sy`. A row's `line_top` can carry a fractional part; truncating it
-            // first can drop the lookup into the previous row's band (offset 0), shifting the band left
-            // by the whole hang. The caret avoids this the same way (see `caret_px`). `wi_offset_at_y`
-            // returns 0 when the mode is off (`wi_rows` empty), so this is a no-op then.
-            let lh_f = lh_px as f32;
-            if sy == ey {
-                let o = self.wi_offset_at_y(syf) as i32;
-                if ex > sx {
-                    rects.push((sx + o, sy, ex + o, sy + lh_px, current));
-                }
-            } else {
-                // Wrapped match: first row to the right margin, full middle rows, last row from the left.
-                let o0 = self.wi_offset_at_y(syf) as i32;
-                rects.push((sx + o0, sy, w_px + o0, sy + lh_px, current));
-                let (mut y, mut yf) = (sy + lh_px, syf + lh_f);
-                while y < ey {
-                    let o = self.wi_offset_at_y(yf) as i32;
-                    rects.push((o, y, w_px + o, y + lh_px, current));
-                    y += lh_px;
-                    yf += lh_f;
-                }
-                if ex > 0 {
-                    let oe = self.wi_offset_at_y(eyf) as i32;
-                    rects.push((oe, ey, ex + oe, ey + lh_px, current));
-                }
-            }
+            self.emit_span_rects(sc, ec, buffer, w_px, lh_px, &mut |x0, y0, x1, y1| {
+                rects.push((x0, y0, x1, y1, current))
+            });
         }
         rects
     }
@@ -4567,6 +4641,12 @@ impl GuiApp {
         }
 
         let (mut buffer, win) = self.windowed_buffer(w, h);
+        // The window's rope-offset range, computed ONCE (two bounded walks) and reused by every
+        // rope-span band layer (FIND/EMPH/URL/selection/MDA) — never per span.
+        let (win_lo, win_hi) = {
+            let doc = self.editor.doc(self.editor.active_index());
+            (doc.rope_offset(win.start_decoded), doc.rope_offset(win.start_decoded + win.decoded_len))
+        };
         let doc_cursor = self.editor.doc(self.editor.active_index()).cursor();
         // The real caret as a window-local cosmic cursor (None if scrolled off-window).
         let cursor = self.win_cursor_at(&win, doc_cursor);
@@ -4786,7 +4866,7 @@ impl GuiApp {
                 if spans.is_empty() {
                     Vec::new()
                 } else {
-                    self.highlight_rects(&spans, None, &buffer, &win, w as i32, lh_px as i32)
+                    self.highlight_rects(&spans, None, &buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
                 }
             } else {
                 Vec::new()
@@ -4798,125 +4878,102 @@ impl GuiApp {
         let mut find_rects = if self.find_highlights.is_empty() {
             Vec::new()
         } else {
-            self.find_highlight_rects(&buffer, &win, w as i32, lh_px as i32)
+            self.find_highlight_rects(&buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
         };
         // EMPH "emphasis" rects — same borrow window as `find_rects`; drawn behind the glyphs (below),
         // under FIND. No "current" match, so the flag is always false.
         let mut emph_rects = if self.emph_highlights.is_empty() {
             Vec::new()
         } else {
-            self.highlight_rects(&self.emph_highlights, None, &buffer, &win, w as i32, lh_px as i32)
+            self.highlight_rects(&self.emph_highlights, None, &buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
         };
         // URLHIGHLIGHT background band — only when `URLBGCOLOR` is set (otherwise URLs are just coloured
         // text, no band). Same borrow window as `emph_rects`.
         let mut url_rects = if self.url_highlights.is_empty() || self.editor.url_bg_color().is_none() {
             Vec::new()
         } else {
-            self.highlight_rects(&self.url_highlights, None, &buffer, &win, w as i32, lh_px as i32)
+            self.highlight_rects(&self.url_highlights, None, &buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
         };
         // MD block-background rects (`MD/B` colour-on-selection). Persistent per-doc spans in ROPE
         // offsets — feed them one at a time through `highlight_rects` so each carries its own colour,
         // then tag every rect with that colour. Painted at the BOTTOM of the z-order (under EMPH/FIND/
         // selection), since these are user "block" backgrounds. Empty unless MD colours are set.
-        let mut md_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> = {
-            let bg = self.editor.bg_color_spans_raw();
-            let mut out = Vec::new();
-            for (ms, me, rgb) in bg {
-                for (x0, y0, x1, y1, _) in
-                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
-                {
-                    out.push((x0, y0, x1, y1, rgb));
-                }
-            }
-            out
-        };
-        // Syntax-highlight token BACKGROUNDS (`HLCOLOR/BG`): one band per bg-coloured token, in ROPE
-        // offsets, mapped to pixel rects like `md_bg_rects`. Painted at the VERY bottom (under the MD
-        // block backgrounds and everything else), since it's the syntax layer. Empty (and skipped)
-        // unless some kind has a background.
-        let mut token_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> = {
-            let bg = self.editor.highlight_bg_spans_raw();
-            let mut out = Vec::new();
-            for (ms, me, rgb) in bg {
-                for (x0, y0, x1, y1, _) in
-                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
-                {
-                    out.push((x0, y0, x1, y1, rgb));
-                }
-            }
-            out
-        };
-        // MDA block attributes PLUS syntax-highlight token modes (`HLMODE`), in rope offsets — both feed
-        // the underline + reverse-video rect machinery identically (bold/italic already rode the glyphs
-        // above). Concatenated once so a kind's `HLMODE UL`/`RV` draws exactly like an `MDA` block.
-        let attr_raw_all: Vec<(usize, usize, u8)> = {
-            let mut v = self.editor.attr_spans_raw();
-            v.extend(self.editor.highlight_mode_spans_raw());
+        // All band layers below work in DECODED offsets (the tokens' / MDA spans' native coordinate),
+        // built in one pass with NO per-span offset walk — see `band_rects_decoded*`. (The old rope
+        // round-trip here cost ~2.3 s/frame on a dense `«MD…»` grammar.)
+        // MD block-background rects (`MDA/B` colour-on-selection) — per-doc spans, usually few. Painted
+        // at the BOTTOM of the z-order (under EMPH/FIND/selection), as user "block" backgrounds.
+        let mut md_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> =
+            self.band_rects_decoded_colored(&self.editor.bg_color_spans_decoded(), &buffer, &win, w as i32, lh_px as i32);
+        // Syntax-highlight token BACKGROUNDS (`HLCOLOR/BG`) — one band per bg-coloured token. Painted at
+        // the VERY bottom (the syntax layer). The dense case (thousands of tokens) lives here.
+        let mut token_bg_rects: Vec<(i32, i32, i32, i32, (u8, u8, u8))> =
+            self.band_rects_decoded_colored(&self.editor.highlight_bg_spans_decoded(), &buffer, &win, w as i32, lh_px as i32);
+        // MDA block attributes PLUS syntax-highlight token modes (`HLMODE`), in DECODED offsets — both
+        // feed the underline + reverse-video rect machinery identically (bold/italic already rode the
+        // glyphs above). Concatenated once so a kind's `HLMODE UL`/`RV` draws exactly like an `MDA` block.
+        let attr_all: Vec<(usize, usize, u8)> = {
+            let mut v = self.editor.attr_spans(); // MDA attrs (decoded)
+            v.extend(self.editor.highlight_mode_spans_decoded()); // HLMODE modes (decoded)
             v
         };
         // `MDA RV` / `HLMODE RV` reverse-video backgrounds — a rect in the current FGCOLOR behind each
         // reversed span (the glyphs are painted in BGCOLOR above). Same bottom layer as `md_bg_rects`.
         let mut mda_reverse_rects: Vec<(i32, i32, i32, i32)> = {
             let rv_bit = xyscript_app::document::ATTR_REVERSE;
-            let mut out = Vec::new();
-            for &(ms, me, bits) in &attr_raw_all {
-                if bits & rv_bit == 0 {
-                    continue;
-                }
-                for (x0, y0, x1, y1, _) in
-                    self.highlight_rects(&[(ms, me)], None, &buffer, &win, w as i32, lh_px as i32)
-                {
-                    out.push((x0, y0, x1, y1));
-                }
-            }
-            out
+            let spans: Vec<(usize, usize)> =
+                attr_all.iter().filter(|&&(_, _, b)| b & rv_bit != 0).map(|&(s, e, _)| (s, e)).collect();
+            self.band_rects_decoded(&spans, &buffer, &win, w as i32, lh_px as i32)
         };
         // `MDA` underline rects — the wrap-aware pixel geometry of every attribute span carrying the
         // underline bit (drawn as a solid line under the glyphs, in the text colour, since cosmic has
         // no glyph underline attribute). Bold/italic ride the glyphs' AttrsList and need no rects here.
         let mut mda_underline_rects: Vec<(i32, i32, i32, i32)> = {
             let ul_bit = xyscript_app::document::ATTR_UNDERLINE;
-            // `ULSPACES off` breaks the underline at inter-word spaces/tabs — draw only the non-blank
-            // runs; `on` (default) underlines the whole span, spaces included.
             let ul_spaces = self.editor.ul_spaces();
-            let doc_idx = self.editor.active_index();
-            let mut out = Vec::new();
-            for &(ms, me, bits) in &attr_raw_all {
-                if bits & ul_bit == 0 {
-                    continue;
-                }
-                // The rope sub-ranges to underline: the whole span, or its non-blank runs.
-                let ranges: Vec<(usize, usize)> = if ul_spaces {
-                    vec![(ms, me)]
-                } else {
-                    let bytes = self.editor.doc(doc_idx).slice_bytes(ms, me);
-                    let mut v = Vec::new();
-                    let mut run: Option<usize> = None; // start of the current non-blank run (byte index)
-                    for (i, &b) in bytes.iter().enumerate() {
-                        // ASCII space/tab are standalone bytes (never UTF-8 continuation bytes), so a
-                        // byte-level split stays on char boundaries for any encoding.
+            let spans: Vec<(usize, usize)> =
+                attr_all.iter().filter(|&&(_, _, b)| b & ul_bit != 0).map(|&(s, e, _)| (s, e)).collect();
+            if ul_spaces {
+                // `ULSPACES on` (default): underline the whole span — the fast decoded path.
+                self.band_rects_decoded(&spans, &buffer, &win, w as i32, lh_px as i32)
+            } else {
+                // `ULSPACES off`: break the underline at inter-word spaces/tabs — draw only the
+                // non-blank runs. Split in the window's DISPLAY text (space/tab are ASCII and never CR,
+                // so working in display space is exact) and emit each run's rects directly — still no
+                // offset walk. Decoded span → window-local display range, then split that substring.
+                let (lo, hi) = (win.start_decoded, win.start_decoded + win.decoded_len);
+                let mut out = Vec::new();
+                for (ds, de) in spans {
+                    if de <= ds || de <= lo || ds >= hi {
+                        continue;
+                    }
+                    let wds = ds.saturating_sub(lo).min(win.decoded_len);
+                    let wde = de.saturating_sub(lo).min(win.decoded_len);
+                    let (p0, p1) = (decoded_to_display(wds, &win.cr), decoded_to_display(wde, &win.cr));
+                    let seg = win.display.get(p0..p1).unwrap_or("");
+                    let mut run: Option<usize> = None; // start of the current non-blank run (display byte)
+                    let mut emit_run = |a: usize, b: usize, me: &Self, out: &mut Vec<_>| {
+                        let sc = byte_to_cursor(&win.display, a, &win.nl);
+                        let ec = byte_to_cursor(&win.display, b, &win.nl);
+                        me.emit_span_rects(sc, ec, &buffer, w as i32, lh_px as i32, &mut |x0, y0, x1, y1| {
+                            out.push((x0, y0, x1, y1))
+                        });
+                    };
+                    for (i, b) in seg.bytes().enumerate() {
                         if b == b' ' || b == b'\t' {
                             if let Some(rs) = run.take() {
-                                v.push((ms + rs, ms + i));
+                                emit_run(p0 + rs, p0 + i, self, &mut out);
                             }
                         } else if run.is_none() {
                             run = Some(i);
                         }
                     }
                     if let Some(rs) = run {
-                        v.push((ms + rs, me));
-                    }
-                    v
-                };
-                for (a, b) in ranges {
-                    for (x0, y0, x1, y1, _) in
-                        self.highlight_rects(&[(a, b)], None, &buffer, &win, w as i32, lh_px as i32)
-                    {
-                        out.push((x0, y0, x1, y1));
+                        emit_run(p0 + rs, p1, self, &mut out);
                     }
                 }
+                out
             }
-            out
         };
         // `highlight_rects` fills a soft-WRAPPED row out to the right margin (correct for a selection/
         // FIND band, but for an MDA underline or reverse-video block it paints under the empty margin

@@ -3579,6 +3579,21 @@ impl AppHost {
             })
             .collect()
     }
+    /// Like [`highlight_bg_spans_raw`](Self::highlight_bg_spans_raw) but in DECODED offsets — the
+    /// tokens' native coordinate, so NO per-token `rope_offset` conversion (which on a big non-UTF-8
+    /// doc is a bounded-but-costly walk — thousands of them per frame on a dense grammar froze the UI).
+    /// The GUI renders bands in decoded-window-local space, so this feeds it directly.
+    pub fn highlight_bg_spans_decoded(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        if self.highlight_bg.is_empty() {
+            return Vec::new();
+        }
+        self.active_doc()
+            .highlights()
+            .iter()
+            .filter_map(|t| self.highlight_bg.get(&t.kind).map(|&rgb| (t.start, t.end, rgb)))
+            .collect()
+    }
+
     /// The active MODE attributes (`HLMODE`, an `ATTR_*` bitset) for a token kind, or `None` when the
     /// kind has none (the common case — modes are opt-in). The renderer folds the bits into the glyphs
     /// (bold/italic) and underline/reverse rects, exactly as `MDA` block attributes do.
@@ -3601,6 +3616,18 @@ impl AppHost {
                     .get(&t.kind)
                     .map(|&bits| (buf.rope_offset(t.start), buf.rope_offset(t.end), bits))
             })
+            .collect()
+    }
+    /// Like [`highlight_mode_spans_raw`](Self::highlight_mode_spans_raw) but in DECODED offsets (no
+    /// per-token `rope_offset` walk) — see [`highlight_bg_spans_decoded`](Self::highlight_bg_spans_decoded).
+    pub fn highlight_mode_spans_decoded(&self) -> Vec<(usize, usize, u8)> {
+        if self.highlight_mode.is_empty() {
+            return Vec::new();
+        }
+        self.active_doc()
+            .highlights()
+            .iter()
+            .filter_map(|t| self.highlight_mode.get(&t.kind).map(|&bits| (t.start, t.end, bits)))
             .collect()
     }
     /// The token kinds shown by `HLKINDS`, in display order: the built-ins (chart order) followed by

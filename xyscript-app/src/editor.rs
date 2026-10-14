@@ -251,6 +251,19 @@ impl Editor {
     pub fn highlight_bg_spans_raw(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
         self.host.highlight_bg_spans_raw()
     }
+    /// Token BACKGROUND spans in DECODED offsets (no per-token rope conversion) — the fast per-frame
+    /// path for the band rects. See [`AppHost::highlight_bg_spans_decoded`](crate::host::AppHost::highlight_bg_spans_decoded).
+    pub fn highlight_bg_spans_decoded(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.host.highlight_bg_spans_decoded()
+    }
+    /// Token MODE spans (`HLMODE`) in DECODED offsets (no per-token rope conversion).
+    pub fn highlight_mode_spans_decoded(&self) -> Vec<(usize, usize, u8)> {
+        self.host.highlight_mode_spans_decoded()
+    }
+    /// The active document's `MDA/B` background spans in DECODED offsets — the fast band-rect path.
+    pub fn bg_color_spans_decoded(&self) -> Vec<(usize, usize, (u8, u8, u8))> {
+        self.host.active_doc().bg_color_spans_decoded()
+    }
     /// The BACKGROUND colour set for a highlight token kind (`HLCOLOR/BG`), or `None`.
     pub fn highlight_bg_color(&self, kind: &crate::highlight::TokenKind) -> Option<(u8, u8, u8)> {
         self.host.highlight_bg_color(kind)

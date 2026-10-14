@@ -183,7 +183,19 @@ pub fn theme(kind: &TokenKind) -> Style {
 pub enum RuleMatcher {
     Fast(regex::Regex),
     Perl(fancy_regex::Regex),
+    /// A `/P` rule of the shape `(?<=X)BODY` (positive look-behind, no other look-around or
+    /// backreference) rewritten to run on the LINEAR `regex` engine as `(?:X)(BODY)`: the look-behind
+    /// content is matched as a discarded prefix, and only the BODY capture group (`body`) is emitted —
+    /// so `X` is left unclaimed, exactly as the zero-width look-behind did. This escapes `fancy-regex`'s
+    /// backtracking + lack of prefiltering (the heavy cost on a dense `«MD…»` grammar), while matching
+    /// the identical spans. See [`transform_lookbehind`]. BODY is a NAMED group ([`LB_BODY_GROUP`]) so
+    /// its index survives any capturing groups inside `X` (e.g. an alternation `(IT|RV)`).
+    FastLookbehind(regex::Regex),
 }
+
+/// Reserved capture-group name for the BODY of a rewritten look-behind rule (see
+/// [`RuleMatcher::FastLookbehind`]). Excluded from the named-group → token-kind mapping.
+const LB_BODY_GROUP: &str = "xylbbody";
 
 /// One match of a rule in a single line: the whole span plus its named-group
 /// sub-spans already resolved to token kinds, so the highlight loop is engine-agnostic.
@@ -233,6 +245,25 @@ impl RuleMatcher {
                     RuleMatch { whole: (w.start(), w.end()), groups }
                 })
                 .collect(),
+            // The whole MATCH is `X BODY`, but the rule's span is only BODY (the reserved named group) —
+            // the `X` prefix stays unclaimed, like the original look-behind. Any USER named groups
+            // inside BODY carry absolute offsets, so they resolve exactly as on the other engines; the
+            // reserved BODY group is excluded from the kind mapping.
+            RuleMatcher::FastLookbehind(re) => re
+                .captures_iter(line)
+                .filter_map(|caps| {
+                    let w = caps.name(LB_BODY_GROUP)?;
+                    let groups = re
+                        .capture_names()
+                        .flatten()
+                        .filter(|n| *n != LB_BODY_GROUP)
+                        .filter_map(|n| {
+                            caps.name(n).map(|g| (g.start(), g.end(), TokenKind::from_name(n)))
+                        })
+                        .collect();
+                    Some(RuleMatch { whole: (w.start(), w.end()), groups })
+                })
+                .collect(),
         }
     }
 }
@@ -245,6 +276,13 @@ pub struct GrammarRule {
     pub kind: String,
     pub source: String,
     pub perl: bool,
+    /// Required literals: a line can match this rule ONLY if it contains at least one of these
+    /// (a cheap `str::contains` guard run before the regex). Empty = no filter (always scan). This is
+    /// what makes a lookbehind-heavy `/P` grammar fast: `fancy-regex` has no literal prefiltering of
+    /// its own, so without this every `(?<=«MDxx»)…` rule scans every line even when `«MDxx»` is
+    /// absent. Extracted conservatively by [`required_literals`] — only ever a genuinely-required
+    /// literal, so pruning can never change which spans match.
+    pub prefilter: Vec<String>,
     pub matcher: RuleMatcher,
 }
 
@@ -276,6 +314,13 @@ impl RegexGrammar {
             // Per-line claim map: byte i is true once some rule has taken it.
             let mut claimed = vec![false; line.len()];
             for rule in &self.rules {
+                // Literal prefilter: skip the (possibly expensive `/P`) scan when none of the rule's
+                // required literals is present — a cheap necessary-condition check. This is the fast
+                // path for a lookbehind grammar: a rule whose code isn't on this line costs an O(1)-ish
+                // `contains` instead of a full fancy-regex sweep.
+                if !rule.prefilter.is_empty() && !rule.prefilter.iter().any(|p| line.contains(p.as_str())) {
+                    continue;
+                }
                 let base = TokenKind::from_name(&rule.kind);
                 for m in rule.matcher.matches(line) {
                     let (a, b) = m.whole;
@@ -359,11 +404,18 @@ impl GrammarRegistry {
         // regex capture-group NAME must be `[A-Za-z_][A-Za-z0-9_]*` (no hyphens) — a common trip-up.
         let label = if perl { "HLRULE/P" } else { "HLRULE" };
         let matcher = if perl {
-            fancy_regex::RegexBuilder::new(regex)
-                .backtrack_limit(HL_BACKTRACK_LIMIT)
-                .build()
-                .map(RuleMatcher::Perl)
-                .map_err(|e| format!("{label} {kind}: invalid regular expression: {e}"))?
+            // A positive look-behind `(?<=X)BODY` with no other look-around/backref can run on the
+            // LINEAR engine (rewritten `(?:X)(BODY)`, emitting only BODY) — far faster than fancy-regex
+            // on a dense grammar, and identical spans. Fall back to the fancy engine when it doesn't fit
+            // (other look-around, a backreference, or the rewrite doesn't compile).
+            match transform_lookbehind(regex) {
+                Some(fast) => RuleMatcher::FastLookbehind(fast),
+                None => fancy_regex::RegexBuilder::new(regex)
+                    .backtrack_limit(HL_BACKTRACK_LIMIT)
+                    .build()
+                    .map(RuleMatcher::Perl)
+                    .map_err(|e| format!("{label} {kind}: invalid regular expression: {e}"))?,
+            }
         } else {
             regex::Regex::new(regex)
                 .map(RuleMatcher::Fast)
@@ -373,6 +425,7 @@ impl GrammarRegistry {
             kind: kind.trim().to_ascii_lowercase(),
             source: regex.to_string(),
             perl,
+            prefilter: required_literals(regex),
             matcher,
         });
         Ok(())
@@ -387,6 +440,231 @@ impl GrammarRegistry {
     pub fn grammars(&self) -> &[RegexGrammar] {
         &self.grammars
     }
+}
+
+/// Rewrite a positive-look-behind `/P` rule `(?<=X)BODY` to run on the LINEAR `regex` engine as
+/// `(?:X)(BODY)` (emitting only the BODY capture), when that is provably EQUIVALENT and compiles.
+/// Returns the compiled fast regex (BODY = capture group 1) or `None` to keep the fancy engine.
+///
+/// EQUIVALENCE: `(?<=X)BODY` is zero-width in `X`, so consecutive matches can have an `X` that
+/// overlaps the previous match; `(?:X)(BODY)` *consumes* `X`, so it would miss such overlaps (e.g.
+/// `(?<=aa)a` on `aaaa` matches twice, but `(?:aa)(a)` once). The transform is only applied when that
+/// can't happen: **X's first character is a literal that BODY can never match**, so every `X` begins
+/// exactly at the delimiter where the previous BODY stopped — never inside it. (The whole `«MD…»`
+/// grammar fits: `X` starts with `«`, and BODY is `[^…«»]+`.) Anything else keeps the fancy engine.
+fn transform_lookbehind(pattern: &str) -> Option<regex::Regex> {
+    let (x, rest) = split_lookbehind(pattern)?;
+    if x.is_empty() || rest.is_empty() {
+        return None;
+    }
+    let first = first_literal_char(x)?; // X's leading char, as a concrete literal
+    let excluded = negated_class_only(rest)?; // BODY must be exactly `[^set]+`/`*`
+    if !excluded.contains(&first) {
+        return None; // BODY could match X's first char → overlap possible → not safe
+    }
+    // BODY is a NAMED group so its index survives capturing groups inside X (e.g. `(IT|RV)`). The
+    // compile also GATES correctness: a look-around or backreference in X/BODY fails here (the `regex`
+    // engine rejects them) → `None` → fancy fallback.
+    regex::Regex::new(&format!("(?:{x})(?P<{LB_BODY_GROUP}>{rest})")).ok()
+}
+
+/// If `pattern` begins with a positive look-behind `(?<=…)`, split it into `(content, rest)`. Finds
+/// the `)` that closes the assertion, honoring escapes and character classes (so a `)` inside `[...]`
+/// or after `\` doesn't close it early).
+fn split_lookbehind(pattern: &str) -> Option<(&str, &str)> {
+    let after = pattern.strip_prefix("(?<=")?;
+    let bytes = after.as_bytes();
+    let (mut i, mut depth, mut in_class) = (0usize, 0usize, false);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'[' if !in_class => in_class = true,
+            b']' if in_class => in_class = false,
+            b'(' if !in_class => depth += 1,
+            b')' if !in_class => {
+                if depth == 0 {
+                    return Some((&after[..i], &after[i + 1..]));
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The first LITERAL character of a regex fragment, or `None` if it starts with a metacharacter /
+/// group / class (so we can't name a single concrete char). Decodes a leading escape.
+fn first_literal_char(s: &str) -> Option<char> {
+    let mut it = s.chars();
+    match it.next()? {
+        '\\' => match it.next()? {
+            'r' => Some('\r'),
+            'n' => Some('\n'),
+            't' => Some('\t'),
+            // An escaped metacharacter is that literal character; a class shorthand (\d …) is not a
+            // single literal, so bail.
+            c @ ('+' | '-' | '.' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '^' | '$'
+                | '\\' | '/') => Some(c),
+            _ => None,
+        },
+        c @ ('(' | '[' | '.' | '*' | '+' | '?' | '^' | '$' | '|' | '{' | ')' | ']' | '}') => {
+            let _ = c;
+            None
+        }
+        c => Some(c),
+    }
+}
+
+/// If `rest` is EXACTLY a single negated character class with a `+`/`*` quantifier (`[^abc]+`), return
+/// the set of excluded characters; otherwise `None`. Requiring the whole BODY to be this shape keeps
+/// the equivalence argument simple: every character BODY matches is outside the returned set. Escapes
+/// `\r`/`\n`/`\t` and escaped metacharacters are decoded; a range (`a-z`) makes us bail (`None`).
+fn negated_class_only(rest: &str) -> Option<std::collections::HashSet<char>> {
+    let inner = rest.strip_prefix("[^")?;
+    let close = {
+        // Find the `]` that ends the class (honoring escapes); there must be exactly one `+`/`*` after.
+        let b = inner.as_bytes();
+        let (mut i, mut end) = (0usize, None);
+        while i < b.len() {
+            match b[i] {
+                b'\\' => i += 2,
+                b']' => {
+                    end = Some(i);
+                    break;
+                }
+                _ => i += 1,
+            }
+        }
+        end?
+    };
+    let quant = &inner[close + 1..];
+    if quant != "+" && quant != "*" {
+        return None;
+    }
+    let body = &inner[..close];
+    if body.contains('-') {
+        return None; // a range — don't try to enumerate; keep the fancy engine
+    }
+    let mut set = std::collections::HashSet::new();
+    let mut it = body.chars();
+    while let Some(c) = it.next() {
+        if c == '\\' {
+            match it.next()? {
+                'r' => set.insert('\r'),
+                'n' => set.insert('\n'),
+                't' => set.insert('\t'),
+                e => set.insert(e),
+            };
+        } else {
+            set.insert(c);
+        }
+    }
+    Some(set)
+}
+
+/// Shortest literal worth prefiltering on — below this a literal is too common to prune usefully.
+const PREFILTER_MIN: usize = 3;
+
+/// Extract a conservative set of REQUIRED literals from a rule's regex `pattern`: a line can match
+/// the rule only if it contains at least ONE of them, so they gate the (sometimes expensive, `/P`
+/// look-behind) scan with a cheap `str::contains`. Empty = nothing provably required → always scan
+/// (today's behaviour). CORRECTNESS: every returned literal must appear in the line of ANY match, so
+/// we only ever emit a genuinely-required literal and bail (empty) on anything we can't prove —
+/// pruning can therefore never drop a span that should have matched.
+fn required_literals(pattern: &str) -> Vec<String> {
+    // The look-behind / look-ahead whose content is required gates most of these rules; peel one
+    // positive assertion and read its literal prefix. A negative assertion (content must be ABSENT)
+    // or any other leading group: don't try.
+    let body = if let Some(r) = pattern.strip_prefix("(?<=") {
+        r
+    } else if let Some(r) = pattern.strip_prefix("(?=") {
+        r
+    } else if pattern.starts_with('(') {
+        return Vec::new();
+    } else {
+        pattern
+    };
+    let mut prefix = String::new();
+    let mut chars = body.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        match c {
+            '\\' => {
+                chars.next();
+                match chars.next() {
+                    Some('d') => return expand_suffixes(&prefix, "0123456789".chars()),
+                    // An escaped metacharacter is a literal character.
+                    Some(e @ ('+' | '-' | '.' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
+                        | '^' | '$' | '\\' | '/')) => prefix.push(e),
+                    _ => break, // \w \s \r \n \xHH … — stop; the prefix so far is required
+                }
+            }
+            '(' => return expand_alternation(&prefix, &mut chars),
+            '|' => return Vec::new(), // a top-level alternation — the prefix isn't required
+            '.' | '*' | '+' | '?' | '[' | '{' | '^' | '$' | ')' => break,
+            _ => {
+                prefix.push(c);
+                chars.next();
+            }
+        }
+    }
+    one_literal(prefix)
+}
+
+/// A single-literal prefilter, kept only when it's long enough to be selective.
+fn one_literal(prefix: String) -> Vec<String> {
+    if prefix.chars().count() >= PREFILTER_MIN {
+        vec![prefix]
+    } else {
+        Vec::new()
+    }
+}
+
+/// `prefix × {each suffix}` as a required-literal set (for a `\d`-style single class right after a
+/// literal prefix). Dropped unless every literal clears [`PREFILTER_MIN`].
+fn expand_suffixes(prefix: &str, suffixes: impl Iterator<Item = char>) -> Vec<String> {
+    let set: Vec<String> = suffixes.map(|s| format!("{prefix}{s}")).collect();
+    if !set.is_empty() && set.iter().all(|l| l.chars().count() >= PREFILTER_MIN) {
+        set
+    } else {
+        Vec::new()
+    }
+}
+
+/// Try to expand a pure-literal alternation group — `(a|b|c)` or `(?:a|b)` — immediately after
+/// `prefix` into `prefix × {a,b,c}`. Any non-literal branch (or a nested construct) falls back to the
+/// prefix alone (still a required literal).
+fn expand_alternation(prefix: &str, chars: &mut std::iter::Peekable<std::str::Chars>) -> Vec<String> {
+    chars.next(); // consume '('
+    if chars.peek() == Some(&'?') {
+        chars.next();
+        if chars.next() != Some(':') {
+            return one_literal(prefix.to_string()); // (?<= / (?= / named group — don't try
+        }
+    }
+    let mut branches = vec![String::new()];
+    for c in chars.by_ref() {
+        match c {
+            ')' => {
+                let set: Vec<String> = branches.iter().map(|b| format!("{prefix}{b}")).collect();
+                if set.iter().all(|l| l.chars().count() >= PREFILTER_MIN) {
+                    return set;
+                }
+                return one_literal(prefix.to_string());
+            }
+            '|' => branches.push(String::new()),
+            // A metacharacter inside a branch → not a pure-literal alternation; use the prefix alone.
+            '\\' | '(' | '[' | '.' | '*' | '+' | '?' | '{' | '^' | '$' => {
+                return one_literal(prefix.to_string())
+            }
+            _ => branches.last_mut().unwrap().push(c),
+        }
+    }
+    one_literal(prefix.to_string()) // unterminated (shouldn't happen for a valid regex)
 }
 
 /// Iterate `(byte_offset_of_line_start, line_text_without_eol)` over `source`.
@@ -445,6 +723,7 @@ impl Highlighter {
             Highlighter::Regex(g) => g.highlight(source),
         }
     }
+
 }
 
 // ---- Markdown (comrak) -----------------------------------------------------
@@ -667,6 +946,117 @@ mod tests {
         reg.define("test", vec![ext.to_string()]);
         reg.add_rule(kind, re, true).unwrap();
         reg.for_ext(ext).unwrap().clone()
+    }
+
+    #[test]
+    fn required_literals_are_conservative_and_selective() {
+        // Look-behind literal → required (read through to the metachar, so the full «MDBO»).
+        assert_eq!(required_literals(r"(?<=«MDBO»)[^\r\n«»]+"), vec!["«MDBO»".to_string()]);
+        // Pure-literal alternation → expanded.
+        assert_eq!(
+            required_literals(r"(?<=«MD(IT|RV)»)[^\r\n«»]+"),
+            vec!["«MDIT".to_string(), "«MDRV".to_string()]
+        );
+        // Wildcard after a literal → the literal prefix (still selective).
+        assert_eq!(required_literals(r"(?<=«MDI.»)[^\r\n«»]+"), vec!["«MDI".to_string()]);
+        // Escaped metachar is literal.
+        assert_eq!(required_literals(r"(?<=«MD\+..»)[^\r\n«»]+"), vec!["«MD+".to_string()]);
+        // `\d` after a literal → the ten digit literals.
+        let d = required_literals(r"(?<=«MD\d»)[^\r\n«»]+");
+        assert_eq!(d.len(), 10);
+        assert!(d.contains(&"«MD0".to_string()) && d.contains(&"«MD9".to_string()));
+        // A plain (non-lookaround) literal prefix works too.
+        assert_eq!(required_literals(r"«LB[^«»]+»"), vec!["«LB".to_string()]);
+        // CONSERVATIVE bail-outs → empty (always scan): a too-short prefix, a leading group, a
+        // leading negative assertion, a top-level alternation.
+        assert!(required_literals(r"«\w[^«»]+»").is_empty(), "only «, too short");
+        assert!(required_literals(r"(^|\s);\*;").is_empty(), "leading group");
+        assert!(required_literals(r"(?<!x)foo").is_empty(), "negative look-behind");
+        assert!(required_literals(r"foo|bar").is_empty(), "top-level alternation");
+    }
+
+    #[test]
+    fn lookbehind_transform_matches_the_fancy_engine_exactly() {
+        // Every real xywrite /P rule must transform, and the linear matcher must produce the IDENTICAL
+        // spans as the fancy engine — including tricky adjacency (empty body between codes, repeated
+        // codes back-to-back, a code at end of line).
+        let pats = [
+            r"(?<=«MDBO»)[^\r\n«»]+",
+            r"(?<=«MD(IT|RV)»)[^\r\n«»]+",
+            r"(?<=«MDNM»)[^\r\n«»]+",
+            r"(?<=«MD\d»)[^\r\n«»]+",
+            r"(?<=«MDI.»)[^\r\n«»]+",
+            r"(?<=«MD\+..»)[^\r\n«»]+",
+        ];
+        let lines = [
+            "«MDBO»bold«MDNM» plain «MDIT»ital«MDNM»",
+            "«MDBO»«MDNM»empty-between",
+            "«MDBO»a«MDBO»b«MDBO»c",
+            "no codes here at all",
+            "«MD3»sized «MD+01»up «MDI9»idx",
+            "trailing«MDBO»",
+            "",
+        ];
+        for p in pats {
+            let fast = transform_lookbehind(p).unwrap_or_else(|| panic!("should transform: {p}"));
+            let fancy = fancy_regex::RegexBuilder::new(p)
+                .backtrack_limit(HL_BACKTRACK_LIMIT)
+                .build()
+                .unwrap();
+            let fm = RuleMatcher::FastLookbehind(fast);
+            let pm = RuleMatcher::Perl(fancy);
+            for line in lines {
+                let a: Vec<_> = fm.matches(line).into_iter().map(|m| m.whole).collect();
+                let b: Vec<_> = pm.matches(line).into_iter().map(|m| m.whole).collect();
+                assert_eq!(a, b, "transformed != fancy for {p:?} on {line:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn lookbehind_transform_bails_when_unsafe() {
+        // X's first char CAN be matched by BODY → consuming X would miss overlaps → must NOT transform.
+        assert!(transform_lookbehind(r"(?<=aa)a").is_none(), "overlap-unsafe");
+        // BODY isn't a single negated class → can't prove the no-overlap property → bail.
+        assert!(transform_lookbehind(r"(?<=«MDBO»)\w+").is_none(), "non-class body");
+        // A nested look-around / backreference → the linear engine can't compile it → bail.
+        assert!(transform_lookbehind(r"(?<=«MD»(?=x))[^«»]+").is_none(), "nested lookaround");
+        assert!(transform_lookbehind(r"(?<=(\w)\1)[^«»]+").is_none(), "backreference");
+        // Not a look-behind at all.
+        assert!(transform_lookbehind(r"«MD[^«»]+»").is_none(), "no lookbehind");
+    }
+
+    #[test]
+    fn prefilter_never_changes_highlighting() {
+        // The literal prefilter is an optimization only: highlighting with it must equal highlighting
+        // with it disabled, for lines that do and don't contain each code.
+        let mut reg = GrammarRegistry::default();
+        reg.define("xy", vec!["xy".into()]);
+        for (k, re) in [
+            ("bo", r"(?<=«MDBO»)[^\r\n«»]+"),
+            ("it", r"(?<=«MD(IT|RV)»)[^\r\n«»]+"),
+            ("nm", r"(?<=«MDNM»)[^\r\n«»]+"),
+            ("num", r"(?<=«MD\d»)[^\r\n«»]+"),
+            ("ix", r"(?<=«MDI.»)[^\r\n«»]+"),
+        ] {
+            reg.add_rule(k, re, true).unwrap();
+        }
+        let g = reg.for_ext("xy").unwrap().clone();
+        assert!(!g.rules[0].prefilter.is_empty(), "a /P rule got a prefilter");
+        // A copy with prefilters disabled = the pre-optimization behaviour.
+        let mut naive = g.clone();
+        for r in &mut naive.rules {
+            r.prefilter.clear();
+        }
+        for src in [
+            "«MDBO»bold«MDNM» plain «MDIT»ital«MDNM»\n",
+            "«MD3»sized«MDNM»\n",
+            "«MDRV»rev«MDNM» «MDI5»idx«MDNM»\n",
+            "no codes here at all\n",
+            "\n",
+        ] {
+            assert_eq!(g.highlight(src), naive.highlight(src), "prefilter changed result for {src:?}");
+        }
     }
 
     #[test]
