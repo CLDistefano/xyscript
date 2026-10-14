@@ -558,6 +558,7 @@ ctrl+caps,ctrl F12       :88=CMH;XC
 ctrl+caps,ctrl           :89=NOP
 ;Comment                 ; 90=BK
 ;Comment                 ; 91=TI
+ctrl+caps,ctrl Home      :92=TF
 ctrl+caps,ctrl PgUp      :93=PU
 ctrl+caps,ctrl Numpad /  :94=CMH;XC
 ctrl+caps,ctrl Del       :95=RE
