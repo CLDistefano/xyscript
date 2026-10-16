@@ -1682,6 +1682,12 @@ pub enum Motion {
     Right,
     Up,
     Down,
+    /// `LU` — up one VISUAL (wrapped screen) row. The host steps over the GUI-published visual-row map
+    /// when it's fresh (so it works in `;`-chains, macros and scripts); otherwise it falls back to the
+    /// logical `Up`. (The bare interactive form is also refined pixel-exactly by the GUI.)
+    VisualUp,
+    /// `LD` — down one VISUAL (wrapped screen) row. See [`Motion::VisualUp`].
+    VisualDown,
     /// Start of the current line.
     LineStart,
     /// End of the current line.

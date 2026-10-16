@@ -4777,6 +4777,34 @@ impl GuiApp {
             None
         };
 
+        // Visual-row map for `LU`/`LD` in `;`-chains / macros / scripts (the host steps over it): a
+        // rope offset for each wrapped row's start, plus a trailing sentinel = the end of the last row.
+        // Only while WRAP is on — off, a visual row IS a logical line, so `LU`/`LD` fall back to the
+        // logical move, which is already correct. Built from the shaped layout (collect the row tops
+        // first so `hit` isn't nested inside the `layout_runs` borrow).
+        let visual_rows: Vec<usize> = if self.editor.wrap() {
+            let lh = self.line_height * self.render_scale;
+            let tops: Vec<f32> = buffer.layout_runs().map(|r| r.line_top).collect();
+            let mut v: Vec<usize> = Vec::with_capacity(tops.len() + 1);
+            for &top in &tops {
+                if let Some(cur) = buffer.hit(0.0, top + 0.5 * lh) {
+                    v.push(self.win_rope_at(&win, cur));
+                }
+            }
+            if let Some(&top) = tops.last() {
+                // Sentinel: start of the row below the last one, or EOF for the final row.
+                let end = buffer
+                    .hit(0.0, top + 1.5 * lh)
+                    .map(|c| self.win_rope_at(&win, c))
+                    .filter(|&e| v.last().is_some_and(|&l| e > l))
+                    .unwrap_or_else(|| self.editor.doc(self.editor.active_index()).len());
+                v.push(end);
+            }
+            v
+        } else {
+            Vec::new()
+        };
+
         // Publish the caret's VISUAL position (wrap-aware screen coords, in cells) for `$CX`/`$CY`.
         // Pixels → cells: cosmic geometry is at device resolution, so divide by the device line
         // height and the monospace cell width. Row is relative to the viewport top (canvas y=0).
@@ -5435,6 +5463,9 @@ impl GuiApp {
         // revision (no edit happens during a redraw, so it still matches what it was computed against).
         let rev = self.editor.doc_revision();
         self.editor.host_mut().set_visual_line_span(vline_span, rev);
+        // Publish the visual-row map (built above while the buffer was borrowed) so `LU`/`LD` move by
+        // screen row even from a chain/script, not just the GUI's bare-form intercept.
+        self.editor.set_visual_rows(visual_rows, rev);
         // Console scroll-lock bookkeeping: remember whether the tail is visible now (the last logical
         // line sits within the window), so the NEXT dirty frame only auto-follows when we were at the
         // bottom. A small overshoot from wrapping just errs toward following, which is the safe side.
@@ -5863,12 +5894,6 @@ impl GuiApp {
         }
     }
 
-    /// If `xpl` is a bare vertical-motion verb — `LU`/`UP`/`LD`/`DOWN`, optionally `… SEL` to extend
-    /// — and we're in normal text editing (not the command line, a modal dialog, or a directory
-    /// listing), move by VISUAL row (wrap-aware, exactly like the arrow keys) and return `true`.
-    /// Otherwise return `false` so the caller runs the verb as written (the logical by-line move,
-    /// which is what the cmline / a listing / a script wants). This is what makes a key bound to
-    /// `LD` behave like the Down arrow instead of jumping over a wrapped line's continuation rows.
     /// Whether the active document is in the hex-dump view (`HEX on`). The runtime reads this to keep
     /// the vertical-nav keys CAPTURED in hex view (so they run the host's byte-row motion) instead of
     /// handing them to egui's wrap-aware text scrolling, which is meaningless over a hex grid.
@@ -5986,6 +6011,14 @@ impl GuiApp {
         }
     }
 
+    /// Promote a bare vertical-motion verb to a VISUAL (wrap-aware, like the arrow keys) move when we're
+    /// in normal text editing (not the command line, a modal, a listing, or hex view); returns `true`
+    /// when it handled the move. Only `LU`/`LD` (± `SEL`) are promoted — that's what makes a key bound
+    /// to `LD` step one screen row, within a wrapped line, instead of jumping to the next logical line.
+    /// `UP`/`DOWN` stay LOGICAL here and return `false` (the caller runs the engine's by-line motion),
+    /// EXCEPT under a proportional editor font, where they too move by visual pixel-column so the caret
+    /// holds its x. Anything else (an argument, a `;`-chain, another verb) returns `false` and runs as
+    /// written. See [`parse_bare_visual_vmotion`] / [`parse_bare_logical_vmotion`].
     fn try_visual_vmotion(&mut self, xpl: &str) -> bool {
         let (down, extend) = match parse_bare_visual_vmotion(xpl) {
             Some(v) => v,

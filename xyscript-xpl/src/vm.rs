@@ -3042,8 +3042,12 @@ impl Vm<'_, '_> {
                 let motion = match base {
                     "LEFT" | "PC" | "CL" => Motion::Left,
                     "RIGHT" | "NC" | "CR" => Motion::Right,
-                    "UP" | "LU" => Motion::Up,
-                    "DOWN" | "LD" => Motion::Down,
+                    "UP" => Motion::Up,
+                    "DOWN" => Motion::Down,
+                    // `LU`/`LD` move by VISUAL (wrapped) row, not logical line — the host uses the
+                    // GUI's visual-row map (fresh), else falls back to the logical up/down.
+                    "LU" => Motion::VisualUp,
+                    "LD" => Motion::VisualDown,
                     // `EL`/`ER` (Express Left/Right) = start/end of the ACTUAL (logical) line, the
                     // same as `HOME`/`END`. `LB`/`LE` (Line Begin/End) = start/end of the VISUAL
                     // (wrapped) line — fulfilled with a logical fallback + GUI cosmic refine.

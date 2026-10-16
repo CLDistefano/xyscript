@@ -2656,6 +2656,14 @@ pub struct AppHost {
     /// caret, which the GUI refines to the visual (screen-order) neighbor via cosmic's layout. Set only
     /// when `caret_visual` is on; the engine still does the logical move as a headless/off-window fallback.
     pending_visual_move: Option<(bool, bool, usize)>,
+    /// The GUI-published VISUAL-ROW MAP for the active document's window: rope offsets of each wrapped
+    /// row's start, with a trailing sentinel = the end of the last row. `LU`/`LD` (`Motion::VisualUp`/
+    /// `VisualDown`) step over these instead of logical lines, so they move by screen row inside
+    /// `;`-chains / macros / GUI-run scripts — not just the bare interactive form. `visual_rows_rev` is
+    /// the doc revision it was built at; a stale map (an edit bumped the rev) or a headless session (no
+    /// GUI → empty) falls back to the logical move. Published each frame by the GUI.
+    visual_rows: Vec<usize>,
+    visual_rows_rev: u64,
     /// A clone of the operative keymap, kept in sync by the editor on every install — so `SAVEKBD`
     /// can serialize it here (the authoritative copy lives in the editor's resolver). Desugared,
     /// like the resolver's; the dumper re-sugars typing cells.
@@ -3244,6 +3252,8 @@ impl AppHost {
             pending_scroll_rows: 0,
             pending_visual_edge: None,
             pending_visual_move: None,
+            visual_rows: Vec::new(),
+            visual_rows_rev: u64::MAX,
             current_keymap: None,
             keymap_gen: 0,
             config_track_path: None,
@@ -7290,6 +7300,15 @@ impl AppHost {
         self.visual_line_rev = rev;
     }
 
+    /// The GUI publishes the active window's VISUAL-ROW MAP here each frame: `rows` = rope offsets of
+    /// each wrapped row's start plus a trailing sentinel (end of the last row), stamped with the doc
+    /// `rev` it was built at. `LU`/`LD` consult it (see [`visual_rows`](Self::visual_rows) field).
+    /// An empty `rows` (WRAP off, or no GUI) means "no map" → `LU`/`LD` move logically.
+    pub fn set_visual_rows(&mut self, rows: Vec<usize>, rev: u64) {
+        self.visual_rows = rows;
+        self.visual_rows_rev = rev;
+    }
+
     /// Move the active caret by `delta` logical lines (column-preserving). The GUI
     /// uses this for page motion so it can scroll the view by the same amount.
     pub fn move_active_by_lines(&mut self, delta: i32, extend: bool) {
@@ -10092,8 +10111,8 @@ impl Host for AppHost {
                 let target: usize = match motion {
                     Motion::Left | Motion::LeftSameLine => cur.saturating_sub(1),
                     Motion::Right | Motion::RightSameLine => (cur + 1).min(len),
-                    Motion::Up | Motion::PrevLineStart | Motion::PrevPara => cur.saturating_sub(row),
-                    Motion::Down | Motion::NextLineStart | Motion::NextPara => (cur + row).min(len),
+                    Motion::Up | Motion::VisualUp | Motion::PrevLineStart | Motion::PrevPara => cur.saturating_sub(row),
+                    Motion::Down | Motion::VisualDown | Motion::NextLineStart | Motion::NextPara => (cur + row).min(len),
                     Motion::LineStart | Motion::VisualLineStart => row_start,
                     Motion::LineEnd | Motion::VisualLineEnd => (row_start + row - 1).min(len),
                     Motion::DocStart => 0,
@@ -10129,6 +10148,18 @@ impl Host for AppHost {
                 // move. Read the flag before borrowing the active document (the match below borrows `self`).
                 let caret_visual = self.caret_visual;
                 let mut visual_move: Option<(bool, bool, usize)> = None;
+                // `LU`/`LD` (VisualUp/VisualDown): step the primary over the GUI's visual-row map when
+                // it's FRESH (same doc revision) — so they move by screen row inside `;`-chains, macros
+                // and GUI-run scripts, not just the bare interactive form the GUI intercepts. Snapshot
+                // the map before borrowing the doc mutably; motions are infrequent and it's window-sized.
+                let visual_rows = if matches!(motion, Motion::VisualUp | Motion::VisualDown)
+                    && self.visual_rows_rev == self.active_doc().revision()
+                    && self.visual_rows.len() >= 2
+                {
+                    Some(self.visual_rows.clone())
+                } else {
+                    None
+                };
                 let b = self.active();
                 // Visual-caret intents (CARETMOTION visual / VisualLine edges) concern the PRIMARY
                 // only; record them from its pre-move position. The GUI refines just the primary.
@@ -10140,14 +10171,22 @@ impl Host for AppHost {
                     Motion::VisualLineEnd => visual_edge = Some((true, extend, from)),
                     _ => {}
                 }
+                // `LU`/`LD` with a fresh map: move the primary by VISUAL row and we're done. If it
+                // declines (off-window / target off-map / multi-caret), fall through to the logical fan-out.
+                let visual_done = match &visual_rows {
+                    Some(rows) => b.move_visual_row(matches!(motion, Motion::VisualDown), extend, rows),
+                    None => false,
+                };
                 // Fan the LOGICAL motion out to every caret (single-caret = the ordinary move).
                 // Left/Right/VisualLine* keep their logical-baseline fallback here (the GUI refines
-                // the primary to the visual neighbour / visual-row edge via the intents above).
-                b.move_carets(|bb| match motion {
+                // the primary to the visual neighbour / visual-row edge via the intents above);
+                // VisualUp/Down fall back to the logical up/down when the map didn't apply.
+                if !visual_done {
+                    b.move_carets(|bb| match motion {
                     Motion::Left => bb.move_left(extend),
                     Motion::Right => bb.move_right(extend),
-                    Motion::Up => bb.move_up(extend),
-                    Motion::Down => bb.move_down(extend),
+                    Motion::Up | Motion::VisualUp => bb.move_up(extend),
+                    Motion::Down | Motion::VisualDown => bb.move_down(extend),
                     Motion::LineStart => bb.move_line_start(extend),
                     Motion::LineEnd => bb.move_line_end(extend),
                     Motion::VisualLineStart => bb.move_line_start(extend),
@@ -10176,7 +10215,8 @@ impl Host for AppHost {
                         bb.move_to_line(vtop + vrows - 1, extend);
                         bb.move_line_end(extend);
                     }
-                });
+                    });
+                }
                 self.pending_visual_edge = visual_edge;
                 self.pending_visual_move = visual_move;
             }

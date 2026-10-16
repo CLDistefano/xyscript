@@ -741,6 +741,12 @@ impl Editor {
     pub fn take_visual_move(&mut self) -> Option<(bool, bool, usize)> {
         self.host.take_visual_move()
     }
+    /// Publish the active window's VISUAL-ROW MAP (rope-offset row starts + end sentinel, stamped with
+    /// the doc revision) so `LU`/`LD` move by screen row in chains/scripts. See
+    /// [`AppHost::set_visual_rows`](crate::host::AppHost::set_visual_rows).
+    pub fn set_visual_rows(&mut self, rows: Vec<usize>, rev: u64) {
+        self.host.set_visual_rows(rows, rev)
+    }
     /// Whether `CARETMOTION` is `visual`.
     pub fn caret_visual(&self) -> bool {
         self.host.caret_visual()

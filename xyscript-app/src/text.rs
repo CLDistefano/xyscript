@@ -1801,6 +1801,42 @@ impl Buffer {
         self.goal_col = Some(goal); // hold the column for the next vertical move
     }
 
+    /// Move the caret up/down one VISUAL (wrapped screen) row, using a map of visual-row START rope
+    /// offsets for the current window, `rows`, whose LAST entry is a sentinel = the end of the last
+    /// row (so row `i` spans `[rows[i], rows[i+1])`). Returns `false` — the caller then does the
+    /// logical `move_up`/`move_down` fallback — when the caret isn't inside the mapped span or the
+    /// target row is off the map (window edge). Mirrors [`move_up`]/[`move_down`] but over visual rows:
+    /// the sticky goal is characters from the CURRENT visual row's start, re-applied on the target row.
+    /// Monospace-exact (character columns); the GUI refines the bare interactive form pixel-exactly.
+    pub fn move_visual_row(&mut self, down: bool, extend: bool, rows: &[usize]) -> bool {
+        let cur = self.cursor;
+        if rows.len() < 2 || cur < rows[0] || cur > rows[rows.len() - 1] {
+            return false; // no map, or caret outside the mapped window
+        }
+        let n = rows.len() - 1; // actual rows are rows[0..n]; rows[n] is the end sentinel
+        // The row the caret sits on: the last row whose start is ≤ the caret.
+        let i = rows[..n].partition_point(|&s| s <= cur).saturating_sub(1);
+        let ti = if down {
+            i + 1
+        } else if i == 0 {
+            return false; // above the first mapped row → fallback
+        } else {
+            i - 1
+        };
+        if ti >= n {
+            return false; // below the last mapped row → fallback
+        }
+        let goal = self.goal_col.unwrap_or_else(|| self.chars_between(rows[i], cur));
+        let ts = rows[ti];
+        // Row end: the next row's start (a soft wrap) but never past the logical line end (a hard
+        // break), so `advance_chars` can't walk onto/over the newline.
+        let te = rows[ti + 1].min(self.line_end(ts));
+        self.prepare_move(extend);
+        self.cursor = self.advance_chars(ts, te, goal);
+        self.goal_col = Some(goal);
+        true
+    }
+
     // ---- word / paragraph / line motion (B2) -------------------------------
 
     /// The decoded character starting at byte `at` (`None` at end of buffer).
@@ -2360,6 +2396,12 @@ impl Buffer {
     fn col_chars(&self, pos: usize) -> usize {
         let start = self.line_start(pos);
         self.enc.char_count(&self.rope.slice_to_vec(start, pos))
+    }
+
+    /// Number of characters in the rope byte range `[a, b)` — like [`col_chars`] but from an arbitrary
+    /// start (a visual-row start, for `move_visual_row`).
+    fn chars_between(&self, a: usize, b: usize) -> usize {
+        self.enc.char_count(&self.rope.slice_to_vec(a.min(b), b))
     }
 
     /// The byte offset `cols` characters past `start`, clamped to `end`.
@@ -3506,6 +3548,40 @@ mod tests {
         assert_eq!((b.line(), b.column()), (1, 2));
         b.move_down(false);
         assert_eq!((b.line(), b.column()), (2, 2));
+    }
+
+    #[test]
+    fn move_visual_row_steps_over_the_window_map() {
+        // `LU`/`LD` in a chain/script: the host steps over a GUI-published visual-row map (row starts
+        // + end sentinel). Here pretend line 1 ("0123456789", a soft-wrap every 5 cols) is rows [0,5)
+        // and [5,10); line 2 ("ABCDE") is a row at [11,16). Map with the trailing end sentinel = 16.
+        let mut b = Buffer::from_str("0123456789\nABCDE");
+        let rows = [0usize, 5, 11, 16];
+        b.set_caret(2, None); // row 0, col 2
+        assert!(b.move_visual_row(true, false, &rows)); // ↓ to row 1, col 2
+        assert_eq!(b.cursor(), 7);
+        assert!(b.move_visual_row(true, false, &rows)); // ↓ to row 2 (line 2), col 2
+        assert_eq!(b.cursor(), 13); // 'C'
+        assert!(!b.move_visual_row(true, false, &rows), "below the last row → logical fallback");
+        assert_eq!(b.cursor(), 13, "declined move leaves the caret put");
+        assert!(b.move_visual_row(false, false, &rows)); // ↑ back to row 1
+        assert_eq!(b.cursor(), 7);
+        assert!(b.move_visual_row(false, false, &rows)); // ↑ to row 0
+        assert_eq!(b.cursor(), 2);
+        assert!(!b.move_visual_row(false, false, &rows), "above the first row → logical fallback");
+
+        // Goal column sticks across a SHORT row (clamped) and is restored on a wider one.
+        b.set_caret(9, None); // row 1, col 4 ('9')
+        assert!(b.move_visual_row(true, false, &rows)); // ↓ to row 2, clamp col 4 → end 'E' (15)
+        assert_eq!(b.cursor(), 15);
+        assert!(b.move_visual_row(false, false, &rows)); // ↑ to row 1, goal 4 restored
+        assert_eq!(b.cursor(), 9);
+
+        // Caret outside the mapped span → fallback (false), unchanged.
+        let short = [0usize, 5]; // covers only [0,5]
+        b.set_caret(9, None);
+        assert!(!b.move_visual_row(true, false, &short));
+        assert_eq!(b.cursor(), 9);
     }
 
     #[test]

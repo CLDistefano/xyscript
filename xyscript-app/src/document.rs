@@ -788,6 +788,21 @@ impl Document {
         self.buffer.move_all_carets(motion);
     }
 
+    /// `LU`/`LD` visual-row move for the PRIMARY caret, using the window's visual-row map (rope-offset
+    /// row starts + end sentinel). Returns `false` — the caller then does the logical `UP`/`DOWN`
+    /// fallback — for a multi-caret set or when the caret/target is off the mapped window. See
+    /// [`Buffer::move_visual_row`](crate::text::Buffer::move_visual_row).
+    pub fn move_visual_row(&mut self, down: bool, extend: bool, rows: &[usize]) -> bool {
+        if self.buffer.caret_count() > 1 {
+            return false; // visual multi-caret vmove is exotic — fall back to the logical fan-out
+        }
+        let moved = self.buffer.move_visual_row(down, extend, rows);
+        if moved {
+            self.coalescing = false; // a motion closes the coalescing run, like every other move
+        }
+        moved
+    }
+
     /// This buffer's stable identity for the split-pane layout tree. Unique per live `Document`,
     /// assigned at construction, never reused. See [`crate::panes`].
     pub fn id(&self) -> crate::panes::DocId {
