@@ -5093,13 +5093,12 @@ impl Vm<'_, '_> {
             // function and show it in a scrollable TXT dialog (or feed it to a CAPTURE variable).
             // A bare `HELP` shows a short overview; an unknown name reports suggestions on the
             // status line (and sets `$ERROR`) rather than opening an empty dialog.
-            "HELP" | "?" | "REF" => {
-                // `REF` is a synonym for `HELP` (the reference command, as `MAN` is for the manual).
-                // Take the name RAW (not `$`-substituted), so `HELP $CWD` looks up the *special*
-                // rather than substituting its value, and `HELP UPPER` works without a leading `$`.
+            "REF" => {
+                // `REF` searches the command REFERENCE only (the former `HELP` behaviour; `MAN` is the
+                // manual, `HELP` is both). Take the name RAW (not `$`-substituted) so `REF $CWD` looks up
+                // the special rather than its value, and `REF UPPER` works without a leading `$`. `/S` is
+                // an accepted no-op alias (searching is always on).
                 let q = raw_args.trim();
-                // `HELP <term>` always searches now (exact matches promoted to the top); `/S` is kept as
-                // an accepted no-op alias so old habits/scripts don't break.
                 let resp = self.ctx.host.help((!q.is_empty()).then_some(q), false);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
@@ -5110,13 +5109,30 @@ impl Vm<'_, '_> {
                     *self.ctx.status = Some(resp.body);
                     return Ok(Flow::Next);
                 }
-                // Show the results in the shared read-only Help tab (smooth scrolling), highlighting the term.
                 self.host_op(EditorOp::ShowResults { text: resp.body, emphasis: resp.emphasis })?;
                 Ok(Flow::Next)
             }
-            // `MAN [topic]` — the manual command. Bare `MAN` opens the user manual (Help ▸ Manual);
-            // `MAN <topic>` searches the manual by section and shows the matches in a TXT dialog (a
-            // metacharacter makes the topic a regex, like `HELP`). Capture-aware.
+            "HELP" | "?" => {
+                // `HELP` searches BOTH the reference and the manual (reference first), merged into the
+                // one read-only Help tab. `REF` / `MAN` are the single-corpus commands.
+                let q = raw_args.trim();
+                let resp = self.ctx.host.help_all((!q.is_empty()).then_some(q));
+                if self.is_capturing() {
+                    self.capture_push(&resp.body);
+                    return Ok(Flow::Next);
+                }
+                if resp.not_found {
+                    self.ctx.env.error = 1;
+                    *self.ctx.status = Some(resp.body);
+                    return Ok(Flow::Next);
+                }
+                self.host_op(EditorOp::ShowResults { text: resp.body, emphasis: resp.emphasis })?;
+                Ok(Flow::Next)
+            }
+            // `MAN [topic]` — the manual command (the manual alone; `REF` is the reference, `HELP` is
+            // both). Bare `MAN` opens the user manual (Help ▸ Manual); `MAN <topic>` searches the manual
+            // by section — boolean/proximity (`AND`/`OR`/`NOT`/`"phrase"`/`NEAR`, or plain multi-word)
+            // when the query reads that way, else substring/regex. Capture-aware.
             "MAN" => {
                 let q = raw_args.trim();
                 if q.is_empty() {

@@ -10829,12 +10829,48 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
-    fn ref_is_a_synonym_for_help() {
+    fn help_ref_man_search_the_right_corpora() {
+        // The three commands now target different corpora: REF = the reference only, MAN = the manual
+        // only, HELP = BOTH (reference first). The block headers ("reference match" / "manual section")
+        // make each corpus visible in the results.
+        // A block is present iff its HEADER line is — and a header line uniquely starts with a digit
+        // ("4 reference matches for …" / "1 manual section for …"), so this can't be fooled by the
+        // words "manual section" appearing inside an entry's prose.
+        let has_block = |t: &str, kind: &str| {
+            t.lines().any(|l| l.trim_start().starts_with(|c: char| c.is_ascii_digit()) && l.contains(kind))
+        };
         let mut e = Editor::new(typing_keymap());
-        // `REF` is the reference command — a synonym for `HELP` (as `MAN` is for the manual).
+        // REF — reference only, never the manual.
         e.run_command("REF CV");
-        assert!(e.active_is_help_listing(), "REF opens the Help results tab, like HELP");
-        assert!(e.document().text().contains("change-with-verify"), "REF CV shows the CV entry");
+        assert!(e.active_is_help_listing(), "REF opens the results tab");
+        let t = e.document().text();
+        assert!(t.contains("change-with-verify"), "REF CV shows the CV reference entry: {t}");
+        assert!(has_block(&t, "reference match") && !has_block(&t, "manual section"), "REF is reference-only: {t}");
+        // MAN — manual only, never the reference.
+        e.run_command("MAN scratchpad");
+        let t = e.document().text();
+        assert!(has_block(&t, "manual section") && !has_block(&t, "reference match"), "MAN is manual-only: {t}");
+        // HELP — BOTH: it reaches the manual (scratchpad is a manual section) …
+        e.run_command("HELP scratchpad");
+        assert!(has_block(&e.document().text(), "manual section"), "HELP searches the manual too");
+        // … and the reference.
+        e.run_command("HELP CV");
+        assert!(has_block(&e.document().text(), "reference match"), "HELP searches the reference too");
+    }
+
+    #[test]
+    fn man_supports_boolean_proximity_queries() {
+        let mut e = Editor::new(typing_keymap());
+        // An operator query takes the boolean path over each section's title + body.
+        e.run_command("MAN scratchpad OR nonexistentzzz");
+        assert!(e.active_is_help_listing());
+        assert!(e.document().text().to_lowercase().contains("scratchpad"), "OR finds the scratchpad section");
+        // A contradiction matches nothing → status line + $ERROR, no results tab.
+        let mut e2 = Editor::new(typing_keymap());
+        e2.run_command("MAN scratchpad AND zzznotinmanualzzz");
+        assert!(!e2.active_is_help_listing(), "no section has both terms → no results tab");
+        e2.run_command("PR $ERROR");
+        assert_eq!(e2.output().last().map(String::as_str), Some("1"));
     }
 
     #[test]

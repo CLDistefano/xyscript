@@ -443,6 +443,302 @@ pub fn search(query: &str) -> Vec<HelpEntry> {
     name_hits
 }
 
+// ---- boolean / proximity query (AND / OR / NOT / "phrase" / NEAR[/n]) ---------------------------
+
+/// A parsed HELP query. `Word` matches a token by SUBSTRING (forgiving, like plain `HELP`); a quoted
+/// `Phrase` matches consecutive words; `Near` is true when its two operands occur within `n` words;
+/// `And`/`Or`/`Not` compose. Leaves and operators are all lowercased/normalized at lex time.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Query {
+    Word(String),
+    Phrase(Vec<String>),
+    Not(Box<Query>),
+    And(Vec<Query>),
+    Or(Vec<Query>),
+    Near(Box<Query>, Box<Query>, usize),
+}
+
+/// Proximity when `NEAR` is written without `/n`.
+const NEAR_DEFAULT: usize = 5;
+
+enum Tok {
+    And,
+    Or,
+    Not,
+    Near(usize),
+    LParen,
+    RParen,
+    Phrase(Vec<String>),
+    Word(String),
+}
+
+/// Lowercased alphanumeric words of `s` (the tokenization both the query and an entry's text use).
+pub(crate) fn words_of(s: &str) -> Vec<String> {
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_ascii_lowercase())
+        .collect()
+}
+
+/// Whether `q` should be read as a boolean/proximity query rather than the plain substring/regex
+/// `search`. True when it has an explicit operator (`AND`/`OR`/`NOT`/`NEAR`), a quoted phrase, or is
+/// plain multi-word (implicit AND) — but NOT a single regex-ish term, so `HELP ^PV` stays a regex.
+pub fn is_boolean_query(q: &str) -> bool {
+    if q.contains('"') {
+        return true;
+    }
+    let words: Vec<&str> = q.split_whitespace().collect();
+    let has_op = words.iter().any(|w| {
+        let u = w.to_ascii_uppercase();
+        u == "AND" || u == "OR" || u == "NOT" || u == "NEAR" || u.starts_with("NEAR/")
+    });
+    has_op || (words.len() >= 2 && !q.contains(|c| REGEX_META.contains(&c)))
+}
+
+fn lex_query(q: &str) -> Vec<Tok> {
+    let mut toks = Vec::new();
+    let mut chars = q.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        if c == '(' || c == ')' {
+            chars.next();
+            toks.push(if c == '(' { Tok::LParen } else { Tok::RParen });
+            continue;
+        }
+        if c == '"' {
+            chars.next();
+            let mut s = String::new();
+            for c in chars.by_ref() {
+                if c == '"' {
+                    break;
+                }
+                s.push(c);
+            }
+            let ws = words_of(&s);
+            if !ws.is_empty() {
+                toks.push(Tok::Phrase(ws));
+            }
+            continue;
+        }
+        // A bare run until whitespace / paren / quote.
+        let mut s = String::new();
+        while let Some(&c) = chars.peek() {
+            if c.is_whitespace() || c == '(' || c == ')' || c == '"' {
+                break;
+            }
+            s.push(c);
+            chars.next();
+        }
+        let up = s.to_ascii_uppercase();
+        if up == "AND" {
+            toks.push(Tok::And);
+        } else if up == "OR" {
+            toks.push(Tok::Or);
+        } else if up == "NOT" {
+            toks.push(Tok::Not);
+        } else if up == "NEAR" {
+            toks.push(Tok::Near(NEAR_DEFAULT));
+        } else if let Some(n) = up.strip_prefix("NEAR/").and_then(|r| r.parse::<usize>().ok()).filter(|&n| n > 0) {
+            toks.push(Tok::Near(n));
+        } else {
+            // A punctuated word (`wrap-indent`, `$cwd`, `len()`) splits into its alnum pieces: one piece
+            // is a Word, several become an implicit Phrase.
+            match words_of(&s).as_slice() {
+                [] => {}
+                [one] => toks.push(Tok::Word(one.clone())),
+                many => toks.push(Tok::Phrase(many.to_vec())),
+            }
+        }
+    }
+    toks
+}
+
+// Recursive descent: or := and (OR and)* ; and := unary (AND? unary)* (implicit AND) ;
+// unary := NOT unary | near ; near := atom (NEAR atom)* ; atom := (or) | phrase | word.
+fn parse(toks: &[Tok]) -> Option<Query> {
+    let mut i = 0;
+    parse_or(toks, &mut i)
+}
+fn parse_or(toks: &[Tok], i: &mut usize) -> Option<Query> {
+    let mut parts = vec![parse_and(toks, i)?];
+    while matches!(toks.get(*i), Some(Tok::Or)) {
+        *i += 1;
+        parts.push(parse_and(toks, i)?);
+    }
+    Some(if parts.len() == 1 { parts.pop().unwrap() } else { Query::Or(parts) })
+}
+fn parse_and(toks: &[Tok], i: &mut usize) -> Option<Query> {
+    let mut parts = vec![parse_unary(toks, i)?];
+    loop {
+        match toks.get(*i) {
+            Some(Tok::And) => {
+                *i += 1;
+                parts.push(parse_unary(toks, i)?);
+            }
+            // Adjacent operands with no explicit operator = implicit AND.
+            Some(Tok::Not | Tok::Word(_) | Tok::Phrase(_) | Tok::LParen) => parts.push(parse_unary(toks, i)?),
+            _ => break,
+        }
+    }
+    Some(if parts.len() == 1 { parts.pop().unwrap() } else { Query::And(parts) })
+}
+fn parse_unary(toks: &[Tok], i: &mut usize) -> Option<Query> {
+    if matches!(toks.get(*i), Some(Tok::Not)) {
+        *i += 1;
+        return Some(Query::Not(Box::new(parse_unary(toks, i)?)));
+    }
+    parse_near(toks, i)
+}
+fn parse_near(toks: &[Tok], i: &mut usize) -> Option<Query> {
+    let first = parse_atom(toks, i)?;
+    if !matches!(toks.get(*i), Some(Tok::Near(_))) {
+        return Some(first);
+    }
+    // `a NEAR/3 b NEAR/5 c` → AND of the adjacent pairs.
+    let (mut pairs, mut prev) = (Vec::new(), first);
+    while let Some(&Tok::Near(n)) = toks.get(*i) {
+        *i += 1;
+        let next = parse_atom(toks, i)?;
+        pairs.push(Query::Near(Box::new(prev), Box::new(next.clone()), n));
+        prev = next;
+    }
+    Some(if pairs.len() == 1 { pairs.pop().unwrap() } else { Query::And(pairs) })
+}
+fn parse_atom(toks: &[Tok], i: &mut usize) -> Option<Query> {
+    match toks.get(*i) {
+        Some(Tok::LParen) => {
+            *i += 1;
+            let q = parse_or(toks, i)?;
+            if matches!(toks.get(*i), Some(Tok::RParen)) {
+                *i += 1;
+            }
+            Some(q)
+        }
+        Some(Tok::Word(w)) => {
+            let w = w.clone();
+            *i += 1;
+            Some(Query::Word(w))
+        }
+        Some(Tok::Phrase(ws)) => {
+            let ws = ws.clone();
+            *i += 1;
+            Some(Query::Phrase(ws))
+        }
+        _ => None, // a dangling/misplaced operator → whole parse fails → caller falls back to `search`
+    }
+}
+
+/// Word index positions of a `Word`/`Phrase` operand in `words` (for `Near`); empty for other nodes.
+fn positions(q: &Query, words: &[String]) -> Vec<usize> {
+    match q {
+        Query::Word(w) => {
+            words.iter().enumerate().filter(|(_, t)| t.contains(w.as_str())).map(|(i, _)| i).collect()
+        }
+        Query::Phrase(ws) if !ws.is_empty() && words.len() >= ws.len() => (0..=words.len() - ws.len())
+            .filter(|&i| ws.iter().enumerate().all(|(k, w)| words[i + k].contains(w.as_str())))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+fn eval(q: &Query, joined: &str, words: &[String]) -> bool {
+    match q {
+        Query::Word(w) => joined.contains(w.as_str()),
+        Query::Phrase(ws) => joined.contains(ws.join(" ").as_str()),
+        Query::Not(x) => !eval(x, joined, words),
+        Query::And(xs) => xs.iter().all(|x| eval(x, joined, words)),
+        Query::Or(xs) => xs.iter().any(|x| eval(x, joined, words)),
+        Query::Near(a, b, n) => {
+            let (pa, pb) = (positions(a, words), positions(b, words));
+            pa.iter().any(|&x| pb.iter().any(|&y| x.abs_diff(y) <= *n))
+        }
+    }
+}
+/// Parse a raw query into an AST (lex + recursive descent), or `None` if malformed. Shared by the
+/// reference ([`search_query`]) and the manual (`manual::search_query`).
+pub(crate) fn compile_query(q: &str) -> Option<Query> {
+    parse(&lex_query(q))
+}
+
+/// Whether the parsed query matches a document given its lowercased alphanumeric `words`.
+pub(crate) fn query_matches(q: &Query, words: &[String]) -> bool {
+    eval(q, &words.join(" "), words)
+}
+
+/// Positive (not negated) leaf words — for name-match ranking and the results highlight.
+pub(crate) fn positive_leaf_words(q: &Query) -> Vec<String> {
+    fn go(q: &Query, pos: bool, out: &mut Vec<String>) {
+        match q {
+            Query::Word(w) if pos => out.push(w.clone()),
+            Query::Phrase(ws) if pos => out.extend(ws.iter().cloned()),
+            Query::Word(_) | Query::Phrase(_) => {}
+            Query::Not(x) => go(x, !pos, out),
+            Query::And(xs) | Query::Or(xs) => xs.iter().for_each(|x| go(x, pos, out)),
+            Query::Near(a, b, _) => {
+                go(a, pos, out);
+                go(b, pos, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    go(q, true, &mut out);
+    out
+}
+
+fn entry_words(e: &HelpEntry) -> Vec<String> {
+    words_of(&format!("{} {}", e.names.join(" "), e.synopsis))
+}
+
+/// The query entry point `HELP` uses: a boolean/proximity search when the query reads that way
+/// ([`is_boolean_query`]), else the plain substring/regex [`search`]. Matching entries are ranked
+/// name-hits first (any positive term appears in a headword), then reference order.
+pub fn search_query(query: &str) -> Vec<HelpEntry> {
+    if !is_boolean_query(query) {
+        return search(query);
+    }
+    let Some(q) = parse(&lex_query(query)) else {
+        return search(query); // malformed → degrade to the plain search
+    };
+    let leaves = positive_leaf_words(&q);
+    let (mut name_hits, mut desc_hits) = (Vec::new(), Vec::new());
+    for e in &index().entries {
+        let words = entry_words(e);
+        if eval(&q, &words.join(" "), &words) {
+            let name_hit = e.names.iter().any(|n| {
+                let nl = n.to_ascii_lowercase();
+                leaves.iter().any(|w| nl.contains(w))
+            });
+            if name_hit {
+                name_hits.push(e.clone());
+            } else {
+                desc_hits.push(e.clone());
+            }
+        }
+    }
+    name_hits.append(&mut desc_hits);
+    name_hits
+}
+
+/// Results-highlight phrase for a query: for a boolean query, a `\w*(w1|w2|…)\w*` alternation of its
+/// POSITIVE leaf words; otherwise the plain [`result_emphasis`]. `None` when there's nothing to light.
+pub(crate) fn query_emphasis(query: &str) -> Option<(String, bool)> {
+    if !is_boolean_query(query) {
+        return result_emphasis(query);
+    }
+    let q = parse(&lex_query(query))?;
+    let mut leaves = positive_leaf_words(&q);
+    leaves.sort();
+    leaves.dedup();
+    leaves.retain(|w| !w.is_empty());
+    if leaves.is_empty() {
+        return None;
+    }
+    let alt = leaves.iter().map(|w| regex::escape(w)).collect::<Vec<_>>().join("|");
+    Some((format!(r"\w*(?:{alt})\w*"), true))
+}
+
 /// A short overview shown by a bare `HELP` (no argument).
 pub fn overview() -> String {
     let [c, s, f, l] = index().counts;
@@ -595,5 +891,84 @@ mod tests {
         let near = suggest("CVV", 5); // one edit from CV / CVA
         assert!(near.iter().any(|s| s == "CV" || s == "CVA"), "got {near:?}");
         assert!(suggest("zzzzzzzz", 5).is_empty(), "no wild suggestions");
+    }
+
+    // ---- boolean / proximity query ----------------------------------------------------------
+
+    /// Evaluate a parsed query against a plain-text haystack (synthetic, deterministic).
+    fn matches(query: &str, text: &str) -> bool {
+        let q = parse(&lex_query(query)).expect("parses");
+        let words = words_of(text);
+        eval(&q, &words.join(" "), &words)
+    }
+
+    #[test]
+    fn boolean_operators_and_phrase_and_near_evaluate() {
+        assert!(matches("foo AND bar", "foo bar baz"));
+        assert!(!matches("foo AND bar", "foo baz"));
+        assert!(matches("foo OR bar", "only bar here"));
+        assert!(!matches("foo OR bar", "nothing relevant"));
+        assert!(matches("foo NOT bar", "foo baz")); // foo present, bar absent
+        assert!(!matches("foo NOT bar", "foo bar"));
+        assert!(matches("tab indent", "a tab and some indent")); // implicit AND
+        assert!(!matches("tab indent", "only a tab"));
+        // Quoted phrase = consecutive words.
+        assert!(matches("\"wrap indent\"", "soft wrap indent here"));
+        assert!(!matches("\"wrap indent\"", "wrap soft indent"));
+        // NEAR/n = within n words (color..background is 2 apart).
+        assert!(matches("color NEAR/2 background", "color of background"));
+        assert!(!matches("color NEAR/1 background", "color of background"));
+        // Grouping + precedence.
+        assert!(matches("(a OR z) AND b", "a b c"));
+        assert!(!matches("(a OR z) AND b", "a c"));
+    }
+
+    #[test]
+    fn parens_override_default_precedence_and_nest() {
+        // Default precedence: AND binds tighter than OR, so `a OR b AND c` == `a OR (b AND c)`.
+        assert!(matches("a OR b AND c", "a only")); // `a` alone satisfies the OR
+        assert!(!matches("a OR b AND c", "b only")); // b without c, and no a → no match
+        assert!(matches("a OR b AND c", "b c")); // the AND branch
+        // Parens regroup it to `(a OR b) AND c`: now `c` is mandatory.
+        assert!(!matches("(a OR b) AND c", "a only")); // missing the mandatory c
+        assert!(matches("(a OR b) AND c", "a c"));
+        assert!(matches("(a OR b) AND c", "b c"));
+        // Nested parens: `(a OR (b AND c)) AND d`.
+        assert!(matches("(a OR (b AND c)) AND d", "a d")); // left branch of the inner OR + d
+        assert!(matches("(a OR (b AND c)) AND d", "b c d")); // right branch (b AND c) + d
+        assert!(!matches("(a OR (b AND c)) AND d", "b d")); // inner OR fails (no a, and b-without-c)
+        assert!(!matches("(a OR (b AND c)) AND d", "a")); // mandatory outer d missing
+    }
+
+    #[test]
+    fn is_boolean_query_distinguishes_from_plain_and_regex() {
+        assert!(!is_boolean_query("indent")); // single word → plain substring
+        assert!(!is_boolean_query("^PV")); // regex → stays regex
+        assert!(!is_boolean_query("col(ou)?r")); // single regex-ish term
+        assert!(is_boolean_query("tab AND indent"));
+        assert!(is_boolean_query("tab indent")); // plain multi-word → implicit AND
+        assert!(is_boolean_query("\"wrap indent\""));
+        assert!(is_boolean_query("color NEAR/3 bg"));
+        assert!(is_boolean_query("a OR b"));
+    }
+
+    #[test]
+    fn query_emphasis_lists_positive_leaves_only() {
+        let (p, rx) = query_emphasis("tab AND indent").unwrap();
+        assert!(rx);
+        assert!(p.contains("tab") && p.contains("indent"), "{p}");
+        let (p2, _) = query_emphasis("tab NOT indent").unwrap();
+        assert!(p2.contains("tab") && !p2.contains("indent"), "NOT term excluded: {p2}");
+        // A plain single term still uses the whole-word emphasis path.
+        assert!(query_emphasis("indent").is_some());
+    }
+
+    #[test]
+    fn search_query_boolean_over_the_real_reference() {
+        // WRAPINDENT (name holds wrap+indent, synopsis is about indentation) matches `wrap AND indent`
+        // but is excluded by `wrap NOT indent` — a clean differential that doesn't hard-code corpus text.
+        let has_wi = |hits: &[HelpEntry]| hits.iter().any(|e| e.names.iter().any(|n| n.eq_ignore_ascii_case("WRAPINDENT")));
+        assert!(has_wi(&search_query("wrap AND indent")), "wrap AND indent finds WRAPINDENT");
+        assert!(!has_wi(&search_query("wrap NOT indent")), "wrap NOT indent excludes WRAPINDENT");
     }
 }

@@ -1914,6 +1914,17 @@ pub trait Host {
         }
     }
 
+    /// `HELP <term>` — search BOTH the command reference and the manual (reference first), merged into
+    /// one results tab. `REF` (via [`Self::help`]) is the reference alone; `MAN` the manual alone.
+    /// Bare `HELP` gives the overview. Default: unavailable.
+    fn help_all(&self, _query: Option<&str>) -> HelpResponse {
+        HelpResponse {
+            body: "Help is not available in this build.".to_string(),
+            not_found: true,
+            emphasis: None,
+        }
+    }
+
     /// `MAN <topic>` — search the user manual by section (the prose companion to [`Self::help`]).
     /// Returns a formatted title + body listing the matching sections with their full text;
     /// `not_found` when nothing matched (reported on the status line, like `HELP`). Bare `MAN` opens

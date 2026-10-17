@@ -381,6 +381,63 @@ fn apply_xymeta_restore(doc: &mut Document, r: XymetaRestore) {
     doc.set_marks_restored(r.marks);
 }
 
+/// The REFERENCE-matches block for `HELP`/`REF`: the formatted list of entries matching `q` (name
+/// hits first, exact headword promoted to the top), or `None` when nothing matches. Shared so `REF`
+/// (reference only) and `HELP` (reference + manual) format results identically.
+fn reference_block(q: &str) -> Option<String> {
+    const CAP: usize = 40; // entries listed before "…and N more"
+    let mut hits = crate::help::search_query(q);
+    if let Some(exact) = crate::help::lookup(q) {
+        hits.retain(|e| !(e.names == exact.names && e.kind == exact.kind));
+        hits.insert(0, exact);
+    }
+    if hits.is_empty() {
+        return None;
+    }
+    let shown = hits.len().min(CAP);
+    let mut body = format!("{} reference match{} for {q:?}:\n", hits.len(), if hits.len() == 1 { "" } else { "es" });
+    for e in &hits[..shown] {
+        // One line of names + kind, then the entry's FULL synopsis (flattened to one line — the tab
+        // word-wraps). No character cap / trailing `…`: a result reads as complete text.
+        let flat: String = e.synopsis.split_whitespace().collect::<Vec<_>>().join(" ");
+        body.push_str(&format!("\n{}  ({})\n    {flat}", e.names.join(" / "), e.kind.label()));
+    }
+    if hits.len() > shown {
+        body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));
+    }
+    Some(body)
+}
+
+/// The MANUAL-matches block for `HELP`/`MAN`: matching sections' titles + full bodies, or `None`.
+fn manual_block(q: &str) -> Option<String> {
+    const CAP: usize = 25; // sections listed before "…and N more"
+    let hits = crate::manual::search_query(q);
+    if hits.is_empty() {
+        return None;
+    }
+    let shown = hits.len().min(CAP);
+    let mut body = format!("{} manual section{} for {q:?}:\n", hits.len(), if hits.len() == 1 { "" } else { "s" });
+    for s in &hits[..shown] {
+        body.push_str(&format!("\n{}\n    {}", s.title, s.body));
+    }
+    if hits.len() > shown {
+        body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));
+    }
+    Some(body)
+}
+
+/// The miss response when a `HELP`/`REF` query matches nothing: near-name typo suggestions, reported
+/// on the status line (not an empty tab).
+fn help_miss(q: &str) -> HelpResponse {
+    let near = crate::help::suggest(q, 5);
+    let body = if near.is_empty() {
+        format!("No help matches for {q:?}. Type HELP for an overview.")
+    } else {
+        format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
+    };
+    HelpResponse { body, not_found: true, emphasis: None }
+}
+
 /// Human-readable names for an `MDA` attribute bitset (e.g. "bold underline"), for status messages.
 fn mda_attr_names(a: u8) -> String {
     let mut parts = Vec::new();
@@ -14621,81 +14678,46 @@ impl Host for AppHost {
         Some(entry.path.to_string_lossy().into_owned())
     }
 
+    // `REF <term>` — search the command REFERENCE only (the former `HELP` behaviour). Boolean/
+    // proximity when the query reads that way, else substring/regex; an exact headword is promoted
+    // to the top. Bare `REF` gives the reference overview.
     fn help(&self, query: Option<&str>, _search: bool) -> HelpResponse {
         let Some(q) = query else {
-            // Bare `HELP` — a short overview.
-            return HelpResponse {
-                body: crate::help::overview(),
-                not_found: false,
-                emphasis: None,
-            };
+            return HelpResponse { body: crate::help::overview(), not_found: false, emphasis: None };
         };
-        // One command: `HELP <term>` always greps names + descriptions, but an EXACT headword match is
-        // promoted to the TOP of the list (so `HELP CV` leads with the CV entry, then everything else
-        // that mentions "CV"). `/S` used to force this search — it's now the only behaviour, kept as a
-        // no-op alias. Results open in a read-only tab (see `EditorOp::ShowResults`).
-        const CAP: usize = 40; // max entries listed before "…and N more"
-        let mut hits = crate::help::search(q);
-        if let Some(exact) = crate::help::lookup(q) {
-            hits.retain(|e| !(e.names == exact.names && e.kind == exact.kind));
-            hits.insert(0, exact);
+        match reference_block(q) {
+            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q) },
+            None => help_miss(q),
         }
-        if !hits.is_empty() {
-            let shown = hits.len().min(CAP);
-            let mut body = format!(
-                "{} match{} for {q:?}:\n",
-                hits.len(),
-                if hits.len() == 1 { "" } else { "es" }
-            );
-            for e in &hits[..shown] {
-                // One line of names + kind, then the entry's FULL synopsis (flattened to one line — the
-                // dialog word-wraps). No character cap / trailing `…`: a result reads as complete text.
-                let flat: String = e.synopsis.split_whitespace().collect::<Vec<_>>().join(" ");
-                body.push_str(&format!("\n{}  ({})\n    {flat}", e.names.join(" / "), e.kind.label()));
-            }
-            if hits.len() > shown {
-                body.push_str(&format!(
-                    "\n\n…and {} more — narrow the search term.",
-                    hits.len() - shown
-                ));
-            }
-            return HelpResponse { body, not_found: false, emphasis: crate::help::result_emphasis(q) };
-        }
-        // Nothing matched at all → near-name suggestions (typo help) / overview, on the status line.
-        let near = crate::help::suggest(q, 5);
-        let body = if near.is_empty() {
-            format!("No help matches for {q:?}. Type HELP for an overview.")
-        } else {
-            format!("No help matches for {q:?} — did you mean: {}?", near.join(", "))
-        };
-        HelpResponse { body, not_found: true, emphasis: None }
     }
 
+    // `MAN <topic>` — search the MANUAL only. Boolean/proximity like `REF`/`HELP`.
     fn manual_search(&self, q: &str) -> HelpResponse {
-        const CAP: usize = 25; // sections listed before "…and N more"
-        let hits = crate::manual::search(q);
-        if hits.is_empty() {
-            return HelpResponse {
+        match manual_block(q) {
+            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q) },
+            None => HelpResponse {
                 body: format!("No manual sections match {q:?}. Type MAN for an overview."),
                 not_found: true,
                 emphasis: None,
-            };
+            },
         }
-        let shown = hits.len().min(CAP);
-        let mut body = format!(
-            "{} manual section{} for {q:?}:\n",
-            hits.len(),
-            if hits.len() == 1 { "" } else { "s" }
-        );
-        for s in &hits[..shown] {
-            // The whole section body (Typst reduced to plain text; the dialog word-wraps). No context
-            // window / `…`: a result is the complete section, snapped to no mid-text ellipsis.
-            body.push_str(&format!("\n{}\n    {}", s.title, s.body));
+    }
+
+    // `HELP <term>` — search BOTH: the reference first, then the manual, in one results tab. Bare
+    // `HELP` gives the reference overview (which points at `MAN` for the manual).
+    fn help_all(&self, query: Option<&str>) -> HelpResponse {
+        let Some(q) = query else {
+            return HelpResponse { body: crate::help::overview(), not_found: false, emphasis: None };
+        };
+        let blocks: Vec<String> = [reference_block(q), manual_block(q)].into_iter().flatten().collect();
+        if blocks.is_empty() {
+            return help_miss(q); // nothing in either corpus → near-name suggestions
         }
-        if hits.len() > shown {
-            body.push_str(&format!("\n\n…and {} more — narrow the search term.", hits.len() - shown));
+        HelpResponse {
+            body: blocks.join("\n\n\n"),
+            not_found: false,
+            emphasis: crate::help::query_emphasis(q),
         }
-        HelpResponse { body, not_found: false, emphasis: crate::help::result_emphasis(q) }
     }
 
     fn selection_in(&self, n: i64) -> String {

@@ -158,6 +158,37 @@ pub fn search(query: &str) -> Vec<&'static Section> {
     title_hits
 }
 
+/// The query entry point `MAN` uses: a boolean/proximity search (`AND`/`OR`/`NOT`/`"phrase"`/`NEAR`,
+/// or plain multi-word) over each section's title + body when the query reads that way
+/// ([`crate::help::is_boolean_query`]), else the plain substring/regex [`search`]. Title matches
+/// rank first, then manual order — the same shape as `search`, using the shared query engine.
+pub fn search_query(query: &str) -> Vec<&'static Section> {
+    if !crate::help::is_boolean_query(query) {
+        return search(query);
+    }
+    let Some(ast) = crate::help::compile_query(query) else {
+        return search(query); // malformed → degrade to the plain search
+    };
+    let leaves = crate::help::positive_leaf_words(&ast);
+    let (mut title_hits, mut body_hits): (Vec<&Section>, Vec<&Section>) = (Vec::new(), Vec::new());
+    for s in sections() {
+        let words = crate::help::words_of(&format!("{} {}", s.title, s.body));
+        if crate::help::query_matches(&ast, &words) {
+            let title_hit = {
+                let tl = s.title.to_ascii_lowercase();
+                leaves.iter().any(|w| tl.contains(w))
+            };
+            if title_hit {
+                title_hits.push(s);
+            } else {
+                body_hits.push(s);
+            }
+        }
+    }
+    title_hits.append(&mut body_hits);
+    title_hits
+}
+
 /// A short overview for bare-argument callers that want text (the GUI opens the manual instead).
 pub fn overview() -> String {
     format!(
