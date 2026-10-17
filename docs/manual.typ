@@ -1302,6 +1302,41 @@ shell-out — it is #emph[not] gated by #raw("TRUST"), because auto-reopening ru
 only re-reads a file you already opened. #raw("$AUTOREOPEN") reads the state, and the setting is saved
 with #raw("SaveCfg").
 
+== Seeing what you changed: DIFF
+
+Where #raw("AUTOREOPEN") and #raw("REC") deal with the disk copy wholesale, #raw("DIFF") shows you exactly
+how the two differ. Run #raw("DIFF") and XyScript compares the buffer against its own file on disk and
+drops a *unified diff* into a read-only results tab — the familiar #raw("diff -u") shape: #raw("@@") hunk
+headers mark where each run of changes sits, a leading space is an unchanged context line, #raw("-") a line
+only on disk, #raw("+") a line only in the buffer. Removed lines are tinted red, added lines green, and the
+hunk headers blue, so the shape of the change reads at a glance. It answers the everyday question "what
+have I touched since I last saved?" — the saved file is the #raw("-") side, your current buffer the #raw("+")
+side. If the buffer already matches the file, nothing opens and the status line simply says so.
+
+To compare against some *other* file instead of your own saved copy, name it: #raw("DIFF <path>") diffs the
+buffer (still the #raw("+") side) against that file (resolved against #raw("$CWD")), so you can see how the
+working text differs from a backup or a sibling version. The buffer needn't have been saved itself for this
+form — only the named file has to exist and be readable.
+
+A couple of things worth knowing about how the comparison is drawn. The file being compared is read through
+the buffer's current *encoding* (see _Encodings_ above), so a CP437 or Latin-1 document is compared as the
+same text you see on screen, not as raw bytes. And the comparison is by logical line *content*: a difference
+that is only line-ending style (CRLF versus LF) or a missing-or-extra final newline reads as *identical*, so
+#raw("DIFF") never floods you with phantom changes after a newline conversion.
+
+The results tab is a launch pad, just like #raw("GREP")'s. Put the caret on any diff line and press #raw("DJ")
+to jump straight into the live buffer at the matching line — the #raw("DIFF") counterpart of #raw("GJ"). It
+reads the caret's enclosing #raw("@@") header and the context and #raw("+") lines above to work out the line
+number, switches to the buffer, and centres the caret there; on a #raw("-") (removed) line it lands on the
+line that now follows the deletion. The jump quietly retires itself once the tab stops being a diff — running
+#raw("HELP"), #raw("MAN"), or #raw("COLORNAMES") reuses the same results tab — and if the diffed buffer has
+since been closed, or the caret isn't inside a hunk, #raw("DJ") just says so on the status line rather than
+doing anything surprising.
+
+#tip("DIFF before you REC")[When #raw("AUTOREOPEN") flags that a file changed under you but you have unsaved
+edits of your own, #raw("DIFF") is the quickest way to see which lines are in play before you decide between
+#raw("REC") (take the disk copy) and #raw("SAVE") (keep yours).]
+
 // ===================================================================================================
 = Find and Replace
 
