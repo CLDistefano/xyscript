@@ -12743,6 +12743,73 @@ impl Host for AppHost {
                 self.set_focus(Target::Document);
                 return Ok(Value::str(format!("{n} colour name(s)")));
             }
+            EditorOp::Diff => {
+                // Compare the ACTIVE buffer against its own on-disk file and render a unified diff into
+                // the shared read-only results tab, colouring `-`/`+`/`@@` lines (same tab + painting
+                // path as COLORNAMES). The on-disk side is decoded through the buffer's current encoding
+                // so a CP437/Latin-1 file compares as the same text the user sees; the comparison is by
+                // `lines()` (content), so CRLF-vs-LF / trailing-newline-only changes read as identical.
+                const HELP_TAB: &str = "Help";
+                let doc = &self.docs[self.active];
+                let path = match doc.path() {
+                    Some(p) => p.to_path_buf(),
+                    None => return Ok(Value::str("DIFF: the active buffer has no file on disk")),
+                };
+                let disk = match std::fs::read(&path) {
+                    Ok(b) => b,
+                    Err(e) => return Ok(Value::str(format!("DIFF: cannot read {} ({e})", path.display()))),
+                };
+                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file").to_string();
+                let old = doc.buffer().encoding().decode(&disk); // saved (on-disk) side
+                let new = doc.buffer().text(); // current (in-memory) side
+                let lines = crate::diff::unified(
+                    &old,
+                    &new,
+                    &format!("{name} (on disk)"),
+                    &format!("{name} (buffer)"),
+                    3,
+                );
+                if lines.is_empty() {
+                    return Ok(Value::str(format!("DIFF: buffer matches {name} on disk")));
+                }
+
+                // Build the body and the per-line foreground spans (byte offsets into the joined text).
+                const RED: (u8, u8, u8) = (220, 70, 70);
+                const GREEN: (u8, u8, u8) = (60, 170, 90);
+                const CYAN: (u8, u8, u8) = (90, 160, 200);
+                let hunks = lines.iter().filter(|l| l.tag == crate::diff::Tag::Hunk).count();
+                let changed = lines.iter().filter(|l| matches!(l.tag, crate::diff::Tag::Del | crate::diff::Tag::Ins)).count();
+                let mut body = format!("DIFF  {name}  —  {hunks} hunk(s), {changed} line(s) changed\n\n");
+                let mut fg: Vec<(usize, usize, (u8, u8, u8))> = Vec::new();
+                for l in &lines {
+                    let start = body.len();
+                    body.push_str(&l.text);
+                    let end = body.len();
+                    match l.tag {
+                        crate::diff::Tag::Del => fg.push((start, end, RED)),
+                        crate::diff::Tag::Ins => fg.push((start, end, GREEN)),
+                        crate::diff::Tag::Hunk => fg.push((start, end, CYAN)),
+                        _ => {}
+                    }
+                    body.push('\n');
+                }
+
+                let idx = if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
+                    self.docs[i].open_help_listing(HELP_TAB.to_string(), &body);
+                    self.docs[i].set_emph(None, false);
+                    self.active = i;
+                    self.sync_panes();
+                    i
+                } else {
+                    let mut d = Document::new();
+                    d.open_help_listing(HELP_TAB.to_string(), &body);
+                    self.add_or_reuse(d);
+                    self.active
+                };
+                self.docs[idx].set_color_spans_raw(fg, Vec::new(), Vec::new());
+                self.set_focus(Target::Document);
+                return Ok(Value::str(format!("DIFF: {hunks} hunk(s), {changed} line(s) — {name}")));
+            }
             EditorOp::OpenDocPdf { manual } => {
                 // `REFPDF`/`MANPDF` — open the shipped reference/manual PDF in the OS default app. Look
                 // in `$XSDIR/docs` first (the repo layout), then `$XSDIR` (the deployed-alongside-the-exe

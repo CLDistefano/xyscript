@@ -455,6 +455,11 @@ pub enum EditorOp {
     /// manual PDF in the OS default PDF application. The file is sought in `$XSDIR/docs` first, then
     /// `$XSDIR`. Headless builds still resolve + launch it (the OS opens the reader).
     OpenDocPdf { manual: bool },
+    /// `DIFF` — compare the active buffer against its own on-disk file and show a unified diff in the
+    /// read-only results tab (`-` lines red, `+` green, `@@` hunk headers tinted). A content diff by
+    /// `lines()` semantics, so CRLF-vs-LF / trailing-newline-only differences read as identical. Errors
+    /// (no path / unreadable file) surface as the status string.
+    Diff,
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,

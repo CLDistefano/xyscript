@@ -15,6 +15,7 @@ pub mod boot;
 pub mod byte_rope;
 pub mod clock;
 pub mod counter;
+pub mod diff;
 pub mod dir;
 pub mod document;
 pub mod editor;

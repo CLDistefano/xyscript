@@ -5160,6 +5160,16 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenDocPdf { manual: base == "MANPDF" })?;
                 Ok(Flow::Next)
             }
+            // `DIFF` — unified diff of the active buffer against its on-disk file, shown in the read-only
+            // results tab (added/removed lines coloured). The host returns a status string (hunk count,
+            // "identical", or an error such as an untitled/unreadable buffer).
+            "DIFF" => {
+                let status = self.host_op_value(EditorOp::Diff)?.to_str();
+                if !status.is_empty() {
+                    *self.ctx.status = Some(status);
+                }
+                Ok(Flow::Next)
+            }
             // `COLORNAMES [filter]` — list the built-in colour names + values (the names any colour verb
             // accepts, e.g. `MDA red`) in the read-only results tab, each shown in its own colour. Under
             // CAPTURE, feed the plain text to the captured variable instead. `<filter>` narrows to names

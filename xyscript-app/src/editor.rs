@@ -10874,6 +10874,51 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn diff_shows_buffer_changes_against_the_on_disk_file() {
+        let path = std::env::temp_dir().join(format!("xyscript-diff-change-{}.txt", std::process::id()));
+        std::fs::write(&path, b"one\ntwo\nthree\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        // Unsaved in-memory edit: append a fourth line.
+        e.run_command("BOTTOM");
+        e.insert_str("four\n");
+        e.run_command("DIFF");
+        assert!(e.active_is_help_listing(), "DIFF opens the read-only results tab");
+        let t = e.document().text();
+        assert!(t.contains("@@"), "has a hunk header: {t}");
+        assert!(t.contains("+four"), "shows the inserted line: {t}");
+        assert!(t.contains(" three"), "keeps surrounding context: {t}");
+        assert!(!t.lines().any(|l| l.starts_with('-') && !l.starts_with("--- ")), "no deletions in a pure-insert diff: {t}");
+        // Status reports the change (one hunk).
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().contains("hunk"), "status names the hunk count: {:?}", e.output().last());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn diff_reports_identical_when_buffer_matches_disk() {
+        let path = std::env::temp_dir().join(format!("xyscript-diff-same-{}.txt", std::process::id()));
+        std::fs::write(&path, b"alpha\nbeta\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        e.run_command("DIFF");
+        assert!(!e.active_is_help_listing(), "an identical buffer opens no results tab");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("match"), "status says identical: {:?}", e.output().last());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn diff_on_an_unsaved_buffer_reports_no_file() {
+        let mut e = ed();
+        e.insert_str("scratch\n");
+        e.run_command("DIFF");
+        assert!(!e.active_is_help_listing(), "nothing to diff against → no results tab");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("no file"), "status explains the miss: {:?}", e.output().last());
+    }
+
+    #[test]
     fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
         let mut e = Editor::new(typing_keymap());
         // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a
