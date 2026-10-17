@@ -455,11 +455,16 @@ pub enum EditorOp {
     /// manual PDF in the OS default PDF application. The file is sought in `$XSDIR/docs` first, then
     /// `$XSDIR`. Headless builds still resolve + launch it (the OS opens the reader).
     OpenDocPdf { manual: bool },
-    /// `DIFF` — compare the active buffer against its own on-disk file and show a unified diff in the
-    /// read-only results tab (`-` lines red, `+` green, `@@` hunk headers tinted). A content diff by
-    /// `lines()` semantics, so CRLF-vs-LF / trailing-newline-only differences read as identical. Errors
-    /// (no path / unreadable file) surface as the status string.
-    Diff,
+    /// `DIFF [path]` — compare the active buffer against a file on disk and show a unified diff in the
+    /// read-only results tab (`-` lines red, `+` green, `@@` hunk headers tinted). Bare `DIFF` compares
+    /// the buffer against its OWN file; `DIFF <path>` compares it against the given file (`$CWD`-
+    /// resolved). A content diff by `lines()` semantics, so CRLF-vs-LF / trailing-newline-only
+    /// differences read as identical. Errors (no path / unreadable file) surface as the status string.
+    Diff { path: Option<String> },
+    /// `DJ` — from a line of the diff results tab, jump into the live source buffer at the corresponding
+    /// line (the new/`+` side). The caret's enclosing `@@` hunk header plus the `+`/context lines above
+    /// it give the target line. A no-op with a status message off a diff line or once the diff is stale.
+    DiffJump,
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,

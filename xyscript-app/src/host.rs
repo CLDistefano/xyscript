@@ -2067,6 +2067,14 @@ fn line_col_to_offset(text: &str, line: usize, col: usize) -> usize {
     target
 }
 
+/// The new-side (`+`) start line of a unified-diff hunk header, e.g. `@@ -12,4 +15,6 @@` → `15`
+/// (for `DJ`). `None` if the line isn't a hunk header or has no parseable `+start`.
+fn parse_hunk_new_start(header: &str) -> Option<usize> {
+    let tok = header.split_whitespace().find(|t| t.starts_with('+'))?;
+    let digits: String = tok[1..].chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// Fail fast on a **cloud-only placeholder** (Dropbox/OneDrive "online-only") before a `read` — so
 /// the read doesn't BLOCK the calling thread while the file is hydrated on demand, which freezes the
 /// GUI (file reads run on the UI thread). Detects the `OFFLINE` / `RECALL_ON_DATA_ACCESS` attributes
@@ -2766,6 +2774,10 @@ pub struct AppHost {
     grep_before: usize,
     grep_after: usize,
     grep_blank: bool,
+    /// The source buffer id of the diff currently shown in the shared results tab (set by `DIFF`,
+    /// cleared whenever HELP/MAN/COLORNAMES rebuild that tab). `DJ` reads it to jump from a hunk line
+    /// back into the live buffer; `None` means the results tab isn't a current diff.
+    diff_source: Option<u32>,
     /// The id of the most-recently-started background job (`X/BG` or `RUN/BG`); `0` = none yet.
     /// Read as `$LJ` so a script can `WAIT/J $LJ` on the job it just launched.
     last_job_id: u64,
@@ -3327,6 +3339,7 @@ impl AppHost {
             grep_before: 0,
             grep_after: 0,
             grep_blank: false,
+            diff_source: None,
             pending_returns: Vec::new(),
             command_history: Vec::new(),
             recently_closed: Vec::new(),
@@ -8364,6 +8377,63 @@ impl AppHost {
         Ok(Value::str(format!("{path_str}:{}", hit.line)))
     }
 
+    /// `DJ` — from a line of the diff results tab, jump into the live source buffer at the
+    /// corresponding new-side (`+`) line. The target line is derived from the caret's enclosing `@@`
+    /// hunk header plus the context/added lines above it, so no per-line table is stored; only the
+    /// diff's source buffer id is remembered (`diff_source`), cleared when the tab stops being a diff.
+    /// Returns a status string ("name:line" on success, else why not) and never errors hard.
+    pub fn diff_jump(&mut self) -> VmResult<Value> {
+        let Some(src_id) = self.diff_source else {
+            return Ok(Value::str("DJ: run DIFF first, then put the caret on a diff line"));
+        };
+        if !self.docs[self.active].is_help_listing() {
+            return Ok(Value::str("DJ: not on the diff results tab"));
+        }
+        let text = self.docs[self.active].buffer().text();
+        let cur = self.docs[self.active].buffer().cursor();
+        let lines: Vec<&str> = text.split('\n').collect();
+        if lines.is_empty() {
+            return Ok(Value::str("DJ: put the caret on a line inside a diff hunk"));
+        }
+        // Which display line is the caret on?
+        let line_idx = text[..cur.min(text.len())].bytes().filter(|&b| b == b'\n').count();
+        let line_idx = line_idx.min(lines.len() - 1);
+        // Walk up to the nearest `@@ ... +c,d @@` header.
+        let Some(header_idx) = (0..=line_idx).rev().find(|&i| lines[i].starts_with("@@")) else {
+            return Ok(Value::str("DJ: put the caret on a line inside a diff hunk"));
+        };
+        let Some(new_start) = parse_hunk_new_start(lines[header_idx]) else {
+            return Ok(Value::str("DJ: could not read the hunk header"));
+        };
+        // Count new-side lines (context ` ` or added `+`) between the header and the caret line; the
+        // caret's own new-side line number is new_start + that count (a `-` line maps to the next one).
+        let mut seen = 0usize;
+        if header_idx + 1 < line_idx + 1 {
+            for l in &lines[header_idx + 1..line_idx] {
+                match l.chars().next() {
+                    Some(' ') | Some('+') => seen += 1,
+                    _ => {}
+                }
+            }
+        }
+        let target = new_start.saturating_add(seen).max(1);
+        // Find the source buffer and jump into it.
+        let Some(idx) = self.docs.iter().position(|d| d.id().0 == src_id) else {
+            return Ok(Value::str("DJ: the diffed buffer is no longer open"));
+        };
+        self.set_active(idx);
+        self.goto_line(target);
+        self.reveal_center = true;
+        self.set_focus(Target::Document);
+        let name = self.docs[self.active]
+            .path()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("buffer")
+            .to_string();
+        Ok(Value::str(format!("{name}:{target}")))
+    }
+
     /// The active listing's base directory and live express-key buffer, for the footer.
     /// `None` when the active buffer isn't a listing.
     pub fn dir_footer(&self) -> Option<(PathBuf, String)> {
@@ -12702,6 +12772,7 @@ impl Host for AppHost {
                 // term is highlighted with EMPH (the same document renderer as GREP's results); `None`
                 // clears any stale emphasis. The query context lives in the body's first line.
                 const HELP_TAB: &str = "Help";
+                self.diff_source = None; // this tab is no longer a diff → DJ is inert
                 let (phrase, regex) = match emphasis {
                     Some((p, r)) => (Some(p), r),
                     None => (None, false),
@@ -12725,6 +12796,7 @@ impl Host for AppHost {
                 // shared read-only results tab, exactly like HELP/MAN — then paint the colour spans so
                 // each name renders in its own colour with a solid swatch block.
                 const HELP_TAB: &str = "Help";
+                self.diff_source = None; // this tab is no longer a diff → DJ is inert
                 let listing = xyscript_xpl::color_names::listing(filter.as_deref());
                 let n = listing.fg.len();
                 let idx = if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
@@ -12743,34 +12815,48 @@ impl Host for AppHost {
                 self.set_focus(Target::Document);
                 return Ok(Value::str(format!("{n} colour name(s)")));
             }
-            EditorOp::Diff => {
-                // Compare the ACTIVE buffer against its own on-disk file and render a unified diff into
-                // the shared read-only results tab, colouring `-`/`+`/`@@` lines (same tab + painting
-                // path as COLORNAMES). The on-disk side is decoded through the buffer's current encoding
-                // so a CP437/Latin-1 file compares as the same text the user sees; the comparison is by
+            EditorOp::Diff { path: arg } => {
+                // Compare the ACTIVE buffer against a file on disk and render a unified diff into the
+                // shared read-only results tab, colouring `-`/`+`/`@@` lines (same tab + painting path as
+                // COLORNAMES). Bare DIFF uses the buffer's OWN file; `DIFF <path>` uses the given file
+                // ($CWD-resolved). The on-disk side is decoded through the buffer's current encoding so a
+                // CP437/Latin-1 file compares as the same text the user sees; the comparison is by
                 // `lines()` (content), so CRLF-vs-LF / trailing-newline-only changes read as identical.
                 const HELP_TAB: &str = "Help";
                 let doc = &self.docs[self.active];
-                let path = match doc.path() {
-                    Some(p) => p.to_path_buf(),
-                    None => return Ok(Value::str("DIFF: the active buffer has no file on disk")),
+                // The active buffer must be a real document, not one of the read-only listings.
+                if doc.is_help_listing() || doc.is_grep_listing() || doc.is_dir_listing() || doc.hex_view() {
+                    return Ok(Value::str("DIFF: the active tab is not a document buffer"));
+                }
+                // Resolve which file is the OLD (`-`) side, and its display label.
+                let (file, old_label) = match &arg {
+                    Some(p) => {
+                        let resolved = self.resolve_path(p);
+                        (resolved, p.clone())
+                    }
+                    None => match doc.path() {
+                        Some(p) => {
+                            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("file").to_string();
+                            (p.to_path_buf(), format!("{name} (on disk)"))
+                        }
+                        None => return Ok(Value::str("DIFF: the active buffer has no file on disk (use DIFF <path>)")),
+                    },
                 };
-                let disk = match std::fs::read(&path) {
+                let disk = match std::fs::read(&file) {
                     Ok(b) => b,
-                    Err(e) => return Ok(Value::str(format!("DIFF: cannot read {} ({e})", path.display()))),
+                    Err(e) => return Ok(Value::str(format!("DIFF: cannot read {} ({e})", file.display()))),
                 };
-                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file").to_string();
-                let old = doc.buffer().encoding().decode(&disk); // saved (on-disk) side
+                // Label for the NEW (`+`) side and the message name.
+                let buf_name = doc.path().and_then(|p| p.file_name()).and_then(|s| s.to_str()).unwrap_or("buffer").to_string();
+                let new_label = format!("{buf_name} (buffer)");
+                let msg_name = arg.clone().unwrap_or_else(|| buf_name.clone());
+                let source_id = doc.id().0;
+                let old = doc.buffer().encoding().decode(&disk); // on-disk side
                 let new = doc.buffer().text(); // current (in-memory) side
-                let lines = crate::diff::unified(
-                    &old,
-                    &new,
-                    &format!("{name} (on disk)"),
-                    &format!("{name} (buffer)"),
-                    3,
-                );
+                let lines = crate::diff::unified(&old, &new, &old_label, &new_label, 3);
                 if lines.is_empty() {
-                    return Ok(Value::str(format!("DIFF: buffer matches {name} on disk")));
+                    self.diff_source = None;
+                    return Ok(Value::str(format!("DIFF: buffer matches {msg_name}")));
                 }
 
                 // Build the body and the per-line foreground spans (byte offsets into the joined text).
@@ -12779,7 +12865,7 @@ impl Host for AppHost {
                 const CYAN: (u8, u8, u8) = (90, 160, 200);
                 let hunks = lines.iter().filter(|l| l.tag == crate::diff::Tag::Hunk).count();
                 let changed = lines.iter().filter(|l| matches!(l.tag, crate::diff::Tag::Del | crate::diff::Tag::Ins)).count();
-                let mut body = format!("DIFF  {name}  —  {hunks} hunk(s), {changed} line(s) changed\n\n");
+                let mut body = format!("DIFF  {msg_name}  —  {hunks} hunk(s), {changed} line(s) changed  (DJ jumps to a line)\n\n");
                 let mut fg: Vec<(usize, usize, (u8, u8, u8))> = Vec::new();
                 for l in &lines {
                     let start = body.len();
@@ -12807,8 +12893,12 @@ impl Host for AppHost {
                     self.active
                 };
                 self.docs[idx].set_color_spans_raw(fg, Vec::new(), Vec::new());
+                self.diff_source = Some(source_id); // DJ jumps back into this buffer
                 self.set_focus(Target::Document);
-                return Ok(Value::str(format!("DIFF: {hunks} hunk(s), {changed} line(s) — {name}")));
+                return Ok(Value::str(format!("DIFF: {hunks} hunk(s), {changed} line(s) — {msg_name}")));
+            }
+            EditorOp::DiffJump => {
+                return self.diff_jump();
             }
             EditorOp::OpenDocPdf { manual } => {
                 // `REFPDF`/`MANPDF` — open the shipped reference/manual PDF in the OS default app. Look

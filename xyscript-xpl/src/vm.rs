@@ -5164,7 +5164,20 @@ impl Vm<'_, '_> {
             // results tab (added/removed lines coloured). The host returns a status string (hunk count,
             // "identical", or an error such as an untitled/unreadable buffer).
             "DIFF" => {
-                let status = self.host_op_value(EditorOp::Diff)?.to_str();
+                let path = {
+                    let t = args.trim();
+                    (!t.is_empty()).then(|| t.to_string())
+                };
+                let status = self.host_op_value(EditorOp::Diff { path })?.to_str();
+                if !status.is_empty() {
+                    *self.ctx.status = Some(status);
+                }
+                Ok(Flow::Next)
+            }
+            // `DJ` — jump from the caret's diff line into the live source buffer (the companion to DIFF,
+            // like GJ is to GREP). The host returns a status string ("path:line" on success, else why not).
+            "DJ" => {
+                let status = self.host_op_value(EditorOp::DiffJump)?.to_str();
                 if !status.is_empty() {
                     *self.ctx.status = Some(status);
                 }

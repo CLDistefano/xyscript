@@ -10919,6 +10919,57 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn diff_against_an_explicit_path() {
+        // `DIFF <path>` compares the buffer (the `+`/new side) against the given file (the `-`/old side).
+        let other = std::env::temp_dir().join(format!("xyscript-diff-other-{}.txt", std::process::id()));
+        std::fs::write(&other, b"x\nY\nz\n").unwrap();
+        let mut e = ed();
+        // An untitled buffer with its own content — no file of its own, but DIFF <path> still works.
+        e.insert_str("x\ny\nz\n");
+        let arg = other.to_string_lossy().replace('\\', "/");
+        e.run_command(&format!("DIFF {arg}"));
+        assert!(e.active_is_help_listing(), "DIFF <path> opens the results tab");
+        let t = e.document().text();
+        assert!(t.contains("-Y"), "shows the other file's line as removed: {t}");
+        assert!(t.contains("+y"), "shows the buffer's line as added: {t}");
+        let _ = std::fs::remove_file(&other);
+    }
+
+    #[test]
+    fn dj_jumps_from_a_hunk_line_into_the_source_buffer() {
+        let path = std::env::temp_dir().join(format!("xyscript-dj-{}.txt", std::process::id()));
+        std::fs::write(&path, b"alpha\nbravo\ncharlie\n").unwrap();
+        let mut e = ed();
+        e.open(&path.to_string_lossy().into_owned()).unwrap();
+        e.run_command("BOTTOM");
+        e.insert_str("delta\n"); // buffer now has a 4th line the file lacks
+        e.run_command("DIFF");
+        assert!(e.active_is_help_listing(), "DIFF opened the results tab");
+        // Land the caret on the `+delta` line of the diff, then jump.
+        let pos = e.document().text().find("+delta").expect("the added line is shown");
+        e.host_mut().set_active_caret(pos, None);
+        e.run_command("DJ");
+        assert!(!e.active_is_help_listing(), "DJ left the results tab for the source buffer");
+        assert_eq!(e.document().text().replace("\r\n", "\n"), "alpha\nbravo\ncharlie\ndelta\n", "landed in the source buffer");
+        // `delta` is line 4; its byte offset is the start of that line.
+        assert_eq!(e.document().cursor(), "alpha\nbravo\ncharlie\n".len(), "caret at the start of the +delta line");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().ends_with(":4"), "status reports name:line — {:?}", e.output().last());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dj_is_inert_when_the_results_tab_is_not_a_diff() {
+        // After a HELP search the shared results tab is not a diff, so DJ must refuse (diff_source cleared).
+        let mut e = ed();
+        e.run_command("HELP indent");
+        assert!(e.active_is_help_listing());
+        e.run_command("DJ");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("diff"), "DJ explains it needs a diff: {:?}", e.output().last());
+    }
+
+    #[test]
     fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
         let mut e = Editor::new(typing_keymap());
         // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a
