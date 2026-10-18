@@ -1337,6 +1337,37 @@ doing anything surprising.
 edits of your own, #raw("DIFF") is the quickest way to see which lines are in play before you decide between
 #raw("REC") (take the disk copy) and #raw("SAVE") (keep yours).]
 
+== Transporting a styled document: BUNDLE
+
+A document's styling — block colours, text attributes, bookmarks — lives in a hidden #raw(".xymeta")
+sidecar beside the file (see _How the styling is stored_). That is invisible and automatic while the
+file stays put, but it means that emailing or copying just the document leaves the styling behind.
+#raw("BUNDLE") solves that: it packs the document and its sidecar into a *single* file you can send
+anywhere, and #raw("UNBUNDLE") (or simply #raw("OPEN")) puts them back together at the other end.
+
+#raw("BUNDLE") on its own packs the *active buffer* — its current bytes and live styling, with no need
+to save first — writing #raw("<name>.xyb") next to it; give a path to choose where (#raw("BUNDLE
+~/outbox/report.xyb")). #raw("BUNDLE/F <file> [out]") packs a *file on disk* and its sidecar instead,
+without opening it. The #raw(".xyb") is a small length-prefixed container: it carries the document's bytes
+verbatim, so it is safe for any content and any encoding, and the sidecar's own checksum guard rides
+along inside it — a bundle that arrives not matching its document is caught exactly as a stale sidecar
+would be.
+
+At the destination there are two ways back. #raw("UNBUNDLE <file.xyb> [destdir]") writes the two real
+files — the document and its hidden sidecar — into #raw("destdir") (the current folder by default) and
+opens the document with its styling restored; it won't overwrite an existing file, so if one is already
+there it says so and leaves it alone. Or just #raw("OPEN") the #raw(".xyb") directly: XyScript recognizes
+it and loads the document *and* its styling straight into a buffer, writing nothing to disk until you
+#raw("SAVE") — handy when you only want to read or copy from what arrived.
+
+#tip("Opening a bundle for a file you already have")[If a tab for the same file is already open — perhaps
+a newer version than the one in the bundle — #raw("OPEN")ing the bundle doesn't risk overwriting it.
+The bundle's copy comes in as a #emph[read-only snapshot] named #raw("<name> (bundle)"), with no file of
+its own, so #raw("SAVE") can't touch your working copy. From there you can #raw("DIFF") it against the open
+file to see how the incoming version differs, and #raw("SAAS") it to a new name if you decide to keep it.
+(Read-only follows XyWrite here: a locked document refuses to be saved over its own file, though you can
+always write a copy elsewhere with #raw("SAVE <path>") or #raw("SAAS").)]
+
 // ===================================================================================================
 = Find and Replace
 
