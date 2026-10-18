@@ -1046,7 +1046,7 @@ if the file was changed by another program, the stored positions no longer line 
 quietly ignored rather than misapplied.
 
 The sidecar is plain data, never executed, and it keeps step with the file — it follows a
-#raw("RENAME"), and it is deleted when you delete the file. Because styling counts as an unsaved change,
+#raw("RENAME") or a #raw("COPY"), and it is deleted when you delete the file. Because styling counts as an unsaved change,
 the tab's modified marker (and autosave, and the save-on-close prompt) all notice it, so a styling-only
 change will not slip away unsaved.
 

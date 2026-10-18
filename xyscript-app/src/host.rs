@@ -210,6 +210,19 @@ fn rename_xymeta_sidecar(from: &Path, to: &Path) {
     }
 }
 
+/// Best-effort: duplicate a document's hidden `.xymeta` sidecar alongside a `COPY` of the file, so the
+/// copy carries the same MDA styling (mirrors [`rename_xymeta_sidecar`] but keeps the original). A no-op
+/// when the source has no sidecar. `to` is the FINAL destination path (after any "copy into a directory"
+/// join). If the source has no sidecar, any stale one at the destination is removed so the fresh copy
+/// doesn't inherit someone else's styling.
+fn copy_xymeta_sidecar(from: &Path, to: &Path) {
+    let (Some(src), Some(dst)) = (xymeta_path(from), xymeta_path(to)) else { return };
+    let _ = std::fs::remove_file(&dst); // clear any stale sidecar at the destination first
+    if src.exists() && std::fs::copy(&src, &dst).is_ok() {
+        set_file_hidden(&dst); // the copy isn't hidden by default — re-apply the attribute
+    }
+}
+
 /// Give a file the Windows HIDDEN attribute (a leading dot alone doesn't hide it there). No-op on
 /// Unix, where the dot prefix already hides it.
 #[cfg(windows)]
@@ -11260,6 +11273,7 @@ impl Host for AppHost {
                     }
                 }
                 std::fs::copy(&s, &d).map_err(|e| XplError::trappable(format!("COPY: {e}")))?;
+                copy_xymeta_sidecar(&s, &d); // the MDA styling sidecar follows the copy (like RENAME)
                 return Ok(Value::str(format!("copied {} -> {}", s.display(), d.display())));
             }
             EditorOp::FileDelete(path) => {

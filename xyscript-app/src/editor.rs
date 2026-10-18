@@ -11092,6 +11092,32 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn copy_carries_the_xymeta_styling_sidecar() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-copy-meta-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("styled.txt");
+        std::fs::write(&src, b"cat dog cat\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        e.run_command("MDALL 255 0 0 cat");
+        e.run_command("SAVE"); // writes the .xymeta sidecar to disk next to the file
+        assert!(!e.color_spans().is_empty(), "the source is styled");
+        let dst = dir.join("copy.txt");
+        e.run_command(&format!(
+            "COPY {} {}",
+            src.to_string_lossy().replace('\\', "/"),
+            dst.to_string_lossy().replace('\\', "/")
+        ));
+        assert!(dst.exists(), "the document was copied");
+        // Open the copy in a fresh editor — the styling must have come across with it.
+        let mut e2 = ed();
+        e2.open(&dst.to_string_lossy().into_owned()).unwrap();
+        assert!(!e2.color_spans().is_empty(), "the copy carries the styling sidecar, like RENAME does");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
         let mut e = Editor::new(typing_keymap());
         // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a
