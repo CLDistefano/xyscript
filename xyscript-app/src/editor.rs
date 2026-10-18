@@ -11118,6 +11118,25 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn writefile_drops_a_stale_styling_sidecar_on_overwrite() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-wf-meta-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("styled.txt");
+        std::fs::write(&src, b"cat dog cat\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        e.run_command("MDALL 255 0 0 cat");
+        e.run_command("SAVE"); // writes the .xymeta sidecar next to the file
+        let sidecar = dir.join(".styled.txt.xymeta");
+        assert!(sidecar.exists(), "SAVE wrote the styling sidecar");
+        // WF overwrites the file with raw content — the old sidecar is now stale and must not linger.
+        e.run_command(&format!("WF {} brand new unstyled content", src.to_string_lossy().replace('\\', "/")));
+        assert!(!sidecar.exists(), "WF dropped the now-stale sidecar rather than orphaning it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
         let mut e = Editor::new(typing_keymap());
         // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a

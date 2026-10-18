@@ -15178,27 +15178,36 @@ impl Host for AppHost {
     ) -> VmResult<()> {
         let cs = charset.unwrap_or("utf-8");
         if cs.eq_ignore_ascii_case("utf-8") || cs.eq_ignore_ascii_case("utf8") {
-            return self.write_file(path, content); // nothing is unrepresentable in UTF-8
-        }
-        let bytes = if cs.eq_ignore_ascii_case("hex") {
-            hex_to_bytes(content).map_err(|e| XplError::trappable(format!("WRITEFILE/HEX: {e}")))?
+            self.write_file(path, content)?; // nothing is unrepresentable in UTF-8
         } else {
-            // Code-page encode. `latin1` = binary. With `/STRICT`, a character the page can't hold is a
-            // trappable error (nothing written); otherwise it becomes `?` (as `ENCODING/C` does).
-            let enc = crate::encoding::by_name(cs)
-                .ok_or_else(|| XplError::trappable(format!("WRITEFILE: unknown encoding {cs:?}")))?;
-            if strict {
-                enc.encode_strict(content).map_err(|c| {
-                    XplError::trappable(format!(
-                        "WRITEFILE/STRICT: character {c:?} (U+{:04X}) is not representable in {cs}",
-                        c as u32
-                    ))
-                })?
+            let bytes = if cs.eq_ignore_ascii_case("hex") {
+                hex_to_bytes(content).map_err(|e| XplError::trappable(format!("WRITEFILE/HEX: {e}")))?
             } else {
-                enc.encode(content)
-            }
-        };
-        self.write_bytes(path, &bytes)
+                // Code-page encode. `latin1` = binary. With `/STRICT`, a character the page can't hold is
+                // a trappable error (nothing written); otherwise it becomes `?` (as `ENCODING/C` does).
+                let enc = crate::encoding::by_name(cs)
+                    .ok_or_else(|| XplError::trappable(format!("WRITEFILE: unknown encoding {cs:?}")))?;
+                if strict {
+                    enc.encode_strict(content).map_err(|c| {
+                        XplError::trappable(format!(
+                            "WRITEFILE/STRICT: character {c:?} (U+{:04X}) is not representable in {cs}",
+                            c as u32
+                        ))
+                    })?
+                } else {
+                    enc.encode(content)
+                }
+            };
+            self.write_bytes(path, &bytes)?;
+        }
+        // WF writes RAW bytes and owns no styling, so if it overwrote a file that happened to have an
+        // `.xymeta` sidecar, that sidecar is now stale (its content guard no longer matches). Drop it —
+        // the guard would already ignore it on open, this just avoids leaving an orphan, keeping WF
+        // consistent with DEL/RENAME/COPY. A no-op when there was no sidecar (the common case).
+        if !self.virtual_fs {
+            remove_xymeta_sidecar(&self.resolve_path(path));
+        }
+        Ok(())
     }
 
     fn error_log_enabled(&self) -> bool {
