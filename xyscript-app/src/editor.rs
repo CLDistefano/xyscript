@@ -10970,6 +10970,128 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn bundle_round_trips_a_styled_document_through_unbundle() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-bundle-rt-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("styled.txt");
+        std::fs::write(&src, b"cat dog cat\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        e.run_command("MDALL 255 0 0 cat"); // colour both whole-word "cat"s
+        assert!(!e.color_spans().is_empty(), "the document now carries styling");
+        let out = dir.join("styled.xyb");
+        e.run_command(&format!("BUNDLE {}", out.to_string_lossy().replace('\\', "/")));
+        assert!(out.exists(), "BUNDLE wrote the .xyb");
+        // Unbundle into a fresh directory with a separate editor — the styling must come back.
+        let destdir = dir.join("dest");
+        let _ = std::fs::create_dir_all(&destdir);
+        let mut e2 = ed();
+        e2.run_command(&format!(
+            "UNBUNDLE {} {}",
+            out.to_string_lossy().replace('\\', "/"),
+            destdir.to_string_lossy().replace('\\', "/")
+        ));
+        assert_eq!(e2.document().text().replace("\r\n", "\n"), "cat dog cat\n", "document content restored");
+        assert!(!e2.color_spans().is_empty(), "styling restored from the bundle's sidecar");
+        assert!(destdir.join("styled.txt").exists(), "the real file was materialized");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_auto_detects_a_bundle_and_loads_in_memory() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-bundle-open-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("styled.txt");
+        std::fs::write(&src, b"cat dog cat\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        e.run_command("MDALL 255 0 0 cat");
+        let out = dir.join("styled.xyb");
+        e.run_command(&format!("BUNDLE {}", out.to_string_lossy().replace('\\', "/")));
+        // Remove the real source so we can prove OPEN of the bundle writes nothing to disk.
+        std::fs::remove_file(&src).unwrap();
+        let mut e2 = ed();
+        e2.run_command(&format!("OPEN {}", out.to_string_lossy().replace('\\', "/")));
+        assert_eq!(e2.document().text().replace("\r\n", "\n"), "cat dog cat\n", "loaded from the bundle");
+        assert!(!e2.color_spans().is_empty(), "styling applied in memory");
+        assert!(e2.host_mut().active_doc().is_modified(), "a bundle opens unsaved so SAVE writes the real file");
+        assert!(!src.exists(), "OPEN of a bundle writes nothing to disk until SAVE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn opening_a_bundle_whose_file_is_already_open_gives_a_readonly_snapshot() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-bundle-collide-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("report.txt");
+        std::fs::write(&src, b"original\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        let out = dir.join("report.xyb");
+        e.run_command(&format!("BUNDLE {}", out.to_string_lossy().replace('\\', "/")));
+        let tabs_before = e.host_mut().tabs().len();
+        // report.txt is still open; opening its bundle must NOT reuse the path — it's a RO snapshot.
+        e.run_command(&format!("OPEN {}", out.to_string_lossy().replace('\\', "/")));
+        assert_eq!(e.host_mut().tabs().len(), tabs_before + 1, "a new snapshot tab opened");
+        assert!(e.host_mut().active_doc().read_only(), "the snapshot is read-only");
+        assert_eq!(
+            e.host_mut().active_doc().file_name().as_deref(),
+            Some("report.txt (bundle)"),
+            "labelled as a bundle snapshot, with no backing path"
+        );
+        // And SAVE of the read-only snapshot is refused (can't clobber the open file).
+        e.run_command("SAVE");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("read-only"), "SAVE refused: {:?}", e.output().last());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn saving_a_read_only_document_is_refused_but_a_copy_is_allowed() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-ro-save-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("locked.txt");
+        std::fs::write(&src, b"hello\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        e.run_command("RO"); // lock it (XyWrite: a protected file can't be stored over)
+        e.run_command("SAVE");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("read-only"), "SAVE in place refused: {:?}", e.output().last());
+        // But writing an editable COPY elsewhere is allowed.
+        let copy = dir.join("copy.txt");
+        e.run_command(&format!("SAAS {}", copy.to_string_lossy().replace('\\', "/")));
+        assert!(copy.exists(), "SAAS to a new path still works on a read-only doc");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unbundle_refuses_to_clobber_an_existing_file() {
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("xyscript-bundle-clob-{pid}"));
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("doc.txt");
+        std::fs::write(&src, b"hello\n").unwrap();
+        let mut e = ed();
+        e.open(&src.to_string_lossy().into_owned()).unwrap();
+        let out = dir.join("doc.xyb");
+        e.run_command(&format!("BUNDLE {}", out.to_string_lossy().replace('\\', "/")));
+        // doc.txt already exists in `dir`, so unbundling back into it must refuse rather than overwrite.
+        e.run_command(&format!(
+            "UNBUNDLE {} {}",
+            out.to_string_lossy().replace('\\', "/"),
+            dir.to_string_lossy().replace('\\', "/")
+        ));
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().contains("already exists"), "refuses to clobber: {:?}", e.output().last());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn refpdf_and_manpdf_resolve_the_pdf_and_report_when_missing() {
         let mut e = Editor::new(typing_keymap());
         // In the test environment the PDFs aren't next to the test binary, so REFPDF/MANPDF fail with a

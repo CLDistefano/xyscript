@@ -5183,6 +5183,37 @@ impl Vm<'_, '_> {
                 }
                 Ok(Flow::Next)
             }
+            // `BUNDLE [out]` packs the active buffer + its sidecar into one file; `BUNDLE/F <from> [out]`
+            // packs a file on disk instead. The first arg of the `/F` form is the SOURCE, the second the
+            // output; without `/F` the single arg is the output.
+            "BUNDLE" => {
+                let from_file = vswitches.iter().any(|s| s.eq_ignore_ascii_case("F"));
+                let mut parts = args.split_whitespace();
+                let (from, out) = if from_file {
+                    (parts.next().map(str::to_string), parts.next().map(str::to_string))
+                } else {
+                    (None, parts.next().map(str::to_string))
+                };
+                let status = self.host_op_value(EditorOp::Bundle { from, out })?.to_str();
+                if !status.is_empty() {
+                    *self.ctx.status = Some(status);
+                }
+                Ok(Flow::Next)
+            }
+            // `UNBUNDLE <path> [destdir]` splits a bundle back into the document + its sidecar and opens it.
+            "UNBUNDLE" => {
+                let mut parts = args.split_whitespace();
+                let Some(path) = parts.next().map(str::to_string) else {
+                    self.fail_soft("UNBUNDLE: a bundle file is required".to_string());
+                    return Ok(Flow::Next);
+                };
+                let dest = parts.next().map(str::to_string);
+                let status = self.host_op_value(EditorOp::Unbundle { path, dest })?.to_str();
+                if !status.is_empty() {
+                    *self.ctx.status = Some(status);
+                }
+                Ok(Flow::Next)
+            }
             // `COLORNAMES [filter]` — list the built-in colour names + values (the names any colour verb
             // accepts, e.g. `MDA red`) in the read-only results tab, each shown in its own colour. Under
             // CAPTURE, feed the plain text to the captured variable instead. `<filter>` narrows to names
@@ -6226,6 +6257,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         // `/NV` reopen without the prompt; `/H` `/V` open into a new split pane (Stacked/SideBySide).
         "OPEN" | "CA" | "ED" | "EDIT" | "READ" => &["NV", "H", "V", "HEX"],
         "DUPVIEW" => &["W"], // `/W` — a second view in a free-standing window
+        "BUNDLE" => &["F"], // `/F <from>` — bundle a file on disk (and its sidecar) instead of the active buffer
         "SW" | "SHELLWIN" => &["H", "V"], // `/H` `/V` — show *Shell Output* in a split pane
 
         "CD" => &["D"], // `/D` (change-drive) — accepted, harmless (cwd is in-process)

@@ -12,6 +12,7 @@
 
 pub mod ansi;
 pub mod boot;
+pub mod bundle;
 pub mod byte_rope;
 pub mod clock;
 pub mod counter;

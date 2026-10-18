@@ -465,6 +465,14 @@ pub enum EditorOp {
     /// line (the new/`+` side). The caret's enclosing `@@` hunk header plus the `+`/context lines above
     /// it give the target line. A no-op with a status message off a diff line or once the diff is stale.
     DiffJump,
+    /// `BUNDLE [out]` / `BUNDLE/F <from> [out]` — pack a document together with its `.xymeta` sidecar
+    /// into one transportable file. `from = None` bundles the active buffer (its current bytes +
+    /// styling); `from = Some(path)` bundles a file on disk and its sidecar. `out` is the bundle path
+    /// (default `<name>.xyb`). Returns the written path, or an error, as the status string.
+    Bundle { from: Option<String>, out: Option<String> },
+    /// `UNBUNDLE <path> [destdir]` — split a bundle back into the document and its `.xymeta` sidecar in
+    /// `destdir` (default `$CWD`), then open the document. Refuses to overwrite an existing target.
+    Unbundle { path: String, dest: Option<String> },
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,

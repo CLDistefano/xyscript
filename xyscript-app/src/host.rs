@@ -228,22 +228,18 @@ fn set_file_hidden(p: &Path) {
 #[cfg(not(windows))]
 fn set_file_hidden(_p: &Path) {}
 
-/// Write (or, with nothing to persist, remove) the sidecar next to `target`, keyed to `bytes`.
-/// Best-effort: the caller ignores the outcome, since a sidecar problem must never fail a save.
-fn xymeta_write(
-    target: &Path,
+/// Serialize a document's styling to the `.xymeta` sidecar text, keyed to `bytes` (its length+hash
+/// guard). `None` when there's nothing to persist. Shared by the on-disk sidecar ([`xymeta_write`])
+/// and the transport bundle (`BUNDLE`), so both carry byte-identical metadata.
+fn xymeta_serialize(
     bytes: &[u8],
     fg: &[ColorSpan],
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
     marks: &[(usize, usize, Vec<u8>)],
-) {
-    let Some(scp) = xymeta_path(target) else { return };
+) -> Option<String> {
     if fg.is_empty() && bg.is_empty() && attrs.is_empty() && marks.is_empty() {
-        // Nothing to persist — drop any stale sidecar so a doc whose styling was cleared doesn't
-        // reopen still wearing it.
-        let _ = std::fs::remove_file(&scp);
-        return;
+        return None;
     }
     let mut s = String::new();
     s.push_str("xymeta 1\n");
@@ -273,10 +269,40 @@ fn xymeta_write(
             s.push_str(&format!("m {off} {split} {hex}\n"));
         }
     }
+    Some(s)
+}
+
+/// Write (or, with nothing to persist, remove) the sidecar next to `target`, keyed to `bytes`.
+/// Best-effort: the caller ignores the outcome, since a sidecar problem must never fail a save.
+fn xymeta_write(
+    target: &Path,
+    bytes: &[u8],
+    fg: &[ColorSpan],
+    bg: &[ColorSpan],
+    attrs: &[(usize, usize, u8)],
+    marks: &[(usize, usize, Vec<u8>)],
+) {
+    let Some(scp) = xymeta_path(target) else { return };
+    let Some(s) = xymeta_serialize(bytes, fg, bg, attrs, marks) else {
+        // Nothing to persist — drop any stale sidecar so a doc whose styling was cleared doesn't
+        // reopen still wearing it.
+        let _ = std::fs::remove_file(&scp);
+        return;
+    };
     // Remove first: on Windows you can't truncate-create over a HIDDEN file (access denied), and
     // this also clears the attribute so the fresh write starts clean — then re-hide it.
     let _ = std::fs::remove_file(&scp);
     if std::fs::write(&scp, s.as_bytes()).is_ok() {
+        set_file_hidden(&scp);
+    }
+}
+
+/// Write a sidecar's already-serialized `text` next to `target` (hidden). Used by `UNBUNDLE` to
+/// materialize the metadata member verbatim beside the document it unpacked.
+fn xymeta_write_text(target: &Path, text: &str) {
+    let Some(scp) = xymeta_path(target) else { return };
+    let _ = std::fs::remove_file(&scp);
+    if std::fs::write(&scp, text.as_bytes()).is_ok() {
         set_file_hidden(&scp);
     }
 }
@@ -298,6 +324,12 @@ struct XymetaRestore {
 fn xymeta_read(target: &Path, bytes: &[u8]) -> Option<XymetaRestore> {
     let scp = xymeta_path(target)?;
     let text = std::fs::read_to_string(&scp).ok()?;
+    xymeta_parse(&text, bytes)
+}
+
+/// Parse sidecar `text` (from a file or a bundle's `meta` member) against the document `bytes` it's
+/// keyed to. Shared by [`xymeta_read`] and the in-memory `OPEN` of a bundle.
+fn xymeta_parse(text: &str, bytes: &[u8]) -> Option<XymetaRestore> {
     let mut lines = text.lines();
     if lines.next()?.trim() != "xymeta 1" {
         return None; // unknown format/version → ignore
@@ -7881,6 +7913,11 @@ impl AppHost {
         let mut doc = Document::new();
         let msg = if exists {
             let bytes = self.read_doc_bytes(&key)?; // genuine read errors stay trappable
+            // A `.xyb` bundle opens transparently: load the packed document + its styling IN MEMORY
+            // (nothing is written to disk until SAVE), named for the real file inside it.
+            if !self.virtual_fs && !hex && crate::bundle::is_bundle(&bytes) {
+                return self.open_bundle_in_memory(&target, bytes, read_only);
+            }
             // Restore MDA/FGCOLOR block colours from the hidden `.xymeta` sidecar (guard read BEFORE
             // `load` consumes the bytes; applied after). Ignored on a guard mismatch / no sidecar.
             let restore = (!self.virtual_fs).then(|| xymeta_read(&target, &bytes)).flatten();
@@ -7915,6 +7952,45 @@ impl AppHost {
         self.refresh_disk_mtime(self.active);
         // Leave the caret IN the opened text (not the command line), so the user is editing the
         // file immediately — even when OPEN/READ was run from the cmline. Matches DIR's behavior.
+        self.set_focus(Target::Document);
+        Ok(Value::str(msg))
+    }
+
+    /// Open a `.xyb` bundle transparently: unpack it and load the document + its styling straight into a
+    /// buffer, named for the real file inside the bundle (placed in the bundle's own directory). Nothing
+    /// is written to disk — the buffer is marked MODIFIED so a later `SAVE` materializes the real file and
+    /// its `.xymeta` sidecar. The styling guard holds by construction (doc + meta were packed together).
+    fn open_bundle_in_memory(&mut self, bundle_path: &Path, bytes: Vec<u8>, read_only: bool) -> VmResult<Value> {
+        let b = crate::bundle::unpack(&bytes).map_err(|e| {
+            XplError::trappable(format!("OPEN: {} is not a valid bundle ({e})", bundle_path.display()))
+        })?;
+        let dest = bundle_path.parent().map(|d| d.join(&b.name)).unwrap_or_else(|| PathBuf::from(&b.name));
+        // Collision: a tab for the SAME file is already open (possibly a newer version). Don't risk
+        // the bundle's snapshot clobbering it — open it as a DETACHED read-only view (no backing path,
+        // labelled "<name> (bundle)"), so it can be read/DIFFed but never saved over the open file.
+        let collide = self.find_open_tab(&dest.to_string_lossy()).is_some();
+        // Parse the styling (borrows the doc bytes) BEFORE they are moved into the buffer.
+        let restore = (!b.meta.is_empty())
+            .then(|| std::str::from_utf8(&b.meta).ok().and_then(|t| xymeta_parse(t, &b.doc)))
+            .flatten();
+        let bare = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| b.name.clone());
+        let mut doc = Document::new();
+        doc.load(b.doc, dest.clone());
+        if let Some(r) = restore {
+            apply_xymeta_restore(&mut doc, r);
+        }
+        let (lines, enc) = (doc.buffer().line_count(), doc.encoding_name().to_string());
+        let msg = if collide {
+            doc.forget_path(); // detach — SAVE has nothing to overwrite; SAAS <path> to adopt
+            doc.set_label(format!("{bare} (bundle)"));
+            doc.set_read_only(true);
+            format!("{bare} is already open — opened the bundle's copy read-only (SAAS to adopt, or DIFF {bare} to compare)")
+        } else {
+            doc.mark_modified(); // not yet on disk under its real name → SAVE writes it (+ its sidecar)
+            doc.set_read_only(read_only);
+            format!("opened {bare} from bundle ({lines} lines, {enc}) — SAVE to write it out")
+        };
+        self.add_opened_doc(doc);
         self.set_focus(Target::Document);
         Ok(Value::str(msg))
     }
@@ -11255,6 +11331,13 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("renamed {} -> {}", f.display(), t.display())));
             }
             EditorOp::Save(opt_path) => {
+                // XyWrite rule: a read-only document can't be stored over its own file. Writing it
+                // ELSEWHERE (an editable copy) is still allowed via `SAVE <path>` / `SAAS` / `SAD`.
+                if self.file_doc().read_only() {
+                    return Err(XplError::trappable(
+                        "SAVE: document is read-only (RO to unlock, or SAAS <path> to save a copy)",
+                    ));
+                }
                 // File ops act on the active document (or the blind-edit buffer), not the cmline.
                 let path: PathBuf = match opt_path {
                     // Resolve a relative SAVE/SAAS path against the editor's `$CWD` (via
@@ -11340,6 +11423,13 @@ impl Host for AppHost {
                     // Bare ST on an untitled doc: nowhere to save — do NOT close (no data loss).
                     return Err(XplError::trappable("ST: no file name; use ST <path>"));
                 };
+                // XyWrite rule: a read-only document can't be stored over its own file. Storing it to
+                // a DIFFERENT new path (an editable copy) is allowed.
+                if self.file_doc().read_only() && own.as_deref() == Some(target.as_path()) {
+                    return Err(XplError::trappable(
+                        "ST: document is read-only (RO to unlock, or ST <path> to store a copy)",
+                    ));
+                }
                 let key = target.to_string_lossy().into_owned();
                 let name = target
                     .file_name()
@@ -12899,6 +12989,76 @@ impl Host for AppHost {
             }
             EditorOp::DiffJump => {
                 return self.diff_jump();
+            }
+            EditorOp::Bundle { from, out } => {
+                // Gather the document's name, bytes, sidecar text, and the directory to default the
+                // output into — from either the active buffer (live styling) or a file on disk.
+                let (name, doc_bytes, meta, src_dir): (String, Vec<u8>, Option<String>, PathBuf) =
+                    match &from {
+                        Some(src) => {
+                            let p = self.resolve_path(src);
+                            let bytes = std::fs::read(&p).map_err(|e| {
+                                XplError::trappable(format!("BUNDLE: cannot read {} ({e})", p.display()))
+                            })?;
+                            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("file").to_string();
+                            let meta = xymeta_path(&p).and_then(|scp| std::fs::read_to_string(scp).ok());
+                            let dir = p.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| self.cwd.clone());
+                            (name, bytes, meta, dir)
+                        }
+                        None => {
+                            let doc = &self.docs[self.active];
+                            if doc.is_help_listing() || doc.is_grep_listing() || doc.is_dir_listing() || doc.hex_view() {
+                                return Ok(Value::str("BUNDLE: the active tab is not a document buffer"));
+                            }
+                            let bytes = doc.save_bytes();
+                            let name = doc.file_name().unwrap_or_else(|| "Untitled".to_string());
+                            let (fg, bg) = doc.color_spans_raw();
+                            let meta = xymeta_serialize(&bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist());
+                            let dir = doc.path().and_then(|p| p.parent()).map(|d| d.to_path_buf()).unwrap_or_else(|| self.cwd.clone());
+                            (name, bytes, meta, dir)
+                        }
+                    };
+                let packed = crate::bundle::pack(&name, &doc_bytes, meta.as_deref().map(str::as_bytes).unwrap_or(&[]));
+                let out_path = match &out {
+                    Some(o) => self.resolve_path(o),
+                    None => src_dir.join(format!("{name}.xyb")),
+                };
+                std::fs::write(&out_path, &packed).map_err(|e| {
+                    XplError::trappable(format!("BUNDLE: cannot write {} ({e})", out_path.display()))
+                })?;
+                let note = if meta.is_some() { "doc + styling" } else { "doc, no styling to carry" };
+                return Ok(Value::str(format!("BUNDLE: wrote {} ({note})", out_path.display())));
+            }
+            EditorOp::Unbundle { path, dest } => {
+                let bundle_path = self.resolve_path(&path);
+                let bytes = std::fs::read(&bundle_path).map_err(|e| {
+                    XplError::trappable(format!("UNBUNDLE: cannot read {} ({e})", bundle_path.display()))
+                })?;
+                let b = crate::bundle::unpack(&bytes).map_err(|e| {
+                    XplError::trappable(format!("UNBUNDLE: {} is not a valid bundle ({e})", bundle_path.display()))
+                })?;
+                let dir = match &dest {
+                    Some(d) => self.resolve_path(d),
+                    None => self.cwd.clone(),
+                };
+                let doc_path = dir.join(&b.name);
+                if doc_path.exists() {
+                    return Ok(Value::str(format!(
+                        "UNBUNDLE: {} already exists (choose another destination)",
+                        doc_path.display()
+                    )));
+                }
+                std::fs::write(&doc_path, &b.doc).map_err(|e| {
+                    XplError::trappable(format!("UNBUNDLE: cannot write {} ({e})", doc_path.display()))
+                })?;
+                if !b.meta.is_empty() {
+                    if let Ok(text) = std::str::from_utf8(&b.meta) {
+                        xymeta_write_text(&doc_path, text);
+                    }
+                }
+                // Open it the normal way — the sidecar we just wrote restores the styling via the guard.
+                let opened = self.open_doc(&doc_path.to_string_lossy(), false, false)?;
+                return Ok(Value::str(format!("UNBUNDLE: {} — {}", doc_path.display(), opened.to_str())));
             }
             EditorOp::OpenDocPdf { manual } => {
                 // `REFPDF`/`MANPDF` — open the shipped reference/manual PDF in the OS default app. Look
