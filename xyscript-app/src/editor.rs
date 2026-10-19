@@ -12880,6 +12880,22 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn tosvg_verb_exports_an_svg() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("doc.md".into(), "# Title\n\nSome **text**.\n".into());
+        e.run_command("open doc.md");
+        // Explicit path.
+        e.run_command("TOSVG out.svg");
+        assert!(e.last_error().is_none(), "err: {:?}", e.last_error());
+        let svg = e.host_mut().files.get("out.svg").cloned().unwrap_or_default();
+        assert!(svg.contains("<svg") && svg.contains("</svg>"), "out.svg is not an SVG");
+        // No path -> derived from the document name (doc.md -> doc.svg).
+        e.run_command("TOSVG");
+        assert!(e.host_mut().files.contains_key("doc.svg"), "derived path not written");
+    }
+
+    #[test]
     fn fprint_renders_a_file_that_is_not_open() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

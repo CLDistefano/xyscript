@@ -2575,6 +2575,13 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::ToPdf(arg))?;
                 Ok(Flow::Next)
             }
+            // `TOSVG [path]` — like TOPDF, but exports a single merged SVG (scalable; colour-glyph fidelity).
+            "TOSVG" => {
+                let p = args.trim();
+                let arg = if p.is_empty() { None } else { Some(p.to_string()) };
+                self.host_op(EditorOp::ToSvg(arg))?;
+                Ok(Flow::Next)
+            }
             // `FPRINT <source> [<output>]` — TOPDF a file that isn't open, by its own type (extension),
             // with the current Preview settings. Paths with spaces are quoted (like COPY/RENAME).
             "FPRINT" => {

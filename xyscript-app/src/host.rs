@@ -12513,6 +12513,42 @@ impl Host for AppHost {
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 return Ok(Value::str(format!("exported {name}")));
             }
+            EditorOp::ToSvg(opt_path) => {
+                // Render the active document to a single merged SVG — same render kinds as TOPDF.
+                let path: PathBuf = match opt_path {
+                    Some(p) if !p.trim().is_empty() => PathBuf::from(p),
+                    _ => match self.docs[self.active].path() {
+                        Some(p) => p.with_extension("svg"),
+                        None => return Err(XplError::trappable("TOSVG: no file name; use TOSVG <path>")),
+                    },
+                };
+                let source = self.docs[self.active].buffer().text();
+                let doc_dir = self.typst_doc_dir();
+                let svg = match self.docs[self.active].render_kind() {
+                    crate::document::RenderKind::Typst => {
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::typst_to_svg(&source, &doc_dir, Some(&styler))
+                    }
+                    crate::document::RenderKind::Gfm => {
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::gfm_to_svg(&source, &doc_dir, &self.preview_fonts(), Some(&styler))
+                    }
+                    crate::document::RenderKind::Html => {
+                        crate::pdf::html_to_svg(&source, &doc_dir, &self.preview_fonts())
+                    }
+                    crate::document::RenderKind::Text => {
+                        let styler = self.mda_styler(&source);
+                        crate::pdf::text_to_svg(&source, &doc_dir, &self.preview_fonts(), Some(&styler))
+                    }
+                }
+                .map_err(XplError::trappable)?;
+                self.write_doc_bytes(&path.to_string_lossy(), &svg)?;
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                return Ok(Value::str(format!("exported {name}")));
+            }
             EditorOp::FilePrint { source, output } => {
                 // Render a file that isn't open, exactly as `TOPDF` would if it were the active doc:
                 // by the SOURCE file's own type (extension → render kind) with the current Preview

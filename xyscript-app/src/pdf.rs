@@ -716,6 +716,14 @@ fn to_pdf_bytes(doc: &PagedDocument) -> Result<Vec<u8>, String> {
     })
 }
 
+/// A compiled document → a single merged SVG (all pages stacked top-to-bottom with a small gap),
+/// as UTF-8 bytes. Unlike PDF export, the SVG exporter embeds colour-glyph layers, so a colour emoji
+/// from a registered colour font comes through in colour where PDF export flattens or drops it.
+fn to_svg_bytes(doc: &PagedDocument) -> Result<Vec<u8>, String> {
+    let gap = typst::layout::Abs::pt(8.0); // same visual page gap as the raster preview
+    Ok(typst_svg::svg_merged(doc, gap).into_bytes())
+}
+
 /// A compiled document's **pages, stacked top to bottom** into one RGBA image `(rgba, width, height)`
 /// at `scale` (pixels per typst point), with a small gap between pages — so the live preview shows the
 /// whole document (scrollable), not just page one. Page widths are left-aligned in the max width.
@@ -822,6 +830,42 @@ pub fn typst_to_pdf(
     to_pdf_bytes(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
 }
 
+// ---- SVG export (TOSVG) — same four render kinds as the PDF export, merged into one SVG ----------
+
+/// Render a GFM document to merged-SVG bytes, styled per `fonts`.
+pub fn gfm_to_svg(
+    source: &str,
+    doc_dir: &Path,
+    fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_svg_bytes(&compile_gfm(source, fonts, doc_dir, styler, PreviewTint::default())?)
+}
+
+/// Render a PLAIN-TEXT document (verbatim) to merged-SVG bytes, styled per `fonts`.
+pub fn text_to_svg(
+    source: &str,
+    doc_dir: &Path,
+    fonts: &PreviewFonts,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_svg_bytes(&compile_text(source, fonts, doc_dir, styler, PreviewTint::default())?)
+}
+
+/// Render an HTML document (structural conversion) to merged-SVG bytes, styled per `fonts`.
+pub fn html_to_svg(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
+    to_svg_bytes(&compile_html(source, fonts, doc_dir, PreviewTint::default())?)
+}
+
+/// Render an authored-typst document to merged-SVG bytes. `styler` splices MDA styling (`None` = plain).
+pub fn typst_to_svg(
+    source: &str,
+    doc_dir: &Path,
+    styler: Option<&crate::gfm::Styler>,
+) -> Result<Vec<u8>, String> {
+    to_svg_bytes(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
+}
+
 /// Render an authored-typst document (all pages, stacked) to a raster RGBA image. `styler` splices the
 /// document's MDA styling into the output (`None` = plain).
 pub fn typst_to_image(
@@ -856,6 +900,15 @@ mod tests {
         assert!(pdf.starts_with(b"%PDF-"), "missing PDF header");
         assert!(pdf.len() > 1000, "PDF implausibly small: {} bytes", pdf.len());
         assert!(pdf.ends_with(b"%%EOF\n") || pdf.ends_with(b"%%EOF"), "missing EOF marker");
+    }
+
+    #[test]
+    fn renders_gfm_to_a_valid_svg() {
+        let md = "# Title\n\nA paragraph with **bold** and `code`.\n\n- one\n- two\n";
+        let svg = gfm_to_svg(md, dot(), &dflt(), None).expect("should produce an SVG");
+        let s = String::from_utf8(svg).expect("SVG is UTF-8");
+        assert!(s.contains("<svg"), "no <svg> root: {}", &s[..s.len().min(120)]);
+        assert!(s.contains("</svg>"), "SVG not closed");
     }
 
     #[test]

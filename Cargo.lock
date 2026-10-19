@@ -7713,6 +7713,7 @@ dependencies = [
  "typst-assets",
  "typst-pdf",
  "typst-render",
+ "typst-svg",
  "xyscript-kbd",
  "xyscript-xpl",
 ]
