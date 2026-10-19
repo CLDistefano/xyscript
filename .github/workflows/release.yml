@@ -119,6 +119,23 @@ jobs:
           cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
           rm -f "$pkg/lang/en.lang" "$pkg/lang/pseudo.lang"
 
+      # The colour-emoji font. The app loads any face in `fonts/` beside the exe (`$XSDIR/fonts`), and
+      # the bundled typst_assets set has no emoji glyphs — so without this, emoji print as .notdef boxes
+      # in TOPDF/TOSVG/preview. Fetched at build time (it is ~24 MB, deliberately NOT committed to the
+      # repo). Tracks google/fonts `main`; `-f` fails on an HTTP error and the size check fails on a
+      # success-with-wrong-content (e.g. a redirected error page), so a release never silently ships a
+      # broken font.
+      - name: Fetch the colour-emoji font
+        shell: bash
+        run: |
+          dest="staged/${{ matrix.artifact }}/fonts/NotoColorEmoji-Regular.ttf"
+          mkdir -p "$(dirname "$dest")"
+          curl -fsSL --retry 3 -o "$dest" \
+            "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf"
+          sz=$(wc -c < "$dest")
+          if [ "$sz" -lt 1000000 ]; then echo "emoji font download looks wrong ($sz bytes)"; exit 1; fi
+          echo "fetched NotoColorEmoji-Regular.ttf ($sz bytes)"
+
       # Zip the bundle, then attach it DIRECTLY to the Release (below). Release assets use separate,
       # effectively-unlimited storage — unlike the Actions artifact store, whose per-account quota was
       # blocking publishes once a few releases' build artifacts accumulated. So no intermediate
@@ -197,6 +214,19 @@ jobs:
           cp docs/manual.pdf docs/reference.pdf docs/keyboard.png docs/email.md docs/regex.md docs/run-commands.md "$pkg/docs/"
           # First-run note at the bundle root: clearing Gatekeeper quarantine (unsigned app) + the exec bit.
           cp packaging/macos-first-run.txt "$pkg/MACOS-READ-ME-FIRST.txt"
+
+      # Colour-emoji font — see the matching step in the `build` job. Fetched at build time (~24 MB, not
+      # committed); without it, emoji print as .notdef boxes in TOPDF/TOSVG/preview.
+      - name: Fetch the colour-emoji font
+        shell: bash
+        run: |
+          dest="staged/xyscript-macos-universal/fonts/NotoColorEmoji-Regular.ttf"
+          mkdir -p "$(dirname "$dest")"
+          curl -fsSL --retry 3 -o "$dest" \
+            "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf"
+          sz=$(wc -c < "$dest")
+          if [ "$sz" -lt 1000000 ]; then echo "emoji font download looks wrong ($sz bytes)"; exit 1; fi
+          echo "fetched NotoColorEmoji-Regular.ttf ($sz bytes)"
 
       - name: Zip bundle
         run: (cd staged && zip -r "../xyscript-macos-universal.zip" "xyscript-macos-universal")
