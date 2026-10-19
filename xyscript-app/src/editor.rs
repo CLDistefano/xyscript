@@ -12896,6 +12896,24 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn tosvg_writes_one_file_per_page_for_a_multi_page_document() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // An authored-Typst doc with a forced page break → two pages.
+        e.host_mut().files.insert("multi.typ".into(), "Page one.\n#pagebreak()\nPage two.\n".into());
+        e.run_command("open multi.typ");
+        e.run_command("TOSVG");
+        assert!(e.last_error().is_none(), "err: {:?}", e.last_error());
+        let files = &e.host_mut().files;
+        assert!(files.contains_key("multi-1.svg"), "page 1 written as multi-1.svg");
+        assert!(files.contains_key("multi-2.svg"), "page 2 written as multi-2.svg");
+        assert!(!files.contains_key("multi.svg"), "no merged multi-page file for a >1-page doc");
+        // The status line names the range.
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().contains("2 pages"), "status reports the page count: {:?}", e.output().last());
+    }
+
+    #[test]
     fn fprint_renders_a_file_that_is_not_open() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

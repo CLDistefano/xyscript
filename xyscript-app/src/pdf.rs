@@ -745,12 +745,63 @@ fn to_pdf_bytes(doc: &PagedDocument) -> Result<Vec<u8>, String> {
     })
 }
 
-/// A compiled document → a single merged SVG (all pages stacked top-to-bottom with a small gap),
-/// as UTF-8 bytes. Unlike PDF export, the SVG exporter embeds colour-glyph layers, so a colour emoji
-/// from a registered colour font comes through in colour where PDF export flattens or drops it.
-fn to_svg_bytes(doc: &PagedDocument) -> Result<Vec<u8>, String> {
-    let gap = typst::layout::Abs::pt(8.0); // same visual page gap as the raster preview
-    Ok(typst_svg::svg_merged(doc, gap).into_bytes())
+/// A compiled document → one standalone SVG per page (each as UTF-8 bytes). We export per page rather
+/// than the single merged multi-page SVG `svg_merged` produces, because that stacked form is not a
+/// conventional single-root SVG and several consumers reject it. The SVG exporter embeds colour-glyph
+/// layers, so a colour emoji from a registered colour font comes through in colour. Each page's markup
+/// is run through [`xml_escape_bare_amps`] first — `typst_svg` 0.14 emits raw `&` in link URLs
+/// (`?v=…&t=…`), which makes the SVG (an XML document) ill-formed and rejected by strict viewers.
+fn to_svg_pages(doc: &PagedDocument) -> Result<Vec<Vec<u8>>, String> {
+    if doc.pages.is_empty() {
+        return Err("no pages".to_string());
+    }
+    Ok(doc.pages.iter().map(|p| xml_escape_bare_amps(&typst_svg::svg(p)).into_bytes()).collect())
+}
+
+/// Escape every bare `&` in `s` to `&amp;`, leaving an `&` that already begins a valid XML entity
+/// reference (`&name;`, `&#123;`, or `&#x1F;`) untouched — so an already-escaped document isn't
+/// double-escaped. `&` is ASCII, so slicing at its byte positions is always on a char boundary.
+fn xml_escape_bare_amps(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len() + 16);
+    let mut rest = s;
+    while let Some(pos) = rest.find('&') {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + 1..];
+        if is_valid_entity_body(after) {
+            out.push('&');
+        } else {
+            out.push_str("&amp;");
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Does the text following an `&` form a valid XML entity reference? i.e. `name;` (a letter then
+/// letters/digits), `#<digits>;`, or `#x<hex>;`.
+fn is_valid_entity_body(after: &str) -> bool {
+    let b = after.as_bytes();
+    if b.first() == Some(&b'#') {
+        let hex = matches!(b.get(1), Some(b'x' | b'X'));
+        let start = if hex { 2 } else { 1 };
+        let mut j = start;
+        while j < b.len() && (if hex { b[j].is_ascii_hexdigit() } else { b[j].is_ascii_digit() }) {
+            j += 1;
+        }
+        return j > start && b.get(j) == Some(&b';');
+    }
+    if b.first().is_none_or(|c| !c.is_ascii_alphabetic()) {
+        return false;
+    }
+    let mut j = 1;
+    while j < b.len() && b[j].is_ascii_alphanumeric() {
+        j += 1;
+    }
+    b.get(j) == Some(&b';')
 }
 
 /// A compiled document's **pages, stacked top to bottom** into one RGBA image `(rgba, width, height)`
@@ -859,40 +910,40 @@ pub fn typst_to_pdf(
     to_pdf_bytes(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
 }
 
-// ---- SVG export (TOSVG) — same four render kinds as the PDF export, merged into one SVG ----------
+// ---- SVG export (TOSVG) — same four render kinds as the PDF export, ONE standalone SVG per page ----
 
-/// Render a GFM document to merged-SVG bytes, styled per `fonts`.
+/// Render a GFM document to per-page SVG bytes, styled per `fonts`.
 pub fn gfm_to_svg(
     source: &str,
     doc_dir: &Path,
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
-) -> Result<Vec<u8>, String> {
-    to_svg_bytes(&compile_gfm(source, fonts, doc_dir, styler, PreviewTint::default())?)
+) -> Result<Vec<Vec<u8>>, String> {
+    to_svg_pages(&compile_gfm(source, fonts, doc_dir, styler, PreviewTint::default())?)
 }
 
-/// Render a PLAIN-TEXT document (verbatim) to merged-SVG bytes, styled per `fonts`.
+/// Render a PLAIN-TEXT document (verbatim) to per-page SVG bytes, styled per `fonts`.
 pub fn text_to_svg(
     source: &str,
     doc_dir: &Path,
     fonts: &PreviewFonts,
     styler: Option<&crate::gfm::Styler>,
-) -> Result<Vec<u8>, String> {
-    to_svg_bytes(&compile_text(source, fonts, doc_dir, styler, PreviewTint::default())?)
+) -> Result<Vec<Vec<u8>>, String> {
+    to_svg_pages(&compile_text(source, fonts, doc_dir, styler, PreviewTint::default())?)
 }
 
-/// Render an HTML document (structural conversion) to merged-SVG bytes, styled per `fonts`.
-pub fn html_to_svg(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<u8>, String> {
-    to_svg_bytes(&compile_html(source, fonts, doc_dir, PreviewTint::default())?)
+/// Render an HTML document (structural conversion) to per-page SVG bytes, styled per `fonts`.
+pub fn html_to_svg(source: &str, doc_dir: &Path, fonts: &PreviewFonts) -> Result<Vec<Vec<u8>>, String> {
+    to_svg_pages(&compile_html(source, fonts, doc_dir, PreviewTint::default())?)
 }
 
-/// Render an authored-typst document to merged-SVG bytes. `styler` splices MDA styling (`None` = plain).
+/// Render an authored-typst document to per-page SVG bytes. `styler` splices MDA styling (`None` = plain).
 pub fn typst_to_svg(
     source: &str,
     doc_dir: &Path,
     styler: Option<&crate::gfm::Styler>,
-) -> Result<Vec<u8>, String> {
-    to_svg_bytes(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
+) -> Result<Vec<Vec<u8>>, String> {
+    to_svg_pages(&compile_typst(source, doc_dir, styler, PreviewTint::default())?)
 }
 
 /// Render an authored-typst document (all pages, stacked) to a raster RGBA image. `styler` splices the
@@ -934,10 +985,47 @@ mod tests {
     #[test]
     fn renders_gfm_to_a_valid_svg() {
         let md = "# Title\n\nA paragraph with **bold** and `code`.\n\n- one\n- two\n";
-        let svg = gfm_to_svg(md, dot(), &dflt(), None).expect("should produce an SVG");
-        let s = String::from_utf8(svg).expect("SVG is UTF-8");
+        let pages = gfm_to_svg(md, dot(), &dflt(), None).expect("should produce an SVG");
+        assert_eq!(pages.len(), 1, "short doc is one page");
+        let s = String::from_utf8(pages.into_iter().next().unwrap()).expect("SVG is UTF-8");
         assert!(s.contains("<svg"), "no <svg> root: {}", &s[..s.len().min(120)]);
         assert!(s.contains("</svg>"), "SVG not closed");
+    }
+
+    #[test]
+    fn xml_escape_bare_amps_fixes_urls_without_double_escaping() {
+        assert_eq!(xml_escape_bare_amps("a & b"), "a &amp; b");
+        assert_eq!(xml_escape_bare_amps("?v=X&t=219"), "?v=X&amp;t=219");
+        // Already-valid entities stay intact (no double escape).
+        assert_eq!(xml_escape_bare_amps("a &amp; b"), "a &amp; b");
+        assert_eq!(xml_escape_bare_amps("&lt;x&gt; &#65; &#x1F;"), "&lt;x&gt; &#65; &#x1F;");
+        // Mix of a real entity and bare ampersands.
+        assert_eq!(xml_escape_bare_amps("&foo &amp; x=1&y=2"), "&amp;foo &amp; x=1&amp;y=2");
+    }
+
+    #[test]
+    fn svg_link_urls_are_well_formed_xml() {
+        // The real-world failure: a YouTube URL whose `&t=` made the SVG ill-formed XML.
+        let md = "See [the clip](https://www.youtube.com/watch?v=WJxclCJLS2U&t=219).\n";
+        let pages = gfm_to_svg(md, dot(), &dflt(), None).unwrap();
+        let s = String::from_utf8(pages.into_iter().next().unwrap()).unwrap();
+        assert!(s.contains("&amp;t=219"), "the URL's & is escaped");
+        // Every `&` in the output begins a valid entity reference — i.e. no bare `&` remains.
+        for (i, _) in s.match_indices('&') {
+            assert!(is_valid_entity_body(&s[i + 1..]), "bare & at byte {i}: {:?}", &s[i..(i + 16).min(s.len())]);
+        }
+    }
+
+    #[test]
+    fn multi_page_doc_yields_one_svg_per_page() {
+        // A forced page break (Typst `#pagebreak()` via an authored-typst doc) makes two pages → two SVGs.
+        let typ = "First page.\n#pagebreak()\nSecond page.\n";
+        let pages = typst_to_svg(typ, dot(), None).expect("should produce SVGs");
+        assert_eq!(pages.len(), 2, "two pages → two standalone SVGs");
+        for p in &pages {
+            let s = String::from_utf8_lossy(p);
+            assert!(s.contains("<svg") && s.contains("</svg>"), "each page is a standalone SVG");
+        }
     }
 
     #[test]

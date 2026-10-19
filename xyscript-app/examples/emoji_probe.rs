@@ -28,7 +28,7 @@ fn main() {
     }
     let per_svg = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
 
-    let svg = gfm_to_svg(SAMPLE, dir, &fonts, None).unwrap();
+    let svg = gfm_to_svg(SAMPLE, dir, &fonts, None).unwrap().into_iter().next().unwrap(); // page 1
     std::fs::write("emoji_probe.svg", &svg).unwrap();
     let pdf = gfm_to_pdf(SAMPLE, dir, &fonts, None).unwrap();
     std::fs::write("emoji_probe.pdf", &pdf).unwrap();

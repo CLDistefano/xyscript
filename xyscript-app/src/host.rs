@@ -9973,6 +9973,35 @@ impl AppHost {
         Ok(())
     }
 
+    /// Write per-page SVG `pages` for a `base` path like `report.svg` (`TOSVG`). One page writes `base`
+    /// verbatim; multiple pages write `report-1.svg`, `report-2.svg`, … (zero-padded to the page count so
+    /// they sort). Returns the bare file names written, in order, for the status line.
+    fn write_svg_pages(&mut self, base: &Path, pages: &[Vec<u8>]) -> VmResult<Vec<String>> {
+        if pages.len() == 1 {
+            self.write_doc_bytes(&base.to_string_lossy(), &pages[0])?;
+            let name = base
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| base.to_string_lossy().into_owned());
+            return Ok(vec![name]);
+        }
+        let dir = base.parent();
+        let stem = base.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "page".into());
+        let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("svg");
+        let width = pages.len().to_string().len(); // zero-pad to the page count (2, 02, 002, …)
+        let mut names = Vec::with_capacity(pages.len());
+        for (i, svg) in pages.iter().enumerate() {
+            let fname = format!("{stem}-{:0width$}.{ext}", i + 1);
+            let target = match dir {
+                Some(d) if !d.as_os_str().is_empty() => d.join(&fname),
+                _ => PathBuf::from(&fname), // relative base → write_doc_bytes resolves against $CWD
+            };
+            self.write_doc_bytes(&target.to_string_lossy(), svg)?;
+            names.push(fname);
+        }
+        Ok(names)
+    }
+
     /// After a full-document save, mirror `doc`'s `MDA` / `FGCOLOR` block colours into its hidden
     /// `.xymeta` sidecar (or remove the sidecar when the doc has none). `path` is the SAME string
     /// handed to [`write_doc_bytes`](Self::write_doc_bytes), resolved identically, and `bytes` are
@@ -12514,7 +12543,10 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("exported {name}")));
             }
             EditorOp::ToSvg(opt_path) => {
-                // Render the active document to a single merged SVG — same render kinds as TOPDF.
+                // Render the active document to SVG — same render kinds as TOPDF, but ONE standalone SVG
+                // per page (a merged multi-page SVG isn't a conventional single-root SVG and some viewers
+                // reject it). A single-page doc writes `<name>.svg`; multiple pages write `<name>-1.svg`,
+                // `<name>-2.svg`, … (zero-padded so they sort).
                 let path: PathBuf = match opt_path {
                     Some(p) if !p.trim().is_empty() => PathBuf::from(p),
                     _ => match self.docs[self.active].path() {
@@ -12524,7 +12556,7 @@ impl Host for AppHost {
                 };
                 let source = self.docs[self.active].buffer().text();
                 let doc_dir = self.typst_doc_dir();
-                let svg = match self.docs[self.active].render_kind() {
+                let pages = match self.docs[self.active].render_kind() {
                     crate::document::RenderKind::Typst => {
                         let styler = self.mda_styler(&source);
                         crate::pdf::typst_to_svg(&source, &doc_dir, Some(&styler))
@@ -12542,12 +12574,12 @@ impl Host for AppHost {
                     }
                 }
                 .map_err(XplError::trappable)?;
-                self.write_doc_bytes(&path.to_string_lossy(), &svg)?;
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
-                return Ok(Value::str(format!("exported {name}")));
+                let out_names = self.write_svg_pages(&path, &pages)?;
+                let msg = match out_names.as_slice() {
+                    [one] => format!("exported {one}"),
+                    many => format!("exported {} pages: {} … {}", many.len(), many[0], many[many.len() - 1]),
+                };
+                return Ok(Value::str(msg));
             }
             EditorOp::FilePrint { source, output } => {
                 // Render a file that isn't open, exactly as `TOPDF` would if it were the active doc:

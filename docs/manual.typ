@@ -1827,9 +1827,12 @@ a set of Markdown files and exports it, for instance. (Both this manual and the 
 exactly that way.)
 
 #raw("TOSVG") is the same export in a different wrapper: it renders the document — same #raw("DOCTYPE"),
-same #raw("MDA") styling — to a single *SVG* instead of a PDF, all pages stacked into one file
-(#raw("TOSVG <path>"), or bare derives #raw("<name>.svg")). Reach for it when you want scalable vector
-output: a figure to embed in a web page, or artwork to scale to any size without the blur of a raster.
+same #raw("MDA") styling — to *SVG* instead of a PDF. Reach for it when you want scalable vector output: a
+figure to embed in a web page, or artwork to scale to any size without the blur of a raster. Each page
+becomes its own standalone SVG (a merged multi-page SVG is not a conventional single-root document and
+many viewers reject it): a one-page document writes #raw("<name>.svg"), while a multi-page one writes
+#raw("<name>-1.svg"), #raw("<name>-2.svg"), … (zero-padded so they sort). #raw("TOSVG <path>") sets the
+base name; bare derives it from the document.
 
 #tip("Adding fonts, and colour emoji")[The typesetter draws text only from the fonts it knows, so a
 character no font provides — most visibly a colour emoji — comes out as a `.notdef` box. To widen
