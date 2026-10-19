@@ -286,11 +286,31 @@ fn lex_string(s: &str, b: &[u8], i: usize, n: usize) -> Result<(String, usize), 
                     j += 1;
                     continue;
                 }
-                b'u' if j + 5 < n => {
-                    let hhhh = &s[j + 2..j + 6];
-                    if hhhh.len() == 4 && hhhh.bytes().all(|c| c.is_ascii_hexdigit()) {
-                        if let Ok(code) = u32::from_str_radix(hhhh, 16) {
-                            if let Some(ch) = char::from_u32(code) {
+                b'u' => {
+                    // Brace form `\u{1F600}` — 1..=6 hex digits, ANY Unicode scalar (so emoji and other
+                    // characters above the BMP can be written by codepoint, not just the BMP `\uXXXX`).
+                    if b.get(j + 2) == Some(&b'{') {
+                        if let Some(close) = s[j + 3..].find('}') {
+                            let hex = &s[j + 3..j + 3 + close];
+                            if (1..=6).contains(&hex.len())
+                                && hex.bytes().all(|c| c.is_ascii_hexdigit())
+                            {
+                                if let Some(ch) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) {
+                                    buf.push(ch);
+                                    j += 3 + close + 1; // consume `\u{…}`
+                                    continue;
+                                }
+                            }
+                        }
+                        buf.push(b[j] as char); // malformed brace form → backslash verbatim
+                        j += 1;
+                        continue;
+                    }
+                    // Legacy `\uXXXX` — exactly 4 hex digits (BMP only).
+                    if j + 5 < n {
+                        let hhhh = &s[j + 2..j + 6];
+                        if hhhh.len() == 4 && hhhh.bytes().all(|c| c.is_ascii_hexdigit()) {
+                            if let Some(ch) = u32::from_str_radix(hhhh, 16).ok().and_then(char::from_u32) {
                                 buf.push(ch);
                                 j += 6;
                                 continue;
@@ -493,6 +513,21 @@ mod tests {
         assert_eq!(kinds(r#""quote\"in""#), vec![Tok::Str("quote\"in".into())]);
         // Unknown escape passes through verbatim.
         assert_eq!(kinds(r#""\q""#), vec![Tok::Str("\\q".into())]);
+    }
+
+    #[test]
+    fn unicode_escapes_bmp_and_braced() {
+        // Legacy 4-hex form (BMP) still works.
+        assert_eq!(kinds(r#""✔""#), vec![Tok::Str("\u{2714}".into())]);
+        // Brace form spans 1..=6 hex, including codepoints above the BMP (emoji).
+        assert_eq!(kinds(r#""\u{2714}""#), vec![Tok::Str("\u{2714}".into())]);
+        assert_eq!(kinds(r#""\u{1F600}""#), vec![Tok::Str("\u{1F600}".into())]);
+        assert_eq!(kinds(r#""smile \u{1F600}!""#), vec![Tok::Str("smile \u{1F600}!".into())]);
+        assert_eq!(kinds(r#""\u{41}""#), vec![Tok::Str("A".into())]);
+        // Malformed brace forms pass the backslash through verbatim (don't blow up).
+        assert_eq!(kinds(r#""\u{}""#), vec![Tok::Str("\\u{}".into())]);
+        assert_eq!(kinds(r#""\u{XY}""#), vec![Tok::Str("\\u{XY}".into())]);
+        assert_eq!(kinds(r#""\u{110000}""#), vec![Tok::Str("\\u{110000}".into())]); // past max scalar
     }
 
     #[test]

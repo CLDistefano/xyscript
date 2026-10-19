@@ -867,7 +867,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("IF", "IFNOT"): run a block when a condition is true. `IFNOT` (or the two-word `IF NOT …`) runs it when the condition is false. Pair with `ELSE`/`ELSEIF` and close at `ENDIF`/`EI`.
 / #cmd("IMAPURL"): the IMAP server URL for receiving mail — `IMAPURL imaps://host:993` (bare reports it, `$IMAPURL` reads it). Used by #cmd("LISTMAIL")/#cmd("SAVEMAIL")/#cmd("DELMAIL") together with #cmd("MAILBOX"); authentication reuses #cmd("MAILUSER")/#cmd("MAILPASS"). Session-only (put it in `startup.xpl`).
 / #cmd("INPUT"): pause for a typed line into a variable — `INPUT <var> [prompt]`.
-/ #cmd("INSERT", "WRITE", "WR"): insert literal text at the caret (a quoted string unescapes `\n`, etc.).
+/ #cmd("INSERT", "WRITE", "WR"): insert literal text at the caret (a quoted string unescapes `\n`, `\t`, `\xHH`, `\uHHHH`, and the braced `\u{H…}` for any codepoint — e.g. `INSERT "\u{1F600}"` types an emoji).
 
 == J
 
@@ -1059,6 +1059,8 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("TOSVG"): export the document to SVG — the same render as #cmd("TOPDF") (same `DOCTYPE` routing, same `MDA` styling), as scalable vector graphics. Each page becomes its own standalone SVG file (a merged multi-page SVG isn't a conventional single-root document and many viewers reject it): a one-page document writes `<name>.svg`, a multi-page one writes `<name>-1.svg`, `<name>-2.svg`, … (zero-padded to sort). `TOSVG <path>` sets the base name, or bare derives it from the document. Useful for embedding in a web page or scaling to any size without rasterizing.
 
 *Adding fonts (colour emoji, etc.).* The PDF/SVG/preview typesetter draws text only from the fonts it knows, so a character no available font provides — most visibly a colour emoji — shows as a `.notdef` box. To widen coverage, drop `.ttf`/`.otf`/`.ttc` faces into a `fonts/` folder *beside the program* (`xyscript.exe`): they're loaded at startup and used for #cmd("TOPDF"), #cmd("TOSVG"), and the live #cmd("PV") preview alike. In particular, a colour-emoji font such as `NotoColorEmoji-Regular.ttf` makes emoji render in full colour in all three (Typst embeds the colour glyphs in both PDF and SVG). A large emoji face adds a few milliseconds per render — negligible for the debounced preview.
+
+*Typing emoji.* No copy-paste needed: the OS emoji picker (`Win`+`.` on Windows, the Character Viewer on macOS) inserts straight into the document (IME input is enabled), as does the braced `\u{H…}` escape in a quoted string (`INSERT "\u{1F600}"`) or an `AR` auto-replace pair (`:joy: 😂`). The document must be UTF-8 (the default) to hold them — a single-byte code page can't, and they'd save as `?`.
 / #cmd("FPRINT"): `FPRINT <source> [<output>]` — export a file that is #emph[not] open to PDF, exactly as #cmd("TOPDF") would if it were the active document: rendered by the SOURCE file's own type (its extension picks Markdown / Typst / HTML / plain text) with the current Preview/`TOPDF` settings (fonts, margins, page setup). `#image`/`#read` in the source resolve against the source's own directory. `<output>` names the PDF (relative paths resolve against `$CWD`); bare derives `<source>.pdf`. No tab is opened or changed, and no #cmd("MDA") styling is applied (the file has none loaded) — for batch-printing files you don't want to open. Quote paths that contain spaces.
 / #cmd("TRUST"): enable or disable shell-out — `TRUST 1` / `TRUST 0`.
 / #cmd("TXT"): show a scrollable text dialog (`/T:"title"`).

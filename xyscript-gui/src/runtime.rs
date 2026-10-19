@@ -2695,6 +2695,11 @@ impl ApplicationHandler for Handler {
             attrs = WindowAttributesExtWayland::with_name(attrs, "xyscript", "xyscript");
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        // Allow IME on the editor window. Winit disables IME by default, which suppresses the OS emoji
+        // picker (Win+. on Windows, the Character Viewer on macOS) and composed multilingual / accented
+        // input. With it on, those commit through `WindowEvent::Ime(Commit)` → `insert_str`, the same
+        // path OS `Text` events use — so emoji and CJK/accent input land straight in the document.
+        window.set_ime_allowed(true);
         // Multi-monitor: the `with_position` creation hint is unreliable across monitors on Windows
         // (the window can land on the primary display instead of the saved one). Re-assert the saved
         // physical position AFTER creation — the same thing the TXT/DIR/Find windows do — so it lands

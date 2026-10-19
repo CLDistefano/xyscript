@@ -1947,6 +1947,19 @@ A double-quoted string may contain the escapes #raw("\\n") (newline), #raw("\\t"
 (a quote), and #raw("\\\\") (a backslash), among others. A backslash sitting against ordinary text in a
 path (#raw("C:\\Users")) is left alone — only the recognized escapes are processed.
 
+A character can also be written by its Unicode codepoint: #raw("\\xHH") (two hex digits, a byte),
+#raw("\\dNNN") (three decimal digits), #raw("\\uHHHH") (four hex digits, the Basic Multilingual Plane),
+or — for *any* character, including emoji and other codepoints above the BMP — the braced form
+#raw("\\u{H…}") with one to six hex digits. So #raw("INSERT \"\\u{1F600}\"") types a 😀 and
+#raw("INSERT \"\\u2714\"") a ✓.
+
+#tip("Typing emoji")[Three ways, no copy-paste needed. (1) The OS emoji picker — #kbd("Win")+#kbd(".") on
+Windows, the Character Viewer on macOS — inserts straight into the document. (2) #raw("\\u{…}") in any
+quoted string, as above. (3) An #raw("AR") auto-replace pair, e.g. a #raw("fonts")-style line
+#raw(":joy: 😂") in your #raw(".ar") file, so typing #raw(":joy:") expands to the emoji. All of these need
+the document to be *UTF-8* (the default for new documents); a single-byte code page such as CP437 cannot
+hold emoji, and they would save as #raw("?").]
+
 == The function library
 
 Functions take values and return new ones; they never change your document. Call one by name with its
