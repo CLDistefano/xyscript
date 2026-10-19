@@ -1826,6 +1826,19 @@ Because #raw("TOPDF") needs no window, a script can generate PDFs headlessly —
 a set of Markdown files and exports it, for instance. (Both this manual and the reference were produced
 exactly that way.)
 
+#raw("TOSVG") is the same export in a different wrapper: it renders the document — same #raw("DOCTYPE"),
+same #raw("MDA") styling — to a single *SVG* instead of a PDF, all pages stacked into one file
+(#raw("TOSVG <path>"), or bare derives #raw("<name>.svg")). Reach for it when you want scalable vector
+output: a figure to embed in a web page, or artwork to scale to any size without the blur of a raster.
+
+#tip("Adding fonts, and colour emoji")[The typesetter draws text only from the fonts it knows, so a
+character no font provides — most visibly a colour emoji — comes out as a `.notdef` box. To widen
+coverage, drop #raw(".ttf") / #raw(".otf") / #raw(".ttc") faces into a #raw("fonts/") folder *next to the
+program* (#raw("xyscript.exe")); they are picked up at startup and used by #raw("TOPDF"), #raw("TOSVG"),
+and the live #raw("PV") preview alike. In particular, dropping a colour-emoji font such as
+#raw("NotoColorEmoji-Regular.ttf") there makes emoji render in full colour in all three — Typst embeds the
+colour glyphs in both the PDF and the SVG. A large emoji face costs only a few milliseconds per render.]
+
 == Filling in a template: PRINTEX
 
 #raw("PRINTEX") — "print and expand" — makes a copy of the document with every #raw("|…|") *field*

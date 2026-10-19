@@ -467,6 +467,34 @@ fn fonts_referenced(source: &str) -> Vec<String> {
 /// errors are formatted as `line:col: message` via the engine's `World` (so the location resolves to
 /// the source) — for Typst-as-input, compiled verbatim with no preamble, those line numbers map
 /// exactly to the user's buffer.
+/// Extra font faces dropped into a `fonts/` directory beside the executable (`$XSDIR/fonts`). Loaded
+/// once (cached for the process) and handed to Typst for every render, so a user can add faces the
+/// bundled `typst_assets` set lacks — notably a colour-emoji font (e.g. `NotoColorEmoji-Regular.ttf`),
+/// whose glyphs none of the bundled fonts provide; with one present, emoji render in `TOPDF`/`TOSVG`
+/// and the live preview. `.ttf`/`.otf`/`.ttc` only; a missing or empty directory is simply no extra fonts.
+fn exe_dir_fonts() -> &'static [Vec<u8>] {
+    static CACHE: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut out = Vec::new();
+        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("fonts")));
+        if let Some(dir) = dir {
+            if let Ok(rd) = std::fs::read_dir(&dir) {
+                let mut paths: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+                paths.sort(); // deterministic registration order
+                for p in paths {
+                    let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+                    if matches!(ext.as_deref(), Some("ttf" | "otf" | "ttc")) {
+                        if let Ok(b) = std::fs::read(&p) {
+                            out.push(b);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    })
+}
+
 fn compile_markup(
     markup: String,
     extra_fonts: Vec<Vec<u8>>,
@@ -478,6 +506,7 @@ fn compile_markup(
     // there's no extra per-render cost beyond the handful of user faces.
     let mut fonts: Vec<Vec<u8>> = typst_assets::fonts().map(|b| b.to_vec()).collect();
     fonts.extend(extra_fonts);
+    fonts.extend(exe_dir_fonts().iter().cloned()); // user-dropped faces beside the exe (e.g. colour emoji)
     // The filesystem resolver lets the document read local files (`#image`/`#include`/`#read`),
     // relative to its own directory and — for absolute paths, whose drive Typst strips — its drive.
     let resolver = DocFileResolver { doc_dir: doc_dir.to_path_buf(), drive_root: root_of(doc_dir) };
