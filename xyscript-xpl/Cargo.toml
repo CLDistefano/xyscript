@@ -1,6 +1,6 @@
 [package]
 name = "xyscript-xpl"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 rust-version = "1.88"
 description = "XPL (XyScript Programming Language) interpreter: parse -> AST -> flat IR -> execute. Headless, no OS or GUI dependencies."
