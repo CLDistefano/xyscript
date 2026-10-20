@@ -399,8 +399,11 @@ document can only appear in one pane at a time.
 
 The focused pane wears a colored border (set its color with #raw("PANECOLOR")). Click a pane to focus
 it, or step around with #raw("TW") — *next pane*, wrapping around; your typing, the caret, and the
-content specials all follow the focus. Drag the divider between panes to resize them, and #raw("TRV")
-swaps the two panes over.
+content specials all follow the focus. A click into an unfocused pane only *focuses* it — the caret
+stays where it was in that pane — so a second click is needed to reposition it; this matches how the
+first click back into XyScript from another application re-establishes focus without moving the caret.
+(A drag still selects across the boundary, and a right-click still lands its menu at the pointer.) Drag
+the divider between panes to resize them, and #raw("TRV") swaps the two panes over.
 
 To put a split away again there are three moves, depending on what you want to keep:
 

@@ -11471,9 +11471,16 @@ impl GuiApp {
                     if rel.x >= r.x && rel.x < r.x + r.w && rel.y >= r.y && rel.y < r.y + r.h {
                         if pid != focused_pane {
                             self.editor.host_mut().focus_pane(pid);
-                            // Place the caret on this click too, next frame (once the pane is focused
-                            // and rendered, so its window is hit-testable) — no second click needed.
-                            self.pending_pane_click = Some(p);
+                            // A plain CLICK into another pane only FOCUSES it — the caret stays where it
+                            // was in that pane, so a second click is needed to move it. This mirrors the
+                            // first-click-after-refocus rule for the whole window (`swallow_focus_click`):
+                            // the focusing click re-establishes focus without repositioning the caret.
+                            // A DRAG or a right-click still carries its position through (next frame, once
+                            // the pane is hit-testable), so drag-selection and the right-click context
+                            // menu keep landing where the pointer is.
+                            if !resp.clicked() {
+                                self.pending_pane_click = Some(p);
+                            }
                             ctx.request_repaint();
                         }
                         break;
