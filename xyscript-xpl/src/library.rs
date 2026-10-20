@@ -66,7 +66,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "REFLOW", "REFLOWWIDTH",
     "TOP",
     "BOTTOM", "TF", "BF", "UNDO", "REDO", "UNDOBEGIN", "UNDOEND", "NEW", "NE", "OPEN", "READ", "CA", "ED", "EDIT", "BEDIT", "BCLOSE", "SAVE", "SA",
-    "BUFNEXT", "BUFPREV", "BUFALT", "BUFGO", "GOFILE", "GOF", "LISTTABS",
+    "BUFNEXT", "BUFPREV", "BUFALT", "BUFGO", "GOFILE", "GOF", "LISTTABS", "OUTLINE", "OL",
     "BUFLIST", "CMLINE", "SUBMIT", "CANCEL", "QUIT", "QQ",
     // Split panes: split (THS/TVS), focus (TW), un-split (TUS), swap (TRV), zoom (TZ),
     // release focused pane to full screen (FS). `NEW/H` / `NEW/V` also split.

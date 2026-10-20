@@ -2057,6 +2057,13 @@ pub trait Host {
         Vec::new()
     }
 
+    /// The active document's structure for the `OUTLINE`/`OL` chooser: `(offset, label)` per row, in
+    /// document order (label indented by heading level). Markdown/Typst/HTML headings or XPL `SUB`
+    /// routines, per the document kind. Default: none.
+    fn outline(&self) -> Vec<(usize, String)> {
+        Vec::new()
+    }
+
     /// What a no-argument `CALC` should work with (see [`CalcContext`]): the command line is focused
     /// (show guidance), a single caret line to evaluate, or a multi-line selection to sum. Default:
     /// the command line (nothing to evaluate).

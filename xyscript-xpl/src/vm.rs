@@ -162,6 +162,7 @@ impl Interpreter {
                 | SuspendReason::ReopenPick { title, items, .. }
                 | SuspendReason::TabPick { title, items, .. }
                 | SuspendReason::MarkPick { title, items, .. }
+                | SuspendReason::OutlinePick { title, items, .. }
                 | SuspendReason::LintFixPick { title, items, .. },
             ) => Some((title.clone(), items.clone())),
             _ => None,
@@ -186,6 +187,7 @@ impl Interpreter {
             Reopen(Vec<(String, usize)>),
             Tab(Vec<usize>),
             Mark(Vec<usize>),
+            Outline(Vec<usize>),
             LintFix((usize, usize), Vec<String>),
         }
         let kind = match self.suspended.last().map(|s| &s.reason) {
@@ -196,6 +198,7 @@ impl Interpreter {
             Some(SuspendReason::ReopenPick { entries, .. }) => Kind::Reopen(entries.clone()),
             Some(SuspendReason::TabPick { targets, .. }) => Kind::Tab(targets.clone()),
             Some(SuspendReason::MarkPick { targets, .. }) => Kind::Mark(targets.clone()),
+            Some(SuspendReason::OutlinePick { targets, .. }) => Kind::Outline(targets.clone()),
             Some(SuspendReason::LintFixPick { span, replacements, .. }) => {
                 Kind::LintFix(*span, replacements.clone())
             }
@@ -245,6 +248,13 @@ impl Interpreter {
                 Some(off) => {
                     self.env.error = 0;
                     host.jump_to_offset(off)?; // move the caret to that bookmark (centered)
+                }
+                None => self.env.error = 1, // cancelled — caret unchanged
+            },
+            Kind::Outline(targets) => match choice.and_then(|i| targets.get(i).copied()) {
+                Some(off) => {
+                    self.env.error = 0;
+                    host.jump_to_offset(off)?; // jump the caret to the chosen heading/routine (centered)
                 }
                 None => self.env.error = 1, // cancelled — caret unchanged
             },
@@ -855,6 +865,10 @@ enum SuspendReason {
     /// `targets[i]` is the byte offset behind row `i`; on resume the caret jumps there (centered).
     /// Cancel leaves the caret unchanged (and sets `$ERROR`).
     MarkPick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
+    /// `OUTLINE`/`OL` — a MODAL chooser (sharing the PICK dialog) of the document's headings / routine
+    /// headers. `targets[i]` is the byte offset of row `i`'s line; on resume the caret jumps there
+    /// (centered). Cancel leaves the caret unchanged (and sets `$ERROR`).
+    OutlinePick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
     /// `LINTFIX` — a MODAL chooser (sharing the PICK dialog) of a language issue's corrections. On
     /// resume the chosen `replacements[i]` replaces the document `span`. Cancel leaves it unchanged.
     LintFixPick {
@@ -2680,6 +2694,29 @@ impl Vm<'_, '_> {
                 let (targets, items): (Vec<usize>, Vec<String>) = marks.into_iter().unzip();
                 self.suspend = Some(SuspendReason::MarkPick {
                     title: Some("Go to bookmark".to_string()),
+                    items,
+                    targets,
+                });
+                Ok(Flow::Suspend)
+            }
+            // `OUTLINE`/`OL` — a MODAL chooser of the document's headings (Markdown/Typst/HTML) or `SUB`
+            // routines (XPL); choosing one jumps the caret to that line (centered). Under `CAPTURE` the
+            // outline is returned as text instead. Empty document structure = a status note.
+            "OUTLINE" | "OL" => {
+                let entries = self.ctx.host.outline();
+                if entries.is_empty() {
+                    *self.ctx.status =
+                        Some("OUTLINE: no headings or routines in this document".to_string());
+                    return Ok(Flow::Next);
+                }
+                if self.is_capturing() {
+                    let text = entries.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>().join("\n");
+                    self.capture_push(&text);
+                    return Ok(Flow::Next);
+                }
+                let (targets, items): (Vec<usize>, Vec<String>) = entries.into_iter().unzip();
+                self.suspend = Some(SuspendReason::OutlinePick {
+                    title: Some("Outline".to_string()),
                     items,
                     targets,
                 });

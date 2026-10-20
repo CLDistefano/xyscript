@@ -15384,6 +15384,19 @@ impl Host for AppHost {
         self.active_doc().mark_previews()
     }
 
+    fn outline(&self) -> Vec<(usize, String)> {
+        let doc = self.active_doc();
+        let text = doc.buffer().text();
+        crate::outline::outline(&text, doc.render_kind())
+            .into_iter()
+            .map(|e| {
+                let off = doc.buffer().line_byte_range(e.line).0;
+                let indent = "  ".repeat(e.level.saturating_sub(1) as usize);
+                (off, format!("{indent}{}", e.label))
+            })
+            .collect()
+    }
+
     fn calc_context(&self) -> CalcContext {
         let b = self.active_doc().buffer();
         // A selection always wins — it can outlive a focus flip to the command

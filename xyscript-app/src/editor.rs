@@ -11397,6 +11397,42 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn outline_chooser_jumps_to_the_picked_heading() {
+        let mut e = Editor::new(typing_keymap());
+        let out = |e: &Editor| e.output().last().map(String::as_str).map(str::to_string);
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert(
+            "doc.md".into(),
+            "# Title\n\nintro\n\n## Section A\nbody\n\n## Section B\n".into(),
+        );
+        e.run_command("open doc.md");
+        e.run_command("OUTLINE");
+        let (title, items) = e.pick_request().expect("OUTLINE opens the chooser");
+        assert_eq!(title.as_deref(), Some("Outline"));
+        assert_eq!(items.len(), 3, "three headings: {items:?}");
+        assert_eq!(items[0], "Title"); // level 1, no indent
+        assert_eq!(items[1], "  Section A"); // level 2, indented
+        // Pick "Section B" → the caret jumps to the start of its line (byte offset 35).
+        let b_row = items.iter().position(|r| r.contains("Section B")).unwrap();
+        e.pick_respond(Some(b_row));
+        assert!(e.pick_request().is_none());
+        e.run_command("PR $CP");
+        assert_eq!(out(&e).as_deref(), Some("35"), "caret at the start of '## Section B'");
+    }
+
+    #[test]
+    fn outline_on_a_structureless_document_is_a_status_note() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("plain.md".into(), "just prose\nno headings here\n".into());
+        e.run_command("open plain.md");
+        e.run_command("OUTLINE");
+        assert!(e.pick_request().is_none(), "no chooser without structure");
+        e.run_command("PR $LS");
+        assert!(e.output().last().unwrap().to_lowercase().contains("no headings"), "status note: {:?}", e.output().last());
+    }
+
+    #[test]
     fn listtabs_cancel_leaves_the_active_tab_unchanged() {
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;

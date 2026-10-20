@@ -381,6 +381,8 @@ listing — with switches, arguments, and the finer points — follows in _Comma
 / #cmd("MARKGUTTER"): control the left-gutter bookmark strip — `MARKGUTTER off | on | persist` (bare toggles off↔on). `on` (default) shows the strip only when the document has bookmarks; `persist` reserves it always. #cmd("MARKFGCOLOR") / #cmd("MARKBGCOLOR") (pickers #cmd("MARKFGCOLORS") / #cmd("MARKBGCOLORS")) set the dot colour / strip background so the gutter can blend in or stand out. All saved by `SAVECFG`.
 Bookmarks are per-document, marked by a dot in the left gutter, and saved in the file's hidden `.xymeta` sidecar — a mark whose text has moved is relocated to the nearby text (a status note says so).
 
+For jumping around a document by its *structure* rather than saved marks, #cmd("OUTLINE") (alias #cmd("OL")) opens a chooser of its headings (Markdown / Typst / HTML) or `SUB` routines (XPL) — pick one to jump there. A table-of-contents for navigation.
+
 == Selecting and defining blocks
 
 / #cmd("DF"): start (or close) a defined selection. #cmd("DFA"): select the whole document. #cmd("DM"): extend it to the caret. #cmd("DZ"): close it.
@@ -938,6 +940,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 == O
 
 / #cmd("OF") / #cmd("OFL") / #cmd("OFR"): set both margins / the left margin / the right margin, in columns (`+n`/`-n` adjusts).
+/ #cmd("OUTLINE", "OL"): open a modal chooser of the document's structure and jump the caret to the heading or routine you pick (centered). The entries depend on the document kind — Markdown (`#`), Typst (`=`) or HTML (`<h1>`…`<h6>`) headings, indented by level; or `SUB <name>` routine headers in an XPL file. Type to filter, arrow keys to move, Enter (or double-click) to jump, Esc to cancel. A no-op note when the document has no detectable structure. Under #cmd("CAPTURE") it returns the outline as text instead of opening the chooser. The interactive sibling for navigating a long document — bind it to a key for a quick table of contents.
 / #cmd("OPEN", "CA", "ED", "EDIT"): open a file (bare = the GUI open dialog). `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/NV` reopens without the "already open?" prompt; `/HEX` opens it straight into the #cmd("HEX") view.
 
 == P

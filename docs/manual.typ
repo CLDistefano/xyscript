@@ -572,6 +572,24 @@ that text where it can still be found nearby, and the status line notes that it 
 surrounding text — insert or delete above it and it moves right along, still marking the same spot.
 You only see the "moved" note when the file changed *outside* this session.]
 
+== Navigating by structure: OUTLINE
+
+Where bookmarks are places *you* marked, #raw("OUTLINE") (alias #raw("OL")) finds the document's own
+structure for you and turns it into a jump menu. It opens a chooser — the same filterable pop-up as
+#raw("MARKLIST") — listing the document's sections; pick one and the cursor jumps there, centred.
+
+What counts as a "section" follows the document kind: a Markdown document lists its #raw("#") headings,
+a Typst document its #raw("=") headings, and an HTML one its #raw("<h1>")…#raw("<h6>") — each indented
+by level, so the list reads as a table of contents. An XPL file (a #raw(".xpl"), #raw(".lib") or
+#raw(".kbd")) instead lists its #raw("SUB") routine headers, so you can hop between routines in a long
+script. Type to filter the list, arrow to move, Enter or a double-click to jump, Esc to cancel; a
+document with no headings or routines just says so. Bind #raw("OUTLINE") to a key and it becomes an
+instant table of contents for any long file.
+
+#tip("Capture the outline as text")[Under #raw("CAPTURE"), #raw("OUTLINE") doesn't open the chooser —
+it hands back the outline as text, one section per line, so a script can build its own table of
+contents or index.]
+
 == Right-to-left text and the cursor
 
 XyScript shapes and displays right-to-left scripts — Arabic, Hebrew — correctly out of the box: Arabic

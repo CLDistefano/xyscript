@@ -34,6 +34,7 @@ pub mod kbd_dump;
 pub mod kbd_sugar;
 pub mod lint;
 pub mod os_message;
+pub mod outline;
 pub mod panes;
 pub mod sort;
 pub mod style;
