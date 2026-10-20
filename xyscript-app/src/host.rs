@@ -15384,17 +15384,21 @@ impl Host for AppHost {
         self.active_doc().mark_previews()
     }
 
-    fn outline(&self) -> Vec<(usize, String)> {
+    fn outline(&self) -> (Vec<(usize, String)>, usize) {
         let doc = self.active_doc();
         let text = doc.buffer().text();
-        crate::outline::outline(&text, doc.render_kind())
+        let entries: Vec<(usize, String)> = crate::outline::outline(&text, doc.render_kind())
             .into_iter()
             .map(|e| {
                 let off = doc.buffer().line_byte_range(e.line).0;
                 let indent = "  ".repeat(e.level.saturating_sub(1) as usize);
                 (off, format!("{indent}{}", e.label))
             })
-            .collect()
+            .collect();
+        // The section the caret is in: the last entry whose line starts at or before the caret.
+        let caret = doc.buffer().cursor();
+        let current = entries.iter().rposition(|(off, _)| *off <= caret).unwrap_or(0);
+        (entries, current)
     }
 
     fn calc_context(&self) -> CalcContext {

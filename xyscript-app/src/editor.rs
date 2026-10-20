@@ -1923,6 +1923,11 @@ impl Editor {
     pub fn pick_is_tab_switch(&self) -> bool {
         self.interp.pick_is_tab_switch()
     }
+    /// The row a just-opened chooser should pre-highlight (the caret's current `OUTLINE` section; `0`
+    /// for other picks).
+    pub fn pick_initial(&self) -> usize {
+        self.interp.pick_initial()
+    }
     /// Resume a `PICK`-parked script: `choice` is the chosen item's index (`None` = cancelled).
     pub fn pick_respond(&mut self, choice: Option<usize>) {
         if self.interp.pick_request().is_none() {
@@ -11418,6 +11423,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert!(e.pick_request().is_none());
         e.run_command("PR $CP");
         assert_eq!(out(&e).as_deref(), Some("35"), "caret at the start of '## Section B'");
+    }
+
+    #[test]
+    fn outline_opens_pre_highlighted_on_the_current_section() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert(
+            "doc.md".into(),
+            "# Title\n\nintro\n\n## Section A\nbody\n\n## Section B\n".into(),
+        );
+        e.run_command("open doc.md");
+        // Caret in Title → row 0; in Section A's body → row 1; in Section B → row 2.
+        e.run_command("JMP 3"); // inside "# Title"
+        e.run_command("OUTLINE");
+        assert_eq!(e.pick_initial(), 0, "current section = Title");
+        e.pick_respond(None);
+        e.run_command("JMP 30"); // inside Section A's body line
+        e.run_command("OUTLINE");
+        assert_eq!(e.pick_initial(), 1, "current section = Section A");
+        e.pick_respond(None);
+        e.run_command("JMP 40"); // inside Section B
+        e.run_command("OUTLINE");
+        assert_eq!(e.pick_initial(), 2, "current section = Section B");
     }
 
     #[test]

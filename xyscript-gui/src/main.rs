@@ -11949,7 +11949,8 @@ impl GuiApp {
             // content once, before egui starts remembering the user's manual resizes.
             let just_opened = self.pick_dialog.is_none();
             if just_opened {
-                self.pick_dialog = Some(0);
+                // Pre-highlight the caret's current section (OUTLINE); 0 for every other chooser.
+                self.pick_dialog = Some(self.editor.pick_initial().min(items.len().saturating_sub(1)));
                 self.pick_filter.clear();
                 self.pick_scroll_to_sel = true; // reveal the initial selection once
             }

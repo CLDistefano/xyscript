@@ -582,8 +582,10 @@ What counts as a "section" follows the document kind: a Markdown document lists 
 a Typst document its #raw("=") headings, and an HTML one its #raw("<h1>")…#raw("<h6>") — each indented
 by level, so the list reads as a table of contents. An XPL file (a #raw(".xpl"), #raw(".lib") or
 #raw(".kbd")) instead lists its #raw("SUB") routine headers, so you can hop between routines in a long
-script. Type to filter the list, arrow to move, Enter or a double-click to jump, Esc to cancel; a
-document with no headings or routines just says so. Bind #raw("OUTLINE") to a key and it becomes an
+script. The chooser opens pre-highlighted on the section you are currently in, so a bare Enter takes
+you to the top of it — and the surrounding sections are one arrow-key away. Type to filter the list,
+arrow to move, Enter or a double-click to jump, Esc to cancel; a document with no headings or routines
+just says so. Bind #raw("OUTLINE") to a key and it becomes an
 instant table of contents for any long file.
 
 #tip("Capture the outline as text")[Under #raw("CAPTURE"), #raw("OUTLINE") doesn't open the chooser —

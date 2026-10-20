@@ -176,6 +176,15 @@ impl Interpreter {
         matches!(self.suspended.last().map(|s| &s.reason), Some(SuspendReason::TabPick { .. }))
     }
 
+    /// The row a just-opened chooser should pre-highlight (the section the caret is in, for `OUTLINE`);
+    /// `0` for every other pick. The editor uses it when the dialog first appears.
+    pub fn pick_initial(&self) -> usize {
+        match self.suspended.last().map(|s| &s.reason) {
+            Some(SuspendReason::OutlinePick { initial, .. }) => *initial,
+            _ => 0,
+        }
+    }
+
     /// Resume a `PICK`-parked script. `choice` is the chosen item's index into the parked `items`
     /// (`None` = cancelled / out of range). Writes the result into the destination variable (the
     /// item's string, or its 1-based index under `/I`) and sets/clears `$ERROR` accordingly, then
@@ -867,8 +876,9 @@ enum SuspendReason {
     MarkPick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
     /// `OUTLINE`/`OL` — a MODAL chooser (sharing the PICK dialog) of the document's headings / routine
     /// headers. `targets[i]` is the byte offset of row `i`'s line; on resume the caret jumps there
-    /// (centered). Cancel leaves the caret unchanged (and sets `$ERROR`).
-    OutlinePick { title: Option<String>, items: Vec<String>, targets: Vec<usize> },
+    /// (centered). `initial` is the row to pre-highlight on open (the section the caret is currently in).
+    /// Cancel leaves the caret unchanged (and sets `$ERROR`).
+    OutlinePick { title: Option<String>, items: Vec<String>, targets: Vec<usize>, initial: usize },
     /// `LINTFIX` — a MODAL chooser (sharing the PICK dialog) of a language issue's corrections. On
     /// resume the chosen `replacements[i]` replaces the document `span`. Cancel leaves it unchanged.
     LintFixPick {
@@ -2703,7 +2713,7 @@ impl Vm<'_, '_> {
             // routines (XPL); choosing one jumps the caret to that line (centered). Under `CAPTURE` the
             // outline is returned as text instead. Empty document structure = a status note.
             "OUTLINE" | "OL" => {
-                let entries = self.ctx.host.outline();
+                let (entries, current) = self.ctx.host.outline();
                 if entries.is_empty() {
                     *self.ctx.status =
                         Some("OUTLINE: no headings or routines in this document".to_string());
@@ -2719,6 +2729,7 @@ impl Vm<'_, '_> {
                     title: Some("Outline".to_string()),
                     items,
                     targets,
+                    initial: current,
                 });
                 Ok(Flow::Suspend)
             }
