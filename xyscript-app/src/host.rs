@@ -6473,8 +6473,11 @@ impl AppHost {
             }
             msg.push_str(&format!("--{boundary}--\n"));
         }
-        // SMTP wants CRLF line endings; normalize the whole message.
-        let msg = msg.replace("\r\n", "\n").replace('\n', "\r\n");
+        // SMTP wants CRLF line endings; normalize the whole message. The middle step collapses any
+        // STRAY BARE CR (an old-Mac line ending, or a lone 0x0D that crept into the body) to LF — a
+        // bare CR left on the wire desyncs a strict SMTP server, which curl reports as the opaque
+        // "(8) Weird server reply". Order matters: fold CRLF→LF, then bare CR→LF, then all LF→CRLF.
+        let msg = msg.replace("\r\n", "\n").replace('\r', "\n").replace('\n', "\r\n");
         Ok((recipients, msg))
     }
 
@@ -15795,6 +15798,39 @@ mod tests {
         )
         .unwrap();
         assert!(msg.contains("\r\n\r\nDear Bob: hello\r\nmore body"), "{msg:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "email")]
+    fn mail_body_line_endings_canonicalize_to_crlf() {
+        // A body with every flavor of line ending, INCLUDING a stray bare CR (0x0D) like the one that
+        // crept into a real document and desynced a strict SMTP server (→ curl "weird server reply").
+        // "lf\n" + "crlf\r\n" + "bareCR\rstill same line visually\n" + trailing text.
+        let doc = "lf\ncrlf\r\nbare\rcr\nend";
+        let (_r, msg) = super::AppHost::build_mail_message(
+            "me@x.com",
+            Some("a@x.com".to_string()),
+            None,
+            doc,
+            "Fri, 01 Jan 2021 00:00:00 +0000",
+            "<id@x.com>",
+            &[],
+            "B",
+        )
+        .unwrap();
+        // No bare CR and no bare LF survive anywhere in the finished message: every \r is part of a
+        // \r\n pair, and every \n is preceded by a \r.
+        let b = msg.as_bytes();
+        for i in 0..b.len() {
+            if b[i] == b'\r' {
+                assert!(i + 1 < b.len() && b[i + 1] == b'\n', "bare CR at {i}: {msg:?}");
+            }
+            if b[i] == b'\n' {
+                assert!(i > 0 && b[i - 1] == b'\r', "bare LF at {i}: {msg:?}");
+            }
+        }
+        // The stray CR became a real line break, so the body is four CRLF-separated lines.
+        assert!(msg.contains("\r\n\r\nlf\r\ncrlf\r\nbare\r\ncr\r\nend"), "body wrong: {msg:?}");
     }
 
     #[test]

@@ -3231,6 +3231,25 @@ word — usually enough to see whether a send was truly accepted or a login was 
 #raw("LISTMAIL") specifically, #raw("MAILDEBUG") also switches the display from the tidy listing to the
 raw exchange. Turn it off again with #raw("MAILDEBUG off").
 
+The error line usually ends in a parenthesized #raw("curl") exit code that tells you *which half* of the
+problem you have:
+
+/ #raw("(67) Login denied"): the server rejected your credentials. Re-check #raw("MAILUSER") and
+  #raw("MAILPASS") (for Gmail/Outlook/Yahoo this must be an *app password*, not your normal one).
+/ #raw("(8) Weird server reply"): the server read something that was not a valid SMTP reply. This is a
+  *transport* problem, not authentication — most often a temporary provider-side hiccup (e.g. a server
+  migration still settling), so simply trying again a little later often works. It can also mean a
+  provider now serves a different port: #raw("smtp://…:587") (STARTTLS) and #raw("smtps://…:465")
+  (implicit TLS) are not interchangeable, so make sure #raw("SMTPURL") matches what your provider
+  documents.
+/ #raw("(28) Timed out"): nothing answered on that host/port — wrong port, or a firewall in the way.
+/ #raw("(6) Could not resolve host"): the hostname in #raw("SMTPURL") is misspelled or DNS is down.
+
+#tip("XyScript sends RFC-clean line endings for you")[A stray carriage return in the document body can
+no longer corrupt a send: XyScript normalizes the whole message to #raw("CRLF") before handing it to
+#raw("curl"), folding bare #raw("CR") or bare #raw("LF") characters into proper line breaks. You do not
+need to clean up line endings by hand.]
+
 // ===================================================================================================
 = Appendix A — The Reference
 
