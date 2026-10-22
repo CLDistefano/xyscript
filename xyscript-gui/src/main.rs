@@ -4433,9 +4433,12 @@ impl GuiApp {
             _ => return Vec::new(),
         };
         let lh_px = lh_px.max(1);
-        let doc = self.editor.doc(self.editor.active_index());
-        let win_lo = doc.rope_offset(win.start_decoded);
-        let win_hi = doc.rope_offset(win.start_decoded + win.decoded_len);
+        // The window's rope bounds are ALREADY known as `start_byte`/`end_byte`; recomputing them with
+        // `rope_offset(start_decoded)` is an unanchored codepage walk (≤256 KB) that costs ~15-20 ms per
+        // call at a deep window in a big NON-UTF-8 file — several per frame = the draw-phase lag. (UTF-8
+        // is O(1), which is why only non-UTF-8 files felt it.) Use the precomputed bytes: O(1).
+        let win_lo = win.start_byte;
+        let win_hi = win.end_byte;
         let mut rects = Vec::new();
         for p in [a, b] {
             if p < win_lo || p > win_hi {
@@ -4481,8 +4484,12 @@ impl GuiApp {
         let lh_px = lh_px.max(1);
         let active = self.editor.active_index();
         let doc = self.editor.doc(active);
-        let win_lo = doc.rope_offset(win.start_decoded);
-        let win_hi = doc.rope_offset(win.start_decoded + win.decoded_len);
+        // The window's rope bounds are ALREADY known as `start_byte`/`end_byte`; recomputing them with
+        // `rope_offset(start_decoded)` is an unanchored codepage walk (≤256 KB) that costs ~15-20 ms per
+        // call at a deep window in a big NON-UTF-8 file — several per frame = the draw-phase lag. (UTF-8
+        // is O(1), which is why only non-UTF-8 files felt it.) Use the precomputed bytes: O(1).
+        let win_lo = win.start_byte;
+        let win_hi = win.end_byte;
         // Hide the underline (spelling AND grammar) for the word being actively typed: the word ending
         // at the caret (until a separator is typed, `word_before_cursor` is `Some`, so its underline is
         // deferred). Only in the focused pane — inactive panes always show every mark.
@@ -4641,12 +4648,11 @@ impl GuiApp {
         }
 
         let (mut buffer, win) = self.windowed_buffer(w, h);
-        // The window's rope-offset range, computed ONCE (two bounded walks) and reused by every
-        // rope-span band layer (FIND/EMPH/URL/selection/MDA) — never per span.
-        let (win_lo, win_hi) = {
-            let doc = self.editor.doc(self.editor.active_index());
-            (doc.rope_offset(win.start_decoded), doc.rope_offset(win.start_decoded + win.decoded_len))
-        };
+        // The window's rope-offset range, reused by every rope-span band layer (FIND/EMPH/URL/
+        // selection/MDA). These are the window's ALREADY-KNOWN byte bounds — O(1); recomputing them via
+        // `rope_offset(start_decoded)` was an unanchored codepage walk per frame (the draw-phase lag on
+        // big non-UTF-8 files).
+        let (win_lo, win_hi) = (win.start_byte, win.end_byte);
         let doc_cursor = self.editor.doc(self.editor.active_index()).cursor();
         // The real caret as a window-local cosmic cursor (None if scrolled off-window).
         let cursor = self.win_cursor_at(&win, doc_cursor);
@@ -4785,19 +4791,34 @@ impl GuiApp {
         let visual_rows: Vec<usize> = if self.editor.wrap() {
             let lh = self.line_height * self.render_scale;
             let tops: Vec<f32> = buffer.layout_runs().map(|r| r.line_top).collect();
+            let doc = self.editor.doc(self.editor.active_index());
+            let doc_len = doc.len();
             let mut v: Vec<usize> = Vec::with_capacity(tops.len() + 1);
+            // Rows are top-to-bottom, so their decoded offsets increase monotonically. Walk each row's
+            // rope offset from the PREVIOUS row's (rope, decoded) position — one row's distance each —
+            // instead of re-walking from the window start every time (which made this O(N²) decode-walks
+            // on a big NON-UTF-8 file: ~133-456 ms/frame of the draw-phase lag; UTF-8 is O(1) identity).
+            let (mut anc_rope, mut anc_dec) = (win.start_byte, win.start_decoded);
+            let mut row_rope = |cur: Cursor| {
+                let disp = cursor_to_byte(&win.display, cur, &win.nl);
+                let dec = win.start_decoded + display_to_decoded(disp, &win.cr, win.decoded_len);
+                let rope = doc.rope_offset_from(dec, anc_rope, anc_dec);
+                anc_rope = rope;
+                anc_dec = dec;
+                rope
+            };
             for &top in &tops {
                 if let Some(cur) = buffer.hit(0.0, top + 0.5 * lh) {
-                    v.push(self.win_rope_at(&win, cur));
+                    v.push(row_rope(cur));
                 }
             }
             if let Some(&top) = tops.last() {
                 // Sentinel: start of the row below the last one, or EOF for the final row.
                 let end = buffer
                     .hit(0.0, top + 1.5 * lh)
-                    .map(|c| self.win_rope_at(&win, c))
+                    .map(&mut row_rope)
                     .filter(|&e| v.last().is_some_and(|&l| e > l))
-                    .unwrap_or_else(|| self.editor.doc(self.editor.active_index()).len());
+                    .unwrap_or(doc_len);
                 v.push(end);
             }
             v

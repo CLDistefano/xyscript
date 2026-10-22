@@ -122,6 +122,11 @@ pub struct Buffer {
     /// false (single-byte view, or invalid bytes shown lossily as U+FFFD), the offset
     /// conversions fall back to the exact decode-and-count path.
     utf8_identity: bool,
+    /// Cached byte→decoded-UTF-8-length table for the current SINGLE-BYTE encoding (`None` for a UTF-8
+    /// or not-yet-computed view). Lets `decoded_offset_from`/`rope_offset_from` sum/walk the table
+    /// instead of decoding+allocating per character (the hot path for offset translation in big
+    /// non-UTF-8 files). Rebuilt lazily; cleared on an encoding switch.
+    dec_len_tbl: std::cell::RefCell<Option<[usize; 256]>>,
     /// Sticky goal column (in characters) for vertical motion (`LU`/`LD`/`UP`/`DOWN`/`PU`/`PD`): the
     /// column the caret tries to keep as it moves up/down, so passing through a SHORT or BLANK line
     /// doesn't collapse it. `None` until a vertical move arms it; any non-vertical move clears it
@@ -166,6 +171,7 @@ impl Default for Buffer {
             rope_hint: std::cell::Cell::new(NO_HINT),
             dec_index: std::cell::RefCell::new((u64::MAX, Vec::new())),
             utf8_identity: true, // empty UTF-8 buffer: offsets coincide
+            dec_len_tbl: std::cell::RefCell::new(None),
             goal_col: None,
             secondary: Vec::new(),
             building: false,
@@ -842,10 +848,14 @@ impl Buffer {
         if self.enc.name() == "utf-8" {
             return None;
         }
+        if let Some(t) = *self.dec_len_tbl.borrow() {
+            return Some(t); // cached (a 256×usize copy is cheap; the per-char decode it replaces is not)
+        }
         let mut t = [0usize; 256];
         for (b, slot) in t.iter_mut().enumerate() {
             *slot = self.enc.decode(&[b as u8]).len();
         }
+        *self.dec_len_tbl.borrow_mut() = Some(t);
         Some(t)
     }
 
@@ -943,6 +953,15 @@ impl Buffer {
         if self.utf8_identity {
             return off; // rope bytes *are* the UTF-8 string; offsets coincide
         }
+        // Single-byte: the decoded length of a rope range is the SUM of each byte's decoded length —
+        // streamed over the table, no per-char decode/alloc. (Lossy UTF-8 view → the decode fallback.)
+        if let Some(t) = self.dec_len_table() {
+            return if off >= anchor_rope {
+                anchor_decoded + self.rope.sum_table_range(anchor_rope, off, &t)
+            } else {
+                anchor_decoded - self.rope.sum_table_range(off, anchor_rope, &t)
+            };
+        }
         if off >= anchor_rope {
             anchor_decoded + self.enc.decode(&self.rope.slice_to_vec(anchor_rope, off)).len()
         } else {
@@ -959,7 +978,39 @@ impl Buffer {
             return decoded_off.min(self.rope.len());
         }
         let len = self.rope.len();
-        let (mut rope_pos, mut dec_pos) = (anchor_rope.min(len), anchor_decoded);
+        let anchor_rope = anchor_rope.min(len);
+        // Single-byte: walk the byte→length table over ONE sliced range instead of decoding+allocating
+        // per character. Each byte adds ≥1 decoded byte, so the walk spans at most `need` rope bytes.
+        if let Some(t) = self.dec_len_table() {
+            if anchor_decoded <= decoded_off {
+                let need = decoded_off - anchor_decoded; // decoded bytes to advance
+                let hi = (anchor_rope + need).min(len);
+                let bytes = self.rope.slice_to_vec(anchor_rope, hi);
+                let (mut acc, mut k) = (0usize, 0usize);
+                while k < bytes.len() && acc < need {
+                    acc += t[bytes[k] as usize];
+                    k += 1;
+                }
+                return anchor_rope + k;
+            } else {
+                let back = anchor_decoded - decoded_off; // decoded bytes to retreat
+                let lo = anchor_rope.saturating_sub(back);
+                let bytes = self.rope.slice_to_vec(lo, anchor_rope);
+                let (mut rope_pos, mut dec_pos, mut k) = (anchor_rope, anchor_decoded, bytes.len());
+                while k > 0 {
+                    let prev_dec = dec_pos - t[bytes[k - 1] as usize];
+                    if prev_dec < decoded_off {
+                        break;
+                    }
+                    rope_pos -= 1;
+                    dec_pos = prev_dec;
+                    k -= 1;
+                }
+                return rope_pos;
+            }
+        }
+        // Lossy UTF-8 view (enc is utf-8 but bytes invalid): multi-byte, keep the per-char decode walk.
+        let (mut rope_pos, mut dec_pos) = (anchor_rope, anchor_decoded);
         if dec_pos <= decoded_off {
             while rope_pos < len && dec_pos < decoded_off {
                 let next = self.next_boundary(rope_pos);
@@ -1285,6 +1336,7 @@ impl Buffer {
         self.rope_hint.set(NO_HINT);
         self.utf8_identity =
             self.enc.name() == "utf-8" && std::str::from_utf8(&self.rope.to_vec()).is_ok();
+        *self.dec_len_tbl.borrow_mut() = None; // the byte→length table depends on the encoding
         self.build_dec_index(); // re-index for the new decode (or clear it if now identity/small)
         // A view switch can land the caret mid-character (e.g. CP437→UTF-8); snap
         // both ends back to the nearest preceding boundary.
@@ -3763,6 +3815,24 @@ mod tests {
         assert_eq!(b.rope_offset(0), 0);
         assert_eq!(b.rope_offset(3), 1);
         assert_eq!(b.rope_offset(6), 2);
+    }
+
+    #[test]
+    fn anchored_offset_from_single_byte_matches_full_decode() {
+        // CP437 bytes decoding to 1-, 2-, and 3-UTF-8-byte chars (A, ╦, B, é, C, ╦, D), so the table
+        // walk must track decoded length, not byte count. Check both `_from` variants against the
+        // (independently-tested) non-anchored mapping, forward AND backward from EVERY anchor.
+        let bytes = vec![0x41, 0xCB, 0x42, 0x82, 0x43, 0xCB, 0x44];
+        let b = Buffer::from_bytes(bytes.clone(), cp437());
+        let n = bytes.len();
+        for r in 0..=n {
+            let dr = b.decoded_offset(r);
+            for a in 0..=n {
+                let da = b.decoded_offset(a);
+                assert_eq!(b.decoded_offset_from(r, a, da), dr, "decoded_offset_from r={r} a={a}");
+                assert_eq!(b.rope_offset_from(dr, a, da), r, "rope_offset_from dr={dr} a={a}");
+            }
+        }
     }
 
     #[test]
