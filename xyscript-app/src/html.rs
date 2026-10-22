@@ -52,7 +52,16 @@ fn emit(node: &Handle, out: &mut String, in_link: bool) {
         // layout in the source, not content. `<pre>` never reaches here (see the `pre` arm).
         NodeData::Text { contents } => {
             let text = contents.borrow();
-            out.push_str(&escape_text(&collapse_ws(&text)));
+            let piece = escape_text(&collapse_ws(&text));
+            // Typst reads a `]` or `)` immediately followed by `.<ident>` as field access on the
+            // preceding construct (`#strong[x].foo` → "strong has no field foo"). `(`/`[`/`{` are
+            // escaped by `escape_text`; a `.` is far too common to escape everywhere (it would also
+            // suppress Typst's `...`→… ligature), and it only chains when glued directly onto a
+            // just-closed construct — so escape just that leading `.`.
+            if piece.starts_with('.') && out.ends_with([']', ')']) {
+                out.push('\\');
+            }
+            out.push_str(&piece);
         }
 
         NodeData::Element { name, attrs, .. } => {
@@ -413,7 +422,9 @@ mod tests {
         assert_eq!(to_typst("<h3>Three</h3>"), "=== Three");
         assert_eq!(
             to_typst("<h1>Title</h1><p>Hello <b>bold</b> and <i>it</i>.</p>"),
-            "= Title\n\nHello #strong[bold] and #emph[it]."
+            // The `.` glued to the just-closed `#emph[it]` is escaped so Typst can't read it as
+            // field access (`#emph[it].foo`); `\.` renders as a plain period.
+            "= Title\n\nHello #strong[bold] and #emph[it]\\."
         );
         assert_eq!(to_typst("<p><strong>a</strong> <em>b</em></p>"), "#strong[a] #emph[b]");
         assert_eq!(to_typst("<p><del>gone</del> <u>up</u></p>"), "#strike[gone] #underline[up]");
@@ -461,7 +472,9 @@ mod tests {
         // Nested deeper inside the anchor, and with no alt, the same rule holds.
         assert_eq!(
             to_typst(r#"<a href="http://dest"><span><img src="http://img.png"></span></a>"#),
-            r#"#link("http://dest")[http://img.png]"#
+            // The src becomes the label (no alt) and goes through `escape_text`, so its `/` are
+            // escaped (`\/`), which renders as `/`. The href (via `typst_str`) keeps literal slashes.
+            r#"#link("http://dest")[http:\/\/img.png]"#
         );
         // Outside an anchor the image still links to its own src.
         assert_eq!(to_typst(r#"<img src="x.png" alt="A">"#), r#"#link("x.png")[A]"#);
@@ -565,5 +578,28 @@ mod tests {
         let pdf = crate::pdf::typst_to_pdf(&body, std::path::Path::new("."), None)
             .unwrap_or_else(|e| panic!("emitted markup failed to compile:\n{e}\n--- body ---\n{body}"));
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    /// Real-world pages (e.g. XYWWWEB.HTM) glue punctuation onto inline constructs and embed `//`.
+    /// Each of these derailed the Typst parse before the escaping fixes: a `(` or `.` directly after
+    /// a `#strong[…]`/`#link(…)[…]` was read as a chained call/field-access, and a `//` in text began
+    /// a line comment that swallowed the rest of the (single-line) output. All must now compile.
+    #[test]
+    fn punctuation_glued_to_constructs_and_slashes_do_not_derail_typst() {
+        let cases = [
+            // `(` glued to a link (the New!> banner immediately followed by "(oedu2.bat …)")
+            r#"<ul><li><img src="e.gif" alt="New!&gt;">(oedu2.bat must be present) FOO</li></ul>"#,
+            // `.` glued to a link/bold (e.g. "…click</a>.Download …")
+            r#"<p>see <a href="u">docs</a>.Download it now</p>"#,
+            // `//` in text — a Typst line comment if the slash is not escaped
+            r#"<ul><li>CCMNT: C\-style line comment symbol (//) in block</li></ul>"#,
+            // `{ }` in text — a Typst code block if the brace is not escaped
+            r#"<p>set {key: value} in the config</p>"#,
+        ];
+        for src in cases {
+            let body = to_typst(src);
+            crate::pdf::typst_to_pdf(&body, std::path::Path::new("."), None)
+                .unwrap_or_else(|e| panic!("did not compile: {src}\n{e}\n--- body ---\n{body}"));
+        }
     }
 }

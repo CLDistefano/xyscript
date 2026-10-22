@@ -6,14 +6,24 @@
 
 /// Backslash-escape the typst markup-significant characters in text content.
 /// Critically includes `#` (code) and `$` (math) so document text can never
-/// inject typst. Over-escaping the line-start markers (`= - +`) is harmless
-/// (typst renders `\-` as `-`).
+/// inject typst. The bracket/brace/paren set `[ ] { } ( )` matters for two
+/// reasons: `{` opens a code block and `[` a content block (so unescaped text
+/// braces/brackets would be parsed as typst, not shown), and — subtler — a `(`,
+/// `[`, or `{` glued directly onto a preceding function-form construct (e.g.
+/// `#strong[x]`, `#link("u")[t]`) is read by typst as a CHAINED call/argument,
+/// derailing the parse into code mode. Escaping these in text content closes
+/// both holes. `/` is escaped so a `//` in text can't start a line comment (and
+/// `/*` a block comment) that would silently eat the rest of the output — the
+/// `*` escape already blocks `/*`, but escaping `/` closes `//` too. Over-escaping
+/// is harmless: typst renders `\-` as `-`, `\(` as `(`, `\/` as `/`, etc. (verified
+/// glyph-identical).
 pub(crate) fn escape_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         if matches!(
             ch,
-            '\\' | '#' | '$' | '*' | '_' | '`' | '<' | '>' | '@' | '~' | '[' | ']' | '=' | '+' | '-'
+            '\\' | '#' | '$' | '*' | '_' | '`' | '<' | '>' | '@' | '~'
+                | '[' | ']' | '{' | '}' | '(' | ')' | '=' | '+' | '-' | '/'
         ) {
             out.push('\\');
         }
@@ -49,6 +59,11 @@ mod tests {
         assert_eq!(escape_text("a #b $c"), r"a \#b \$c");
         assert_eq!(escape_text("x[y]"), r"x\[y\]");
         assert_eq!(escape_text("plain words"), "plain words");
+        // Parens/braces are escaped so a `(`/`{` glued onto a preceding function-form construct
+        // can't be read as a chained call, and so `{…}` in text isn't parsed as a code block.
+        assert_eq!(escape_text("f(x) {y}"), r"f\(x\) \{y\}");
+        // `/` is escaped so `//` can't start a Typst line comment that eats the rest of the output.
+        assert_eq!(escape_text("a // b"), r"a \/\/ b");
     }
 
     #[test]

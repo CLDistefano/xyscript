@@ -308,7 +308,16 @@ impl<'s> Emitter<'s> {
                 // Style only when the node's source range matches its literal length (plain prose);
                 // otherwise the byte mapping is unreliable, so emit escaped text unchanged.
                 Some((s, (start, end))) if end - start == t.len() => s.emit_styled(start, t, true, out),
-                _ => out.push_str(&escape_text(t)),
+                _ => {
+                    // Same guard as html.rs: a `.` glued onto a just-closed construct (`#strong[x].`,
+                    // from markdown like `**bold**.`) would be read as field access. `(`/`[`/`{` are
+                    // escaped by `escape_text`; escape a leading `.` here so it stays literal text.
+                    let piece = escape_text(t);
+                    if piece.starts_with('.') && out.ends_with([']', ')']) {
+                        out.push('\\');
+                    }
+                    out.push_str(&piece);
+                }
             },
             NodeValue::SoftBreak => out.push(' '),
             // Trailing space is load-bearing: `#linebreak()` returns content, so if the next line
@@ -533,6 +542,9 @@ mod tests {
         assert_eq!(to_typst("a *b* **c**"), "a #emph[b] #strong[c]");
         assert_eq!(to_typst("~~gone~~"), "#strike[gone]");
         assert_eq!(to_typst("use `x` here"), "use #raw(\"x\") here");
+        // `**bold**.` — the `.` glued to the just-closed `#strong[bold]` is escaped so Typst can't
+        // read it as field access (`#strong[bold].next`); `\.` renders as a plain period.
+        assert_eq!(to_typst("**bold**.next"), "#strong[bold]\\.next");
     }
 
     #[test]
@@ -733,7 +745,7 @@ mod html_block_tests {
         // Documented gap: comrak splits inline HTML into open/close fragments, so there is no
         // self-contained element to convert. It stays visible as text rather than silently
         // swallowing the content between the tags.
-        assert_eq!(to_typst("text with <b>inline</b> html"), r"text with \<b\>inline\</b\> html");
+        assert_eq!(to_typst("text with <b>inline</b> html"), r"text with \<b\>inline\<\/b\> html");
     }
 
     #[test]
