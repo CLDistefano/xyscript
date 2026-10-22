@@ -6326,7 +6326,9 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     fn open_and_read_hex_switch_open_in_hex_view() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
-        // OPEN/HEX of a (new) file opens straight into the hex view.
+        e.host_mut().files.insert("newbin.dat".to_string(), "BINDATA".to_string());
+        e.host_mut().files.insert("another.txt".to_string(), "text".to_string());
+        // OPEN/HEX of a file opens straight into the hex view.
         e.run_command("OPEN/HEX newbin.dat");
         assert!(e.hex_view(), "OPEN/HEX opens in hex view");
         // A plain OPEN (no /HEX) stays in the normal text view.
@@ -12890,18 +12892,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
-    fn open_nonexistent_creates_a_new_named_buffer() {
-        // Standard editor behavior: opening a path that doesn't exist yet starts
-        // a new, empty buffer named for it (ready to SAVE), not an error.
+    fn open_nonexistent_errors_while_new_creates_a_named_buffer() {
+        // By popular demand: OPEN/CA/ED/EDIT of a path that does NOT exist is an error (these verbs
+        // open an EXISTING file) — NOT a silent new buffer. `NEW <file>` is how you start a new named
+        // buffer. (READ already errored on a missing file; OPEN now matches it.)
         let mut e = Editor::new(typing_keymap());
         e.host_mut().virtual_fs = true;
+        let before = e.buffer_count();
         e.run_command("open draft.txt");
+        // The user sees a "not found" message, $ERROR = FileNotFound (2), and no tab is created.
+        assert!(
+            e.status_message().unwrap_or_default().contains("not found"),
+            "expected a not-found message, got {:?}",
+            e.status_message()
+        );
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("2"), "FileNotFound code");
+        assert_eq!(e.buffer_count(), before, "a failed OPEN must not create a tab");
+        assert_ne!(e.active_file_name().as_deref(), Some("draft.txt"));
+        // NEW of the same path DOES create a fresh, empty named buffer (ready to SAVE).
+        e.run_command("NEW draft.txt");
         assert!(e.last_error().is_none());
         assert_eq!(e.active_file_name().as_deref(), Some("draft.txt"));
-        assert_eq!(e.document().text(), ""); // empty, ready to edit
-        // Not modified until you type.
-        e.run_command("SET m = $MO\nPR $m");
-        assert_eq!(e.output(), &["0".to_string()]);
+        assert_eq!(e.document().text(), "");
     }
 
     #[test]

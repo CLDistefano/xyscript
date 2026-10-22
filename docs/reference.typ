@@ -941,7 +941,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("OF") / #cmd("OFL") / #cmd("OFR"): set both margins / the left margin / the right margin, in columns (`+n`/`-n` adjusts).
 / #cmd("OUTLINE", "OL"): open a modal chooser of the document's structure and jump the caret to the heading or routine you pick (centered). The entries depend on the document kind — Markdown (`#`), Typst (`=`) or HTML (`<h1>`…`<h6>`) headings, indented by level; or `SUB <name>` routine headers in an XPL file. The chooser opens pre-highlighted on the section the caret is currently in, so a bare Enter jumps you to its start. Type to filter, arrow keys to move, Enter (or double-click) to jump, Esc to cancel. A no-op note when the document has no detectable structure. Under #cmd("CAPTURE") it returns the outline as text instead of opening the chooser. The interactive sibling for navigating a long document — bind it to a key for a quick table of contents.
-/ #cmd("OPEN", "CA", "ED", "EDIT"): open a file (bare = the GUI open dialog). `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/NV` reopens without the "already open?" prompt; `/HEX` opens it straight into the #cmd("HEX") view.
+/ #cmd("OPEN", "CA", "ED", "EDIT"): open an #emph[existing] file (bare = the GUI open dialog). The file must exist: `OPEN <path>` on a missing file is a #emph[not found] error (#sv("ERROR") `= 2`), not a silent new buffer — use #cmd("NEW") `<file>` to start a new buffer with that name. `/H` / `/V` open it in a new split pane (stacked / side-by-side) instead of a new tab; `/NV` reopens without the "already open?" prompt; `/HEX` opens it straight into the #cmd("HEX") view.
 
 == P
 

@@ -7921,7 +7921,10 @@ impl AppHost {
     /// Load `path` into a new tab (the shared body of `OPEN`/`READ`, with the already-open check
     /// already done). `read_only` locks the tab and makes a missing file an error (vs `OPEN`, which
     /// starts a new buffer for a missing file).
-    fn open_doc(&mut self, path: &str, read_only: bool, hex: bool) -> VmResult<Value> {
+    /// Load a file into a tab. `allow_create` controls what a MISSING file does: `true` starts a new,
+    /// empty buffer named for it (the `NEW`/startup/REOPEN intent); `false` is a `FileNotFound` error
+    /// (the `OPEN`/`CA`/`ED`/`EDIT` verbs, which open an EXISTING file — use `NEW` to create one).
+    fn open_doc(&mut self, path: &str, read_only: bool, hex: bool, allow_create: bool) -> VmResult<Value> {
         let target: PathBuf =
             if self.virtual_fs { PathBuf::from(path) } else { self.resolve_path(path) };
         let key = target.to_string_lossy().into_owned();
@@ -7954,8 +7957,13 @@ impl AppHost {
             }
         } else if read_only {
             return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("READ: {path}: not found")));
+        } else if !allow_create {
+            // OPEN/CA/ED/EDIT of a missing file is an error (by popular demand): these verbs open an
+            // EXISTING file. Use `NEW <file>` to start a new buffer with that name.
+            return Err(XplError::trappable_code(ErrCode::FileNotFound, format!("OPEN: {path}: not found")));
         } else {
-            // OPEN of a missing file: start a new, empty buffer named for it (ready to SAVE).
+            // A missing file is allowed here (NEW / startup arg / REOPEN): start a new, empty buffer
+            // named for it (ready to SAVE).
             doc.set_path(target.clone());
             let name = doc.file_name().unwrap_or_else(|| key.clone());
             format!("new file {name}")
@@ -8025,7 +8033,7 @@ impl AppHost {
             self.set_active(i);
             return Ok(Value::str("switched to the open copy"));
         }
-        self.open_doc(path, false, false)
+        self.open_doc(path, false, false, true) // startup arg: a missing file starts a new buffer
     }
 
     /// The "file is already open" prompt text, if armed (`OPEN`/`READ` of an open file). Surfaced
@@ -8051,8 +8059,8 @@ impl AppHost {
                 self.set_active(i);
                 Ok(Value::str("switched to the open copy"))
             }
-            OpenAnswer::Yes => self.open_doc(&p.path, p.read_only, p.hex),
-            OpenAnswer::Read => self.open_doc(&p.path, true, p.hex),
+            OpenAnswer::Yes => self.open_doc(&p.path, p.read_only, p.hex, false),
+            OpenAnswer::Read => self.open_doc(&p.path, true, p.hex, false),
         }
     }
 
@@ -8441,7 +8449,7 @@ impl AppHost {
                 Some(idx) => self.set_active(idx),
                 // The source tab was closed since the search — fall back to the path if it has one.
                 None if !path_str.is_empty() && PathBuf::from(&path_str).is_file() => {
-                    self.open_doc(&path_str, false, false)?;
+                    self.open_doc(&path_str, false, false, true)?;
                 }
                 None => {
                     return Err(XplError::trappable(format!(
@@ -8453,7 +8461,7 @@ impl AppHost {
             // Filesystem hit: open, or switch to it if already open — either way, no prompt.
             self.set_active(idx);
         } else {
-            self.open_doc(&path_str, false, false)?;
+            self.open_doc(&path_str, false, false, true)?;
         }
         if let Some(phrase) = emph {
             self.active().set_emph(Some(phrase), emph_regex);
@@ -10719,7 +10727,7 @@ impl Host for AppHost {
                         self.set_active(idx); // switch tab + focus the document
                         return Ok(Value::str(format!("{path} already exists (switched to open tab)")));
                     }
-                    self.open_doc(&key, false, false)?; // loads it into a tab
+                    self.open_doc(&key, false, false, true)?; // loads it into a tab
                     return Ok(Value::str(format!("{path} already exists — opened")));
                 }
                 // New file: a fresh empty buffer named for it, ready to SAVE.
@@ -10749,7 +10757,7 @@ impl Host for AppHost {
                         return Ok(Value::str("")); // prompt surfaced via `open_prompt`
                     }
                 }
-                return self.open_doc(&path, false, hex);
+                return self.open_doc(&path, false, hex, false); // OPEN/CA/ED/EDIT: missing file → error
             }
             EditorOp::OpenReadOnly { path, force: _, hex } => {
                 // `READ <path>` — open an EXISTING file in a locked (read-only) tab. For XyWrite
@@ -10758,7 +10766,7 @@ impl Host for AppHost {
                 if path.trim().is_empty() {
                     return Err(XplError::trappable("READ: a filename is required"));
                 }
-                return self.open_doc(&path, true, hex);
+                return self.open_doc(&path, true, hex, false);
             }
             EditorOp::BlindEdit(path) => {
                 if self.blind.is_some() {
@@ -11889,7 +11897,7 @@ impl Host for AppHost {
                 }
                 // In-process: open a fresh, distinct buffer of the same file (force = no "already open"
                 // prompt), then land the caret where it was.
-                self.open_doc(&path.to_string_lossy(), false, false)?;
+                self.open_doc(&path.to_string_lossy(), false, false, true)?;
                 let len = self.active().buffer().len();
                 self.active().set_caret(caret.min(len), None);
                 return Ok(Value::str(format!("second view of {name}")));
@@ -13142,7 +13150,7 @@ impl Host for AppHost {
                     }
                 }
                 // Open it the normal way — the sidecar we just wrote restores the styling via the guard.
-                let opened = self.open_doc(&doc_path.to_string_lossy(), false, false)?;
+                let opened = self.open_doc(&doc_path.to_string_lossy(), false, false, true)?;
                 return Ok(Value::str(format!("UNBUNDLE: {} — {}", doc_path.display(), opened.to_str())));
             }
             EditorOp::OpenDocPdf { manual } => {
@@ -15194,7 +15202,7 @@ impl Host for AppHost {
             self.set_active(idx); // already open → just switch to it
             return Ok(format!("switched to {path}"));
         }
-        let msg = self.open_doc(path, false, false)?; // opens + focuses the document
+        let msg = self.open_doc(path, false, false, true)?; // REOPEN: recreate the buffer even if gone
         let len = self.active().buffer().len();
         self.set_active_caret(caret.min(len), None); // restore caret (clamped; byte-rope, any offset valid)
         Ok(msg.to_str())
@@ -16131,7 +16139,7 @@ mod tests {
         // Mixed separators, like OPENALL's old `$aspec[0]/$fnm`: <sub>/lines.txt where <sub> itself
         // uses the OS separator (backslash on Windows) → "...\xys/lines.txt".
         let mixed = format!("{}/lines.txt", sub.display());
-        h.open_doc(&mixed, false, false).unwrap();
+        h.open_doc(&mixed, false, false, true).unwrap();
         assert!(h.docs[h.active].buffer().len() > 0, "content loaded from the mixed-separator path");
         let sdir = base.join("session");
         h.save_session(&sdir).unwrap();
@@ -16144,6 +16152,29 @@ mod tests {
             reff_line.contains("xys"),
             "session reff must keep the subdir, got: {reff_line}"
         );
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn open_missing_file_errors_while_new_creates_it() {
+        use super::{AppHost, EditorOp, ErrCode};
+        use xyscript_xpl::Host; // brings the `editor_op` dispatch method into scope
+        let base = std::env::temp_dir().join(format!("xyscript-openmiss-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let missing = base.join("nope.txt").to_string_lossy().into_owned();
+        let mut h = AppHost::new();
+        let tabs_before = h.docs.len();
+        // OPEN (and its synonyms CA/ED/EDIT — same op) of a non-existent file is a FileNotFound
+        // error, NOT a silent new empty buffer. `force: true` skips the "already open?" path.
+        let err = h
+            .editor_op(EditorOp::Open { path: missing.clone(), force: true, hex: false })
+            .unwrap_err();
+        assert_eq!(err.code(), ErrCode::FileNotFound as u32, "{err:?}");
+        assert_eq!(h.docs.len(), tabs_before, "OPEN of a missing file must not create a tab");
+        // NEW of the same missing path DOES create a fresh named buffer (ready to SAVE).
+        h.editor_op(EditorOp::NewNamed { path: missing.clone() }).unwrap();
+        assert_eq!(h.active().file_name().as_deref(), Some("nope.txt"));
         std::fs::remove_dir_all(&base).ok();
     }
 

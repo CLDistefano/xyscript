@@ -1130,7 +1130,7 @@ and you may quote the path (needed when it contains spaces): #raw("OPEN \"C:/My 
 == Opening and creating
 
 / #raw("NEW"), #raw("NE"): start a fresh, empty document. With a name (#raw("NEW report.typ")) the new document is named and ready to save — or, if that file already exists, it is simply opened.
-/ #raw("OPEN"): open an existing file in a tab, editable. (#raw("CA"), #raw("ED"), #raw("EDIT") are synonyms.)
+/ #raw("OPEN"): open an *existing* file in a tab, editable. (#raw("CA"), #raw("ED"), #raw("EDIT") are synonyms.) The file must exist — #raw("OPEN") of a name that is not there reports #emph[not found] and opens nothing (use #raw("NEW") to start a new document with that name).
 / #raw("READ"): open a file *read-only*, so you can look without risk of changing it.
 
 Opening a file leaves the cursor in the text, ready to edit. If the file is already open, #raw("OPEN")
