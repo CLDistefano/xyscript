@@ -2223,6 +2223,22 @@ IF NOT $ERROR
   PR You chose $choice.
 EI")
 
+#raw("RUNMENU [\"title\"] <list>") turns a list into a #emph[real menu]: the same filterable chooser, but
+each entry carries a command that RUNS when you pick it (Enter or double-click), rather than being
+returned. Each item is a #raw("[label, command]") pair — the label is shown, the command is run — or a
+plain string that is both shown and run. Cancelling (Esc) runs nothing and sets #raw("$ERROR"). Build
+the list in a #raw("FOR") loop to make a menu out of anything: files to open, settings to toggle,
+themes to load. For example, a color-theme picker that lists every theme file and runs the one you choose:
+
+#ex("local items thelist themes
+capture thelist dir/b/on $XSDIR/themes/*.xpl
+set themes = lines($thelist)
+set items = []
+for t in $themes
+  set items = $items + [[$t, \"run $XSDIR${DC}themes${DC}$t\"]]
+ef
+RUNMENU \"Color Theme\" $items")
+
 #raw("READKEY <var> [message]") pauses for a single keystroke and stores its character in a variable
 (the scancode lands in #raw("$SC")). With a `message`, it pops a box showing it while it waits — a quick
 keypress menu:

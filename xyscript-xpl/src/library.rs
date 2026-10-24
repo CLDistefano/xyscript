@@ -125,7 +125,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // Sequencing (B13): pause execution.
     "WAIT",
     // Interactive input (B13/B21): pause for a keystroke / a typed line, suspend-resume.
-    "READKEY", "RK", "INPUT", "PICK", "CHOOSE",
+    "READKEY", "RK", "INPUT", "PICK", "CHOOSE", "RUNMENU",
     // Dialogs (B21): scrollable text viewer.
     "TXT",
     // CMline focus & dual-cursor memory (B23).

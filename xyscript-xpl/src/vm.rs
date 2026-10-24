@@ -163,8 +163,23 @@ impl Interpreter {
                 | SuspendReason::TabPick { title, items, .. }
                 | SuspendReason::MarkPick { title, items, .. }
                 | SuspendReason::OutlinePick { title, items, .. }
-                | SuspendReason::LintFixPick { title, items, .. },
+                | SuspendReason::LintFixPick { title, items, .. }
+                | SuspendReason::RunMenu { title, items, .. },
             ) => Some((title.clone(), items.clone())),
+            _ => None,
+        }
+    }
+
+    /// The command `RUNMENU` should run for the chosen row, if the parked chooser is a `RUNMENU` and
+    /// `choice` is in range (`None` otherwise — a non-RunMenu pick, or a cancel). The editor captures
+    /// this BEFORE [`resume_pick`](Self::resume_pick) (which pops the frame) and runs it through its
+    /// normal command path once the suspended script has settled — so the run can itself pop dialogs,
+    /// slice, etc. without re-entering the resume.
+    pub fn run_menu_command(&self, choice: Option<usize>) -> Option<String> {
+        match self.suspended.last().map(|s| &s.reason) {
+            Some(SuspendReason::RunMenu { commands, .. }) => {
+                choice.and_then(|i| commands.get(i).cloned())
+            }
             _ => None,
         }
     }
@@ -198,6 +213,7 @@ impl Interpreter {
             Mark(Vec<usize>),
             Outline(Vec<usize>),
             LintFix((usize, usize), Vec<String>),
+            RunMenu(bool), // true if `choice` picked a valid row (the editor runs the command)
         }
         let kind = match self.suspended.last().map(|s| &s.reason) {
             Some(SuspendReason::Pick { var, items, index_mode, .. }) => {
@@ -210,6 +226,9 @@ impl Interpreter {
             Some(SuspendReason::OutlinePick { targets, .. }) => Kind::Outline(targets.clone()),
             Some(SuspendReason::LintFixPick { span, replacements, .. }) => {
                 Kind::LintFix(*span, replacements.clone())
+            }
+            Some(SuspendReason::RunMenu { commands, .. }) => {
+                Kind::RunMenu(choice.map_or(false, |i| i < commands.len()))
             }
             None => return Ok(()),
             _ => return self.drive_resume(host), // not a pick — drive harmlessly
@@ -276,6 +295,9 @@ impl Interpreter {
                     None => self.env.error = 1, // cancelled — document unchanged
                 }
             }
+            // The chosen command is run by the EDITOR (see `run_menu_command`), not here — this just
+            // records success/cancel in `$ERROR`, mirroring PICK.
+            Kind::RunMenu(valid) => self.env.error = if valid { 0 } else { 1 },
         }
         self.drive_resume(host)
     }
@@ -887,6 +909,11 @@ enum SuspendReason {
         span: (usize, usize),
         replacements: Vec<String>,
     },
+    /// `RUNMENU ["title"] <list>` — a MODAL action menu (sharing the PICK dialog). Each row shows a
+    /// `label`; `commands[i]` is the XPL command behind row `i`. Unlike PICK, nothing is returned —
+    /// on resume the chosen command is RUN (by the editor, through its normal command path), so Enter
+    /// or a double-click executes the highlighted entry. Cancel runs nothing and sets `$ERROR`.
+    RunMenu { title: Option<String>, items: Vec<String>, commands: Vec<String> },
     /// `BK on` / `BK debug` — an inline breakpoint. The script pauses; the editor shows a prompt
     /// (`debug` = a variable-dump dialog, else a simple Y/N stop prompt) and either RESUMES the
     /// script (continue) or ABORTS it. `BK off` doesn't suspend at all. `line`/`col` locate the `BK`
@@ -5442,6 +5469,77 @@ impl Vm<'_, '_> {
                     return Ok(Flow::Next);
                 }
                 self.suspend = Some(SuspendReason::Pick { var, title, items, index_mode });
+                Ok(Flow::Suspend)
+            }
+            // `RUNMENU ["title"] <list>` — a MODAL action menu sharing the PICK dialog. Each list item
+            // is a `[label, command]` pair (shown label, run command) or a plain string (shown and run
+            // verbatim). Enter / double-click on a row RUNS its command (the editor does this on
+            // resume); cancel runs nothing and sets `$ERROR`. No `<var>` — nothing is returned.
+            "RUNMENU" => {
+                let remainder = raw_args.trim_start();
+                let (title, expr_src) = match peel_quoted(remainder) {
+                    Some((t, rest)) => (Some(t), rest),
+                    None => (None, remainder),
+                };
+                if expr_src.trim().is_empty() {
+                    return Err(XplError::fatal("RUNMENU requires a list expression"));
+                }
+                let eval_result = {
+                    let frame = self.frames.last().expect("a frame is always present");
+                    let ctx = Ctx {
+                        env: self.ctx.env,
+                        host: &*self.ctx.host,
+                        args: &frame.args,
+                        rv: &self.rv,
+                    };
+                    crate::expr::parse(expr_src).and_then(|e| crate::expr::eval(&e, &ctx))
+                };
+                let arr = match eval_result {
+                    Ok(Value::Array(a)) => a,
+                    Ok(_) => {
+                        self.ctx.env.error = 1;
+                        *self.ctx.status = Some("RUNMENU: not a list".into());
+                        return Ok(Flow::Next);
+                    }
+                    Err(e) => {
+                        self.ctx.env.error = 1;
+                        *self.ctx.status = Some(format!("RUNMENU: {}", e.msg));
+                        return Ok(Flow::Next);
+                    }
+                };
+                // Each item: a `[label, command]` pair (inner array) → shown label, run command; a
+                // one-element array or a plain scalar → that string is both label and command.
+                let (mut items, mut commands) =
+                    (Vec::with_capacity(arr.len()), Vec::with_capacity(arr.len()));
+                for v in &arr {
+                    match v {
+                        Value::Array(pair) if pair.len() >= 2 => {
+                            items.push(pair[0].to_str());
+                            commands.push(pair[1].to_str());
+                        }
+                        other => {
+                            // one-element array, empty array, or scalar: label == command
+                            let s = match other {
+                                Value::Array(pair) => pair.first().map(|e| e.to_str()).unwrap_or_default(),
+                                _ => other.to_str(),
+                            };
+                            items.push(s.clone());
+                            commands.push(s);
+                        }
+                    }
+                }
+                if items.is_empty() {
+                    self.ctx.env.error = 1;
+                    *self.ctx.status = Some("RUNMENU: empty list".into());
+                    return Ok(Flow::Next);
+                }
+                const RUNMENU_CAP: usize = 5000;
+                if items.len() > RUNMENU_CAP {
+                    self.ctx.env.error = 1;
+                    *self.ctx.status = Some(format!("RUNMENU: too many items (> {RUNMENU_CAP})"));
+                    return Ok(Flow::Next);
+                }
+                self.suspend = Some(SuspendReason::RunMenu { title, items, commands });
                 Ok(Flow::Suspend)
             }
             // `REOPEN` — choose a recently-closed file to reopen (caret restored). Shares the PICK

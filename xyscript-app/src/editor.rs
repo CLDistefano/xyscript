@@ -1933,11 +1933,18 @@ impl Editor {
         if self.interp.pick_request().is_none() {
             return;
         }
+        // RUNMENU: the chosen entry's command is captured BEFORE resuming (resume_pick pops the parked
+        // frame), then run through the normal command path AFTER the suspended script has settled — so
+        // the command can itself pop a dialog, slice, background, etc. without re-entering the resume.
+        let menu_cmd = self.interp.run_menu_command(choice);
         self.last_error =
             self.interp.resume_pick(choice, &mut self.host).err().map(|e| e.message().to_string());
         self.record_status_line();
         // The resumed run may pause again (another PICK/INPUT/WAIT); settle handles it.
         self.settle();
+        if let Some(cmd) = menu_cmd {
+            self.run_command(&cmd);
+        }
     }
     /// Parked on `READKEY` — the GUI captures the next raw keystroke for it.
     pub fn awaiting_key(&self) -> bool {
@@ -14857,6 +14864,48 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     fn pick_empty_list_errors_without_parking() {
         let mut e = ed();
         e.run_command("PICK c []");
+        assert!(e.pick_request().is_none()); // no dialog opened
+        e.run_command("PR $ERROR");
+        assert_eq!(e.output().last().map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn runmenu_shows_labels_and_runs_chosen_command() {
+        let mut e = ed();
+        e.run_command(r#"RUNMENU "Pick" [["Red","insert RED"],["Blue","insert BLUE"]]"#);
+        let (title, items) = e.pick_request().expect("parked on RUNMENU");
+        assert_eq!(title.as_deref(), Some("Pick"));
+        assert_eq!(items, vec!["Red", "Blue"]); // LABELS shown, not the commands
+        assert_eq!(e.document().text(), ""); // nothing has run yet
+        e.pick_respond(Some(1)); // choose "Blue" → runs `insert BLUE`
+        assert!(e.pick_request().is_none());
+        assert_eq!(e.document().text(), "BLUE");
+    }
+
+    #[test]
+    fn runmenu_plain_item_is_both_label_and_command() {
+        let mut e = ed();
+        e.run_command(r#"RUNMENU ["insert HI"]"#);
+        let (_t, items) = e.pick_request().expect("parked on RUNMENU");
+        assert_eq!(items, vec!["insert HI"]); // a plain string is shown verbatim and run verbatim
+        e.pick_respond(Some(0));
+        assert_eq!(e.document().text(), "HI");
+    }
+
+    #[test]
+    fn runmenu_cancel_runs_nothing_and_sets_error() {
+        let mut e = ed();
+        // The continuation observes $ERROR (IF doesn't clear it) — so this checks both that cancel
+        // set $ERROR and that the chosen command did NOT run.
+        e.run_command("RUNMENU [[\"A\",\"insert AAA\"]]\nIF $ERROR\nINSERT cancelled\nEI");
+        e.pick_respond(None); // cancel
+        assert_eq!(e.document().text(), "cancelled");
+    }
+
+    #[test]
+    fn runmenu_empty_list_errors_without_parking() {
+        let mut e = ed();
+        e.run_command("RUNMENU []");
         assert!(e.pick_request().is_none()); // no dialog opened
         e.run_command("PR $ERROR");
         assert_eq!(e.output().last().map(String::as_str), Some("1"));
