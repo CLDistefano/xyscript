@@ -651,6 +651,21 @@ self-contained element to convert.
 The routines in the bundled #raw("xyscript.lib") are catalogued at the end of this reference, under
 *Library routines by topic* and *Library routines* (alphabetical).
 
+== Here-strings
+
+A *here-string* is a multi-line string literal, modelled on PowerShell's `@"…"@` / `@'…'@`. It is an *expression* — use it where a value is expected (`SET x = @"…"@`, an `IF`/`WHILE` test, a function argument, `RETURN`). The opening `@"` or `@'` must be the last thing on its line; the body is every following line, taken verbatim, up to a line whose first non-whitespace is the closing `"@` or `'@` (the closer may be indented, so it sits at a routine's indent). The newline right after the opener and the one right before the closer are not part of the value. Embedded quotes and backslashes need no escaping.
+
+- `@"…"@` *interpolates* `$`-references — `$name`, `${name}`, `$1`, `$(expr)` — exactly as #func("EXPAND") does (what it compiles to).
+- `@'…'@` is *verbatim*: `$` and everything else is literal.
+
+#ex("SET name = Pat
+SET g = @\"
+Hi $name!
+\"@
+PR $g", "Hi Pat!")
+
+A here-string used as a bare verb argument (e.g. `PR @\"…\"@`) is not evaluated as an expression — assign it with `SET`, then use the variable.
+
 == Variables, config, and persistence
 
 / #cmd("SAVEVARS") / #cmd("LOADVARS") / #cmd("LISTVARS", "LISTVAR"): save / restore / list global variables.
@@ -1121,6 +1136,8 @@ an expression: in `SET`, `IF`, and `WHILE`, or inline on any command line inside
 / #func("REPLACE", "s, from, to, [[-]n]"): `s` with occurrences of `from` replaced by `to` — all of them, or, with the optional 4th argument, at most `n`: a positive `n` replaces the first `n` (from the start), a negative `-n` the last `n` (from the end), and `0` replaces none. So `REPLACE("a-b-c-d", "-", "+", -2)` = `a-b+c+d`.
 / #func("CHR", "n"): the character whose code is `n` (0–255). #func("ASC", "s"): the reverse — the code of `s`'s first character.
 / #func("FORMAT", "template, ..."): interpolate the remaining arguments into `template`, at each `{}` placeholder. `{}` takes the next argument in order, `{n}` an explicit 0-based one (reusable), and `{{`/`}}` print literal braces. A placeholder may carry a field spec after a colon — `{:spec}` or `{n:spec}` — of the form `[[fill]align][sign][#][0][width][,][.precision][type]`: `align` is `<` left, `>` right, or `^` centre (with an optional fill character in front); `sign` is `+` (always show it), `-` (default), or a space (a leading space on positives, so columns line up); `#` adds a `0x`/`0o`/`0b` radix prefix; a leading `0` zero-pads numbers (keeping the sign/prefix in front); `width` is the minimum field width; `,` inserts thousands separators; `.precision` sets decimal places (for a float) or a maximum length (for a string); and `type` is `s` string, `d` integer, `f` fixed-point, `e`/`E` scientific, `%` percent, or `x`/`X`/`o`/`b` hex/octal/binary. Numbers right-align by default, text left-aligns, and integers stay #emph[exact] at any size (`FORMAT("{:,}", 2^100)` groups all 31 digits). #ex("PR $(FORMAT(\"{} = {:>8.2}\", \"rate\", 3.14159))", "rate =     3.14")
+/ #func("EXPAND", "s"): expand `$`-references in `s` the way a verb's arguments are expanded — `$name`, `${name}`, positional `$1`, and `$(expr)` — returning the result. Useful for a template loaded from a file or a variable, and the function a `@"…"@` here-string (see #emph[Here-strings], below) compiles to. #ex("SET who = world
+PR $(EXPAND(\"hi $who\"))", "hi world")
 
 == Classifying a string
 

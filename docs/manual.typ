@@ -1983,6 +1983,33 @@ quoted string, as above. (3) An #raw("AR") auto-replace pair, e.g. a #raw("fonts
 the document to be *UTF-8* (the default for new documents); a single-byte code page such as CP437 cannot
 hold emoji, and they would save as #raw("?").]
 
+== Here-strings (multi-line text)
+
+For a block of text — a template, a letter, a chunk of help — a *here-string* is easier than one long
+quoted line with #raw("\\n") after #raw("\\n"). It is written like PowerShell's, as #raw("@\"") … #raw("\"@")
+(or #raw("@'") … #raw("'@")), and is an *expression*: assign it with #raw("SET"), or use it anywhere a
+value is expected. The opening #raw("@\"") or #raw("@'") must be the last thing on its line; the body is
+every line that follows, taken exactly as typed, up to a line whose first non-blank text is the closing
+#raw("\"@") or #raw("'@"). The closer may be indented, so it tucks neatly inside a routine. You never
+have to escape quotes or backslashes in the body.
+
+The two forms differ only in whether they *interpolate*:
+
+#ex("SET name = Pat
+SET note = @\"
+Hi $name,
+  - Your order shipped!
+\"@
+PR $note                 # the two body lines, with $name filled in")
+
+- #raw("@\"") … #raw("\"@") expands #raw("$name"), #raw("${name}"), #raw("$1"), and #raw("$(expr)"), just like
+a verb's arguments (it compiles to the #raw("EXPAND") function).
+- #raw("@'") … #raw("'@") is completely literal — a #raw("$") is just a dollar sign.
+
+The newline right after the opener and the one just before the closer are not part of the text, so the
+value above is three lines, not five. (A here-string is an expression, so write it in a #raw("SET"); a bare
+#raw("PR @\"…\"@") is not evaluated as one.)
+
 == The function library
 
 Functions take values and return new ones; they never change your document. Call one by name with its

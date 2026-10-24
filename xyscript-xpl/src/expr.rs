@@ -753,7 +753,7 @@ pub const FUNCTION_NAMES: &[&str] = &[
     // string
     "LEN", "UPPER", "LOWER", "REVERSE", "STRIP", "LSTRIP", "RSTRIP", "TRIMLEFT", "TRIMRIGHT", "SUBSTR", "LEFT",
     "RIGHT", "INDEX", "CONTAINS", "REPLACE", "SPLIT", "SPLITS", "JOIN", "CHARS", "WORDS", "LINES",
-    "CHR", "ASC", "FORMAT",
+    "CHR", "ASC", "FORMAT", "EXPAND",
     // string classification predicates (all → 1/0; false for an empty string)
     "ISDEC", "ISHEX", "ISINT", "ISFLOAT", "ISALPHA", "ISALNUM", "ISASCII", "ISUTF8",
     "ISUPPER", "ISLOWER", "ISTITLE", "ISSPACE", "ISPRINT", "ISPUNCT",
@@ -1098,6 +1098,14 @@ fn eval_call(name: &str, args: &[Expr], ctx: &dyn EvalContext) -> Result<Value, 
                 )));
             }
             Ok(Value::str(format_template(&s(0), &vals[1..])?))
+        }
+        // `EXPAND(s)` — run the same `$`-substitution that verb arguments get over `s`, so `$name`,
+        // `${name}`, positional `$1`, and `$(expr)` are all interpolated at eval time. This is the
+        // carrier that a `@"…"@` here-string compiles to (giving an interpolating multi-line string),
+        // and is useful on its own to expand a template read from a file or a variable.
+        "EXPAND" => {
+            expect(1)?;
+            Ok(Value::str(crate::subst::substitute(&s(0), ctx)))
         }
         // `ITER(x)` — the sequence a `FOR … IN` walks: an array's elements, a map's keys (sorted),
         // a string's characters, or a single-element list for a scalar. Also useful standalone

@@ -87,20 +87,52 @@ fn flatten(source: &str) -> Vec<RawCmd> {
     while idx < lines.len() {
         // A continued logical line is numbered (and column-anchored) from its FIRST physical line.
         let line_no = idx + 1;
-        // Join physical lines linked by a trailing line-continuation backslash.
+        // Join physical lines linked by a trailing line-continuation backslash, AND absorb any
+        // here-string (`@"…"@` / `@'…'@`): its body lines are taken verbatim up to the closer and
+        // collapsed into a single-line literal, so the splitter and lexer downstream see one line.
         let mut logical = String::new();
+        // `seg` is the text currently being appended. It starts as the physical line at `idx`, and
+        // after a here-string is absorbed it becomes the closer's trailing text (which may chain into
+        // a `;`, a `.` concat, a line-continuation, or even another here-string).
+        let mut seg = lines[idx].to_string();
+        idx += 1;
         loop {
-            match continuation(lines[idx]) {
+            if let Some((at, kind)) = herestring_open(&seg) {
+                logical.push_str(&seg[..at]); // everything before the opener
+                let mut content = String::new();
+                let mut first = true;
+                let mut tail = String::new();
+                loop {
+                    if idx >= lines.len() {
+                        break; // unterminated here-string at EOF: best-effort with what we have
+                    }
+                    let body = lines[idx];
+                    idx += 1;
+                    if let Some(after) = herestring_close(body, kind) {
+                        tail = after.to_string();
+                        break;
+                    }
+                    if !first {
+                        content.push('\n');
+                    }
+                    content.push_str(body);
+                    first = false;
+                }
+                logical.push_str(&here_carrier(kind, &content));
+                seg = tail; // keep scanning the closer's tail
+                continue;
+            }
+            match continuation(&seg) {
                 Some(head) => {
                     logical.push_str(head);
-                    idx += 1;
                     if idx >= lines.len() {
                         break; // a dangling `\` at end of source: drop it, nothing to join
                     }
+                    seg = lines[idx].to_string();
+                    idx += 1;
                 }
                 None => {
-                    logical.push_str(lines[idx]);
-                    idx += 1;
+                    logical.push_str(&seg);
                     break;
                 }
             }
@@ -134,6 +166,88 @@ fn continuation(line: &str) -> Option<&str> {
     match before {
         None | Some(b' ') | Some(b'\t') => Some(&line[..line.len() - 1]),
         Some(_) => None, // backslash hugs non-whitespace (likely a path) — keep it literal
+    }
+}
+
+/// Which flavour of here-string: `@"…"@` interpolates `$`-refs; `@'…'@` is fully literal.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HereKind {
+    Expand,
+    Literal,
+}
+
+/// If `seg` opens a here-string — an unquoted `@"` or `@'` followed by only whitespace to the end of
+/// the line — return the byte index of the `@` and the flavour. Quote-aware: an `@"` sitting inside a
+/// regular `"…"` string (e.g. a value that ends in `@`) is not an opener. Modelled on PowerShell's
+/// `@"`…`"@` / `@'`…`'@`: the opener must be the last thing on its line; the content starts next line.
+fn herestring_open(seg: &str) -> Option<(usize, HereKind)> {
+    let b = seg.as_bytes();
+    let n = b.len();
+    let mut i = 0;
+    let mut in_quote = false; // inside a regular "…" literal
+    while i < n {
+        let c = b[i];
+        if in_quote {
+            if c == b'\\' && i + 1 < n {
+                i += 2; // skip an escaped char (\" \\ …) inside the literal
+                continue;
+            }
+            if c == b'"' {
+                in_quote = false;
+            }
+            i += 1;
+            continue;
+        }
+        if c == b'"' {
+            in_quote = true;
+            i += 1;
+            continue;
+        }
+        if c == b'@' && i + 1 < n && (b[i + 1] == b'"' || b[i + 1] == b'\'') && seg[i + 2..].trim().is_empty() {
+            let kind = if b[i + 1] == b'"' { HereKind::Expand } else { HereKind::Literal };
+            return Some((i, kind));
+        }
+        i += 1;
+    }
+    None
+}
+
+/// If `line` closes a here-string of `kind` — its first non-whitespace is the closing `"@` (Expand) or
+/// `'@` (Literal) — return the text AFTER that two-char delimiter (which continues the logical line).
+/// Leading whitespace before the closer is allowed, so the closer can sit at a routine's indent.
+fn herestring_close(line: &str, kind: HereKind) -> Option<&str> {
+    let delim = match kind {
+        HereKind::Expand => "\"@",
+        HereKind::Literal => "'@",
+    };
+    line.trim_start().strip_prefix(delim)
+}
+
+/// Escape here-string content into the body of a single-line XPL `"…"` literal: backslash and quote
+/// are escaped, and each newline becomes `\n` (the content is multi-line but the emitted command is
+/// one line — `lex_string` turns `\n` back into a real newline). `$` is left untouched so the Expand
+/// flavour's `substitute` can still see `$name`; tabs pass through literally.
+fn escape_here_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Build the single-line replacement for an absorbed here-string. The literal flavour is a plain
+/// `"…"` string; the expand flavour wraps it in `EXPAND(…)`, the function that runs the same `$`
+/// substitution verb arguments get — so `@"…"@` interpolates `$name` / `${name}` / `$(expr)`.
+fn here_carrier(kind: HereKind, content: &str) -> String {
+    let esc = escape_here_literal(content);
+    match kind {
+        HereKind::Expand => format!("EXPAND(\"{esc}\")"),
+        HereKind::Literal => format!("\"{esc}\""),
     }
 }
 
@@ -1057,6 +1171,54 @@ mod tests {
         let p = prog("PR a \\");
         assert_eq!(p.stmts.len(), 1);
         assert_eq!(strip_spans(&p.stmts[0]), cmd("PR", "a"));
+    }
+
+    #[test]
+    fn herestring_literal_collapses_to_a_quoted_string() {
+        // `@'…'@` absorbs its body verbatim up to the closer and collapses to one `"…"` literal
+        // (newlines → `\n`), with `$name` left LITERAL (no interpolation).
+        let p = prog("PR @'\nHi $name\nline two\n'@");
+        assert_eq!(p.stmts.len(), 1);
+        assert_eq!(strip_spans(&p.stmts[0]), cmd("PR", r#""Hi $name\nline two""#));
+    }
+
+    #[test]
+    fn herestring_expand_collapses_to_expand_call() {
+        // `@"…"@` collapses to `EXPAND("…")` — the carrier that interpolates `$`-refs at eval time.
+        let p = prog("SET t = @\"\nHi $name\n\"@");
+        match strip_spans(&p.stmts[0]) {
+            Stmt::Set { name, .. } => assert_eq!(name, "T"),
+            other => panic!("expected Set, got {other:?}"),
+        }
+        // The collapsed text is observable on a plain verb.
+        let q = prog("PR @\"\nHi $name\n\"@");
+        assert_eq!(strip_spans(&q.stmts[0]), cmd("PR", r#"EXPAND("Hi $name")"#));
+    }
+
+    #[test]
+    fn herestring_closer_may_be_indented_and_tail_chains() {
+        // The closer can carry leading whitespace (so it sits at a routine's indent), and text after
+        // it continues the logical line — here a `;`-chained second command.
+        let p = prog("PR @'\nbody\n\t'@ ; PR after");
+        assert_eq!(p.stmts.len(), 2);
+        assert_eq!(strip_spans(&p.stmts[0]), cmd("PR", r#""body""#));
+        assert_eq!(strip_spans(&p.stmts[1]), cmd("PR", "after"));
+    }
+
+    #[test]
+    fn herestring_opener_is_quote_aware() {
+        // An `@"` that sits INSIDE a regular "…" literal (a value ending in `@`) is NOT an opener.
+        let p = prog("PR \"ends with @\"");
+        assert_eq!(p.stmts.len(), 1);
+        assert_eq!(strip_spans(&p.stmts[0]), cmd("PR", "\"ends with @\""));
+    }
+
+    #[test]
+    fn herestring_escapes_embedded_quotes_and_backslashes() {
+        // A `"` and `\` in the body survive into the collapsed literal as `\"` / `\\`.
+        let p = prog("PR @'\nsay \"hi\" at C:\\tmp\n'@");
+        assert_eq!(p.stmts.len(), 1);
+        assert_eq!(strip_spans(&p.stmts[0]), cmd("PR", r#""say \"hi\" at C:\\tmp""#));
     }
 
     #[test]

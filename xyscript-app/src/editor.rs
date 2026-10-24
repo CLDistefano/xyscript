@@ -14927,6 +14927,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn heredoc_expand_interpolates_variables() {
+        // `@"…"@` is a multi-line string with `$`-interpolation (PowerShell double-quoted here-string).
+        let mut e = ed();
+        e.run_command("SET name = World\nSET t = @\"\nHi $name!\n\"@\nINSERT $t");
+        assert_eq!(e.document().text(), "Hi World!");
+    }
+
+    #[test]
+    fn heredoc_literal_is_verbatim() {
+        // `@'…'@` is a literal multi-line string — `$name` is NOT expanded.
+        let mut e = ed();
+        e.run_command("SET name = World\nSET t = @'\nHi $name!\n'@\nINSERT $t");
+        assert_eq!(e.document().text(), "Hi $name!");
+    }
+
+    #[test]
+    fn heredoc_preserves_multiple_lines() {
+        let mut e = ed();
+        e.run_command("SET t = @'\nline one\nline two\nline three\n'@\nINSERT $t");
+        assert_eq!(e.document().text(), "line one\nline two\nline three");
+    }
+
+    #[test]
     fn stray_command_is_ignored_while_parked() {
         let mut e = ed();
         e.run_command("INPUT x \"?\"");
