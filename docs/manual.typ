@@ -2230,12 +2230,14 @@ plain string that is both shown and run. Cancelling (Esc) runs nothing and sets 
 the list in a #raw("FOR") loop to make a menu out of anything: files to open, settings to toggle,
 themes to load. For example, a color-theme picker that lists every theme file and runs the one you choose:
 
-#ex("local items thelist themes
+#ex("local items thelist themes n t
 capture thelist dir/b/on $XSDIR/themes/*.xpl
 set themes = lines($thelist)
 set items = []
+set n = 0
 for t in $themes
-  set items = $items + [[$t, \"run $XSDIR${DC}themes${DC}$t\"]]
+  set items[$n] = [$t, \"run \".$XSDIR.$DC.\"themes\".$DC.$t]
+  set n += 1
 ef
 RUNMENU \"Color Theme\" $items")
 

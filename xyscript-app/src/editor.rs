@@ -14903,6 +14903,21 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn runmenu_list_built_in_a_loop_runs_chosen() {
+        // The real-world idiom (as in SUB themes): build the [label, command] pairs in a FOR loop via
+        // indexed assignment (which grows the array) and `.` concat for the command string.
+        let mut e = ed();
+        e.run_command(
+            "SET names = [\"a\",\"b\"]\nSET items = []\nSET n = 0\nFOR t IN $names\n\
+             SET items[$n] = [$t, \"insert X-\".$t]\nSET n += 1\nEF\nRUNMENU $items",
+        );
+        let (_t, labels) = e.pick_request().expect("parked on RUNMENU");
+        assert_eq!(labels, vec!["a", "b"]); // labels, built in the loop
+        e.pick_respond(Some(1)); // "b" → runs `insert X-b`
+        assert_eq!(e.document().text(), "X-b");
+    }
+
+    #[test]
     fn runmenu_empty_list_errors_without_parking() {
         let mut e = ed();
         e.run_command("RUNMENU []");
