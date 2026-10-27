@@ -2818,6 +2818,10 @@ pub struct AppHost {
     /// (so a bare `COMPILE` re-runs it, like Emacs `recompile`).
     compile_matcher: Option<crate::compile::CompileMatcher>,
     last_compile_cmd: Option<String>,
+    /// `NERR`/`PERR` navigation: the most recent COMPILE/GREP results tab, and the current location
+    /// index within it (`None` = before the first). Set when a COMPILE or GREP results tab is created.
+    error_list: Option<crate::panes::DocId>,
+    error_cursor: Option<usize>,
     /// The in-flight streaming `GREP` search, if any (drained by `poll_grep`). At most one at a time —
     /// a new `GREP` cancels the previous.
     grep_job: Option<GrepJob>,
@@ -3388,6 +3392,8 @@ impl AppHost {
             next_job_id: 1,
             compile_matcher: None,
             last_compile_cmd: None,
+            error_list: None,
+            error_cursor: None,
             last_job_id: 0,
             grep_job: None,
             grep_before: 0,
@@ -8479,11 +8485,24 @@ impl AppHost {
                 ))
             }
         };
-        let path_str = hit.path.to_string_lossy().into_owned();
         // Carry the results tab's match highlight (EMPH) onto the file we open, so the same matches
         // light up there. (The active buffer IS the results tab — `grep_hit_at_cursor` guaranteed it.)
-        let emph = self.docs[self.active].emph().map(str::to_string);
-        let emph_regex = self.docs[self.active].emph_is_regex();
+        let emph = self.docs[self.active]
+            .emph()
+            .map(str::to_string)
+            .map(|p| (p, self.docs[self.active].emph_is_regex()));
+        self.jump_to_hit(&hit, emph)
+    }
+
+    /// Open the file for `hit` (or switch to it if already open / it's a live source tab), place the
+    /// caret at its `line:col`, and centre it — the shared core of `GJ` and `NERR`/`PERR`. `emph` is
+    /// an optional highlight to carry onto the opened file. Works regardless of which tab is active.
+    fn jump_to_hit(
+        &mut self,
+        hit: &crate::grep::GrepHit,
+        emph: Option<(String, bool)>,
+    ) -> VmResult<Value> {
+        let path_str = hit.path.to_string_lossy().into_owned();
         // An `ALLTABS`/`ALLBUFS` hit carries its SOURCE document id: switch to that exact live tab
         // (its in-memory content, with any unsaved edits, is what was searched) rather than reopening
         // a path from disk — which would miss edits and can't resolve an untitled buffer.
@@ -8506,8 +8525,8 @@ impl AppHost {
         } else {
             self.open_doc(&path_str, false, false, true)?;
         }
-        if let Some(phrase) = emph {
-            self.active().set_emph(Some(phrase), emph_regex);
+        if let Some((phrase, rx)) = emph {
+            self.active().set_emph(Some(phrase), rx);
         }
         // Resolve line:col → a rope offset in the (decoded) buffer and place the caret there.
         let off = {
@@ -8518,6 +8537,35 @@ impl AppHost {
         self.reveal_center = true; // scroll the target to mid-screen, like a search landing
         self.set_focus(Target::Document);
         Ok(Value::str(format!("{path_str}:{}", hit.line)))
+    }
+
+    /// `NERR` / `PERR` — step to the next / previous location in the most recent `COMPILE` or `GREP`
+    /// results tab and jump to its source (open + centre). Works from ANY buffer (you can be editing
+    /// a source file). Tracks a current-error index; the results tab's caret follows along. No
+    /// wraparound — the ends report "no more".
+    pub fn error_nav(&mut self, forward: bool) -> VmResult<Value> {
+        let verb = if forward { "NERR" } else { "PERR" };
+        let Some(doc_id) = self.error_list else {
+            return Err(XplError::trappable(format!("{verb}: no COMPILE/GREP results yet")));
+        };
+        let Some(di) = self.docs.iter().position(|d| d.id() == doc_id) else {
+            self.error_list = None; // the results tab was closed
+            return Err(XplError::trappable(format!("{verb}: the results tab was closed")));
+        };
+        let Some(idx) = self.docs[di].next_match_from(self.error_cursor, forward) else {
+            return Ok(Value::str(format!(
+                "{verb}: no {} location",
+                if forward { "next" } else { "earlier" }
+            )));
+        };
+        self.error_cursor = Some(idx);
+        let hit = self.docs[di].grep_hit(idx).expect("index came from the same hit list");
+        self.docs[di].set_caret_line(idx); // the results tab tracks the current error (line N ↔ hit N)
+        let emph = self.docs[di]
+            .emph()
+            .map(str::to_string)
+            .map(|p| (p, self.docs[di].emph_is_regex()));
+        self.jump_to_hit(&hit, emph)
     }
 
     /// `DJ` — from a line of the diff results tab, jump into the live source buffer at the
@@ -10973,6 +11021,8 @@ impl Host for AppHost {
                 doc.open_grep_listing(base.clone(), Vec::new(), pattern.clone(), regex, perl, false);
                 let doc_id = doc.id();
                 self.add_or_reuse(doc);
+                self.error_list = Some(doc_id); // NERR/PERR step GREP hits too (unified next-error)
+                self.error_cursor = None;
                 // Highlight the matches with EMPH — in the results tab now, and (via `grep_jump`) in
                 // any file opened with `GJ`. Map the GREP pattern to an EMPH phrase so the highlight
                 // covers exactly what GREP matched: a regex GREP → `EMPH/R`; a whole-word GREP → EMPH's
@@ -11842,6 +11892,8 @@ impl Host for AppHost {
                 doc.open_compile_listing(cmd.clone(), self.cwd.clone());
                 let doc_id = doc.id();
                 self.add_or_reuse(doc);
+                self.error_list = Some(doc_id); // NERR/PERR target this results tab
+                self.error_cursor = None;
                 self.set_focus(Target::Document);
                 let id = self.next_job_id;
                 self.next_job_id += 1;
@@ -11863,6 +11915,9 @@ impl Host for AppHost {
                     is_mail: false,
                 });
                 return Ok(Value::str(format!("COMPILE: {cmd} (job {id})…")));
+            }
+            EditorOp::ErrorNav { forward } => {
+                return self.error_nav(forward);
             }
             EditorOp::LoadAutoReplace { path, replace } => {
                 let verb = if replace { "LoadAR" } else { "AddAR" };

@@ -3057,6 +3057,47 @@ impl Document {
         grep.hits.get(self.buffer.cursor_line()).filter(|h| h.kind != crate::grep::HitKind::Separator)
     }
 
+    /// The hit at index `idx` (= buffer line `idx`), cloned. Used by `NERR`/`PERR` to fetch the hit
+    /// they advance to. `None` if not a listing or out of range.
+    pub fn grep_hit(&self, idx: usize) -> Option<crate::grep::GrepHit> {
+        self.grep.as_ref()?.hits.get(idx).cloned()
+    }
+
+    /// The next (or previous) navigable `Match` index relative to `cur` — for `NERR`/`PERR`. `cur`
+    /// `None` means "before the first": forward yields the first Match, backward yields none. No
+    /// wraparound (ends report no-more). `None` if not a listing or there is no such hit.
+    pub fn next_match_from(&self, cur: Option<usize>, forward: bool) -> Option<usize> {
+        let hits = &self.grep.as_ref()?.hits;
+        let is_match = |i: usize| hits.get(i).is_some_and(|h| h.kind == crate::grep::HitKind::Match);
+        if forward {
+            let start = cur.map_or(0, |c| c + 1);
+            (start..hits.len()).find(|&i| is_match(i))
+        } else {
+            let end = cur.unwrap_or(0);
+            (0..end).rev().find(|&i| is_match(i))
+        }
+    }
+
+    /// Move the caret to the start of 0-based line `line` (so a `NERR`/`PERR` results tab tracks the
+    /// current error). Clamped to the buffer length.
+    pub fn set_caret_line(&mut self, line: usize) {
+        let mut off = 0;
+        if line > 0 {
+            let text = self.buffer.text();
+            let mut seen = 0;
+            for (i, b) in text.bytes().enumerate() {
+                if b == b'\n' {
+                    seen += 1;
+                    if seen == line {
+                        off = i + 1;
+                        break;
+                    }
+                }
+            }
+        }
+        self.buffer.set_caret(off.min(self.buffer.len()), None);
+    }
+
     /// The listing's browser state, if this is a directory listing.
     pub fn dir_state(&self) -> Option<&DirState> {
         self.dir.as_ref()
@@ -5063,6 +5104,28 @@ mod tests {
         let line1 = d.buffer().text().find('\n').unwrap() + 1;
         d.set_caret(line1, None);
         assert!(d.grep_hit_at_cursor().is_none());
+    }
+
+    #[test]
+    fn listing_next_match_navigation() {
+        // NERR/PERR stepping over Match lines, skipping Separators; and caret tracking.
+        let mut d = Document::new();
+        d.open_compile_listing("build".into(), std::path::PathBuf::from("."));
+        d.push_output_line("a.zig:1:1: error: x", Some((std::path::PathBuf::from("a.zig"), 1, 1))); // idx 0
+        d.push_output_line("   context", None); // idx 1 (separator)
+        d.push_output_line("b.zig:2:3: error: y", Some((std::path::PathBuf::from("b.zig"), 2, 3))); // idx 2
+        d.push_output_line("done", None); // idx 3 (separator)
+        // Forward from "before first" → 0 → 2 → none (no wrap).
+        assert_eq!(d.next_match_from(None, true), Some(0));
+        assert_eq!(d.next_match_from(Some(0), true), Some(2));
+        assert_eq!(d.next_match_from(Some(2), true), None);
+        // Backward → 2 → 0 → none.
+        assert_eq!(d.next_match_from(Some(3), false), Some(2));
+        assert_eq!(d.next_match_from(Some(2), false), Some(0));
+        assert_eq!(d.next_match_from(Some(0), false), None);
+        // Caret tracking: parking on line 2 resolves to that Match.
+        d.set_caret_line(2);
+        assert_eq!(d.grep_hit_at_cursor().map(|h| (h.line, h.col)), Some((2, 3)));
     }
 
     #[test]

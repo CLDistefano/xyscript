@@ -12297,6 +12297,38 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn compile_nerr_jumps_to_source() {
+        // End-to-end NERR: COMPILE emits a location for a real file; NERR opens it at the line, a
+        // second NERR reports no more. (A real temp file so the source open succeeds.)
+        let dir = std::env::temp_dir().join(format!("xyscript-nerr-{:p}", &"tag"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("probe.zig");
+        std::fs::write(&file, "line one\nline two\nline three\n").unwrap();
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        e.run_command(&format!("COMPILE echo {}:2:1: error: boom", file.display()));
+        let start = std::time::Instant::now();
+        loop {
+            e.poll_jobs();
+            if e.job_count() == 0 || start.elapsed() > std::time::Duration::from_secs(10) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(e.job_count(), 0);
+        // NERR opens probe.zig at line 2 (0-based cursor line 1).
+        e.run_command("NERR");
+        let opened = e.host().active_doc().path().map(|p| p.to_path_buf());
+        assert!(opened.as_deref().is_some_and(|p| p.ends_with("probe.zig")), "active: {opened:?}");
+        assert_eq!(e.document().cursor_line(), 1);
+        // A second NERR finds no further location and leaves the source tab in place.
+        e.run_command("NERR");
+        assert!(e.host().active_doc().path().is_some_and(|p| p.ends_with("probe.zig")));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn auto_replace_matches_a_colon_shortcode_key() {
         // gemoji-style `:code:` keys (the point of emoji.ar). `:` is not a word char, so this only
         // works via the shortcode-span matcher.

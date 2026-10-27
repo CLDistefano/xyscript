@@ -1687,6 +1687,14 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::Compile { cmd: args.trim().to_string() })?;
                 Ok(Flow::Next)
             }
+            "NERR" => {
+                self.host_op(EditorOp::ErrorNav { forward: true })?;
+                Ok(Flow::Next)
+            }
+            "PERR" => {
+                self.host_op(EditorOp::ErrorNav { forward: false })?;
+                Ok(Flow::Next)
+            }
             "LOADAR" => {
                 // LOADAR replaces (fresh base, like LOADLIB); ADDAR merges (augment, like ADDLIB).
                 self.host_op(EditorOp::LoadAutoReplace {

@@ -480,6 +480,9 @@ pub enum EditorOp {
     /// output into a read-only results tab whose `file:line:col` lines become navigable hits
     /// (`GJ`/`NERR`/`PERR`). A bare `COMPILE` re-runs the last command. Reuses the `X/BG` job machinery.
     Compile { cmd: String },
+    /// `NERR` / `PERR` — step to the next / previous location in the most recent COMPILE/GREP results
+    /// tab and jump to its source. `forward` = `NERR`.
+    ErrorNav { forward: bool },
     /// `LoadAR <file>` / `AddAR <file>` — load `key=replacement` pairs from a file into the
     /// auto-replace map. `replace` clears the map first (the base, like `LOADLIB`); otherwise the
     /// pairs MERGE into what's there (augment, like `ADDLIB`). `#`/`;` comments + blank lines skipped;

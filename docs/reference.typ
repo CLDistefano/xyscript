@@ -621,6 +621,7 @@ self-contained element to convert.
 / #cmd("X") / #cmd("XV") / #cmd("XY"): run a shell command / capturing its output to a variable / inserting its output at the caret.
 / #cmd("TRUST"): enable or disable shell-out. #cmd("JOBS") / #cmd("KILL") / #cmd("WAIT"): list background jobs / end one / wait for jobs (or a timed pause).
 / #cmd("COMPILE"): run a build command and collect its output into a navigable results tab — `COMPILE <cmd>` (a bare `COMPILE` re-runs the last one). The build runs asynchronously (shell-out, so `TRUST` must be on), streaming into a read-only *Compile* tab; each `file:line:col` line in the output — rustc/cargo, gcc/clang, Zig, MSVC, `grep -n` — becomes a jumpable hit. Put the caret on one and #cmd("GJ") (or Enter / double-click) opens that file at the location, exactly like a `GREP` result. The command runs in #sv("CWD"), so relative paths in the output resolve against it — run `COMPILE zig build` from the project's `build.zig` directory.
+/ #cmd("NERR") / #cmd("PERR"): step to the next / previous location in the most recent `COMPILE` or `GREP` results tab and jump to its source — a unified "next-error" that works from any buffer (so you can walk a build's errors while editing). Bind them to keys for rapid error-stepping.
 / #cmd("SH", "SHELL"): open the Console — an editable REPL tab (type a command at the prompt, press Enter). #cmd("SHPROMPT"): its prompt template. #cmd("ANSICOLOR"): colour output from ANSI codes. #cmd("CLS", "CLEAR"): clear the Console. #cmd("SW", "SHELLWIN"): show/hide the Console tab.
 
 == Keyboard files and binders
@@ -952,6 +953,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("NL"): move to the start of the next line.
 / #cmd("NEW", "NE"): open a new empty buffer; `NEW <file>` starts a buffer named for the file (or opens it if it already exists). `NEW/H` and `NEW/V` instead open the new buffer in a *split pane*: `/H` stacks it top-over-bottom, `/V` sets it side-by-side left-and-right. See the split-pane verbs in section T (#cmd("THS"), #cmd("TVS"), #cmd("TW"), #cmd("TUS"), #cmd("TRV"), #cmd("TZ")).
 / #cmd("NEWLINE"): `NEWLINE lf|crlf` — convert every line ending in the document and adopt that style (`$NEWLINE` reads it).
+/ #cmd("NERR"): jump to the NEXT location in the most recent #cmd("COMPILE") or #cmd("GREP") results tab and open its source (centered) — the forward half of a unified "next-error". Works from any buffer, tracks a current-location index, and reports when there is no next one (no wraparound). #cmd("PERR") is the backward half. Bind them to keys to walk a build's errors without leaving the file you're editing.
 / #cmd("NOP"): do nothing (a no-op).
 
 == O
@@ -964,6 +966,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 
 / #cmd("PW") / #cmd("PS") / #cmd("PP"): move to the previous word / sentence / paragraph.
 / #cmd("PL"): move to the start of the previous line.
+/ #cmd("PERR"): jump to the PREVIOUS location in the most recent #cmd("COMPILE")/#cmd("GREP") results tab and open its source (centered) — the backward half of the unified next-error (see #cmd("NERR")).
 / #cmd("PU") / #cmd("PD"): move up / down one screenful (the page scrolls to follow).
 / #cmd("PAPLACE"): where the working-directory (`$CWD`) path is shown — `PAPLACE cmline|status` (bare reports it). `status` (default) shows it on the status line; `cmline` shows it as a prefix on the command line. Read back via `$PAPLACE`; persists in the config.
 / #cmd("PAFGCOLOR", "PAFGCOLORS"): the `$CWD` path text color — `PAFGCOLOR <r g b>` (`/HSL`; `…S` opens a picker); `PAFGCOLOR` / `PAFGCOLOR default` clears it (back to the dimmed UI text). Read back via `$PAFGCOLOR`; persists in the config.
