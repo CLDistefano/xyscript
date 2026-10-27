@@ -11728,10 +11728,15 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("merged {chars} chars from {name}")));
             }
             EditorOp::AutoReplace => {
-                // The word ending at the caret; replace it if it's a key.
+                // Prefer a `:shortcode:` token (gemoji-style keys like `:smile:`) when it is a key;
+                // otherwise fall back to the plain word ending at the caret. The shortcode path is
+                // what makes a colon-delimited `emoji.ar` work (`:` is not a word char).
                 let found = {
                     let b = self.docs[self.active].buffer();
-                    b.word_before_cursor().map(|(s, e)| (s, e, b.slice(s, e)))
+                    match b.shortcode_before_cursor().map(|(s, e)| (s, e, b.slice(s, e))) {
+                        Some((s, e, w)) if self.auto_replace.contains_key(&w) => Some((s, e, w)),
+                        _ => b.word_before_cursor().map(|(s, e)| (s, e, b.slice(s, e))),
+                    }
                 };
                 if let Some((s, e, word)) = found {
                     // An EXACT key wins and is used verbatim — defining both `equ` and `EQU` keeps
@@ -11769,11 +11774,17 @@ impl Host for AppHost {
                 }
                 return Ok(Value::str("")); // no word / no match → silent no-op
             }
-            EditorOp::LoadAutoReplace(path) => {
+            EditorOp::LoadAutoReplace { path, replace } => {
+                let verb = if replace { "LoadAR" } else { "AddAR" };
                 if path.trim().is_empty() {
-                    return Err(XplError::trappable("LoadAR: a file is required"));
+                    return Err(XplError::trappable(format!("{verb}: a file is required")));
                 }
                 let content = self.read_file(&path)?; // resolves $CWD; trappable if missing
+                // LOADAR loads a fresh base (clear first, like LOADLIB); ADDAR merges onto what's
+                // already there (augment, like ADDLIB).
+                if replace {
+                    self.auto_replace.clear();
+                }
                 // `$AR` = the fully-qualified path (lexically resolved like CD/$CF; a `subst`ed
                 // drive is preserved rather than rewritten to its backing path).
                 let resolved = lexical_abs(&self.cwd, &self.resolve_path(&path));
@@ -11793,7 +11804,7 @@ impl Host for AppHost {
                     }
                 }
                 return Ok(Value::str(format!(
-                    "LoadAR: {added} pair(s); {} loaded",
+                    "{verb}: {added} pair(s); {} loaded",
                     self.auto_replace.len()
                 )));
             }

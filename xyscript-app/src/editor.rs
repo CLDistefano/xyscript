@@ -12275,6 +12275,52 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn auto_replace_matches_a_colon_shortcode_key() {
+        // gemoji-style `:code:` keys (the point of emoji.ar). `:` is not a word char, so this only
+        // works via the shortcode-span matcher.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("emoji.ar".into(), ":smile:=\u{1F604}\n:+1:=\u{1F44D}\n".into());
+        e.run_command("LoadAR emoji.ar");
+        e.run_command(r#"INSERT ":smile:""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "\u{1F604}");
+        // A code with a `+` works too, mid-text.
+        e.run_command(r#"INSERT " :+1:""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "\u{1F604} \u{1F44D}");
+        // An unknown `:code:` is a silent no-op (not a key, and the word matcher sees nothing).
+        e.run_command(r#"INSERT " :nope:""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "\u{1F604} \u{1F44D} :nope:");
+    }
+
+    #[test]
+    fn addar_merges_and_loadar_replaces() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        e.host_mut().files.insert("base.ar".into(), "teh=the\n".into());
+        e.host_mut().files.insert("extra.ar".into(), "btw=by the way\n".into());
+        // LOADAR base, then ADDAR augments — both keys active.
+        e.run_command("LoadAR base.ar");
+        e.run_command("AddAR extra.ar");
+        e.run_command(r#"INSERT "teh""#);
+        e.run_command("AR");
+        e.run_command(r#"INSERT " btw""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "the by the way");
+        // LOADAR again REPLACES the map: the ADDAR'd key no longer expands…
+        e.run_command("LoadAR base.ar");
+        e.run_command(r#"INSERT " btw""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "the by the way btw"); // btw unchanged
+        // …but the reloaded base key still does.
+        e.run_command(r#"INSERT " teh""#);
+        e.run_command("AR");
+        assert_eq!(e.document().text(), "the by the way btw the");
+    }
+
+    #[test]
     fn ar_then_quoted_space_in_a_chain_inserts_the_space() {
         // The `57=AR;" "` (Shift+Space) idiom: AR fixes the word, then the bare quoted `" "` inserts
         // a space (a quoted-string command in a chain desugars to INSERT — the bug fix).

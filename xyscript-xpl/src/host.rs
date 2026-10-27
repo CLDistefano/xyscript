@@ -476,9 +476,11 @@ pub enum EditorOp {
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,
-    /// `LoadAR <file>` — load `key=replacement` pairs from a file into the auto-replace map (merging;
-    /// `#` comments + blank lines skipped; `\n`/`\t` escapes in the value decoded).
-    LoadAutoReplace(String),
+    /// `LoadAR <file>` / `AddAR <file>` — load `key=replacement` pairs from a file into the
+    /// auto-replace map. `replace` clears the map first (the base, like `LOADLIB`); otherwise the
+    /// pairs MERGE into what's there (augment, like `ADDLIB`). `#`/`;` comments + blank lines skipped;
+    /// `\n`/`\t` escapes in the value decoded.
+    LoadAutoReplace { path: String, replace: bool },
     /// `SAVEAR [file]` — write the current auto-replace map back as a `key=replacement` file (a
     /// commented sample template when the map is empty). `None` = a default path.
     SaveAutoReplace(Option<String>),

@@ -50,7 +50,7 @@ const NO_ERROR_TOUCH: &[&str] = &[
 /// verbs that write the active buffer (`ST`, `SAAS`) are deliberately excluded.
 const POINT_AND_SHOOT_VERBS: &[&str] = &[
     "OPEN", "CA", "ED", "EDIT", "READ", "DEL", "ERNV", "RUN", "BEDIT", "LOADKBD", "LOADLIB",
-    "LOADAR", "LOADVARS", "LANG", "NEW", "NE", "THEME",
+    "LOADAR", "ADDAR", "LOADVARS", "LANG", "NEW", "NE", "THEME",
 ];
 
 /// Single-path file verbs: the whole (trimmed) argument is one filesystem path. A user may wrap it
@@ -62,7 +62,7 @@ const POINT_AND_SHOOT_VERBS: &[&str] = &[
 const SINGLE_PATH_VERBS: &[&str] = &[
     "OPEN", "CA", "ED", "EDIT", "READ", "NEW", "NE", "SAVE", "SA", "ST", "SAAS", "SAVEAS", "SAD",
     "MERGE", "ME", "BEDIT", "BCLOSE", "DEL", "ERNV", "CD", "PRINTEX", "LOADKBD", "LOADLIB", "ADDLIB",
-    "LOADAR", "SAVEAR", "LOADVARS", "SAVEVARS", "LOADCFG", "SAVECFG", "LANG", "THEME",
+    "LOADAR", "ADDAR", "SAVEAR", "LOADVARS", "SAVEVARS", "LOADCFG", "SAVECFG", "LANG", "THEME",
 ];
 
 /// Instruction budget for one cooperative-preemption slice. The foreground editor runs scripts
@@ -1682,7 +1682,18 @@ impl Vm<'_, '_> {
                 Ok(Flow::Next)
             }
             "LOADAR" => {
-                self.host_op(EditorOp::LoadAutoReplace(args.trim().to_string()))?;
+                // LOADAR replaces (fresh base, like LOADLIB); ADDAR merges (augment, like ADDLIB).
+                self.host_op(EditorOp::LoadAutoReplace {
+                    path: args.trim().to_string(),
+                    replace: true,
+                })?;
+                Ok(Flow::Next)
+            }
+            "ADDAR" => {
+                self.host_op(EditorOp::LoadAutoReplace {
+                    path: args.trim().to_string(),
+                    replace: false,
+                })?;
                 Ok(Flow::Next)
             }
             "SAVEAR" => {

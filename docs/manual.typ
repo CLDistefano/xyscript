@@ -1978,10 +1978,36 @@ or — for *any* character, including emoji and other codepoints above the BMP �
 
 #tip("Typing emoji")[Three ways, no copy-paste needed. (1) The OS emoji picker — #kbd("Win")+#kbd(".") on
 Windows, the Character Viewer on macOS — inserts straight into the document. (2) #raw("\\u{…}") in any
-quoted string, as above. (3) An #raw("AR") auto-replace pair, e.g. a #raw("fonts")-style line
-#raw(":joy: 😂") in your #raw(".ar") file, so typing #raw(":joy:") expands to the emoji. All of these need
-the document to be *UTF-8* (the default for new documents); a single-byte code page such as CP437 cannot
-hold emoji, and they would save as #raw("?").]
+quoted string, as above. (3) Named shortcodes: #raw("ADDAR emoji.ar") loads the shipped gemoji pairs on
+top of your own auto-replace map, so typing #raw(":joy:") and triggering #raw("AR") inserts 😂 (see
+#emph[Auto-replace], below). All of these need the document to be *UTF-8* (the default for new documents);
+a single-byte code page such as CP437 cannot hold emoji, and they would save as #raw("?").]
+
+== Auto-replace (typo-fix, snippets, emoji)
+
+#raw("AR") swaps the token just behind the caret for a stored replacement — a typo fix, a snippet, or
+an emoji. Bind it so it fires as you type, e.g. #raw("57=AR;\" \"") puts it on #kbd("Shift")+#kbd("Space"):
+the chained #raw("\" \"") always inserts the space, and the word is corrected only when it matches (a
+miss is a silent no-op). Pairs are #raw("key=replacement"), one per line, in a #raw(".ar") file:
+
+#ex("teh=the
+btw=by the way
+:shrug:=¯\\_(ツ)_/¯")
+
+Load them with #raw("LOADAR <file>"), which (like #raw("LOADLIB")) starts a *fresh* map, or
+#raw("ADDAR <file>"), which (like #raw("ADDLIB")) *merges* onto what is already loaded. So you keep a
+personal base and layer extras on top:
+
+#ex("LOADAR mypairs.ar
+ADDAR emoji.ar")
+
+A key is matched either as the plain word behind the caret, or — for emoji — as a #raw(":shortcode:")
+token: #raw("AR") recognizes a colon-delimited key like #raw(":smile:") (inner characters
+#raw("[A-Za-z0-9_+-]"), so #raw(":+1:") and #raw(":e-mail:") work too). The shipped #raw("emoji.ar")
+uses the GitHub *gemoji* names — #raw(":joy:") → 😂, #raw(":+1:") → 👍, #raw(":rocket:") → 🚀, and
+hundreds more. #raw("SAVEAR") writes the current map back out; #raw("CLEARAR") empties it. A plain-word
+key's expansion follows the case you type (#raw("equ")→equilibrium, #raw("EQU")→EQUILIBRIUM); if a value
+starts with #raw("#") the rest is run as XPL instead of inserted.
 
 == Here-strings (multi-line text)
 

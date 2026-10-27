@@ -2261,6 +2261,36 @@ impl Buffer {
         (has_word && start < end).then_some((start, end))
     }
 
+    /// The `:shortcode:` token ending exactly at the caret, if any — the span of a `:…:` run whose
+    /// inner characters are shortcode chars (`[A-Za-z0-9_+-]`, as in gemoji `:+1:` / `:e-mail:`).
+    /// Used by `AR` so a colon-delimited key (which `word_before_cursor` can't see — `:` is not a
+    /// word char) still auto-replaces. Returns the full span INCLUDING both colons. Requires at
+    /// least one inner char (so a bare `::` is not a shortcode).
+    pub fn shortcode_before_cursor(&self) -> Option<(usize, usize)> {
+        let end = self.cursor;
+        if end == 0 {
+            return None;
+        }
+        let close = self.prev_boundary(end); // start byte of the char just before the caret
+        if self.slice(close, end).chars().next() != Some(':') {
+            return None; // the caret is not right after a closing colon
+        }
+        let mut cur = close;
+        let mut inner = 0usize;
+        while cur > 0 {
+            let prev = self.prev_boundary(cur);
+            match self.slice(prev, cur).chars().next() {
+                Some(':') => return (inner > 0).then_some((prev, end)), // opening colon found
+                Some(c) if is_shortcode_char(c) => {
+                    inner += 1;
+                    cur = prev;
+                }
+                _ => return None, // a non-shortcode char breaks the token
+            }
+        }
+        None // ran off the start without an opening colon
+    }
+
     /// `DL` select span — the whole line including its break (a movable line unit).
     pub fn line_select_span(&self) -> (usize, usize) {
         self.line_span()
@@ -3168,6 +3198,12 @@ impl Pattern {
 
 fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
+}
+
+/// A character allowed inside a `:shortcode:` token (gemoji keys, e.g. `:+1:`, `:e-mail:`). ASCII
+/// only — emoji shortcodes are `[a-z0-9_+-]`.
+fn is_shortcode_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-')
 }
 
 /// A sentence-terminating punctuation mark.
@@ -4248,6 +4284,26 @@ mod tests {
         assert_eq!(b.word_before_cursor(), None);
         b.set_caret(19, None); // after "'quoted"
         assert_eq!(b.word_before_cursor(), Some((12, 19)));
+    }
+
+    #[test]
+    fn shortcode_before_cursor_spans_a_colon_token() {
+        let mut b = Buffer::from_str("hi :smile: and :+1: x");
+        b.set_caret(10, None); // right after ":smile:"
+        assert_eq!(b.shortcode_before_cursor(), Some((3, 10)));
+        b.set_caret(19, None); // right after ":+1:" (the `+` is a shortcode char)
+        assert_eq!(b.shortcode_before_cursor(), Some((15, 19)));
+        // Caret not after a closing colon → no shortcode.
+        b.set_caret(9, None); // inside ":smile" (before the closing ':')
+        assert_eq!(b.shortcode_before_cursor(), None);
+        // A bare `::` has no inner char → not a shortcode.
+        let mut c = Buffer::from_str("::");
+        c.set_caret(2, None);
+        assert_eq!(c.shortcode_before_cursor(), None);
+        // A space inside breaks the token (no opening colon reachable).
+        let mut d = Buffer::from_str(":a b:");
+        d.set_caret(5, None);
+        assert_eq!(d.shortcode_before_cursor(), None);
     }
 
     #[test]
