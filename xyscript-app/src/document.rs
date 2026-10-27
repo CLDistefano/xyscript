@@ -3011,6 +3011,16 @@ impl Document {
         self.grep.is_some()
     }
 
+    /// If this buffer is a `COMPILE` results tab, the build command it was opened for (so a later
+    /// `COMPILE <cmd>` can find and refill the tab for the SAME command). A `COMPILE` tab is a
+    /// `GREP`-style listing whose label is `compile {cmd}`; the command is stored in `grep.pattern`.
+    pub fn compile_command(&self) -> Option<&str> {
+        match (&self.grep, self.label.as_deref()) {
+            (Some(g), Some(label)) if label.starts_with("compile ") => Some(g.pattern.as_str()),
+            _ => None,
+        }
+    }
+
     /// Load a `HELP`/`MAN` results listing into this buffer: read-only, unnamed (no path), with the
     /// caret at the top and marked so the next `HELP`/`MAN` reuses this same tab in place. `label` is
     /// the tab title; `text` is the pre-formatted results body (the caller sets `EMPH` separately).

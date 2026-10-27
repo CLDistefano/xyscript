@@ -11867,7 +11867,7 @@ impl Host for AppHost {
                 }
                 return Ok(Value::str("")); // no word / no match → silent no-op
             }
-            EditorOp::Compile { cmd } => {
+            EditorOp::Compile { cmd, new_tab } => {
                 if !self.shell_trusted {
                     return Err(XplError::trappable(
                         "COMPILE: shell-out is disabled; enable it with TRUST 1",
@@ -11887,14 +11887,45 @@ impl Host for AppHost {
                     cmd.trim().to_string()
                 };
                 self.last_compile_cmd = Some(cmd.clone());
-                // Open an empty results tab, then spawn the build; `poll_jobs` streams + parses into it.
-                let mut doc = Document::new();
-                doc.open_compile_listing(cmd.clone(), self.cwd.clone());
-                let doc_id = doc.id();
-                self.add_or_reuse(doc);
+                // Pick the results tab. Default: reuse the existing compile tab for the SAME command
+                // (cleared + refilled in place, so NERR/PERR walk only this run and the tab doesn't grow
+                // unbounded). `/NW`, or no matching tab, opens a fresh one. `open_compile_listing` clears
+                // the buffer and resets the hit list, so reuse is just re-opening it on the same doc.
+                let reuse = if new_tab {
+                    None
+                } else {
+                    self.docs.iter().position(|d| d.compile_command() == Some(cmd.as_str()))
+                };
+                let doc_id = if let Some(idx) = reuse {
+                    self.docs[idx].open_compile_listing(cmd.clone(), self.cwd.clone());
+                    // Surface the reused tab (it may be buried) — focus it like `add_doc_new`'s push path.
+                    self.focus_prev = self.docs.get(self.active).map(|d| d.id());
+                    self.active = idx;
+                    self.auto_highlight_active();
+                    self.sync_panes();
+                    self.docs[idx].id()
+                } else {
+                    // Open an empty results tab, then spawn the build; `poll_jobs` streams + parses into it.
+                    let mut doc = Document::new();
+                    doc.open_compile_listing(cmd.clone(), self.cwd.clone());
+                    let id = doc.id();
+                    self.add_or_reuse(doc);
+                    id
+                };
                 self.error_list = Some(doc_id); // NERR/PERR target this results tab
                 self.error_cursor = None;
                 self.set_focus(Target::Document);
+                // If a prior build is still streaming into this same tab (recompile before the last run
+                // finished), kill it so the two runs don't interleave into the freshly cleared buffer.
+                let stale: Vec<u64> = self
+                    .jobs
+                    .iter()
+                    .filter(|j| matches!(j.sink, JobSink::Compile { doc } if doc == doc_id))
+                    .map(|j| j.id)
+                    .collect();
+                for jid in stale {
+                    self.kill_job(jid);
+                }
                 let id = self.next_job_id;
                 self.next_job_id += 1;
                 self.last_job_id = id; // `$LJ`

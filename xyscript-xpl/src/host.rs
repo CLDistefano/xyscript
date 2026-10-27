@@ -479,7 +479,8 @@ pub enum EditorOp {
     /// `COMPILE <cmd>` — run a build command asynchronously (shelling out, TRUST-gated), streaming its
     /// output into a read-only results tab whose `file:line:col` lines become navigable hits
     /// (`GJ`/`NERR`/`PERR`). A bare `COMPILE` re-runs the last command. Reuses the `X/BG` job machinery.
-    Compile { cmd: String },
+    /// By default output refills the existing compile tab for the same command; `new_tab` forces a new one.
+    Compile { cmd: String, new_tab: bool },
     /// `NERR` / `PERR` — step to the next / previous location in the most recent COMPILE/GREP results
     /// tab and jump to its source. `forward` = `NERR`.
     ErrorNav { forward: bool },

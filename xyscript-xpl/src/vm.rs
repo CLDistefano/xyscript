@@ -1683,8 +1683,11 @@ impl Vm<'_, '_> {
             }
             "COMPILE" => {
                 // Run a build command async; output → a navigable results tab (GJ/NERR). Bare
-                // COMPILE re-runs the last command. Shell-out is TRUST-gated in the host.
-                self.host_op(EditorOp::Compile { cmd: args.trim().to_string() })?;
+                // COMPILE re-runs the last command. By default the results go into the existing
+                // compile tab for the SAME command (cleared + refilled); `/NW` forces a new tab.
+                // Shell-out is TRUST-gated in the host.
+                let new_tab = vswitches.iter().any(|s| s.eq_ignore_ascii_case("NW"));
+                self.host_op(EditorOp::Compile { cmd: args.trim().to_string(), new_tab })?;
                 Ok(Flow::Next)
             }
             "NERR" => {
@@ -6473,6 +6476,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "SENDMAIL" => &["F", "W"], // `/F <file>` — body from a file; `/W` — run synchronously (sets $RC)
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
+        "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
 
         _ => &[],
     };

@@ -1272,6 +1272,13 @@ error before the build even finishes. The command shells out, so #raw("TRUST") m
 #raw("$CWD"), so relative paths resolve against it — run #raw("COMPILE zig build") from the folder with
 #raw("build.zig"). A bare #raw("COMPILE") re-runs the last command (recompile).
 
+Re-running a command reuses *its own* tab — the build for a given command always refills the same
+*Compile* tab (cleared first, not appended below the old output), so the tab stays put in your layout,
+#raw("NERR")/#raw("PERR") only ever walk the latest run, and nothing piles up over a long edit-compile
+session. A _different_ command opens its own tab, so #raw("zig build") and #raw("zig test") coexist side
+by side. When you do want a second tab for the same command — to compare two runs, say — #raw("COMPILE/NW")
+forces a fresh one.
+
 The real speed comes from #raw("NERR") and #raw("PERR") — "next error" and "previous error". They step
 through the locations in the most recent #raw("COMPILE") (or #raw("GREP")) tab and jump straight to each
 one's source, and they work from _any_ buffer, so you never leave the file you're fixing: hit #raw("NERR"),

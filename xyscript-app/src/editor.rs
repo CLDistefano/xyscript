@@ -12328,6 +12328,50 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    // Drain the background COMPILE job (bounded, like the other compile tests).
+    fn pump_compile(e: &mut Editor) {
+        let start = std::time::Instant::now();
+        loop {
+            e.poll_jobs();
+            if e.job_count() == 0 || start.elapsed() > std::time::Duration::from_secs(10) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(e.job_count(), 0, "COMPILE job should have finished");
+    }
+
+    #[test]
+    fn compile_reuses_the_tab_for_the_same_command() {
+        // Default: re-running the SAME command refills the one compile tab (cleared, not appended);
+        // a DIFFERENT command gets its own tab; `/NW` forces a fresh tab even for the same command.
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        e.run_command("INSERT x"); // dirty the initial scratch so COMPILE can't reuse it as an empty slot
+        let base = e.host().buffer_count();
+
+        e.run_command("COMPILE echo a.zig:1:1: error: one");
+        pump_compile(&mut e);
+        let after_first = e.host().buffer_count();
+        assert_eq!(after_first, base + 1, "first COMPILE opens a tab");
+
+        // Same command again → reuse + refill (no new tab, exactly one hit, old text gone).
+        e.run_command("COMPILE echo a.zig:1:1: error: one");
+        pump_compile(&mut e);
+        assert_eq!(e.host().buffer_count(), after_first, "same command reuses its tab");
+        assert_eq!(e.host().active_doc().compile_match_count(), 1, "refilled, not appended");
+
+        // A different command → its own tab.
+        e.run_command("COMPILE echo b.zig:2:2: error: two");
+        pump_compile(&mut e);
+        assert_eq!(e.host().buffer_count(), after_first + 1, "a new command opens a new tab");
+
+        // `/NW` with the first command → a brand-new tab even though a.zig's tab still exists.
+        e.run_command("COMPILE/NW echo a.zig:1:1: error: one");
+        pump_compile(&mut e);
+        assert_eq!(e.host().buffer_count(), after_first + 2, "/NW forces a new tab");
+    }
+
     #[test]
     fn auto_replace_matches_a_colon_shortcode_key() {
         // gemoji-style `:code:` keys (the point of emoji.ar). `:` is not a word char, so this only
