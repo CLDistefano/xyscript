@@ -2951,6 +2951,54 @@ impl Document {
         self.grep.as_mut().unwrap().hits.extend_from_slice(hits);
     }
 
+    /// Turn this buffer into a `COMPILE` results listing: empty, read-only, caret at the top, tracked
+    /// as a hit listing (so `GJ`/`NERR` work) with the command as its label. The build's output lines
+    /// stream in via [`push_output_line`](Self::push_output_line). Reuses the `GREP` listing state —
+    /// a compile tab is the same kind of read-only, line-indexed hit buffer, just filled from raw
+    /// tool output rather than formatted `path:line:col` hits.
+    pub fn open_compile_listing(&mut self, cmd: String, cwd: PathBuf) {
+        self.gen = next_content_gen();
+        self.buffer = Buffer::from_str("");
+        self.buffer.set_caret(0, None);
+        self.undo.clear();
+        self.redo.clear();
+        self.coalescing = false;
+        self.saved_len = Some(0);
+        self.path = None;
+        self.line_ending = LineEnding::Lf;
+        self.read_only = true;
+        self.highlighter = None;
+        self.tokens.clear();
+        self.label = Some(format!("compile {cmd}"));
+        self.grep = Some(crate::grep::GrepState {
+            base: cwd,
+            pattern: cmd,
+            regex: false,
+            perl: false,
+            capped: false,
+            hits: Vec::new(),
+        });
+    }
+
+    /// Append one raw output line (WITHOUT a trailing newline) to a `COMPILE`/`GREP` listing, plus its
+    /// parsed location: `Some((path,line,col))` → a navigable `Match`, `None` → a non-navigable
+    /// `Separator`. Keeps the invariant **line N → `hits[N]`** so `grep_hit_at_cursor`/`GJ`/`NERR`
+    /// resolve the right hit. No-op if this isn't a listing.
+    pub fn push_output_line(&mut self, text: &str, loc: Option<(PathBuf, usize, usize)>) {
+        if self.grep.is_none() {
+            return;
+        }
+        self.append_log(&format!("{text}\n"));
+        self.undo.clear(); // a listing isn't undoable — don't accumulate history as it streams
+        self.redo.clear();
+        self.mark_saved(); // keep the tab from reading "modified" as output streams
+        let hit = match loc {
+            Some((path, line, col)) => crate::grep::GrepHit::match_at(path, line, col, text.to_string()),
+            None => crate::grep::GrepHit::separator(),
+        };
+        self.grep.as_mut().unwrap().hits.push(hit);
+    }
+
     /// Mark a streaming `GREP` search complete (records whether the hit cap was reached).
     pub fn finalize_grep(&mut self, capped: bool) {
         if let Some(g) = self.grep.as_mut() {
@@ -2991,6 +3039,15 @@ impl Document {
     /// The number of `GREP` hits accumulated so far (0 when this isn't a results listing).
     pub fn grep_hit_count(&self) -> usize {
         self.grep.as_ref().map(|g| g.hits.len()).unwrap_or(0)
+    }
+
+    /// The number of navigable `Match` hits (locations) in a listing — the error count for a
+    /// `COMPILE` tab (excludes `Separator`/`Context` lines). 0 when this isn't a listing.
+    pub fn compile_match_count(&self) -> usize {
+        self.grep
+            .as_ref()
+            .map(|g| g.hits.iter().filter(|h| h.kind == crate::grep::HitKind::Match).count())
+            .unwrap_or(0)
     }
 
     /// The `GREP` hit on the caret's line, if this is a results listing — a `Match` or `Context`
@@ -4984,6 +5041,28 @@ mod tests {
         d.truncate_log_front(6);
         assert_eq!(d.buffer().text(), "cccc\n");
         assert_eq!(d.buffer().cursor(), 0, "a trimmed-away pin clamps to the top of the buffer");
+    }
+
+    #[test]
+    fn compile_listing_is_navigable() {
+        // A COMPILE results tab is a read-only, line-indexed hit listing (reuses the GREP machinery):
+        // a parsed line is a navigable Match, a plain line is a non-navigable Separator.
+        let mut d = Document::new();
+        d.open_compile_listing("zig build".into(), std::path::PathBuf::from("."));
+        assert!(d.is_grep_listing() && d.read_only());
+        d.push_output_line("src/main.zig:10:5: error: boom", Some((std::path::PathBuf::from("src/main.zig"), 10, 5)));
+        d.push_output_line("    var x = y;", None); // a context line → separator
+        assert_eq!(d.compile_match_count(), 1);
+        assert_eq!(d.buffer().text(), "src/main.zig:10:5: error: boom\n    var x = y;\n");
+        // Caret on the error line → the hit resolves to its location.
+        d.set_caret(0, None);
+        let h = d.grep_hit_at_cursor().expect("hit on the error line");
+        assert_eq!((h.line, h.col), (10, 5));
+        assert_eq!(h.path, std::path::PathBuf::from("src/main.zig"));
+        // Caret on the context line → not navigable.
+        let line1 = d.buffer().text().find('\n').unwrap() + 1;
+        d.set_caret(line1, None);
+        assert!(d.grep_hit_at_cursor().is_none());
     }
 
     #[test]

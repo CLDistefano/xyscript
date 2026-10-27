@@ -1586,6 +1586,9 @@ pub enum Target {
 enum JobSink {
     /// The `*Shell Output*` tab (the `X/BG` default) — streamed live.
     ShellTab,
+    /// `COMPILE`: stream the build's output lines into a read-only results tab (`doc`), parsing each
+    /// for a `file:line:col` location so matched lines become navigable hits (`GJ`/`NERR`/`PERR`).
+    Compile { doc: crate::panes::DocId },
     /// A FOREGROUND Console REPL command (`console_submit`): streamed live into the Console above its
     /// prompt; on completion an `(exit N)` line lands and a fresh prompt is written for the next input.
     Console,
@@ -2811,6 +2814,10 @@ pub struct AppHost {
     /// Running background shell jobs (`X/BG`), drained by `poll_jobs`. `$JOBS` = count.
     jobs: Vec<Job>,
     next_job_id: u64,
+    /// COMPILE's location matcher (built lazily on the first `COMPILE`) and the last command run
+    /// (so a bare `COMPILE` re-runs it, like Emacs `recompile`).
+    compile_matcher: Option<crate::compile::CompileMatcher>,
+    last_compile_cmd: Option<String>,
     /// The in-flight streaming `GREP` search, if any (drained by `poll_grep`). At most one at a time —
     /// a new `GREP` cancels the previous.
     grep_job: Option<GrepJob>,
@@ -3379,6 +3386,8 @@ impl AppHost {
             config_last_written: String::new(),
             jobs: Vec::new(),
             next_job_id: 1,
+            compile_matcher: None,
+            last_compile_cmd: None,
             last_job_id: 0,
             grep_job: None,
             grep_before: 0,
@@ -5813,6 +5822,7 @@ impl AppHost {
                 match self.jobs[i].sink {
                     JobSink::ShellTab => self.append_shell_output_text(&batch),
                     JobSink::Console => self.console_emit(&batch),
+                    JobSink::Compile { doc } => self.compile_ingest(doc, &batch),
                     #[cfg(feature = "email")]
                     JobSink::MailHeaders | JobSink::MailSearchSave | JobSink::MailAction => {}
                 }
@@ -5840,6 +5850,18 @@ impl AppHost {
                 match job.sink {
                     JobSink::ShellTab => {
                         self.append_shell_output_text(&format!("(exit {code})\n\n"));
+                    }
+                    JobSink::Compile { doc } => {
+                        // Mark completion in the results tab as a (non-navigable) separator line.
+                        let n = self
+                            .docs
+                            .iter()
+                            .find(|d| d.id() == doc)
+                            .map(|d| d.compile_match_count())
+                            .unwrap_or(0);
+                        if let Some(d) = self.docs.iter_mut().find(|d| d.id() == doc) {
+                            d.push_output_line(&format!("— compile exited {code} ({n} location(s))"), None);
+                        }
                     }
                     JobSink::Console => {
                         // The command is done: drop the stdin sender (the pump thread ends), then land
@@ -5907,6 +5929,27 @@ impl AppHost {
             }
         }
         notices
+    }
+
+    /// Stream a batch of `COMPILE` output into results tab `doc`: split into lines (the reader is
+    /// line-buffered and `poll_jobs` coalesces whole lines, so a batch is always a whole number of
+    /// lines), parse each for a `file:line:col`, and append it as a navigable `Match` or a
+    /// `Separator`. Parsing is done up front (immutable borrow of the matcher) before touching `docs`.
+    fn compile_ingest(&mut self, doc: crate::panes::DocId, batch: &str) {
+        let matcher = self.compile_matcher.get_or_insert_with(crate::compile::CompileMatcher::default);
+        let parsed: Vec<(String, Option<(std::path::PathBuf, usize, usize)>)> = batch
+            .split_inclusive('\n')
+            .map(|l| {
+                let text = l.trim_end_matches(['\r', '\n']).to_string();
+                let loc = matcher.parse(&text).map(|loc| (loc.path, loc.line, loc.col));
+                (text, loc)
+            })
+            .collect();
+        if let Some(d) = self.docs.iter_mut().find(|d| d.id() == doc) {
+            for (text, loc) in parsed {
+                d.push_output_line(&text, loc);
+            }
+        }
     }
 
     /// `SENDMAIL` — assemble the message from the active document (+ args or a header block) and send
@@ -11773,6 +11816,53 @@ impl Host for AppHost {
                     }
                 }
                 return Ok(Value::str("")); // no word / no match → silent no-op
+            }
+            EditorOp::Compile { cmd } => {
+                if !self.shell_trusted {
+                    return Err(XplError::trappable(
+                        "COMPILE: shell-out is disabled; enable it with TRUST 1",
+                    ));
+                }
+                // Bare COMPILE re-runs the last command (recompile).
+                let cmd = if cmd.trim().is_empty() {
+                    match &self.last_compile_cmd {
+                        Some(c) => c.clone(),
+                        None => {
+                            return Err(XplError::trappable(
+                                "COMPILE: a command is required (bare COMPILE re-runs the last one)",
+                            ))
+                        }
+                    }
+                } else {
+                    cmd.trim().to_string()
+                };
+                self.last_compile_cmd = Some(cmd.clone());
+                // Open an empty results tab, then spawn the build; `poll_jobs` streams + parses into it.
+                let mut doc = Document::new();
+                doc.open_compile_listing(cmd.clone(), self.cwd.clone());
+                let doc_id = doc.id();
+                self.add_or_reuse(doc);
+                self.set_focus(Target::Document);
+                let id = self.next_job_id;
+                self.next_job_id += 1;
+                self.last_job_id = id; // `$LJ`
+                let (tx, rx) = std::sync::mpsc::sync_channel(JOB_CHANNEL_CAP);
+                let child = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let mut command = shell_command(&cmd);
+                command.current_dir(&self.cwd); // run in $CWD so relative hit paths resolve
+                spawn_shell_job(command, None, None, tx, std::sync::Arc::clone(&child));
+                self.jobs.push(Job {
+                    id,
+                    cmd: cmd.clone(),
+                    rx,
+                    child,
+                    output: String::new(),
+                    return_var: None,
+                    sink: JobSink::Compile { doc: doc_id },
+                    cleanup: None,
+                    is_mail: false,
+                });
+                return Ok(Value::str(format!("COMPILE: {cmd} (job {id})…")));
             }
             EditorOp::LoadAutoReplace { path, replace } => {
                 let verb = if replace { "LoadAR" } else { "AddAR" };

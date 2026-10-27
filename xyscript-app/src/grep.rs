@@ -39,8 +39,9 @@ pub struct GrepHit {
 }
 
 impl GrepHit {
-    /// A blank separator line (`GREPBLANK`), which `GJ` skips.
-    fn separator() -> GrepHit {
+    /// A blank separator line (`GREPBLANK`), which `GJ` skips. Also the kind COMPILE uses for an
+    /// output line that carries no source location (a message, caret line, or progress line).
+    pub fn separator() -> GrepHit {
         GrepHit {
             path: PathBuf::new(),
             line: 0,
@@ -49,6 +50,13 @@ impl GrepHit {
             kind: HitKind::Separator,
             source: None,
         }
+    }
+
+    /// A navigable `Match` at a parsed `path:line:col` — used by COMPILE for a build-output line that
+    /// carries a source location (`GJ`/`NERR` jump to it). `source` is `None`: it's a filesystem path,
+    /// so `GJ` opens it from disk.
+    pub fn match_at(path: PathBuf, line: usize, col: usize, text: String) -> GrepHit {
+        GrepHit { path, line, col, text, kind: HitKind::Match, source: None }
     }
 }
 

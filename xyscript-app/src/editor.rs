@@ -12275,6 +12275,28 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn compile_runs_and_parses_output_into_a_navigable_tab() {
+        // End-to-end: COMPILE shells out (here a portable `echo`, identical on cmd and sh), streams
+        // the output into a read-only results tab, and parses the `file:line:col` line into a hit.
+        let mut e = ed();
+        e.run_command("TRUST 1");
+        e.run_command("COMPILE echo src/main.zig:10:5: error: boom");
+        // Pump the background job to completion (it's near-instant; bounded so a hang can't wedge CI).
+        let start = std::time::Instant::now();
+        loop {
+            e.poll_jobs();
+            if e.job_count() == 0 || start.elapsed() > std::time::Duration::from_secs(10) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(e.job_count(), 0, "COMPILE job should have finished");
+        // The active tab is the compile results listing with the one parsed location.
+        assert_eq!(e.host().active_doc().compile_match_count(), 1, "doc: {:?}", e.document().text());
+        assert!(e.document().text().contains("src/main.zig:10:5: error: boom"));
+    }
+
+    #[test]
     fn auto_replace_matches_a_colon_shortcode_key() {
         // gemoji-style `:code:` keys (the point of emoji.ar). `:` is not a word char, so this only
         // works via the shortcode-span matcher.

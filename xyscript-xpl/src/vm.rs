@@ -1681,6 +1681,12 @@ impl Vm<'_, '_> {
                 }
                 Ok(Flow::Next)
             }
+            "COMPILE" => {
+                // Run a build command async; output → a navigable results tab (GJ/NERR). Bare
+                // COMPILE re-runs the last command. Shell-out is TRUST-gated in the host.
+                self.host_op(EditorOp::Compile { cmd: args.trim().to_string() })?;
+                Ok(Flow::Next)
+            }
             "LOADAR" => {
                 // LOADAR replaces (fresh base, like LOADLIB); ADDAR merges (augment, like ADDLIB).
                 self.host_op(EditorOp::LoadAutoReplace {

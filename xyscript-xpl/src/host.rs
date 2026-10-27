@@ -476,6 +476,10 @@ pub enum EditorOp {
     /// `AR` — auto-replace: look at the word immediately behind the caret and, if it's a key in the
     /// loaded auto-replace map, replace it with the mapped text (one undo unit). No match = no-op.
     AutoReplace,
+    /// `COMPILE <cmd>` — run a build command asynchronously (shelling out, TRUST-gated), streaming its
+    /// output into a read-only results tab whose `file:line:col` lines become navigable hits
+    /// (`GJ`/`NERR`/`PERR`). A bare `COMPILE` re-runs the last command. Reuses the `X/BG` job machinery.
+    Compile { cmd: String },
     /// `LoadAR <file>` / `AddAR <file>` — load `key=replacement` pairs from a file into the
     /// auto-replace map. `replace` clears the map first (the base, like `LOADLIB`); otherwise the
     /// pairs MERGE into what's there (augment, like `ADDLIB`). `#`/`;` comments + blank lines skipped;
