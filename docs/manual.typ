@@ -1260,6 +1260,30 @@ the match, and carries the same highlight along so every occurrence lights up th
 #kbd("PageUp")/#kbd("PageDown") still scroll the results as usual. Think of the results tab as a launch pad:
 #raw("GREP") to gather, #raw("GJ") to pounce.
 
+=== Compiling, and jumping to errors
+
+#raw("COMPILE") turns that launch pad into a build loop — the same idea as Emacs's _compilation mode_.
+#raw("COMPILE zig build") (or #raw("cargo build"), #raw("make"), any build command) runs it in the
+background and streams the output into a read-only *Compile* tab. Every line that names a source
+location — #raw("file:line:col") from Zig, rustc/cargo, gcc/clang, or #raw("file(line,col)") from MSVC —
+becomes a jumpable hit, exactly like a #raw("GREP") result: put the caret on one and press #kbd("Enter")
+(or #raw("GJ")) to open that file at the spot. Because the output streams, you can jump to the first
+error before the build even finishes. The command shells out, so #raw("TRUST") must be on; it runs in
+#raw("$CWD"), so relative paths resolve against it — run #raw("COMPILE zig build") from the folder with
+#raw("build.zig"). A bare #raw("COMPILE") re-runs the last command (recompile).
+
+The real speed comes from #raw("NERR") and #raw("PERR") — "next error" and "previous error". They step
+through the locations in the most recent #raw("COMPILE") (or #raw("GREP")) tab and jump straight to each
+one's source, and they work from _any_ buffer, so you never leave the file you're fixing: hit #raw("NERR"),
+fix, #raw("NERR"), fix. Bind them to a pair of keys and a build-fix cycle is two keystrokes. Because a
+runtime panic backtrace also prints #raw("file:line:col"), a failing #raw("zig test") or #raw("cargo test")
+drops you right on the line that blew up.
+
+#ex("COMPILE zig build
+NERR                     # jump to the first error
+NERR                     # ...the next, from wherever you are
+PERR                     # back one")
+
 == Encodings
 
 A file on disk is *bytes*; an *encoding* is the lens that turns those bytes into the characters you see
