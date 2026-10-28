@@ -1297,7 +1297,7 @@ fn guess_mime(filename: &str) -> &'static str {
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
         "txt" | "text" | "md" | "log" | "typ" | "xpl" => "text/plain",
-        "html" | "htm" => "text/html",
+        "html" | "htm" | "shtml" | "xhtml" => "text/html",
         "csv" => "text/csv",
         "json" => "application/json",
         "zip" => "application/zip",

@@ -1,5 +1,5 @@
 # html.xpl — a flat line-regex syntax-highlight grammar for HTML.
-#   RUN grammars/html.xpl   (then open an .html/.htm/.xhtml file; HIGHLIGHT on, or HLAUTO on)
+#   RUN grammars/html.xpl   (then open an .html/.htm/.xhtml/.shtml file; HIGHLIGHT on, or HLAUTO on)
 #
 # Per-line, first-match-wins (so comments/strings are listed before tags). Covers: `<!-- -->`
 # comments, tag delimiters + names, quoted attribute values, attribute names, `<!DOCTYPE …>`
@@ -10,7 +10,7 @@
 # light/dark; to recolour one, UNCOMMENT its `# HLCOLOR` line below and edit the RGB (shown at the
 # light-theme default). Where a kind drives two rules (comment, keyword), one HLCOLOR covers both. See HLKINDS.
 
-HLLANG html .html,.htm,.xhtml
+HLLANG html .html,.htm,.xhtml,.shtml
 
 # Comments — two rules, in order. First a complete single-line `<!-- … -->` (LAZY, so it stops at the
 # first `-->` and doesn't swallow following tags, and two comments on a line stay separate). Then, on a

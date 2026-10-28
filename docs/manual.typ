@@ -1825,7 +1825,7 @@ picks which one the preview and PDF use:
 / #raw("DOCTYPE gfm"): GitHub-Flavored *Markdown* — quick formatted notes with headings, lists, tables, and code.
 / #raw("DOCTYPE typst"): *Typst* markup — the full typesetting language, for fine layout, precise control, and mathematics. (This manual is a Typst document, rendered by XyScript itself.)
 / #raw("DOCTYPE text"): *plain text* — the buffer typeset verbatim. Every line break in the file is a line break in the PDF (no trailing #raw("\\") needed, as it would be in Markdown), and no Markdown syntax is interpreted: a leading #raw("#"), #raw("*"), or #raw("-") prints as itself. Long lines still wrap at the margin and leading indentation is kept. This is the mode for a #raw(".txt"), a log, or a source file you want printed as-is.
-/ #raw("DOCTYPE auto"): decide by the file's extension — #raw(".md")/#raw(".markdown") are Markdown, a #raw(".typ") file is Typst, #raw(".html")/#raw(".htm")/#raw(".xhtml") are HTML, and everything else is plain text.
+/ #raw("DOCTYPE auto"): decide by the file's extension — #raw(".md")/#raw(".markdown") are Markdown, a #raw(".typ") file is Typst, #raw(".html")/#raw(".htm")/#raw(".xhtml")/#raw(".shtml") are HTML, and everything else is plain text.
 
 #raw("$DOCTYPE") reports the effective choice, and *Document ▸ Document type* sets it from the menu.
 Reach for Markdown when you want readable formatting, Typst when you need control, and plain text when

@@ -492,9 +492,10 @@ impl RenderKind {
     }
 
     /// The AUTO (extension-driven) render kind for a file path — ignoring any `DOCTYPE` override:
-    /// `.md`/`.markdown` → Gfm, `.typ` → Typst, `.html`/`.htm`/`.xhtml` → Html, everything else
-    /// (incl. no extension) → plain Text. Used by [`Document::render_kind`] and by `FPRINT`, which
-    /// renders a file that isn't open by its own type.
+    /// `.md`/`.markdown` → Gfm, `.typ` → Typst, `.html`/`.htm`/`.xhtml`/`.shtml` → Html, everything
+    /// else (incl. no extension) → plain Text. Used by [`Document::render_kind`] and by `FPRINT`, which
+    /// renders a file that isn't open by its own type. (`.shtml` server-side includes aren't expanded —
+    /// the `<!--#include -->` directives are HTML comments, so they're simply ignored by the renderer.)
     pub fn from_path(path: &std::path::Path) -> RenderKind {
         match path.extension().and_then(|e| e.to_str()) {
             Some(e) if e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown") => {
@@ -504,7 +505,8 @@ impl RenderKind {
             Some(e)
                 if e.eq_ignore_ascii_case("html")
                     || e.eq_ignore_ascii_case("htm")
-                    || e.eq_ignore_ascii_case("xhtml") =>
+                    || e.eq_ignore_ascii_case("xhtml")
+                    || e.eq_ignore_ascii_case("shtml") =>
             {
                 RenderKind::Html
             }
@@ -1132,15 +1134,15 @@ impl Document {
     }
 
     /// The effective render kind for `TOPDF`/preview: the `DOCTYPE` override if set, else by file
-    /// extension (`.md`/`.markdown` → GFM, `.typ` → Typst, `.html`/`.htm`/`.xhtml` → HTML, everything
-    /// else → plain Text).
+    /// extension (`.md`/`.markdown` → GFM, `.typ` → Typst, `.html`/`.htm`/`.xhtml`/`.shtml` → HTML,
+    /// everything else → plain Text).
     pub fn render_kind(&self) -> RenderKind {
         self.render_override.unwrap_or_else(|| self.render_kind_from_ext())
     }
 
     /// The extension-driven render kind (ignores any override): `.md`/`.markdown` → Gfm, `.typ` →
-    /// Typst, `.html`/`.htm`/`.xhtml` → Html, everything else (`.txt`, `.log`, `.rs`, no extension, …)
-    /// → plain Text (rendered verbatim, no Markdown interpretation).
+    /// Typst, `.html`/`.htm`/`.xhtml`/`.shtml` → Html, everything else (`.txt`, `.log`, `.rs`, no
+    /// extension, …) → plain Text (rendered verbatim, no Markdown interpretation).
     fn render_kind_from_ext(&self) -> RenderKind {
         self.path.as_deref().map(RenderKind::from_path).unwrap_or(RenderKind::Text)
     }
@@ -4643,12 +4645,16 @@ mod tests {
         assert_eq!(d.render_kind(), RenderKind::Text);
         d.set_path(PathBuf::from("README"));
         assert_eq!(d.render_kind(), RenderKind::Text);
-        // `.html`/`.htm`/`.xhtml` route to the HTML converter, case-insensitively.
+        // `.html`/`.htm`/`.xhtml`/`.shtml` route to the HTML converter, case-insensitively.
         d.set_path(PathBuf::from("page.html"));
         assert_eq!(d.render_kind(), RenderKind::Html);
         d.set_path(PathBuf::from("page.htm"));
         assert_eq!(d.render_kind(), RenderKind::Html);
         d.set_path(PathBuf::from("page.XHTML"));
+        assert_eq!(d.render_kind(), RenderKind::Html);
+        d.set_path(PathBuf::from("page.shtml"));
+        assert_eq!(d.render_kind(), RenderKind::Html);
+        d.set_path(PathBuf::from("page.SHTML"));
         assert_eq!(d.render_kind(), RenderKind::Html);
         // An override still wins, and clearing it returns to the extension.
         d.set_render_override(Some(RenderKind::Gfm));
