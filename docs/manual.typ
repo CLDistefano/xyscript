@@ -76,18 +76,25 @@
   alphabetically and by topic. The features include:
 
   - Customizable user interface: fonts, colors, 18 included languages and a template for adding others
+  - Highly configurable keyboard, including the ability to hot-swap between multiple layouts, create non-standard modifier keys and add-on functionality such as dead accents. Plus:
+    - An Emacs starter layout
+    - A working proof-of-concept for Vim-like modal editing
+  - Support for both monospaced and proportional fonts in the editing pane
   - Live preview and print-to-PDF for text, HTML, #link("https://github.github.com/gfm/", "Markdown"), and #link("https://typst.app", "Typst") files
+  - Easily edit big files (100 MB plus)
   - Built-in #link("https://writewithharper.com", "Harper") spelling and grammar checking for English, with optional support for multilingual spell-checking via #link("https://hunspell.github.io", "Hunspell")
   - Multiple search facilities (Find, Grep, Bookmarks, word/phrase highlighting)
   - Auto-replace for inserting boilerplate and correcting typos on the fly
   - Built-in dark and light themes, plus an expandable collection of user-defined color schemes
   - Writer's View for distraction-free editing
   - Scratchpad windows for parking notes and snippets alongside the editing pane
-  - Syntax highlighting, user-customizable and extensible
+  - Commands for toggling the XyScript window in and out of full-screen and for moving and resizing the window
   - Multi-cursor/multi-selection editing
-  - Code writing aids including auto-indent, bracket-matching, auto-close brackets and quotes
+  - Coding aids, including:
+    - Syntax highlighting, user-customizable and extensible
+    - Auto-indent, bracket-matching, auto-close brackets and quotes
+    - An Emacs-like compilation mode
   - Editable hex view for binary and other files
-  - Highly configurable keyboard, including the ability to create non-standard modifier keys and add-on functionality such as dead accents
   - Easy access to shell commands via a freely-editable Console tab, and tight integration with the underlying operating system (stdout to editor)
   - A command line that gives immediate access to all features and options
 
@@ -99,7 +106,7 @@
   command-driven interface; it was well-known not only for its speed and ability to
   automate repetitive tasks, but also for its potential to liberate the writer from the tyranny of menu
   and mouse by providing a minimalist environment that aids---or, at least, does not hinder---the
-  creative process. XyScript pays homage to that tradition, and aspires to give it new vitality.
+  creative process. XyScript pays homage to that tradition, and hopes to give it new vitality.
 
   I developed XyScript using Claude Code (Opus 4.8); it's still a work in progress.
   The source code is written in the Rust programming language. The process of creation was (and will continue to be) a slow
@@ -113,7 +120,7 @@
   #v(6pt)
   Carl L. Distefano \
   New York City \
-  September 2026
+  October 2026
 ]
 
 #pagebreak()
