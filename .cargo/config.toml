@@ -1,0 +1,8 @@
+# Cargo aliases for this workspace. Run from the repo root.
+
+[alias]
+# `cargo docs` — regenerate docs/reference.pdf and docs/manual.pdf from their .typ
+# sources through the app's own typst_to_pdf engine (same as `make docs`, no make
+# required). Run it in the SAME commit as any docs/*.typ edit: release.yml ships the
+# committed PDFs verbatim and nothing guards a PDF against its source.
+docs = "run -p xyscript-app --example build_docs_pdf"
