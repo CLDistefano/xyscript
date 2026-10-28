@@ -764,6 +764,45 @@ SUB panezoom
     ENDIF
 ENDSUB
 
+SUB view
+	# DOC: View current file as PDF
+	# DOC: UserVars: $TempDir $PDFreader
+	quiet
+	if not $PDFreader
+		msg Set variable \\$PDFreader in ${XSDIR}${DC}user-variables.xpl
+		ca ${XSDIR}${DC}user-variables.xpl
+		se/t /set PDFreader/; el
+		return	
+	ei
+	local fnm
+	if not $TempDir set TempDir = $XSDIR.$DC."_tmp"
+	if not exists($TempDir) X/nv mkdir $TempDir
+	set fnm = $TempDir.$DC."viewpdf.pdf"
+	if exists($fnm) ernv $fnm
+	print $fnm
+	if $error; pr View: PRINT error.; return; ei
+	zt
+	pr Creating PDF...
+	while not exists($fnm)
+		wait 50
+		if $ETS > 9
+			PR View: timeout.
+			return
+		ei
+	ew
+	pr PDF created.
+	switch $OS
+		case "linux"
+				X/nv $PDFreader $fnm
+		case "macos"
+			X/nv open -a $PDFreader $fnm
+		case "windows"
+			X/nv start $PDFreader $fnm
+		default
+			X/nv $PDFreader $fnm
+	endswitch
+ENDSUB
+
 SUB wipe
 	# DOC: Close all open tabs immediately -- DISCARD CHANGES
 	while $($tc + $d1 + $fs) > 1
@@ -1041,7 +1080,8 @@ SUB v3
 	set dec = "\d".$dec
 	set hexa = upper(hex(asc($ch)))
 	while len($hexa) < 4; set hexa = "0".$hexa; ew
-	set hexa = $dec." | \U+".$hexa
+	if len($hexa) > 4 set hexa = "{".$hexa."}"
+	set hexa = $dec." | \u".$hexa
 	pr $hexa
 ENDSUB
 
@@ -1126,6 +1166,33 @@ SUB togs
 ENDSUB
 
 #####  Utilities  #####
+
+SUB alarm
+	# DOC: Alarm with optional reminder
+	# DOC: Usage: ALARM [h]h:mm [AM|PM] [<reminder text>]
+	quiet
+	local code memo tyme
+	set tyme = $1
+	if contains($(upper($tyme)), "A") set $tyme = replace($(upper($tyme)), "A", " A")
+	if contains($(upper($tyme)), "P") set $tyme = replace($(upper($tyme)), "P", " P")	
+	if $(upper($2)) == "AM" or $(upper($2)) == "PM" set tyme = $tyme." ".$(upper($2))
+	set memo = lstrip(trimleft($*, len($tyme)))
+	if $SW sw off
+	msg /T:1 Alarm set for $tyme
+	# Code for child process to run in background
+	set code = @"
+	while 1
+	if time("h:mm") == "$tyme" or time("h:mm AM") == "$tyme"
+	message /t:"$tyme" $memo
+	break
+	else
+	wait 1000
+	ei
+	ew
+	"@
+	# End child-process code
+	runcode/bg $code
+ENDSUB
 
 SUB arg2
 	# DOC: Send line under cursor as an argument to a command
@@ -1699,6 +1766,31 @@ SUB colors
 		ef
 		runcode $str $rgb_array[0] $rgb_array[1] $rgb_array[2]		
 	endwhile
+ENDSUB
+
+SUB emoji
+	# DOC: List major Unicode emoji characters in a new tab
+	local block emojarray n
+	ne
+	set emojarray = [ \
+["Emoticons: \\u{1F600} – \\u{1F64F}", 128512, 128591], \
+["Transport and Map Symbols: \\u{1F680} – \\u{1F6C5}", 128640, 128709], \
+["Miscellaneous Symbols and Pictographs: \\u{1F300} – \\u{1F5FF}", 127744, 128511], \
+["Supplemental Symbols and Pictographs: \\u{1F900} – \\u{1F9FF}", 129280, 129535], \
+["Symbols and Pictographs Extended-A: \\u{1FA70} – \\u{1FAFF}", 129648, 129791], \
+["Dingbats: \\u2702 – \\u27B0", 9986, 10160], \
+["Miscellaneous Symbols: \\u2600 – \\u26FF", 9728, 9983], \
+["Enclosed Alphanumeric Supplement / Enclosed Ideographic Supplement: \\u{1F200} – \\u{1F2FF}", 127488, 127743], \
+]
+	for block in $emojarray
+		insert $block[0]
+		insert $NL
+		for n = $block[1] to $block[2]
+			insert "\u{$(base($n, 10, 16))} "
+		ef
+		insert "$NL$NL"
+	ef
+	tf
 ENDSUB
 
 SUB GetIP

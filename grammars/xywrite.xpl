@@ -21,11 +21,11 @@ HLCOLOR xyfootnote 92 51 23
 # BETWEEN them is recoloured via the NAMED capture group `xytext` (see HLRULE in the reference —
 # a group's name is the token kind for its span; the rest of the match keeps the rule's kind).
 # This pair rule must precede the single-code rule below so it wins (first-match-wins).
-HLRULE xymode "«MD[^«»]+»(?P<xytext>[^«]*)«MDNM»"
+HLRULE xymode "«MD[^«»]+»(?P<xytext>[^«]*)«MD[^«»]+»"
 # Any remaining single mode code (an unpaired toggle, or one whose partner is on another line).
 HLRULE xymode "«MD[^«»]+»"
 HLCOLOR xymode 238 0 238
-HLCOLOR xytext 70 130 180
-
+HLCOLOR xytext 70 130 180
+HLCOLOR xytext 255 255 255
 HLRULE xyformat "«\w[^«»]+»"
 HLCOLOR xyformat 255 222 173

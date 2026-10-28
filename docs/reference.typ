@@ -1628,6 +1628,7 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("scancode"): show the scan code of a pressed key.
 / #lib("v3"): identify the character under the cursor.
 / #lib("values"): list XyScript's internal variables and their current values.
+/ #lib("emoji"): open a new tab listing the major Unicode emoji blocks (a reference chart to copy from).
 / #lib("uservars"): open the user-variables file.
 / #lib("U2"): open #raw("xyscript.lib") itself for editing --- #raw("U2 <string>") jumps to a match.
 
@@ -1659,6 +1660,7 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("pdfedit"): open a PDF for editing.
 / #lib("pdfread"): open a PDF for reading (#raw("$PDFreader")).
 / #lib("pdfread2"): open a PDF for reading in a second viewer (#raw("$PDFreader2")).
+/ #lib("view"): render the current file to a temporary PDF and open it in #raw("$PDFreader") (prints via #cmd("PRINT"), waits for the PDF, then opens it per platform).
 
 == Editing and transforming text
 
@@ -1706,6 +1708,7 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("getHolidays-us"): add U.S. holidays to the #raw("cal") calendar (invoked by #raw("cal")).
 / #lib("nthday"): find the nth weekday of a month --- e.g. the third Monday.
 / #lib("easter"): compute the date of Easter for a year (Oudin's algorithm).
+/ #lib("alarm"): set an alarm for a clock time with an optional reminder --- #raw("alarm 6:30 PM take a break"); a background process fires the reminder at that time.
 
 == Shell, processes, and sessions
 
@@ -1734,6 +1737,7 @@ Every bundled routine, alphabetical.
 
 / #lib("acc"): apply a dead accent --- run #raw("acc"), then an accent key, then the letter.
 / #lib("af"): open a fresh throwaway file with an auto-generated name.
+/ #lib("alarm"): set an alarm for a clock time with an optional reminder (#raw("alarm [h]h:mm [AM|PM] [text]")); a background process fires the reminder at that time.
 / #lib("apfil"): append the selection to the end of a file.
 / #lib("aptop"): prepend the selection to the top of a file.
 / #lib("arg2"): pass the line under the cursor as an argument to a command.
@@ -1767,6 +1771,7 @@ Every bundled routine, alphabetical.
 
 / #lib("easter"): compute the date of Easter for a year (Oudin's algorithm).
 / #lib("ecp"): express-copy the current file to a target directory (no overwrite prompt).
+/ #lib("emoji"): open a new tab listing the major Unicode emoji blocks (a reference chart to copy from).
 / #lib("emv"): express-move the current file to a target directory (no overwrite prompt).
 
 == F
@@ -1861,6 +1866,7 @@ Every bundled routine, alphabetical.
 
 / #lib("v3"): identify the character under the cursor.
 / #lib("values"): list XyScript's internal variables and their current values.
+/ #lib("view"): render the current file to a temporary PDF and open it in #raw("$PDFreader").
 / #lib("viewimg"): view an image in the Preview pane --- #raw("viewimg pic.png"), or a #raw("DIR") entry, with an optional #raw("zoom%"); #raw("+")/#raw("-") zoom, any other key exits.
 
 == W

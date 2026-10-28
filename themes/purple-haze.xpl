@@ -28,10 +28,10 @@ CMCRCOLOR 125 125 135
 SEPCOLOR 40 40 40
 
 # Selection background colour — R G B, 0-255
-SELBGCOLOR 25 25 55
+SELBGCOLOR 85 26 139
 
 # Selected-text colour — R G B, 0-255
-SELFGCOLOR 120 120 130
+SELFGCOLOR 235 235 220
 
 # Highlight URLs and Ctrl+click to open them — on | off
 URLHIGHLIGHT on
@@ -82,10 +82,10 @@ LNFGCOLOR 19 3 27
 LNBGCOLOR 130 130 180
 
 # EMPH emphasis text colour — R G B, 0-255
-EMPHFGCOLOR 180 120 250
+EMPHFGCOLOR 235 235 220
 
 # EMPH emphasis background colour — R G B, 0-255
-EMPHBGCOLOR 26 70 15
+EMPHBGCOLOR 85 26 139
 
 # Syntax-highlighting palette — derived from this theme's colours (token kind -> R G B)
 HLCOLOR heading 121 121 216

@@ -1,7 +1,8 @@
 # emoji.ar — gemoji-style :shortcode: → emoji auto-replace pairs.
 # Load ON TOP of your own auto-replace map with:  ADDAR emoji.ar
 # Then type e.g. :smile: and trigger AR (e.g. Shift+Space if bound 57=AR;" ").
-# Shortcodes follow the GitHub gemoji standard (github/gemoji). UTF-8 documents only.
+# Shortcodes follow the GitHub gemoji standard (github/gemoji) (with additions).
+# UTF-8 documents only.
 
 # --- Smileys & emotion ---
 :grinning:=😀
@@ -814,3 +815,15 @@
 :stopwatch:=⏱️
 :hourglass:=⌛
 :hourglass_flowing_sand:=⏳
+:clock1:=🕐
+:clock2:=🕑
+:clock3:=🕒
+:clock4:=🕓
+:clock5:=🕔
+:clock6:=🕕
+:clock7:=🕖
+:clock8:=🕗
+:clock9:=🕘
+:clock10:=🕙
+:clock11:=🕚
+:clock12:=🕛
