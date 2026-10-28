@@ -52,6 +52,13 @@
 /// argument and splits like any other verb.)
 const EXEMPT_VERBS: &[&str] = &["X", "XY", "XV"];
 
+/// Verbs that take a `[...]`-delimited block of XPL CODE (not a shell command): `RUNCODE`. Unlike
+/// the shell pass-throughs, the brackets are KEPT in the emitted chunk (the verb handler strips them
+/// and runs the inner RAW, so the code's own `$`-refs resolve when it runs), and the BARE form (no
+/// leading `[`) falls through to ordinary `;`-splitting — so `RUNCODE $var; next` is unchanged, and
+/// only the new `RUNCODE [ … ; … ]` form protects its inner `;`.
+const CODE_EXEMPT_VERBS: &[&str] = &["RUNCODE"];
+
 /// Search / change verbs: their self-delimiting pattern is scanned (not blindly
 /// swallowed) so `;`-chaining can resume after it. See [`search_split`].
 const SEARCH_VERBS: &[&str] =
@@ -217,25 +224,33 @@ fn exempt_split(rest: &str) -> Option<ExemptSplit> {
     }
     let token = &rest[..tok_end];
     // Match an exempt verb alone, or one immediately followed by a switch sigil (`/`/`-`), so
-    // `XISTS`/`XYZZY` don't match.
-    let is_exempt = EXEMPT_VERBS.iter().any(|v| {
-        token.eq_ignore_ascii_case(v)
-            || (token.len() > v.len()
-                // Compare BYTES, never `token[..v.len()]`: the token may begin with a multi-byte
-                // character (a pasted curly quote, say), and slicing a `&str` mid-character PANICS.
-                // The verbs are ASCII, so a byte compare is exactly equivalent and can't panic.
-                && token.as_bytes()[..v.len()].eq_ignore_ascii_case(v.as_bytes())
-                && matches!(token.as_bytes()[v.len()], b'/' | b'-'))
-    });
-    if !is_exempt {
+    // `XISTS`/`XYZZY` don't match. Compare BYTES, never `token[..v.len()]`: the token may begin with
+    // a multi-byte character (a pasted curly quote, say), and slicing a `&str` mid-character PANICS;
+    // the verbs are ASCII, so a byte compare is exactly equivalent and can't panic.
+    let matches_list = |list: &[&str]| {
+        list.iter().any(|v| {
+            token.eq_ignore_ascii_case(v)
+                || (token.len() > v.len()
+                    && token.as_bytes()[..v.len()].eq_ignore_ascii_case(v.as_bytes())
+                    && matches!(token.as_bytes()[v.len()], b'/' | b'-'))
+        })
+    };
+    // Shell verbs (`X`/`XY`/`XV`): STRIP the brackets (the shell wants the bare command) and swallow
+    // the bare, no-bracket form whole. Code verbs (`RUNCODE`): KEEP the brackets (the handler runs the
+    // inner raw) and let the bare form fall through to normal splitting.
+    let (keep_brackets, bare_is_all) = if matches_list(EXEMPT_VERBS) {
+        (false, true)
+    } else if matches_list(CODE_EXEMPT_VERBS) {
+        (true, false)
+    } else {
         return None;
-    }
+    };
 
-    // Skip whitespace to the argument. No leading `[` → bare form: swallow the rest.
+    // Skip whitespace to the argument. No leading `[` → bare form.
     let mut j = tok_end;
     skip_ws(b, &mut j);
     if j >= n || b[j] != b'[' {
-        return Some(ExemptSplit::All);
+        return if bare_is_all { Some(ExemptSplit::All) } else { None };
     }
 
     // Bracketed form: scan to the matching `]` (balanced; `\[`/`\]` escape a literal bracket).
@@ -277,16 +292,22 @@ fn exempt_split(rest: &str) -> Option<ExemptSplit> {
         return Some(ExemptSplit::All);
     };
 
-    // Emit `verb-token <inner>` with the outer brackets stripped and `\[`/`\]` unescaped.
-    let inner = unescape_brackets(&rest[open + 1..close]);
-    let chunk = if inner.is_empty() { token.to_string() } else { format!("{token} {inner}") };
+    let chunk = if keep_brackets {
+        // Code verb: keep the outer brackets verbatim; the verb handler strips them and runs the
+        // inner RAW (so its `$`-refs — and nested `[...]` array literals — resolve at run time).
+        format!("{} {}", token, &rest[open..=close])
+    } else {
+        // Shell verb: emit `verb-token <inner>` with the outer brackets stripped and `\[`/`\]` unescaped.
+        let inner = unescape_brackets(&rest[open + 1..close]);
+        if inner.is_empty() { token.to_string() } else { format!("{token} {inner}") }
+    };
     Some(ExemptSplit::Upto { chunk, resume })
 }
 
 /// Unescape only the bracket-delimiter escapes (`\[`, `\]`) inside an exempt verb's
 /// `[...]` argument. Every other backslash sequence is left verbatim for the shell (so
 /// Windows paths and UNC `\\server` shares round-trip untouched).
-fn unescape_brackets(s: &str) -> String {
+pub(crate) fn unescape_brackets(s: &str) -> String {
     let b = s.as_bytes();
     let n = b.len();
     let mut out = String::with_capacity(n);
@@ -602,6 +623,31 @@ mod tests {
     fn exempt_trailing_junk_after_bracket_swallows_the_rest() {
         // Content after `]` that isn't `;`/EOL → swallow the whole line (nothing dropped).
         assert_eq!(split("X [foo] bar; baz"), vec!["X [foo] bar; baz"]);
+    }
+
+    // ---- code verbs (RUNCODE): brackets KEPT, bare form splits normally ----
+
+    #[test]
+    fn runcode_bracket_keeps_brackets_and_protects_inner_semicolons() {
+        // The point of the feature: `;` inside the block is NOT a separator; chaining resumes after `]`.
+        // Unlike X, the brackets are KEPT so the handler can run the inner raw.
+        assert_eq!(
+            split("RUNCODE [set a=1; pr $a]; PR done"),
+            vec!["RUNCODE [set a=1; pr $a]", "PR done"]
+        );
+        // Runs to EOL without a trailing `;`.
+        assert_eq!(split("RUNCODE [set a=1; pr $a]"), vec!["RUNCODE [set a=1; pr $a]"]);
+        // Attached switch (`/BG`) is carried; nested array-literal brackets survive (balanced).
+        assert_eq!(
+            split("RUNCODE/BG [set a=[1,2,3]; pr $a]; PR $LJ"),
+            vec!["RUNCODE/BG [set a=[1,2,3]; pr $a]", "PR $LJ"]
+        );
+    }
+
+    #[test]
+    fn runcode_bare_form_splits_like_any_verb() {
+        // No leading `[`: the old behavior is unchanged — `;` still chains after `RUNCODE $var`.
+        assert_eq!(split("RUNCODE $code; PR done"), vec!["RUNCODE $code", "PR done"]);
     }
 
     #[test]

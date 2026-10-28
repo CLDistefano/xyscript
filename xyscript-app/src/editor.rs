@@ -12346,6 +12346,24 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn runcode_bracket_runs_inline_code_raw() {
+        // `RUNCODE [ … ]` runs the bracketed body directly — no need to stash it in a variable first,
+        // and the inner `;` is protected by the splitter. Crucially the body runs RAW: a `$`-ref to a
+        // variable the body itself SETS resolves at run time (if it were pre-substituted at dispatch,
+        // `$k` would be empty since `k` isn't set yet).
+        let mut e = ed();
+        e.run_command("RUNCODE [set k = hi; pr $k]");
+        assert_eq!(e.output().last().map(String::as_str), Some("hi"));
+        // A nested array literal survives (balanced brackets) and resolves at run time.
+        e.run_command("RUNCODE [set a = [10, 20, 30]; pr $a[1]]");
+        assert_eq!(e.output().last().map(String::as_str), Some("20"));
+        // The bare (variable) form is unchanged: it substitutes, so the code held in the var runs.
+        e.run_command(r#"SET code = "pr from-var""#);
+        e.run_command("RUNCODE $code");
+        assert_eq!(e.output().last().map(String::as_str), Some("from-var"));
+    }
+
+    #[test]
     fn xsw_parses_and_queues_window_actions() {
         use crate::host::WindowCmd;
         let mut e = ed();

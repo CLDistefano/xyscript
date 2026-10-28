@@ -1378,7 +1378,12 @@ impl Vm<'_, '_> {
         // Substitute `$`-variables in the args *before* clearing `$ERROR`, so a
         // command that reads `$ERROR` (e.g. `PR $ERROR`) sees the value as it was
         // on entry. (Search parses from `raw_args` instead — see below.)
-        let mut args = self.subst(raw_args);
+        // Exception: `RUNCODE [inline code]` runs its bracketed body RAW (its own `$`-refs resolve at
+        // run time), so skip the premature substitution — it would both expand too early and risk a
+        // double-eval of any `$(…)` inside. The non-bracket `RUNCODE $var` form still substitutes.
+        let runcode_block =
+            base.eq_ignore_ascii_case("RUNCODE") && raw_args.trim_start().starts_with('[');
+        let mut args = if runcode_block { String::new() } else { self.subst(raw_args) };
 
         // Point-and-shoot: a file-argument command with NO argument, issued while the caret sits on a
         // file in a DIR listing, operates on THAT file (XyWrite-style). The host returns a path only
@@ -5451,17 +5456,27 @@ impl Vm<'_, '_> {
                     self.exec_run(&args)
                 }
             }
-            // `RUNCODE <code>` — run XPL text directly (an `eval`). The args are already
-            // `$`-substituted, so `RUNCODE $var` runs the code held in `$var` (single-pass, so the
-            // code's OWN `$`-refs resolve when it runs). `/BG` backgrounds it (the code is piped to a
-            // `$ED --run -` child via stdin); `/R:<var>` returns its output.
+            // `RUNCODE <code>` — run XPL text directly (an `eval`). Two forms:
+            //   • `RUNCODE $var` / bare: args are `$`-substituted, so the code held in `$var` runs
+            //     (single-pass, so the code's OWN `$`-refs resolve when it runs).
+            //   • `RUNCODE [inline code]`: the bracketed body runs RAW — no pre-substitution, and the
+            //     splitter kept the `;` inside intact — so you can write a loop inline without first
+            //     saving it to a variable. Nested `[...]` (array literals) and `\[`/`\]` are honored.
+            // `/BG` backgrounds it (the code is piped to a `$ED --run -` child via stdin); `/R:<var>`
+            // returns its output.
             "RUNCODE" => {
+                let trimmed = raw_args.trim();
+                let code = if trimmed.len() >= 2 && trimmed.starts_with('[') && trimmed.ends_with(']') {
+                    crate::splitter::unescape_brackets(&trimmed[1..trimmed.len() - 1])
+                } else {
+                    args.clone()
+                };
                 if vswitches.iter().any(|s| s.eq_ignore_ascii_case("BG")) {
                     let return_var = return_var_switch(&vswitches);
-                    self.host_op(EditorOp::RunBackgroundCode { code: args.clone(), return_var })?;
+                    self.host_op(EditorOp::RunBackgroundCode { code, return_var })?;
                     Ok(Flow::Next)
                 } else {
-                    self.run_source_sync(&args, &[], false)
+                    self.run_source_sync(&code, &[], false)
                 }
             }
             // Interactive input: pause the script and surface a request to the

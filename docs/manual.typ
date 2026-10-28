@@ -2190,8 +2190,11 @@ so only a trailing space-backslash continues the line.
 
 Save a script as a #raw(".xpl") file and run it with #raw("RUN <file>"). Variants: #raw("RUN/BG") runs
 it in the background — its own process, so it cannot see or change your live document — and
-#raw("RUN/R:<var>") captures its output into a variable. #raw("RUNCODE") runs XPL held in a variable,
-and #raw("RUNHERE") runs the fenced block under the cursor. A script named #raw("startup.xpl") beside
+#raw("RUN/R:<var>") captures its output into a variable. #raw("RUNCODE") runs XPL directly — either
+held in a variable (#raw("RUNCODE $code")) or written inline in brackets (#raw("RUNCODE [while 1; rk k;
+if $SC==1 break; pr You pressed $k; ew]")); the bracketed body runs as-is, so its `$`-refs resolve as it
+runs and the `;` between statements is protected, which lets you fire off a loop without first stashing
+it in a variable. #raw("RUNHERE") runs the fenced block under the cursor. A script named #raw("startup.xpl") beside
 the program runs automatically at launch — the place to load your library, set your colors, and bind
 your keys.
 
