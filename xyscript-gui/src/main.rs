@@ -124,7 +124,7 @@ fn editor_cosmic_style(style: FontStyle) -> (cosmic_text::Weight, cosmic_text::S
 use xyscript_app::document::RenderKind;
 use xyscript_app::highlight::{Token, TokenKind};
 use xyscript_app::host::{
-    CaretShape, CloseAnswer, ColorTarget, FontPickerKind, FontStyle, OpenAnswer, VerifyChoice,
+    CaretShape, CloseAnswer, ColorTarget, FontPickerKind, FontStyle, OpenAnswer, VerifyChoice, WindowCmd,
 };
 use xyscript_app::boot::resolve_startup_script;
 use xyscript_app::Editor as XyEditor;
@@ -7245,6 +7245,11 @@ impl GuiApp {
     /// Whether the title-bar drag strip was grabbed this frame (consumed; the runtime starts the move).
     fn take_window_drag(&mut self) -> bool {
         std::mem::take(&mut self.start_window_drag)
+    }
+
+    /// Drain a pending `XSW` window action (maximize / move / resize / …) for the runtime to apply.
+    fn take_window_cmd(&mut self) -> Option<WindowCmd> {
+        self.editor.take_window_cmd()
     }
 
     /// F3 / Shift+F3 — repeat the last search forward / backward (Find Next / Find Prev). A bare

@@ -19,6 +19,7 @@ use xyscript_xpl::{
 
 // Re-exported so the GUI (which doesn't depend on `xyscript-xpl` directly) can match on it.
 pub use xyscript_xpl::CaretShape;
+pub use xyscript_xpl::WindowCmd;
 pub use xyscript_xpl::UnderlineStyle;
 pub use crate::text::BalMatch;
 pub use xyscript_xpl::LintFixChoices;
@@ -2853,6 +2854,9 @@ pub struct AppHost {
     history_draft: String,
     /// `HISTORY`/`HI [arg]` asked the GUI to open the picker (with this filter arg); GUI drains it.
     history_request: Option<String>,
+    /// `XSW <action>` queued a window-management action; the GUI runtime drains it and applies it to
+    /// the OS window (the headless host can't — it has no window). At most one pending per frame.
+    window_cmd_request: Option<WindowCmd>,
     /// `MENU [letter]` — one-shot request for the GUI to drive the menu bar by keyboard. Outer
     /// `Some` = a request is pending this frame; inner `None` = bare `MENU` (toggle), inner
     /// `Some("f")` = open the top menu with accelerator letter `f`.
@@ -3406,6 +3410,7 @@ impl AppHost {
             history_pos: None,
             history_draft: String::new(),
             history_request: None,
+            window_cmd_request: None,
             menu_kbd_request: None,
             menu_bar: true, // shown by default
             visible_returns: false,
@@ -5011,6 +5016,10 @@ impl AppHost {
     /// The pending `HISTORY`/`HI` picker request (with its filter arg), if any; consumes it.
     pub fn take_history_request(&mut self) -> Option<String> {
         self.history_request.take()
+    }
+    /// A pending `XSW` window action since the last poll. The GUI runtime drains + applies it.
+    pub fn take_window_cmd(&mut self) -> Option<WindowCmd> {
+        self.window_cmd_request.take()
     }
     /// A pending `MENU` request since the last poll (`Some(None)` = bare toggle, `Some(Some("f"))`
     /// = open the top menu with accelerator `f`). The GUI drains + applies it.
@@ -11949,6 +11958,20 @@ impl Host for AppHost {
             }
             EditorOp::ErrorNav { forward } => {
                 return self.error_nav(forward);
+            }
+            EditorOp::Window(cmd) => {
+                // The `*Others` actions minimize/restore OTHER apps' windows — a Windows-only
+                // capability. On other platforms, report rather than silently queue a no-op.
+                #[cfg(not(windows))]
+                if matches!(
+                    cmd,
+                    WindowCmd::MinimizeOthers | WindowCmd::RestoreOthers | WindowCmd::ToggleOthers
+                ) {
+                    return Ok(Value::str("XSW: minall/restall/togall are Windows-only"));
+                }
+                // Queue it for the GUI runtime (which owns the OS window); headless hosts no-op.
+                self.window_cmd_request = Some(cmd);
+                return Ok(Value::str(""));
             }
             EditorOp::LoadAutoReplace { path, replace } => {
                 let verb = if replace { "LoadAR" } else { "AddAR" };

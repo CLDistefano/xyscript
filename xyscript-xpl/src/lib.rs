@@ -35,7 +35,7 @@ pub use host::{
     parse_mda_attr, ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE, BinderSource, CalcContext, CaretShape, CaseKind,
     ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly, DirOpts, DirOrder,
     DocTypeReq, EditorOp, FontMode, HelpResponse, Host, LintFixChoices, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, PathPlace, PersistKind,
-    PvMarginSide, SearchSpec, SortSpec, StubHost, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
+    PvMarginSide, SearchSpec, SortSpec, StubHost, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle, WindowCmd,
 };
 pub use library::{parse_lib, LibSource, Library, Routine};
 pub use parser::{parse as parse_program, ParseError};

@@ -29,6 +29,7 @@ use xyscript_kbd::normalize::{host_table, ScancodeMap, ScancodeTable, WIN_E0};
 use xyscript_kbd::{Disposition, Keymap, Resolver};
 
 use crate::GuiApp;
+use xyscript_app::host::WindowCmd;
 
 /// Canonical codes for F1–F12 (set-1 scancodes; F11/F12 = 87/88). Always-capture (no
 /// modifier required) because they never carry text.
@@ -429,6 +430,10 @@ struct Handler {
     /// Whether the OS title bar is currently shown on the main window. Synced to `TITLEBAR`/
     /// `$TITLEBAR` each loop so a toggle applies live via `set_decorations`.
     decorations: bool,
+    /// Raw HWNDs minimized by the last `XSW minall` (Windows-only), so `XSW restall` can restore
+    /// exactly that set. Non-empty also means "minall is active" for `XSW togall`. Session-only.
+    #[cfg(windows)]
+    minimized_others: Vec<isize>,
     /// Ids of OUR windows (main / TXT / DIR-W / Find / scratchpads) that currently hold OS focus.
     /// Non-empty ⇒ some XyScript window is active, so `DIMONBLUR` should NOT dim the main window (only
     /// a switch to ANOTHER app dims it). Updated on every `Focused` event.
@@ -474,6 +479,8 @@ impl Handler {
             find_size: None,
             mods: winit::keyboard::ModifiersState::empty(),
             decorations: true,
+            #[cfg(windows)]
+            minimized_others: Vec::new(),
             focused_windows: HashSet::new(),
             scratch: Vec::new(),
             next_scratch_num: 0,
@@ -2559,6 +2566,153 @@ fn save_geometry(window: &Window, name: &str) {
     );
 }
 
+/// Apply an `XSW` window action to the main window. Self-window ops (maximize/restore/move/resize/
+/// center) are cross-platform; `minall`/`restall`/`togall` are Windows-only (the headless host already
+/// reports them as unsupported elsewhere, so they never reach here off Windows).
+#[cfg(windows)]
+fn apply_window_cmd(window: &Window, event_loop: &ActiveEventLoop, cmd: WindowCmd, minimized: &mut Vec<isize>) {
+    match cmd {
+        WindowCmd::MinimizeOthers => minimize_others(window, minimized),
+        WindowCmd::RestoreOthers => restore_others(minimized),
+        WindowCmd::ToggleOthers => {
+            if minimized.is_empty() {
+                minimize_others(window, minimized);
+            } else {
+                restore_others(minimized);
+            }
+        }
+        other => apply_self_window_cmd(window, event_loop, other),
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_window_cmd(window: &Window, event_loop: &ActiveEventLoop, cmd: WindowCmd) {
+    apply_self_window_cmd(window, event_loop, cmd);
+}
+
+/// The cross-platform, self-window subset of `XSW`.
+fn apply_self_window_cmd(window: &Window, event_loop: &ActiveEventLoop, cmd: WindowCmd) {
+    match cmd {
+        WindowCmd::Maximize => window.set_maximized(true),
+        WindowCmd::Restore => {
+            window.set_minimized(false);
+            window.set_maximized(false);
+        }
+        WindowCmd::ToggleMax => window.set_maximized(!window.is_maximized()),
+        WindowCmd::Move { dx, dy } => {
+            if let Ok(pos) = window.outer_position() {
+                // Clamp onto a real monitor (reusing the startup/restore clamp) so repeated nudges
+                // can't march the window off every display.
+                let logical: LogicalSize<f64> = window.outer_size().to_logical(window.scale_factor());
+                let (_, _, x, y) =
+                    clamp_geometry(event_loop, logical.width, logical.height, pos.x + dx, pos.y + dy);
+                window.set_outer_position(PhysicalPosition::new(x, y));
+            }
+        }
+        WindowCmd::Resize { percent } => {
+            // Resizing a maximized window would be a no-op against the maximized rect — restore first.
+            if window.is_maximized() {
+                window.set_maximized(false);
+            }
+            let scale = window.scale_factor();
+            let inner: LogicalSize<f64> = window.inner_size().to_logical(scale);
+            let factor = (100.0 + percent as f64) / 100.0;
+            let want_w = (inner.width * factor).max(200.0);
+            let want_h = (inner.height * factor).max(150.0);
+            // Keep it on-monitor and under the surface/GPU cap (clamp uses the current position).
+            let pos = window.outer_position().unwrap_or(PhysicalPosition::new(0, 0));
+            let (w, h, _, _) = clamp_geometry(event_loop, want_w, want_h, pos.x, pos.y);
+            let _ = window.request_inner_size(LogicalSize::new(w, h));
+        }
+        WindowCmd::Center => {
+            let mon = window.current_monitor().or_else(|| event_loop.primary_monitor());
+            if let Some(m) = mon {
+                let msz = m.size();
+                let mp = m.position();
+                let wsz = window.outer_size();
+                let x = mp.x + ((msz.width as i32 - wsz.width as i32) / 2).max(0);
+                let y = mp.y + ((msz.height as i32 - wsz.height as i32) / 2).max(0);
+                window.set_outer_position(PhysicalPosition::new(x, y));
+            }
+        }
+        // The `*Others` variants are handled by `apply_window_cmd` on Windows and never reach here.
+        WindowCmd::MinimizeOthers | WindowCmd::RestoreOthers | WindowCmd::ToggleOthers => {}
+    }
+}
+
+/// Minimize every other top-level app window (Windows-only), remembering the set so `restore_others`
+/// can bring back exactly those. Approximates the "alt-tab-able" windows: visible, not already
+/// minimized, un-owned, not tool windows, and titled.
+#[cfg(windows)]
+fn minimize_others(window: &Window, minimized: &mut Vec<isize>) {
+    const GW_OWNER: u32 = 4;
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
+    const SW_MINIMIZE: i32 = 6;
+
+    let ours = main_hwnd(window).unwrap_or(0);
+    let mut all: Vec<isize> = Vec::new();
+    unsafe {
+        winwin::EnumWindows(enum_collect, &mut all as *mut Vec<isize> as isize);
+    }
+    minimized.clear();
+    for hwnd in all {
+        if hwnd == ours || hwnd == 0 {
+            continue;
+        }
+        unsafe {
+            if winwin::IsWindowVisible(hwnd) == 0 || winwin::IsIconic(hwnd) != 0 {
+                continue;
+            }
+            if winwin::GetWindow(hwnd, GW_OWNER) != 0 {
+                continue; // owned (dialog/palette) — leave to its owner
+            }
+            if winwin::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW != 0 {
+                continue; // tool window — not an app window
+            }
+            if winwin::GetWindowTextLengthW(hwnd) == 0 {
+                continue; // untitled helper (Program Manager, IME, etc.)
+            }
+            winwin::ShowWindow(hwnd, SW_MINIMIZE);
+        }
+        minimized.push(hwnd);
+    }
+}
+
+/// Restore the windows a prior `minimize_others` minimized, newest first, and clear the set.
+#[cfg(windows)]
+fn restore_others(minimized: &mut Vec<isize>) {
+    const SW_RESTORE: i32 = 9;
+    for hwnd in minimized.drain(..).rev() {
+        unsafe {
+            winwin::ShowWindow(hwnd, SW_RESTORE);
+        }
+    }
+}
+
+/// `EnumWindows` callback: push each top-level HWND into the `Vec<isize>` behind `lparam`.
+#[cfg(windows)]
+extern "system" fn enum_collect(hwnd: isize, lparam: isize) -> i32 {
+    // Safety: `lparam` is the `*mut Vec<isize>` passed by `minimize_others`, valid for the call.
+    let out = unsafe { &mut *(lparam as *mut Vec<isize>) };
+    out.push(hwnd);
+    1 // keep enumerating
+}
+
+#[cfg(windows)]
+mod winwin {
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
+        pub fn IsWindowVisible(hwnd: isize) -> i32;
+        pub fn IsIconic(hwnd: isize) -> i32;
+        pub fn GetWindow(hwnd: isize, cmd: u32) -> isize;
+        pub fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
+        pub fn GetWindowTextLengthW(hwnd: isize) -> i32;
+        pub fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+    }
+}
+
 /// Clamp a restored geometry so the window fits on an actual display. A size larger than the
 /// surface's max texture extent makes `Surface::configure` panic (wgpu validation), and a window
 /// bigger than its monitor is never useful — so cap each dimension to the target monitor's size and
@@ -3088,6 +3242,15 @@ impl ApplicationHandler for Handler {
             // The title-bar drag strip was grabbed → start an OS-driven window move.
             if self.app.take_window_drag() {
                 let _ = window.drag_window();
+            }
+            // `XSW` window-management action, applied to the main window (self-window ops are
+            // cross-platform; minall/restall/togall are Windows-only — see `apply_window_cmd`).
+            if let Some(cmd) = self.app.take_window_cmd() {
+                #[cfg(windows)]
+                apply_window_cmd(window, event_loop, cmd, &mut self.minimized_others);
+                #[cfg(not(windows))]
+                apply_window_cmd(window, event_loop, cmd);
+                window.request_redraw();
             }
         }
         // Open/close the TXT window to match the script's parked state (needs the event loop).

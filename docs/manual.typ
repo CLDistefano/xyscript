@@ -334,6 +334,17 @@ With #raw("TITLEBAR off") there is no title bar to grab, so hold #kbd("Ctrl") an
 window to move it — the same as dragging a title bar. (A plain #kbd("Ctrl")+click still adds a caret; only
 a #kbd("Ctrl")+drag moves the window.)
 
+#raw("XSW") drives the window from the keyboard — useful on a binding when your hands are on the keys.
+#raw("XSW max"), #raw("XSW rest"), and #raw("XSW tog") maximize, restore, and toggle. #raw("XSW mv")
+nudges the window a few pixels at a time — #raw("XSW mv left 40"), or #raw("XSW mv right") for the
+default step — in any of the four directions (`left`/`right`/`up`/`down`), always clamped so the window
+can't march off your monitors. #raw("XSW sz +10") grows the window by ten percent and #raw("XSW sz -10")
+shrinks it (the sign is what matters; bare #raw("XSW sz") grows by the default ten), and #raw("XSW ctr")
+re-centers it on whichever monitor it is on. On Windows only, #raw("XSW minall") clears your desktop by
+minimizing every *other* application's windows, #raw("XSW restall") brings back exactly the set it
+minimized, and #raw("XSW togall") flips between the two — there is no portable way to touch other apps'
+windows, so those three do nothing on macOS or Linux.
+
 == The menu bar
 
 A one-line orientation to each of the eight menus. Every item simply runs an ordinary XyScript command —

@@ -605,6 +605,10 @@ impl Editor {
     pub fn take_history_request(&mut self) -> Option<String> {
         self.host.take_history_request()
     }
+    /// A pending `XSW` window action since the last poll. The GUI runtime drains + applies it.
+    pub fn take_window_cmd(&mut self) -> Option<crate::host::WindowCmd> {
+        self.host.take_window_cmd()
+    }
     /// A pending `MENU` request since the last poll (`Some(None)` = toggle, `Some(Some("f"))` =
     /// open the top menu with accelerator `f`). The GUI drains + applies it.
     pub fn take_menu_kbd_request(&mut self) -> Option<Option<String>> {
@@ -12339,6 +12343,43 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         assert_eq!(e.job_count(), 0, "COMPILE job should have finished");
+    }
+
+    #[test]
+    fn xsw_parses_and_queues_window_actions() {
+        use crate::host::WindowCmd;
+        let mut e = ed();
+        e.run_command("XSW max");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Maximize));
+        e.run_command("XSW rest");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Restore));
+        e.run_command("XSW tog");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::ToggleMax));
+        // mv: direction + pixels, and a default nudge when the count is omitted.
+        e.run_command("XSW mv left 30");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Move { dx: -30, dy: 0 }));
+        e.run_command("XSW mv down 12");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Move { dx: 0, dy: 12 }));
+        e.run_command("XSW mv right");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Move { dx: 20, dy: 0 }));
+        // sz: signed percent; bare + / no sign grows, - shrinks; default +10.
+        e.run_command("XSW sz +15");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Resize { percent: 15 }));
+        e.run_command("XSW sz -10");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Resize { percent: -10 }));
+        e.run_command("XSW sz");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Resize { percent: 10 }));
+        e.run_command("XSW ctr");
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::Center));
+        // The *Others family: queued on Windows, reported-not-queued elsewhere.
+        e.run_command("XSW minall");
+        #[cfg(windows)]
+        assert_eq!(e.host_mut().take_window_cmd(), Some(WindowCmd::MinimizeOthers));
+        #[cfg(not(windows))]
+        assert_eq!(e.host_mut().take_window_cmd(), None);
+        // A bad subcommand traps and queues nothing.
+        e.run_command("XSW wat");
+        assert_eq!(e.host_mut().take_window_cmd(), None);
     }
 
     #[test]

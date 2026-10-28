@@ -27,7 +27,7 @@ use crate::expr::{self, EvalContext, Expr};
 use crate::host::{
     BinderSource, CalcContext, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
     DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, PersistKind, PvMarginSide,
-    SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle,
+    SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle, WindowCmd,
 };
 use crate::ir::{self, Instr};
 use crate::library::{parse_lib, validate_names, LibSource, Library, Routine};
@@ -1696,6 +1696,53 @@ impl Vm<'_, '_> {
             }
             "PERR" => {
                 self.host_op(EditorOp::ErrorNav { forward: false })?;
+                Ok(Flow::Next)
+            }
+            "XSW" => {
+                // XyScript window management. Tier 1 (max/rest/tog/mv/sz/ctr) is cross-platform; the
+                // *all variants (minall/restall/togall) minimize OTHER apps' windows (Windows-only).
+                let a = args.trim();
+                let mut it = a.split_whitespace();
+                let sub = it.next().unwrap_or("").to_ascii_lowercase();
+                let cmd = match sub.as_str() {
+                    "max" | "maximize" => Some(WindowCmd::Maximize),
+                    "rest" | "restore" => Some(WindowCmd::Restore),
+                    "tog" | "toggle" => Some(WindowCmd::ToggleMax),
+                    "minall" => Some(WindowCmd::MinimizeOthers),
+                    "restall" => Some(WindowCmd::RestoreOthers),
+                    "togall" => Some(WindowCmd::ToggleOthers),
+                    "ctr" | "center" | "centre" => Some(WindowCmd::Center),
+                    "mv" | "move" => {
+                        let dir = it.next().unwrap_or("").to_ascii_lowercase();
+                        // Default nudge when no pixel count is given — handy on a bound key.
+                        let n: i32 = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(20).abs();
+                        match dir.as_str() {
+                            "l" | "left" => Some(WindowCmd::Move { dx: -n, dy: 0 }),
+                            "r" | "right" => Some(WindowCmd::Move { dx: n, dy: 0 }),
+                            "u" | "up" => Some(WindowCmd::Move { dx: 0, dy: -n }),
+                            "d" | "down" => Some(WindowCmd::Move { dx: 0, dy: n }),
+                            _ => None,
+                        }
+                    }
+                    // `+n` or bare `n` grows; `-n` shrinks. i32 parse accepts the optional sign.
+                    "sz" | "size" => it
+                        .next()
+                        .unwrap_or("10")
+                        .parse::<i32>()
+                        .ok()
+                        .map(|percent| WindowCmd::Resize { percent }),
+                    _ => None,
+                };
+                match cmd {
+                    Some(c) => {
+                        self.host_op(EditorOp::Window(c))?;
+                    }
+                    None => self.fail_trap(
+                        1,
+                        "XSW: usage — max|rest|tog | minall|restall|togall | ctr | mv l|r|u|d [n] | sz [+|-]n"
+                            .to_string(),
+                    ),
+                }
                 Ok(Flow::Next)
             }
             "LOADAR" => {

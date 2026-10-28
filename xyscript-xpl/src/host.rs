@@ -99,6 +99,31 @@ pub enum MsgColorSlot {
     OkBg,
 }
 
+/// Window-management actions for `XSW` (XyScript Window). Applied by the GUI runtime against the OS
+/// window; the headless host only queues them. Tier 1 (self-window) is cross-platform; the
+/// `*Others` variants (minimize/restore every *other* app's windows) are Windows-only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowCmd {
+    /// Maximize this window.
+    Maximize,
+    /// Un-maximize (and un-minimize) this window.
+    Restore,
+    /// Flip between maximized and restored.
+    ToggleMax,
+    /// Nudge this window by `(dx, dy)` physical pixels (right/down positive). Clamped onto a monitor.
+    Move { dx: i32, dy: i32 },
+    /// Grow (`percent` > 0) or shrink (`percent` < 0) this window's size by that percentage.
+    Resize { percent: i32 },
+    /// Center this window on its current monitor.
+    Center,
+    /// Minimize every other top-level app window (Windows-only). Remembers the set for `RestoreOthers`.
+    MinimizeOthers,
+    /// Restore the windows a prior `MinimizeOthers` minimized (Windows-only).
+    RestoreOthers,
+    /// Toggle between `MinimizeOthers` and `RestoreOthers` (Windows-only).
+    ToggleOthers,
+}
+
 /// Editor/text operations the interpreter can request. The host (Stage 2's text
 /// engine, or the test stub) applies them. The set grows as editor verbs are
 /// registered.
@@ -484,6 +509,9 @@ pub enum EditorOp {
     /// `NERR` / `PERR` — step to the next / previous location in the most recent COMPILE/GREP results
     /// tab and jump to its source. `forward` = `NERR`.
     ErrorNav { forward: bool },
+    /// `XSW <action>` — a window-management action (maximize/restore/move/resize/…). Queued by the
+    /// headless host; the GUI runtime applies it to the OS window.
+    Window(WindowCmd),
     /// `LoadAR <file>` / `AddAR <file>` — load `key=replacement` pairs from a file into the
     /// auto-replace map. `replace` clears the map first (the base, like `LOADLIB`); otherwise the
     /// pairs MERGE into what's there (augment, like `ADDLIB`). `#`/`;` comments + blank lines skipped;
