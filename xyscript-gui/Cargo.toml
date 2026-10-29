@@ -3,7 +3,7 @@
 # (own [workspace]); promote to a workspace member once solid.
 [package]
 name = "xyscript-gui"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 publish = false
 

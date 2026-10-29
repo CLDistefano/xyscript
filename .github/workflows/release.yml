@@ -42,7 +42,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Pin to an OLD LTS, not ubuntu-latest: the build runner's glibc becomes the
+          # binary's MINIMUM runtime glibc (glibc is backward- but not forward-compatible).
+          # `ubuntu-latest` silently drifting to a newer image bumped the floor 2.39 -> 2.43
+          # between v0.1.9 and v0.1.10, so the binary wouldn't start on common distros.
+          # 22.04 fixes the floor at glibc 2.35 (Ubuntu 22.04+, Debian 12, most current distros).
+          - os: ubuntu-22.04
             name: linux-x86_64
             bin: xyscript-gui
             exe: xyscript
