@@ -2785,6 +2785,15 @@ The active layout is #raw("$KBDMODE") and the full list is #raw("$KBDMODES"), so
 display can read them. (These layout slots live in #raw("startup.xpl"), alongside #raw("LOADKBD"); they
 are not written by #raw("SAVECFG").)
 
+One more special makes the modal setup above tidier: #raw("$XKBDMODE") is the layout you were in just
+before the last #raw("KBDMODE") that changed modes. Bind a single key to #raw("KBDMODE $XKBDMODE") and it
+returns you to the previous layout — and because it remembers only *mode-changing* switches, the same key
+bounces between your two most recent layouts (just as #raw("BUFALT") bounces between two buffers). So a
+generic #kbd("Esc") #sym.arrow.r #raw("KBDMODE $XKBDMODE") binding, dropped into every layout, always
+backs out to wherever you came from, no matter how many layouts you have. Before your first switch
+#raw("$XKBDMODE") is empty, and #raw("KBDMODE") with an empty name simply reports the current layout, so
+the binding is harmless then too.
+
 #tip("Layouts are keymaps, not modes-with-memory")[A richer *modal* editor in the Vim sense — where
 #raw("d") waits for a motion and #raw("3dd") repeats — needs a little state machine on top of the
 layouts, which you can build in XPL (a key reads the next keystroke with #raw("READKEY")). The layout

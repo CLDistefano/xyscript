@@ -628,7 +628,7 @@ self-contained element to convert.
 == Keyboard files and binders
 
 / #cmd("LOADKBD") / #cmd("SAVEKBD") / #cmd("CLEARKBD"): load / save / reset the keyboard map. #cmd("KBDDOC"): annotate a KBD file with a key-name column.
-/ #cmd("ADDKBD") / #cmd("KBDMODE"): load a `.kbd` into a named, resident layout slot (`ADDKBD <name> <file>`) and switch to it instantly (`KBDMODE <name>`) — multi-layout / modal switching. #sv("KBDMODE") is the active layout, #sv("KBDMODES") lists the loaded ones.
+/ #cmd("ADDKBD") / #cmd("KBDMODE"): load a `.kbd` into a named, resident layout slot (`ADDKBD <name> <file>`) and switch to it instantly (`KBDMODE <name>`) — multi-layout / modal switching. #sv("KBDMODE") is the active layout, #sv("KBDMODES") lists the loaded ones, and #sv("XKBDMODE") is the one you came from — bind `KBDMODE $XKBDMODE` to toggle back to the previous layout.
 / #cmd("LDTX") / #cmd("LDSC", "LDPM"): load a text / script binder register.
 / #cmd("SAVELDTX") / #cmd("SAVELDSC", "SAVELDPM"): save the text / script binder registers as a runnable program.
 
@@ -1263,6 +1263,7 @@ plain alphabetical index.
 / #sv("CF") / #sv("CFA"): path of the last config loaded with `LOADCFG` / the file `AUTOCFG` is tracking (empty if off).
 / #sv("KB"): full path of the last keymap loaded with `LOADKBD`.
 / #sv("KBDMODE") / #sv("KBDMODES"): the active keyboard-layout slot, and a space-separated list of all resident layout slots (see #cmd("ADDKBD") / #cmd("KBDMODE")).
+/ #sv("XKBDMODE"): the layout active just before the last `KBDMODE` that changed modes (empty if there was none). Bind `KBDMODE $XKBDMODE` to a key to return to the previous layout; because it tracks only mode-changing switches, that binding ping-pongs between your two most recent layouts, and when there is no previous one it harmlessly reports the current layout instead.
 / #sv("LANG"): path of the loaded `LANG` UI-translation catalog (empty when the interface is built-in English).
 / #sv("ED") / #sv("XSDIR"): full path of the running XyScript program / the folder it lives in.
 / #sv("VE") / #sv("OS"): the XyScript version / the operating-system name.
@@ -1605,6 +1606,7 @@ Every special variable in one list, for quick lookup.
 / #sv("WRAPINDENT"): hanging indent for wrapped lines on.
 / #sv("WS"): visible whitespace on.
 / #sv("XB"): deletion-buffer contents.
+/ #sv("XKBDMODE"): layout active before the last mode-changing `KBDMODE` (empty if none); bind `KBDMODE $XKBDMODE` to return to the previous layout.
 / #sv("XO"): last shell command's output.
 / #sv("XSDIR"): folder of the XyScript program.
 / #sv("YDAY"): day of year.

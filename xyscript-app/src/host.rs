@@ -2696,6 +2696,12 @@ pub struct AppHost {
     /// with (embedded default or a startup `LOADKBD`). A plain `LOADKBD`/`CLEARKBD` replaces whichever
     /// slot is active; `KBDMODE` selects another resident slot.
     kbd_mode: String,
+    /// Name of the layout slot that was active immediately BEFORE the last `KBDMODE` that actually
+    /// changed modes (`$XKBDMODE`). Empty until the first real switch. Only a mode-changing `KBDMODE`
+    /// updates it (a no-op `KBDMODE <current>` leaves it alone), so binding `KBDMODE $XKBDMODE` bounces
+    /// between the two most recent layouts — and with no previous layout the empty value makes
+    /// `KBDMODE $XKBDMODE` simply report the current one.
+    prev_kbd_mode: String,
     /// The last feedback message surfaced to the status line (`$LS`); the editor records it.
     last_status_line: String,
     /// XPL awaiting execution by the editor after the current script returns (can't
@@ -3345,6 +3351,7 @@ impl AppHost {
             last_kbd_error: None,
             kbd_modes: HashMap::new(),
             kbd_mode: DEFAULT_KBD_MODE.to_string(),
+            prev_kbd_mode: String::new(),
             last_status_line: String::new(),
             last_output: String::new(),
             pending_run: Vec::new(),
@@ -10216,6 +10223,11 @@ impl Host for AppHost {
         match self.kbd_modes.get(name) {
             Some(km) => {
                 let km = km.clone();
+                // Record where we came from ONLY on a real change, so `KBDMODE $XKBDMODE` ping-pongs
+                // between the two most recent layouts instead of getting stuck after a no-op switch.
+                if name != self.kbd_mode {
+                    self.prev_kbd_mode = self.kbd_mode.clone();
+                }
                 self.kbd_mode = name.to_string();
                 self.pending_kbd = Some(km); // editor post_run installs into resolver + GUI capture
                 Ok(())
@@ -15225,6 +15237,9 @@ impl Host for AppHost {
             // Active keyboard-layout slot (`$KBDMODE`) and the space-joined list of resident slots
             // (`$KBDMODES`) — for modal / multi-layout switching (KBD / KBDMODE).
             "KBDMODE" => Some(Value::str(self.kbd_mode.clone())),
+            // The layout active just before the last mode-changing KBDMODE; empty if there was none.
+            // Enables a generic return-to-previous binding: `nn=KBDMODE $XKBDMODE`.
+            "XKBDMODE" => Some(Value::str(self.prev_kbd_mode.clone())),
             "KBDMODES" => Some(Value::str(self.kbd_mode_names().join(" "))),
             "LS" => Some(Value::str(self.last_status_line.clone())),
             // The running XyScript executable's full path (`$ED`) and its directory (`$XSDIR`).

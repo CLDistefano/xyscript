@@ -75,7 +75,7 @@ pub const SPECIAL_NAMES: &[&str] = &[
     // CFA = the AUTOCFG tracked-config path (empty if off); CF (above) = last LOADCFG'd path
     "CFA",
     // keyboard seam (SC = last scancode; KB = path of the last LOADKBD'd file)
-    "SC", "SCC", "KB", "KBDMODE", "KBDMODES",
+    "SC", "SCC", "KB", "KBDMODE", "XKBDMODE", "KBDMODES",
     // clock — `$DA`/`$TM` strings, `$ET`/`$ETS` stopwatch, and AutoIt-style component fields
     "DA", "TM", "ET", "ETS",
     "YEAR", "MON", "MDAY", "HOUR", "MIN", "SEC", "MSEC", "WDAY", "YDAY",

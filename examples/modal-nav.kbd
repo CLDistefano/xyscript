@@ -1,7 +1,7 @@
 ;KB;; modal-nav.kbd  —  modal demo: the NAVIGATION layer (half of a pair)
 ;;;;; The companion to modal-insert.kbd. Letter keys MOVE the caret instead of typing
 ;;;;; (Vim-style h/j/k/l = left/down/up/right, w/b = word, x = delete char, 0 = line
-;;;;; start); i or a returns to the `insert` layer; Esc also returns. Other letters are
+;;;;; start); Esc, i, or a returns to the PREVIOUS layer via `KBDMODE $XKBDMODE`. Other letters are
 ;;;;; NOP so nothing is typed by accident. Arrows, Backspace, Enter, and the Ctrl layer
 ;;;;; (command line, save, clipboard) still work, so the editor stays fully usable.
 ;;;;; See modal-insert.kbd for how to load the pair.
@@ -13,7 +13,7 @@ CTRL=29,99
 ;
 ; ---- Unshifted: typing + the editing/navigation essentials ----
 TABLE=
-unmod Esc       :1=KBDMODE insert
+unmod Esc       :1=KBDMODE $XKBDMODE
 unmod Tab       :15=TAB
 unmod Backspace :14=BD
 unmod Enter     :28=ENTER
@@ -34,10 +34,10 @@ unmod R         :19=NOP
 unmod T         :20=NOP
 unmod Y         :21=NOP
 unmod U         :22=NOP
-unmod I         :23=KBDMODE insert
+unmod I         :23=KBDMODE $XKBDMODE
 unmod O         :24=NOP
 unmod P         :25=NOP
-unmod A         :30=KBDMODE insert
+unmod A         :30=KBDMODE $XKBDMODE
 unmod S         :31=NOP
 unmod D         :32=NOP
 unmod F         :33=NOP

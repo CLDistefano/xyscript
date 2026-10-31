@@ -5995,6 +5995,40 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert_eq!(e.kbd_mode_count(), 3);
     }
 
+    #[test]
+    fn xkbdmode_tracks_the_previous_layout_and_ping_pongs() {
+        let mut e = ed();
+        e.host_mut().files.insert("a.kbd".into(), "KEYS=104\nTABLE=\n16=insert \"A\"\n".into());
+        e.host_mut().files.insert("b.kbd".into(), "KEYS=104\nTABLE=\n16=insert \"B\"\n".into());
+        e.run_command("ADDKBD alpha a.kbd");
+        e.run_command("ADDKBD beta b.kbd");
+
+        // No switch yet → $XKBDMODE is the null string, and `KBDMODE $XKBDMODE` just reports.
+        assert_eq!(e.special_str("XKBDMODE"), "");
+        e.run_command("KBDMODE $XKBDMODE");
+        assert!(e.last_error().is_none(), "empty $XKBDMODE must report, not error");
+        assert_eq!(e.kbd_mode(), "default", "empty $XKBDMODE must not change the layout");
+
+        // Each real switch records where we came from.
+        e.run_command("KBDMODE alpha");
+        assert_eq!(e.special_str("XKBDMODE"), "default");
+        e.run_command("KBDMODE beta");
+        assert_eq!(e.special_str("XKBDMODE"), "alpha");
+
+        // `KBDMODE $XKBDMODE` returns to alpha — and now $XKBDMODE flips to beta (ping-pong).
+        e.run_command("KBDMODE $XKBDMODE");
+        assert_eq!(e.kbd_mode(), "alpha");
+        assert_eq!(e.special_str("XKBDMODE"), "beta");
+        e.run_command("KBDMODE $XKBDMODE");
+        assert_eq!(e.kbd_mode(), "beta");
+        assert_eq!(e.special_str("XKBDMODE"), "alpha");
+
+        // A no-op switch (to the already-active layout) leaves $XKBDMODE untouched.
+        e.run_command("KBDMODE beta");
+        assert_eq!(e.kbd_mode(), "beta");
+        assert_eq!(e.special_str("XKBDMODE"), "alpha", "no-op KBDMODE must not clobber the previous");
+    }
+
     // ---- CMline ------------------------------------------------------------
 
     #[test]

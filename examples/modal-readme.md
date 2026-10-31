@@ -9,8 +9,9 @@ simple Vim-flavored *modal* editor:
 - **`modal-nav.kbd`** — letter keys **move the caret** instead of typing:
   **h j k l** = left / down / up / right, **w b** = next / previous word,
   **x** = delete the character, **0** = line start. Press **i** or **a** (or
-  **Esc**) to return to the insert layer. Every other letter is `NOP`, so
-  nothing is typed by accident.
+  **Esc**) to return to the layer you came from — these keys run
+  `KBDMODE $XKBDMODE`, not a hard-coded `KBDMODE insert`. Every other letter is
+  `NOP`, so nothing is typed by accident.
 
 The arrow keys, Backspace, Enter, and the whole **Ctrl** layer (command line,
 save, open, clipboard) work in *both* layers, so the editor is fully usable at
@@ -45,6 +46,11 @@ KBDMODE insert
   only the key→action table changes.
 - `$KBDMODE` is the active layer and `$KBDMODES` lists all loaded ones, so a
   script can read or display them.
+- `$XKBDMODE` is the layer you were in before the last switch, which is why the
+  `nav` layer binds its return keys to `KBDMODE $XKBDMODE`: one generic cell
+  backs out to wherever you came from, so the same binding works in any layer no
+  matter how many you add. (Before the first switch it is empty, and
+  `KBDMODE` with an empty name just reports the current layer.)
 - `CLEARKBD` returns you to the built-in baseline at any time; a `KBDMODE` to a
   name you have not loaded is a harmless error that leaves the keyboard in
   place (and **Ctrl+Q** always quits), so a typo can't strand you.
