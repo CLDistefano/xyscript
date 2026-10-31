@@ -36,6 +36,23 @@ beside the binary. The library's `kbd`, `man`, and `ref` routines open `docs/key
 `docs/manual.pdf`, and `docs/reference.pdf`. A drift guard (`shipped_default_cfg_matches_config_script`)
 fails if `xyscript-default.cfg` no longer matches a fresh instance.
 
+## System requirements
+
+One self-contained **64-bit** bundle per platform (no 32-bit or ARM-Linux builds). All platforms need
+~200 MB free disk (binary + the bundled ~25 MB colour-emoji font, themes, docs, and runtime kit),
+~2 GB RAM (4 GB recommended for very large files and the optional Harper/Hunspell checker), and `curl`
+on `PATH` for the email verbs (preinstalled on Windows 10+, macOS, and most Linux).
+
+| Platform | Architecture | OS floor | Graphics |
+|----------|--------------|----------|----------|
+| **Windows** | x86-64 | Windows 10 (64-bit) or later | Direct3D 12 GPU (the default backend). No DX12 GPU → software fallback (WARP). Self-contained (static CRT — no VC++ redist). |
+| **macOS** | Universal (Apple Silicon + Intel x86-64) | macOS 11 Big Sur or later | **Metal-capable Mac required.** XyScript renders through Metal (wgpu) and has **no** software fallback on macOS; a Mac without Metal fails at launch in dyld (`Library not loaded: …/Metal.framework … image not found`). Most Macs from ~2012 on have Metal. |
+| **Linux** | x86-64 | glibc **2.35+** — Ubuntu 22.04+, Debian 12+, Fedora 36+ (RHEL/Rocky/Alma 9 ship glibc 2.34 and are **too old**) | Vulkan 1.1+ or OpenGL 3.3+ drivers; no usable GPU → software raster (`LIBGL_ALWAYS_SOFTWARE=1 WGPU_BACKEND=gl`, Mesa llvmpipe). X11 or Wayland, plus the runtime libraries listed under **Linux ▸ Runtime dependencies** below. |
+
+The glibc floor is held in place by building the Linux binary on an old LTS runner (`ubuntu-22.04`);
+raising the runner would raise the floor. Graphics backend overrides (all platforms): set
+`WGPU_BACKEND=dx12|vulkan|gl|metal` to force a backend if the auto-selected one misbehaves.
+
 ## Windows
 
 Nothing to do — `cargo build --release -p xyscript-gui` embeds `assets/xyscript.ico` into the

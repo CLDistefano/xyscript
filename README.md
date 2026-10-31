@@ -45,6 +45,16 @@ Unzip and run — the editor ships with its keyboard, config, themes, library, l
 - **macOS** — the release binary is unsigned, so Gatekeeper quarantines it on first launch ("xyscript cannot be opened because the developer cannot be verified," or "is damaged"). Open **Terminal**, `cd` into the unzipped folder, and run `xattr -rc xyscript` then `chmod +x xyscript` — then start it with `./xyscript`. (The macOS bundle also includes a `MACOS-READ-ME-FIRST.txt` with these steps.) This is a one-time step per download.
 - **Linux** — the binary links against system libraries most desktops already have; a minimal install may need a few (`libxkbcommon-x11-0` is the one most often missing). See the packaging notes for the full `apt` line and a `.desktop` launcher installer.
 
+## System requirements
+
+One self-contained **64-bit** bundle per platform — there are no 32-bit or ARM-Linux builds. Each needs roughly **200 MB of free disk** (binary + bundled fonts, themes, and docs), **2 GB RAM** (4 GB recommended for very large files and the optional spell/grammar checker), and `curl` on your `PATH` for the email feature (standard on Windows 10+, macOS, and Linux).
+
+| Platform | Minimum |
+|----------|---------|
+| **Windows** | Windows 10 (64-bit) or later. A Direct3D 12 GPU is recommended; without one it falls back to software rendering (WARP). Self-contained — no Visual C++ redistributable needed. |
+| **macOS** | macOS 11 Big Sur or later, on a **Metal-capable Mac** (the bundle is universal — Apple Silicon and Intel). XyScript renders through Metal and has no software fallback on macOS, so a Mac without Metal cannot run it. |
+| **Linux** | glibc **2.35+** (Ubuntu 22.04+, Debian 12+, Fedora 36+). A Vulkan 1.1+ or OpenGL 3.3+ GPU, or software rendering via `LIBGL_ALWAYS_SOFTWARE=1 WGPU_BACKEND=gl`. X11 or Wayland, plus the usual GTK / xkb / fontconfig runtime libraries — see [`packaging/README.md`](packaging/README.md) for the `apt` list. |
+
 ## Build from source
 
 Requires a recent [Rust toolchain](https://rustup.rs/). The GUI is its own Cargo workspace:
