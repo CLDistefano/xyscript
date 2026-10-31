@@ -3490,8 +3490,8 @@ ES")
 == The examples directory
 
 The snippets above are the small end of the idea. The project's #raw("examples/") folder ships
-complete, ready-to-run samples — a whole keyboard layout, input helpers, a styling demo, #raw("PRINTEX")
-templates — and they
+complete, ready-to-run samples — a whole keyboard layout, input helpers, a window-control layer, a
+styling demo, #raw("PRINTEX") templates — and they
 repay a closer look for a reason past what each one happens to do: every one is assembled from the
 *same building blocks XyScript hands you*. Command verbs, keyboard files, string and regular-expression
 functions, the #raw("MDA") styling layer — XyScript's own features are built from exactly these, and so
@@ -3529,6 +3529,14 @@ What ships today:
   shows its seams (no #raw("C-u") prefix argument).
   #raw("emacs-readme.md") is the companion guide: the full binding tables, how the prefix dispatch works,
   and how to rebind or extend it.
+/ #raw("window.kbd"): a *window-management layer* — the #raw("XSW") window command, keyboard-driven. Load
+  it as a resident mode (#raw("ADDKBD window examples/window.kbd")) and switch in with
+  #raw("KBDMODE window") (or bind a key to that); then single keys drive the XyScript window itself: the
+  arrows and numpad *move* it, the number row and #raw("+")/#raw("-") *resize* it by a percentage,
+  #kbd("F") maximizes, #kbd("W") toggles, #kbd("R") restores, and #kbd("M") / #kbd("Shift+M") minimize or
+  restore other apps' windows (Windows only). #kbd("Esc") runs #raw("KBDMODE $XKBDMODE") to drop straight
+  back to the layout you came from — the generic return-to-previous idiom from *Multiple keyboard
+  layouts*. A keyboard file whose cells are almost nothing but #raw("XSW") commands.
 / #raw("addcolors.xpl") + #raw("color-names.lst"): a *styling demo*. The list is 653 named colours,
   each written as an #raw("R G B") triple; open it, run the script, and it walks the file with a regular
   expression, painting every value with its own colour as a background swatch via #raw("MDA/B"). Ten

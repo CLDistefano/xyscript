@@ -1,0 +1,155 @@
+;;;;;  window.kbd -- Move|Resize the XyScript window
+;;;;;
+;;;;;  Bindings:
+;;;;;  Esc       Exit window.kbd
+;;;;;  -         Decrease window size by 3%
+;;;;;  +         Increase window size by 3%
+;;;;;  F         Maximize window
+;;;;;  W         Toggle maximize
+;;;;;  R         Restore windowed
+;;;;;  M         Minimize other windows (Windows only)
+;;;;;  Shift+M   Restore other windows (Windows only)
+;;;;;  <-, ->    Move window left|right by 5 pixels
+;;;;;  ↑,  ↓     Move window up|down by 5 pixels
+;;;;;  1-9,0     Increase window size by 1%-9%,10%
+;;;;;  Sh+1-9,0  Decrease window size by 1%-9%,10%
+;;;;;  F5        Blank the command line
+;;;;;  F9        Execute the command line
+;;;;;  Numpad 8/4/6/2 move; Numpad +/- resize ±3%
+;;;;; 
+;
+KEYS=104
+CAPS=58,T:C
+SHIFT=42,54
+;
+TABLE=
+unmod Esc       :1=KBDMODE $XKBDMODE
+unmod 1         :2=XSW sz +1
+unmod 2         :3=XSW sz +2
+unmod 3         :4=XSW sz +3
+unmod 4         :5=XSW sz +4
+unmod 5         :6=XSW sz +5
+unmod 6         :7=XSW sz +6
+unmod 7         :8=XSW sz +7
+unmod 8         :9=XSW sz +8
+unmod 9         :10=XSW sz +9
+unmod 0         :11=XSW sz +10
+unmod -         :12=XSW sz -3
+unmod +         :13=XSW sz +3
+unmod W         :17=XSW tog
+unmod R         :19=XSW rest
+unmod Enter     :28=ENTER
+unmod F         :33=XSW max
+unmod M         :50=IF $OS=="windows" XSW minall
+unmod F5        :63=BC
+unmod F9        :67=XC
+unmod Numpad 8  :72=XSW mv up 5
+unmod Numpad -  :74=XSW sz -3
+unmod Numpad 4  :75=XSW mv left 5
+unmod Numpad 6  :77=XSW mv right 5
+unmod Numpad +  :78=XSW sz +3
+unmod Numpad 2  :80=XSW mv down 5
+unmod Up        :100=XSW mv up 5
+unmod Left      :101=XSW mv left 5
+unmod Down      :102=XSW mv down 5
+unmod Right     :103=XSW mv right 5
+unmod Enter     :104=ENTER
+;
+TABLE=CAPS
+caps Esc       :1=KBDMODE $XKBDMODE
+caps 1         :2=XSW sz +1
+caps 2         :3=XSW sz +2
+caps 3         :4=XSW sz +3
+caps 4         :5=XSW sz +4
+caps 5         :6=XSW sz +5
+caps 6         :7=XSW sz +6
+caps 7         :8=XSW sz +7
+caps 8         :9=XSW sz +8
+caps 9         :10=XSW sz +9
+caps 0         :11=XSW sz +10
+caps -         :12=XSW sz -3
+caps +         :13=XSW sz +3
+caps W         :17=XSW tog
+caps R         :19=XSW rest
+caps Enter     :28=ENTER
+caps F         :33=XSW max
+caps M         :50=IF $OS=="windows" XSW minall
+caps F5        :63=BC
+caps F9        :67=XC
+caps Numpad 8  :72=XSW mv up 5
+caps Numpad -  :74=XSW sz -3
+caps Numpad 4  :75=XSW mv left 5
+caps Numpad 6  :77=XSW mv right 5
+caps Numpad +  :78=XSW sz +3
+caps Numpad 2  :80=XSW mv down 5
+caps Up        :100=XSW mv up 5
+caps Left      :101=XSW mv left 5
+caps Down      :102=XSW mv down 5
+caps Right     :103=XSW mv right 5
+caps Enter     :104=ENTER
+;
+TABLE=SHIFT
+shift Esc       :1=KF
+shift 1         :2=XSW sz -1
+shift 2         :3=XSW sz -2
+shift 3         :4=XSW sz -3
+shift 4         :5=XSW sz -4
+shift 5         :6=XSW sz -5
+shift 6         :7=XSW sz -6
+shift 7         :8=XSW sz -7
+shift 8         :9=XSW sz -8
+shift 9         :10=XSW sz -9
+shift 0         :11=XSW sz -10
+shift -         :12=XSW sz -3
+shift +         :13=XSW sz +3
+shift W         :17=XSW tog
+shift R         :19=XSW rest
+shift Enter     :28=ENTER
+shift F         :33=XSW max
+shift M         :50=IF $OS=="windows" XSW restall
+shift F5        :63=BC
+shift F9        :67=XC
+shift Numpad 8  :72=XSW mv up 5
+shift Numpad -  :74=XSW sz -3
+shift Numpad 4  :75=XSW mv left 5
+shift Numpad 6  :77=XSW mv right 5
+shift Numpad +  :78=XSW sz +3
+shift Numpad 2  :80=XSW mv down 5
+shift Up        :100=XSW mv up 5
+shift Left      :101=XSW mv left 5
+shift Down      :102=XSW mv down 5
+shift Right     :103=XSW mv right 5
+shift Enter     :104=ENTER
+;
+TABLE=SHIFT+CAPS
+shift+caps Esc       :1=KF
+shift+caps 1         :2=XSW sz -1
+shift+caps 2         :3=XSW sz -2
+shift+caps 3         :4=XSW sz -3
+shift+caps 4         :5=XSW sz -4
+shift+caps 5         :6=XSW sz -5
+shift+caps 6         :7=XSW sz -6
+shift+caps 7         :8=XSW sz -7
+shift+caps 8         :9=XSW sz -8
+shift+caps 9         :10=XSW sz -9
+shift+caps 0         :11=XSW sz -10
+shift+caps -         :12=XSW sz -3
+shift+caps +         :13=XSW sz +3
+shift+caps W         :17=XSW tog
+shift+caps R         :19=XSW rest
+shift+caps Enter     :28=ENTER
+shift+caps F         :33=XSW max
+shift+caps M         :50=IF $OS=="windows" XSW restall
+shift+caps F5        :63=BC
+shift+caps F9        :67=XC
+shift+caps Numpad 8  :72=XSW mv up 5
+shift+caps Numpad -  :74=XSW sz -3
+shift+caps Numpad 4  :75=XSW mv left 5
+shift+caps Numpad 6  :77=XSW mv right 5
+shift+caps Numpad +  :78=XSW sz +3
+shift+caps Numpad 2  :80=XSW mv down 5
+shift+caps Up        :100=XSW mv up 5
+shift+caps Left      :101=XSW mv left 5
+shift+caps Down      :102=XSW mv down 5
+shift+caps Right     :103=XSW mv right 5
+shift+caps Enter     :104=ENTER
