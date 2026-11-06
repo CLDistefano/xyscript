@@ -1,7 +1,7 @@
 # xyscript-kbd — keyboard layer prototype
 
 A Rust prototype of the XyScript keyboard layer described in
-`../keyboard-layer-design.md`. It implements the data-driven `.KBD` modifier
+`../archive/keyboard-layer-design.md`. It implements the data-driven `.KBD` modifier
 model `(bitmask, key_code) -> assignment`, wires it end-to-end through
 non-exclusive OS interception on all three target platforms, and is verified
 against the reference keyboard `CLD4R.KBD` (the XyScript-native UTF-8 fixture at
