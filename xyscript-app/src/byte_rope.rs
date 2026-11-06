@@ -2,7 +2,7 @@
 //!
 //! Replaces the flat `Vec<u8>` document storage so editing 100–300 MB files has
 //! no visible lag: a flat `Vec<u8>` shifts O(n) bytes on every insert/delete
-//! (milliseconds at 256 MB — see `examples/byte_storage_spike.rs`), whereas this
+//! (milliseconds at 256 MB), whereas this
 //! keeps edits and line navigation in the microsecond range.
 //!
 //! ## Shape
