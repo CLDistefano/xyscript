@@ -1,9 +1,9 @@
-# Cargo build output — every workspace has its own `target/` (root, xyscript-gui, pdf-spike).
+# Cargo build output — every workspace has its own `target/` (root, xyscript-gui).
 # These are large (hundreds of MB to GB) and rebuilt from source, so they never go in git.
 target/
 
 # The shipped Windows binary is a build artifact — CI rebuilds it for every platform.
-# Delete this line if you'd rather track dist/xyscript.exe in the repo (note: it's ~78 MB,
+# Delete this line if you'd rather track dist/xyscript.exe in the repo (note: it's ~84 MB,
 # and GitHub warns on files over 50 MB).
 dist/
 
@@ -19,39 +19,34 @@ dist/
 # A shared `.claude/settings.json` would still be tracked if one is ever added.
 .claude/settings.local.json
 
-# Personal experimental script kept in the repo root — not part of the project.
-/savesess.xpl
-
 # Debug symbols and OS cruft.
 *.pdb
 Thumbs.db
 .DS_Store
+
+# Personal scratch kept in the repo root — working files, test data, and experiments that are
+# not part of the project. Keep these ignored so they never get committed.
+/savesess.xpl
 /kbddoc.xpl
 /alarm.xpl
-/sd.ib
+/sd.lib
 /sd.xpl
+/readdoc.xpl
 /test.lib
+/test.txt
+/test-bk.xpl
+/test-for.xpl
 /pushkin.txt
-/heath.txt
-/harry.htm
-/uc-harry.xpl
 /loop10.xpl
 /config-20260616.md
 /XY-KBD.TXT
-/Untitled-1.md
 /Untitled.md
-/MOBY1.TXT
-/test.txt
-/draft.txt
-/CLD4R.KBD
-/XY4.ICO
+/Untitled-1.md
 /FILELIST.TXT
-/xyscript-pixel.ico
-/xyscript-kbd.zip
-/xyscript-gui/moby1.txt
-/grammars/xywrite.xpl
-
-/cld.kbd
 /segfault.txt
+/cld.kbd
+
+# Generated keymap files at the repo root — the tracked copies that ship live in
+# packaging/runtime/ and xyscript-kbd/kbd/.
 /xyscript-internal.kbd
 /xyscript-minimal.kbd

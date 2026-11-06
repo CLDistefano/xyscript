@@ -1,4 +1,0 @@
-SUB readf
-set fnm = "C:\Users\cldis\\rusted\docs\\reference.typ"
-read $fnm
-ENDSUB
