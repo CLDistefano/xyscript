@@ -1631,6 +1631,8 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("v3"): identify the character under the cursor.
 / #lib("values"): list XyScript's internal variables and their current values.
 / #lib("emoji"): open a new tab listing the major Unicode emoji blocks (a reference chart to copy from).
+/ #lib("charse"): search Unicode character names (European and Slavic letters) for a string and list the matches in a new tab, e.g. #raw("charse dot"). Reads #raw("examples/unicode-latin-cyrillic-table.txt").
+/ #lib("uchar"): insert a Unicode character by its decimal code point, or list a range --- #raw("uchar 233") inserts é, #raw("uchar 913 - 937") lists a range in a new tab.
 / #lib("uservars"): open the user-variables file.
 / #lib("U2"): open #raw("xyscript.lib") itself for editing --- #raw("U2 <string>") jumps to a match.
 
@@ -1751,6 +1753,7 @@ Every bundled routine, alphabetical.
 / #lib("cal"): print a month calendar, with holidays for your country (#raw("$CountryCode"), "ca" or "us").
 / #lib("cdd"): change down one directory level.
 / #lib("cdu"): change up one directory level.
+/ #lib("charse"): search Unicode character names (European and Slavic letters) for a string and list the matches in a new tab, e.g. #raw("charse dot"). Reads #raw("examples/unicode-latin-cyrillic-table.txt").
 / #lib("checkwebupdate"): detect when a web page has changed, comparing its ETag against a saved copy.
 / #lib("chkcmnt"): check an XPL script for malformed comments.
 / #lib("clone"): open a second instance with the same configuration.
@@ -1861,6 +1864,7 @@ Every bundled routine, alphabetical.
 == U
 
 / #lib("U2"): open #raw("xyscript.lib") itself for editing --- #raw("U2 <string>") jumps to a match.
+/ #lib("uchar"): insert a Unicode character by its decimal code point, or list a range --- #raw("uchar 233") inserts é, #raw("uchar 913 - 937") lists a range in a new tab.
 / #lib("url"): open a URL --- the selection, or one you type.
 / #lib("uservars"): open the user-variables file.
 

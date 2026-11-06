@@ -810,6 +810,58 @@ SUB wipe
 	endwhile
 ENDSUB
 
+##### Character Idenfification #####
+
+SUB charse
+	# DOC: Unicode character-name search (European/Slavic languages)
+	# DOC: Usage: CHARSE <string>
+	# DOC: Example: `CHARSE dot`
+	# DOC: `unicode-latin-cyrillic-table.txt` must be present in ./examples
+	local count charlist fnm lin results srch
+	set srch = $*
+	set fnm = $XSDIR.$DC."examples".$DC."unicode-latin-cyrillic-table.txt"
+	if not exists($fnm); pr $fnm does not exist.; return; ei
+	set charlist = readfile($fnm)
+	set results = ""
+	set count = 0
+	for lin in lines($charlist)
+	  if not contains($lin, upper($srch)) continue
+	  set results = $results.$lin.$NL
+	  set count += 1
+	ef
+	set results = replace($results, $(chr(9)), "    ")
+	ne;put $results; tf
+	pr Matches: $count 
+ENDSUB
+
+SUB uchar
+	# DOC: Put Unicode (UTF-8) character or list range of chars
+	# DOC: Usage: UCHAR n [- n] (decimal)
+	local array n rchar rchar0 rchar1
+	set rchar = $*
+	set rchar = replace($rchar, " ", "")
+	if not contains($rchar, "-")
+		insert "\u{$(base($rchar, 10, 16))}"
+		return
+	ei
+	set array = split($rchar, "-")
+	set rchar0 = strip($array[0])
+	set rchar1 = strip($array[1])
+	if not (isdec($rchar0) and isdec($rchar1))
+		pr Usage: UCHAR n [- n] (decimal)
+		return	
+	ei
+	if $rchar1 < $rchar0
+		set rchar0 = strip($array[1])
+		set rchar1 = strip($array[0])
+	ei
+	ne
+	for n = $rchar0 to $rchar1
+		insert "$n: \u{$(base($n, 10, 16))} $NL"
+	ef
+	tf
+ENDSUB
+
 #####  Internet  #####
 
 SUB checkwebupdate

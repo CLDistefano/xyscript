@@ -17,7 +17,7 @@ unmod `         :41=PUT `;RK char;SWITCH $char;CASE "a";BD;PUT à;CASE "A";BD;PU
 unmod ,         :51=PUT ,;RK char;SWITCH $char;CASE "c";BD;PUT ç;CASE "C";BD;PUT Ç;case "e";BD;PUT ȩ;CASE "E";BD;PUT Ȩ;CASE "G";BD;PUT Ģ;CASE "s";BD;PUT ş;CASE "S";BD;PUT Ş;DEFAULT;PUT $char;ESW;CLEAR char
 
 ;Comment        ; dead accent: tilde
-shift `         :41=PUT `;RK char;SWITCH $char;CASE "a";BD;PUT ã;CASE "A";BD;PUT Ã;CASE "n";BD;PUT ñ;CASE "N";BD;PUT Ñ;case "o";BD;PUT õ;CASE "O";BD;PUT Õ;DEFAULT;PUT $char;ESW;CLEAR char
+shift `         :41=PUT ~;RK char;SWITCH $char;CASE "a";BD;PUT ã;CASE "A";BD;PUT Ã;CASE "n";BD;PUT ñ;CASE "N";BD;PUT Ñ;case "o";BD;PUT õ;CASE "O";BD;PUT Õ;DEFAULT;PUT $char;ESW;CLEAR char
 
 ;Comment        ; dead accent: umlaut
 shift '         :40=PUT \";RK char;SWITCH $char;CASE "a";BD;PUT ä;CASE "A";BD;PUT Ä;case "e";BD;PUT ë;CASE "E";BD;PUT Ë;CASE "i";BD;PUT ï;CASE "I";BD;PUT Ï;case "o";BD;PUT ö;CASE "O";BD;PUT Ö;CASE "u";BD;PUT ü;CASE "U";BD;PUT Ü;CASE "y";BD;PUT ÿ;CASE "Y";BD;PUT Ÿ;DEFAULT;PUT $char;ESW;CLEAR char
