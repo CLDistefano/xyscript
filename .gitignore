@@ -26,8 +26,6 @@ Thumbs.db
 
 # Personal scratch kept in the repo root — working files, test data, and experiments that are
 # not part of the project. Keep these ignored so they never get committed.
-/savesess.xpl
-/kbddoc.xpl
 /alarm.xpl
 /sd.lib
 /sd.xpl
@@ -42,9 +40,6 @@ Thumbs.db
 /XY-KBD.TXT
 /Untitled.md
 /Untitled-1.md
-/FILELIST.TXT
-/segfault.txt
-/cld.kbd
 
 # Generated keymap files at the repo root — the tracked copies that ship live in
 # packaging/runtime/ and xyscript-kbd/kbd/.
