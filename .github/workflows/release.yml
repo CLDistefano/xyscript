@@ -171,12 +171,16 @@ jobs:
           # jobs each upsert the same tag's Release and add their own asset.
           generate_release_notes: true
 
-  # One macOS binary for BOTH architectures. The Apple-Silicon runner (macos-14) builds its native
-  # arm64 plus a cross-compiled x86_64, then `lipo` merges them into a universal executable.
+  # One macOS binary for BOTH architectures. The Apple-Silicon runner builds its native arm64 plus a
+  # cross-compiled x86_64, then `lipo` merges them into a universal executable. Pinned to a specific
+  # Apple-Silicon image (NOT macos-latest): GitHub retired macos-14 on 2026-11-02 (it now cancels jobs
+  # immediately), so this was bumped macos-14 -> macos-15. Unlike the Linux glibc floor, the macOS
+  # minimum OS is set by the deploy target (Rust defaults: arm64 11.0, x86_64 10.12), NOT by the runner
+  # image, so bumping the runner does not change the macOS 11+ floor — it only updates the build SDK.
   macos:
     name: macos-universal
     needs: i18n-check
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write # attach the universal bundle straight to the Release
     steps:
