@@ -124,6 +124,15 @@ pub enum WindowCmd {
     ToggleOthers,
 }
 
+/// A document's line-ending style, as `NEWLINE lf|crlf|cr` selects it. `Cr` (classic Mac) is stored
+/// LF-internally by the host and re-emitted as `\r` on save; see `document::LineEnding`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewlineStyle {
+    Lf,
+    Crlf,
+    Cr,
+}
+
 /// Editor/text operations the interpreter can request. The host (Stage 2's text
 /// engine, or the test stub) applies them. The set grows as editor verbs are
 /// registered.
@@ -636,9 +645,9 @@ pub enum EditorOp {
     /// `out_file = None` converts the current doc in place; `Some(path)` writes a converted copy to
     /// `path` and opens it (current doc untouched).
     ConvertEncoding { name: String, out_file: Option<String> },
-    /// Convert the active document's line endings to CRLF (`true`) or LF (`false`) and adopt that as
-    /// its style (`NEWLINE crlf|lf`). Lossless.
-    SetNewlineStyle(bool),
+    /// Convert the active document's line endings to `style` and adopt it (`NEWLINE lf|crlf|cr`).
+    /// Lossless. CR is stored LF-internally and reconstituted on save (see `NewlineStyle`).
+    SetNewlineStyle(NewlineStyle),
     /// Show/hide the OS window title bar (`TITLEBAR on|off`; `None` toggles). The runtime applies it
     /// via `set_decorations`; read back via `$TITLEBAR`.
     SetTitlebar(Option<bool>),

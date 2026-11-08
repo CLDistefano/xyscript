@@ -88,6 +88,10 @@ pub enum LineEnding {
     Lf,
     /// `\r\n` (Windows).
     Crlf,
+    /// `\r` (classic Mac / old CAD exports). The one asymmetric style: a CR document is stored
+    /// **LF-internally** (the rope indexes `\n`, so storing `\r` would make the whole file one line),
+    /// and the `\r` is reconstituted only on save. See `insert_eol`, `load`, and `save_bytes`.
+    Cr,
 }
 
 impl LineEnding {
@@ -99,11 +103,21 @@ impl LineEnding {
             LineEnding::Lf
         }
     }
-    /// The literal byte sequence this style inserts.
+    /// The style's true end-of-line bytes (`$NL`, and what `save` emits).
     pub fn as_str(self) -> &'static str {
         match self {
             LineEnding::Lf => "\n",
             LineEnding::Crlf => "\r\n",
+            LineEnding::Cr => "\r",
+        }
+    }
+    /// The bytes ENTER / clipboard-join insert INTO the buffer. Same as `as_str` for LF/CRLF (their
+    /// buffers are verbatim), but `\n` for CR — a CR document is stored LF-internally so the `\n`-indexed
+    /// rope sees its lines; the `\r` is reconstituted only by `save_bytes`.
+    pub fn insert_eol(self) -> &'static str {
+        match self {
+            LineEnding::Cr => "\n",
+            other => other.as_str(),
         }
     }
     /// A human-readable label for `$NEWLINE`.
@@ -111,19 +125,25 @@ impl LineEnding {
         match self {
             LineEnding::Lf => "LF",
             LineEnding::Crlf => "CRLF",
+            LineEnding::Cr => "CR",
         }
     }
 }
 
-/// Rewrite line endings at the BYTE level: drop every `\r` that immediately precedes a `\n` (→ LF),
-/// then for CRLF re-insert a `\r` before each `\n`. Encoding-agnostic — `\r` (0x0D) and `\n` (0x0A)
-/// are identical across every encoding we support — and lossless. Lone `\r` (old-Mac) is left as-is.
+/// Rewrite line endings at the BYTE level to `target`. First fold EVERY ending to LF — drop the `\r`
+/// of each `\r\n` AND turn every lone `\r` (old-Mac) into `\n` — then re-emit: LF keeps `\n`, CRLF puts
+/// `\r\n` before each, CR turns each `\n` back into `\r`. Encoding-agnostic (`\r`=0x0D / `\n`=0x0A are
+/// identical across every encoding we support) and lossless for text.
 fn normalize_newlines(bytes: &[u8], target: LineEnding) -> Vec<u8> {
     let mut lf = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
-            i += 1; // drop the \r, keep the \n
+        if bytes[i] == b'\r' {
+            lf.push(b'\n');
+            if bytes.get(i + 1) == Some(&b'\n') {
+                i += 1; // consume the `\n` of a `\r\n` pair (one line break, not two)
+            }
+            i += 1;
             continue;
         }
         lf.push(bytes[i]);
@@ -140,6 +160,14 @@ fn normalize_newlines(bytes: &[u8], target: LineEnding) -> Vec<u8> {
                 out.push(b);
             }
             out
+        }
+        LineEnding::Cr => {
+            for b in lf.iter_mut() {
+                if *b == b'\n' {
+                    *b = b'\r';
+                }
+            }
+            lf
         }
     }
 }
@@ -1108,8 +1136,11 @@ impl Document {
     /// The rewrite is byte-level (`\r`=0x0D/`\n`=0x0A are identical across our encodings), so it's
     /// not lossy. If the bytes actually change it's a modifying whole-buffer op.
     pub fn convert_line_endings(&mut self, target: LineEnding) {
+        // CR is stored LF-internally (see `LineEnding::Cr`), so the buffer we build for it is LF; every
+        // other style is verbatim. `save_bytes` turns a CR doc's `\n` back into `\r` on the way out.
+        let buf_target = if target == LineEnding::Cr { LineEnding::Lf } else { target };
         let bytes = self.buffer.bytes();
-        let out = normalize_newlines(&bytes, target);
+        let out = normalize_newlines(&bytes, buf_target);
         if out != bytes {
             let enc = self.buffer.encoding();
             self.gen = next_content_gen();
@@ -2117,6 +2148,11 @@ impl Document {
     /// is cleared and the document is marked unmodified.
     pub fn load(&mut self, bytes: Vec<u8>, path: PathBuf) {
         let crlf = bytes.windows(2).any(|w| w == b"\r\n");
+        // Classic-Mac CR (carriage returns, no line feeds at all): fold to LF so the `\n`-indexed rope
+        // sees the lines; `save_bytes` turns each `\n` back into `\r`. (A file mixing `\n` with lone
+        // `\r` keeps the lone `\r` as content, as before — only a pure-CR file is reinterpreted.)
+        let cr = !crlf && bytes.contains(&b'\r') && !bytes.contains(&b'\n');
+        let bytes = if cr { normalize_newlines(&bytes, LineEnding::Lf) } else { bytes };
         let enc = default_encoding_for(&bytes);
         self.gen = next_content_gen(); // whole-buffer swap resets the rope rev
         self.buffer = Buffer::from_bytes(bytes, enc);
@@ -2135,7 +2171,13 @@ impl Document {
         self.coalescing = false;
         self.saved_len = Some(0);
         self.path = Some(path);
-        self.line_ending = if crlf { LineEnding::Crlf } else { LineEnding::Lf };
+        self.line_ending = if crlf {
+            LineEnding::Crlf
+        } else if cr {
+            LineEnding::Cr
+        } else {
+            LineEnding::Lf
+        };
         // Preserve the on/off preference across opens, re-selecting by file type (a grammar
         // for the new extension, else Markdown).
         if self.highlighter.is_some() {
@@ -2149,7 +2191,14 @@ impl Document {
     /// is the original bytes, so save is a straight write — nothing to re-encode,
     /// nothing to corrupt. (Materialized from the rope, so it's an owned snapshot.)
     pub fn save_bytes(&self) -> Vec<u8> {
-        self.buffer.bytes()
+        let bytes = self.buffer.bytes();
+        // CR docs are stored LF-internally; reconstitute `\r` on the way out. LF/CRLF buffers already
+        // hold their on-disk bytes, so they still write verbatim (byte-exact).
+        if self.line_ending == LineEnding::Cr {
+            normalize_newlines(&bytes, LineEnding::Cr)
+        } else {
+            bytes
+        }
     }
 
     /// Adopt a path (for save-as).
@@ -2200,10 +2249,11 @@ impl Document {
         self.record(Op { at, removed, inserted, ..Default::default() }, kind, cb, ab, ca, aa);
     }
 
-    /// Insert a newline in this document's line-ending style (`\n` or `\r\n`) — what the
-    /// `ENTER` verb does, so typed newlines follow the file (and the OS for new files).
+    /// Insert a newline in this document's line-ending style — what the `ENTER` verb does, so typed
+    /// newlines follow the file (and the OS for new files). Uses `insert_eol`, so a CR document
+    /// inserts `\n` internally (it's stored LF-internally) and `save` reconstitutes the `\r`.
     pub fn insert_newline(&mut self) {
-        self.insert(self.line_ending.as_str());
+        self.insert(self.line_ending.insert_eol());
     }
 
     /// `ENTER` with `TABINDENT` on: insert a newline, then copy the (about-to-be-)previous line's
@@ -2212,7 +2262,7 @@ impl Document {
         // Where the break lands: the selection start (Enter replaces a selection) or the caret.
         let point = self.buffer.selection_span().map(|(a, _)| a).unwrap_or_else(|| self.buffer.cursor());
         let indent = self.buffer.indent_at(point);
-        self.insert(&format!("{}{}", self.line_ending.as_str(), indent));
+        self.insert(&format!("{}{}", self.line_ending.insert_eol(), indent));
     }
 
     /// Delete the char before the cursor (Backspace), or the selection. Under
@@ -5083,6 +5133,62 @@ mod tests {
         d.load(b"a\nb\n".to_vec(), std::path::PathBuf::from("y.txt"));
         assert_eq!(d.line_ending(), LineEnding::Lf);
         assert_eq!(d.save_bytes(), b"a\nb\n".to_vec());
+    }
+
+    #[test]
+    fn load_cr_only_reinterprets_mac_endings_as_lines() {
+        let mut d = Document::new();
+        // Classic-Mac CR: carriage returns, no line feeds. Detected as CR and stored LF-internally.
+        d.load(b"a\rbb\rccc\r".to_vec(), std::path::PathBuf::from("mac.ifc"));
+        assert_eq!(d.line_ending(), LineEnding::Cr);
+        // Internally it's LF — so the rope sees the lines (not one giant line).
+        assert_eq!(d.buffer().text(), "a\nbb\nccc\n");
+        assert_eq!(d.buffer().line_count(), 4); // a, bb, ccc, trailing empty
+        assert_eq!(d.buffer().line_text(0), "a");
+        assert_eq!(d.buffer().line_text(2), "ccc");
+        // $NL reports the real ending; save reconstitutes CR byte-exactly.
+        assert_eq!(d.line_ending().as_str(), "\r");
+        assert_eq!(d.save_bytes(), b"a\rbb\rccc\r".to_vec());
+    }
+
+    #[test]
+    fn crlf_wins_over_cr_and_mixed_stays_lf() {
+        // A file containing \r\n is CRLF, not CR, even though it has \r.
+        let mut d = Document::new();
+        d.load(b"a\r\nb\r\n".to_vec(), std::path::PathBuf::from("w.txt"));
+        assert_eq!(d.line_ending(), LineEnding::Crlf);
+        // A file mixing \n with a lone \r is LF; the lone \r stays as content (unchanged behavior).
+        let mut e = Document::new();
+        e.load(b"a\nb\rc\n".to_vec(), std::path::PathBuf::from("m.txt"));
+        assert_eq!(e.line_ending(), LineEnding::Lf);
+        assert_eq!(e.save_bytes(), b"a\nb\rc\n".to_vec());
+    }
+
+    #[test]
+    fn newline_cr_converts_and_is_reversible() {
+        let mut d = Document::new();
+        d.load(b"a\nb\n".to_vec(), std::path::PathBuf::from("y.txt"));
+        d.convert_line_endings(LineEnding::Cr);
+        assert_eq!(d.line_ending(), LineEnding::Cr);
+        assert_eq!(d.buffer().text(), "a\nb\n"); // LF-internal
+        assert_eq!(d.save_bytes(), b"a\rb\r".to_vec()); // CR on disk
+        // CR -> CRLF rewrites the buffer verbatim.
+        d.convert_line_endings(LineEnding::Crlf);
+        assert_eq!(d.buffer().text(), "a\r\nb\r\n");
+        assert_eq!(d.save_bytes(), b"a\r\nb\r\n".to_vec());
+        // ...and back to LF.
+        d.convert_line_endings(LineEnding::Lf);
+        assert_eq!(d.save_bytes(), b"a\nb\n".to_vec());
+    }
+
+    #[test]
+    fn insert_newline_in_cr_doc_inserts_lf_internally_and_saves_cr() {
+        let mut d = Document::new();
+        d.load(b"a\rb\r".to_vec(), std::path::PathBuf::from("mac.txt"));
+        d.move_right(false); // caret after "a"
+        d.insert_newline(); // ENTER
+        assert_eq!(d.buffer().text(), "a\n\nb\n"); // inserted \n internally, not \r
+        assert_eq!(d.save_bytes(), b"a\r\rb\r".to_vec()); // reconstituted as \r on save
     }
 
     #[test]

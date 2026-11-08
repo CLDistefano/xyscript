@@ -2454,7 +2454,8 @@ fn to_os_newlines(s: &str) -> String {
     let lf = s.replace("\r\n", "\n");
     match crate::document::LineEnding::os_default() {
         crate::document::LineEnding::Crlf => lf.replace('\n', "\r\n"),
-        crate::document::LineEnding::Lf => lf,
+        // `os_default` only ever yields LF/CRLF; CR can't occur here.
+        crate::document::LineEnding::Lf | crate::document::LineEnding::Cr => lf,
     }
 }
 
@@ -7410,7 +7411,7 @@ impl AppHost {
                     if pieces.iter().all(|p| p.is_empty()) {
                         return Err(need_selection());
                     }
-                    self.clipboard = pieces.join(self.active().line_ending().as_str());
+                    self.clipboard = pieces.join(self.active().line_ending().insert_eol());
                     self.clipboard_pieces = pieces;
                     self.clipboard_style = None; // per-piece multi-caret styling not carried yet
                 }
@@ -7427,7 +7428,7 @@ impl AppHost {
                     if pieces.iter().all(|p| p.is_empty()) {
                         return Err(need_selection());
                     }
-                    self.clipboard = pieces.join(self.active().line_ending().as_str());
+                    self.clipboard = pieces.join(self.active().line_ending().insert_eol());
                     self.clipboard_pieces = pieces;
                     self.clipboard_style = None;
                     self.active().delete_all_selections();
@@ -10400,7 +10401,7 @@ impl Host for AppHost {
             EditorOp::Reflow { width } => {
                 // Hard-wrap the selection, else the paragraph at the caret, to `width` columns as one
                 // undo unit. `paragraph_span` returns an empty range on a blank line (nothing to do).
-                let nl = self.active().line_ending().as_str().to_string();
+                let nl = self.active().line_ending().insert_eol().to_string();
                 let (a, b) = {
                     let buf = self.active().buffer();
                     buf.selection_span().unwrap_or_else(|| buf.paragraph_span())
@@ -14449,11 +14450,12 @@ impl Host for AppHost {
                     }
                 }
             }
-            EditorOp::SetNewlineStyle(crlf) => {
-                let target = if crlf {
-                    crate::document::LineEnding::Crlf
-                } else {
-                    crate::document::LineEnding::Lf
+            EditorOp::SetNewlineStyle(style) => {
+                use crate::document::LineEnding;
+                let target = match style {
+                    xyscript_xpl::NewlineStyle::Lf => LineEnding::Lf,
+                    xyscript_xpl::NewlineStyle::Crlf => LineEnding::Crlf,
+                    xyscript_xpl::NewlineStyle::Cr => LineEnding::Cr,
                 };
                 self.docs[self.active].convert_line_endings(target);
                 return Ok(Value::str(format!("line endings: {}", target.label())));
@@ -15658,7 +15660,7 @@ impl Host for AppHost {
     }
 
     fn calc_insert_result(&mut self, text: &str) {
-        let le = self.active_doc().line_ending().as_str().to_string();
+        let le = self.active_doc().line_ending().insert_eol().to_string();
         // The result goes on a fresh line below the current line — or below the
         // last selected line when a selection drove the evaluation.
         let content_end = {

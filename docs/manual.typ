@@ -1352,10 +1352,17 @@ undo/redo behave as everywhere else. A document locked with #raw("RO") stays rea
 
 == Line endings
 
-#raw("NEWLINE lf") and #raw("NEWLINE crlf") convert the document's line endings and adopt that style
-for new lines; #raw("$NEWLINE") reads the current one (`LF` or `CRLF`). The conversion is lossless and
-independent of the text encoding. New documents follow your operating system's convention until you open
-a file with a different one.
+#raw("NEWLINE lf"), #raw("NEWLINE crlf"), and #raw("NEWLINE cr") convert the document's line endings and
+adopt that style for new lines; #raw("$NEWLINE") reads the current one (`LF`, `CRLF`, or `CR`). The
+conversion is lossless and independent of the text encoding. New documents follow your operating system's
+convention until you open a file with a different one.
+
+`CR` is the classic-Mac carriage-return ending still found in older CAD and publishing exports (a file
+whose lines end in a bare `\r`). XyScript detects such a file on open and treats it as the lines it really
+is --- without this, a `\r`-only file looks like one enormous single line, because every other tool, and
+the editor's own line index, counts only `\n`. A `CR` document is held internally as ordinary lines and
+written back out with `\r` on save, so it round-trips unchanged; use #raw("NEWLINE lf") (or #raw("crlf"))
+if you'd rather convert it to a modern ending for good.
 
 == Read-only and autosave
 

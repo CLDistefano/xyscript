@@ -570,7 +570,7 @@ classic X11 / `rgb.txt` set of ~650 (`red`, `SlateGray`, `salmon`, `grey40`, …
 
 == Encodings and line endings
 
-/ #cmd("ENCODING"): set (or convert) the file's text encoding. #cmd("NEWLINE"): convert line endings to `lf` / `crlf`.
+/ #cmd("ENCODING"): set (or convert) the file's text encoding. #cmd("NEWLINE"): convert line endings to `lf` / `crlf` / `cr`.
 
 == Markdown, HTML, and Typst preview and export
 
@@ -953,7 +953,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("NW") / #cmd("NS") / #cmd("NP"): move to the next word / sentence / paragraph.
 / #cmd("NL"): move to the start of the next line.
 / #cmd("NEW", "NE"): open a new empty buffer; `NEW <file>` starts a buffer named for the file (or opens it if it already exists). `NEW/H` and `NEW/V` instead open the new buffer in a *split pane*: `/H` stacks it top-over-bottom, `/V` sets it side-by-side left-and-right. See the split-pane verbs in section T (#cmd("THS"), #cmd("TVS"), #cmd("TW"), #cmd("TUS"), #cmd("TRV"), #cmd("TZ")).
-/ #cmd("NEWLINE"): `NEWLINE lf|crlf` — convert every line ending in the document and adopt that style (`$NEWLINE` reads it).
+/ #cmd("NEWLINE"): `NEWLINE lf|crlf|cr` — convert every line ending in the document and adopt that style (`$NEWLINE` reads it). `cr` is the classic-Mac carriage-return ending; a CR-only file (e.g. an old CAD/IFC export) is also detected automatically on open, so it loads as proper lines instead of one enormous line.
 / #cmd("NERR"): jump to the NEXT location in the most recent #cmd("COMPILE") or #cmd("GREP") results tab and open its source (centered) — the forward half of a unified "next-error". Works from any buffer, tracks a current-location index, and reports when there is no next one (no wraparound). #cmd("PERR") is the backward half. Bind them to keys to walk a build's errors without leaving the file you're editing.
 / #cmd("NOP"): do nothing (a no-op).
 
@@ -1109,7 +1109,7 @@ accepts. Block-structure keywords (`IF`, `FOR`, …) are grouped near their open
 / #cmd("SESSION"): `SESSION on|off` (bare = toggle) — auto-save-and-restore your open tabs across runs, Notepad++-style. When on, every graceful quit (command, menu, or the window's close button) writes the set of open tabs, and the next launch reopens them in order with the caret where you left it. Dirty and untitled buffers keep a private *shadow* backup, so they come back with their unsaved content (still marked modified) and your real files are never written to until you `SAVE`. A clean file is simply reopened from disk. The session is also snapshotted as you work, so a *crash* or forced kill still restores your tabs, not only a deliberate quit: a change to the set of tabs or the pane layout is saved *immediately*, while buffer text is saved every few seconds. A split-pane arrangement is restored as well (unless a pane held a transient view, in which case the tabs come back un-split). Off by default; persists in the config; read back via #sv("SESSION"). (Transient tabs — directory listings and the Shell-output pane — aren't part of a session.)
 / #cmd("WORDCOUNT"): count the words in the selection or document.
 / #cmd("WRITEFILE", "WF"): `WRITEFILE <path> <content>` — write `content` to a file (resolved against `$CWD`), overwriting it. The content is taken raw after `$`-substitution (like `PUT`), so `WF out.txt $x` writes the variable's value verbatim; quote the path for spaces. By default the content is written as UTF-8; to write another encoding: `WF/ENC:<charset>` encodes the text through a named single-byte code page (`cp437`, `windows-1252`, `latin1`, … — the names #cmd("ENCODING") uses; a character the page can't represent becomes `?`, or — with `/STRICT` added — is a trappable error and nothing is written), `WF/B` is byte-exact *binary* (an alias for `/ENC:latin1`, so every byte 0–255 round-trips), and `WF/HEX` writes the raw bytes that a hex string describes (`WF/HEX out.bin deadbeef00ff` — ASCII whitespace, `:` and `0x` are ignored; an odd digit count or a non-hex character is a trappable error). Because `WF` writes raw bytes and carries no styling of its own, overwriting a file that had an MDA `.xymeta` sidecar removes that now-stale sidecar (its content guard would no longer match anyway), so no orphan is left behind. Read it back with the `READFILE()` function.
-/ #cmd("WRITELN", "WRL"): insert text at the caret like `INSERT`, then add a trailing newline in the document's line-ending style (`LF`/`CRLF`), the same as `ENTER`.
+/ #cmd("WRITELN", "WRL"): insert text at the caret like `INSERT`, then add a trailing newline in the document's line-ending style (`LF`/`CRLF`/`CR`), the same as `ENTER`.
 
 == X
 
@@ -1258,8 +1258,8 @@ plain alphabetical index.
 / #sv("FI") / #sv("FP"): the active document's file name (no folder) / its full path.
 / #sv("CWD") / #sv("PA"): the editor's working directory (`$PA` is a synonym). At launch it defaults to #sv("XSDIR") — the program's own folder — not the directory you started it from; `CD` changes it.
 / #sv("DC"): the operating system's folder-separator character (`\` or `/`).
-/ #sv("NEWLINE"): the document's line ending — `LF` or `CRLF`.
-/ #sv("NL"): the document's line-ending *characters* (a real newline) — the character form of #sv("NEWLINE"), for building text or file content that matches the document. (A string `\n` escape is always a lone LF; #sv("NL") is `\r\n` in a CRLF document.) New documents adopt the OS default.
+/ #sv("NEWLINE"): the document's line ending — `LF`, `CRLF`, or `CR`.
+/ #sv("NL"): the document's line-ending *characters* (a real newline) — the character form of #sv("NEWLINE"), for building text or file content that matches the document. (A string `\n` escape is always a lone LF; #sv("NL") is `\r\n` in a CRLF document, `\r` in a CR document.) New documents adopt the OS default.
 / #sv("CF") / #sv("CFA"): path of the last config loaded with `LOADCFG` / the file `AUTOCFG` is tracking (empty if off).
 / #sv("KB"): full path of the last keymap loaded with `LOADKBD`.
 / #sv("KBDMODE") / #sv("KBDMODES"): the active keyboard-layout slot, and a space-separated list of all resident layout slots (see #cmd("ADDKBD") / #cmd("KBDMODE")).
@@ -1533,8 +1533,8 @@ Every special variable in one list, for quick lookup.
 / #sv("MO"): `1` if the document is modified.
 / #sv("MON"): month.
 / #sv("MSEC"): millisecond.
-/ #sv("NEWLINE"): line ending (LF/CRLF).
-/ #sv("NL"): line-ending characters (real newline; `\r\n` in a CRLF doc).
+/ #sv("NEWLINE"): line ending (LF/CRLF/CR).
+/ #sv("NL"): line-ending characters (real newline; `\r\n` in a CRLF doc, `\r` in a CR doc).
 / #sv("NUMLOCK"): Num Lock state.
 / #sv("OF"): left margin (alias of `$OFL`).
 / #sv("OFL"): left margin.

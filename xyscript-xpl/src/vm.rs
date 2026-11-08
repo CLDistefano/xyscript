@@ -26,8 +26,8 @@ use crate::error::{VmResult, XplError};
 use crate::expr::{self, EvalContext, Expr};
 use crate::host::{
     BinderSource, CalcContext, CaretShape, CaseKind, ClipKind, CmlinePlacement, ColorGround, DefineKind, DeleteKind, DirOnly,
-    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, PersistKind, PvMarginSide,
-    SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle, WindowCmd,
+    DirOpts, DirOrder, DocTypeReq, EditorOp, Host, LockKey, MarkGutterMode, Motion, MsgColorSlot, NewlineStyle, PersistKind,
+    PvMarginSide, SearchSpec, SortSpec, UiSizeKind, UnderlineStyle, ViewFlag, ViewToggle, WindowCmd,
 };
 use crate::ir::{self, Instr};
 use crate::library::{parse_lib, validate_names, LibSource, Library, Routine};
@@ -2685,19 +2685,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetSessionRestore(want))?;
                 Ok(Flow::Next)
             }
-            // `NEWLINE lf|crlf` — convert every line ending in the document to LF or CRLF and adopt
-            // it as the document's style (what `ENTER` inserts). Lossless. (`$NEWLINE` reads it.)
+            // `NEWLINE lf|crlf|cr` — convert every line ending in the document to LF, CRLF, or CR
+            // (classic Mac) and adopt it as the document's style (what `ENTER` inserts). Lossless.
+            // (`$NEWLINE` reads it.)
             "NEWLINE" => {
-                let crlf = match args.trim().to_ascii_lowercase().as_str() {
-                    "crlf" => true,
-                    "lf" => false,
+                let style = match args.trim().to_ascii_lowercase().as_str() {
+                    "crlf" => NewlineStyle::Crlf,
+                    "lf" => NewlineStyle::Lf,
+                    "cr" => NewlineStyle::Cr,
                     other => {
                         return Err(XplError::trappable(format!(
-                            "NEWLINE: expected lf or crlf, got {other:?}"
+                            "NEWLINE: expected lf, crlf, or cr, got {other:?}"
                         )))
                     }
                 };
-                self.host_op(EditorOp::SetNewlineStyle(crlf))?;
+                self.host_op(EditorOp::SetNewlineStyle(style))?;
                 Ok(Flow::Next)
             }
             "TOPDF" | "PRINT" => {
