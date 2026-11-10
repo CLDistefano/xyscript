@@ -2939,11 +2939,11 @@ struct GuiApp {
     /// then snaps the preview to a proportional position (jumpy + can't reach the bottom). `None` when
     /// the preview is hidden. Same exclusion the tab strip gets via `tab_strip_rect`.
     preview_pane_rect: Option<egui::Rect>,
-    /// Last `PVWIDTH` percent the preview pane was seeded from, and a generation counter that bumps
-    /// when it changes. The panel's id carries the generation, so a `PVWIDTH` change gives the panel a
-    /// fresh id (no stored drag width) and the new `default_size` re-applies immediately.
+    /// Last `PVWIDTH` percent, and the content width it was last proportioned against. When either
+    /// changes (a `PVWIDTH` command, or a window resize), the preview pane is forced back to
+    /// `PVWIDTH`% of the current width; between those, egui keeps the width so a drag persists.
     last_pvwidth_pct: u32,
-    preview_width_gen: u64,
+    last_preview_avail: f32,
     last_text: String,
     last_change_time: f64,
     // M5: menus + status. The command line is the editor's *native* CMline
@@ -3179,7 +3179,7 @@ impl GuiApp {
             preview_synced_line: usize::MAX, // force an initial sync
             preview_pane_rect: None,
             last_pvwidth_pct: 0, // force a seed on the first preview frame
-            preview_width_gen: 0,
+            last_preview_avail: 0.0,
             last_text: String::new(),
             last_change_time: f64::MIN,
             status: startup_status,
@@ -10829,20 +10829,28 @@ impl GuiApp {
         let kind = self.editor.active_render_kind();
         // Authored typst styles itself; GFM and HTML both take the user's Preview font settings.
         let is_typst = matches!(kind, RenderKind::Typst);
-        // Seed the pane width from PVWIDTH (percent of the available content width), clamped to a
-        // readable floor and to leaving the editor usable space. A PVWIDTH change bumps the generation
-        // so the panel gets a fresh id (dropping any dragged width) and the new default_size applies now.
+        // The pane width is PVWIDTH (percent of the available content width), clamped to a readable
+        // floor and to leaving the editor usable space. Re-proportion when PVWIDTH changes OR the
+        // window is resized (so the preview tracks the window size), by overwriting egui's stored panel
+        // width (which it prefers over `default_size`); between those it keeps the width, so dragging
+        // the divider still fine-tunes within a session.
         let pct = self.editor.host().preview_width_pct();
-        if pct != self.last_pvwidth_pct {
-            self.last_pvwidth_pct = pct;
-            self.preview_width_gen = self.preview_width_gen.wrapping_add(1);
-        }
         let avail = ui.available_width();
         const PV_FLOOR: f32 = 320.0; // keep the preview readable
         const ED_FLOOR: f32 = 320.0; // keep the editor usable
         let hi = (avail - ED_FLOOR).max(PV_FLOOR);
         let want = (avail * pct as f32 / 100.0).clamp(PV_FLOOR.min(hi), hi);
-        let preview_id = format!("preview_{}", self.preview_width_gen);
+        let preview_id = egui::Id::new("preview_pane");
+        if (avail - self.last_preview_avail).abs() > 0.5 || pct != self.last_pvwidth_pct {
+            // Force the stored width to the proportional target. Only the width is used; egui recomputes
+            // the panel's position from the available rect each frame.
+            let ps = egui::containers::panel::PanelState {
+                rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(want, 0.0)),
+            };
+            ui.ctx().data_mut(|d| d.insert_persisted(preview_id, ps));
+        }
+        self.last_preview_avail = avail;
+        self.last_pvwidth_pct = pct;
         let preview_resp = egui::Panel::right(preview_id).resizable(true).default_size(want).show_inside(ui, |ui| {
             ui.label(match kind {
                 RenderKind::Typst => "preview — typst",
