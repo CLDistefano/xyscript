@@ -108,19 +108,19 @@
   and mouse by providing a minimalist environment that aids---or, at least, does not hinder---the
   creative process. XyScript pays homage to that tradition, and hopes to give it new vitality.
 
-  I developed XyScript using Claude Code (Opus 4.8); it's still a work in progress.
-  The source code is written in the Rust programming language. The process of creation was (and will continue to be) a slow
+  I developed XyScript using Claude Code (Opus 4.8). The source code is written in the Rust programming language.
+  The process of creation was (and will continue to be) a slow
   and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see
   #link("https://xywrite.org/xywwweb"), #link("https://xywrite.org/XySearch/XySearch.php"), and #link("https://www.freelists.org/list/xywrite")). I had
   invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated
-  users who remain devoted to this program many years past its heyday. Ultimately, I intend to release XyScript
-  as an open-source application, to be further developed by anyone wishing
-  to do so.
+  users who remain devoted to this program many years past its heyday.
+
+  XyScript is an open-source application, released under the #link("https://opensource.org/license/mit", "MIT license"). For further information, downloads, and source code, visit #link("https://ammaze.net/xyscript/").
 
   #v(6pt)
   Carl L. Distefano \
   New York City \
-  October 2026
+  November 2026
 ]
 
 #pagebreak()
