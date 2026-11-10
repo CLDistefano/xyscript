@@ -6,7 +6,7 @@ XyScript writes plain text. Its center of gravity is not the menu bar but the **
 
 A file is always just text on disk, openable in any other editor. XyScript understands two markup flavors for preview and PDF export — [GitHub Flavored Markdown](https://github.github.com/gfm/) and [Typst](https://typst.app) — but never locks your work in a proprietary format.
 
-> XyScript is a work in progress, developed with [Claude Code](https://claude.com/claude-code) and written in [Rust](https://www.rust-lang.org/).
+> XyScript is developed with [Claude Code](https://claude.com/claude-code) and written in [Rust](https://www.rust-lang.org/).
 
 ## Features
 
@@ -113,10 +113,10 @@ XyScript comes with a library of useful XPL routines -- `xyscript.lib` -- which,
 
 XyScript is modeled on XyWrite, which enjoyed wide popularity in the newspaper and magazine publishing industries in the 1980s and ’90s. XyWrite's hallmark was its lean, command-driven interface; it was known not only for its speed and its ability to automate repetitive tasks, but also for its potential to liberate the writer from the tyranny of menu and mouse — a minimalist environment that aids, or at least does not hinder, the creative process. XyScript pays homage to that tradition, and hopes to give it new vitality.
 
-I developed XyScript using Claude Code (Opus 4.8); it is still a work in progress. The process of creation was — and will continue to be — a slow and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see [xywwweb](https://xywrite.org/xywwweb), [XySearch](https://xywrite.org/XySearch/XySearch.php), and the [XyWrite mailing list](https://www.freelists.org/list/xywrite)). I had invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated users who remain devoted to this program many years past its heyday.
+I developed XyScript using Claude Code (Opus 4.8). The process of creation was — and will continue to be — a slow and iterative one, informed by decades of using, customizing, extending, and talking about XyWrite (see [xywwweb](https://xywrite.org/xywwweb), [XySearch](https://xywrite.org/XySearch/XySearch.php), and the [XyWrite mailing list](https://www.freelists.org/list/xywrite)). I had invaluable assistance throughout from members of the XyWrite community, a worldwide group of dedicated users who remain devoted to this program many years past its heyday.
 
 — Carl L. Distefano, New York City
 
 ## Status & license
 
-XyScript is under active, iterative development; expect rough edges and changing internals. It is **free and open source under the [MIT License](https://opensource.org/license/mit)** — a permissive license with no non-commercial or other field-of-use restrictions. See the [`LICENSE`](LICENSE) file for the full text.
+XyScript is under active, iterative development; expect rough edges and changing internals. It is **free and open source under the [MIT License](https://opensource.org/license/mit)** — a permissive license with no non-commercial or other field-of-use restrictions. See the [`LICENSE`](LICENSE) file for the full text. For further information, downloads, and source, visit the project site: [ammaze.net/xyscript](https://ammaze.net/xyscript/).
