@@ -161,6 +161,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "DWFONT", "DWSCALE", "DWFAMILY", "DWSTYLE", "DWRESET", "DWFONTS",
     // Markdown Preview / TOPDF fonts (PV…): body family/size + code family + pickers.
     "PVFAMILY", "PVSIZE", "PVCODE", "PVCODESIZE", "PVFONTS", "PVCODES",
+    "PVWIDTH", // live Preview pane width (percent of window)
     "PVMARGIN", "PVMARGINL", "PVMARGINR", "PVMARGINT", "PVMARGINB", // Preview/TOPDF page margins
     "PVPAPER", "PVLEADING", "PVSPACING", "PVPAGENUM", "PVPAGEPOS", // Preview/TOPDF page format + numbering
     "PVJUSTIFY", "PVINDENT", "PVHEADER", "PVFOOTER", // Preview/TOPDF justify, indent, header/footer

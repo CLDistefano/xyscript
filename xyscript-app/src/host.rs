@@ -3223,6 +3223,9 @@ pub struct AppHost {
     /// GFM Preview/`TOPDF` page margins (`PVMARGIN`/`PVMARGINL/R/T/B`) — each a validated Typst length
     /// string (default `"1in"`). `$PVMARGIN*`; SaveCfg. Authored-Typst docs set their own page.
     preview_margins: crate::pdf::PageMargins,
+    /// The live Preview pane's initial width as a percent of the window (`PVWIDTH`; 20–80, default 50).
+    /// Proportional so it adapts to the window size; the GUI seeds the pane from it. `$PVWIDTH`; SaveCfg.
+    preview_width_pct: u32,
     /// Preview/`TOPDF` page format (`PVPAPER`) — a friendly token letter/legal/tabloid/a4/a5/a6.
     /// Default `"letter"`. `$PVPAPER`; SaveCfg.
     preview_paper: String,
@@ -3284,6 +3287,12 @@ const DEFAULT_KBD_DUMP: &str = "xyscript.kbd"; // SAVEKBD default path when none
 /// Name of the keyboard-layout slot the editor boots into (`$KBDMODE` before any `KBDMODE`). The
 /// base layout a plain `LOADKBD`/`CLEARKBD` targets.
 pub(crate) const DEFAULT_KBD_MODE: &str = "default";
+
+/// Default live-Preview pane width, as a percent of the window (`PVWIDTH`). Proportional so it adapts
+/// to the window size instead of the old fixed 380 pt that was too narrow on wide windows.
+pub(crate) const PREVIEW_WIDTH_DEFAULT: u32 = 50;
+/// `PVWIDTH` is clamped to this inclusive percent range.
+pub(crate) const PREVIEW_WIDTH_RANGE: std::ops::RangeInclusive<u32> = 20..=80;
 const SHELL_OUTPUT_NAME: &str = "*Console*"; // the unified Console REPL + X/BG output buffer
 const SHELL_OUTPUT_CAP: usize = 512 * 1024; // scrollback cap (bytes) for *Shell Output*
 
@@ -3531,6 +3540,7 @@ impl AppHost {
                 nanos ^ 0x9E37_79B9_7F4A_7C15
             }),
             preview_margins: crate::pdf::PageMargins::default(),
+            preview_width_pct: PREVIEW_WIDTH_DEFAULT,
             preview_paper: "letter".to_string(),
             preview_leading: None,
             preview_spacing: None,
@@ -3952,6 +3962,11 @@ impl AppHost {
     /// The preview-pane tint bundled for the raster render path (`*_to_image`). Never used for `TOPDF`.
     pub fn preview_tint(&self) -> crate::pdf::PreviewTint {
         crate::pdf::PreviewTint { bg: self.preview_bg_color, fg: self.preview_fg_color }
+    }
+    /// The live Preview pane's initial width as a percent of the window (`PVWIDTH`; 20–80). The GUI
+    /// seeds the pane to this fraction of the available width (clamped to a readable floor).
+    pub fn preview_width_pct(&self) -> u32 {
+        self.preview_width_pct
     }
     /// Scratchpad-window colours (`SCRATCHFGCOLOR`/`SCRATCHBGCOLOR`). `None` = egui's theme default.
     /// The GUI applies them to each scratchpad window's text / background.
@@ -9927,6 +9942,7 @@ impl AppHost {
         } else {
             put_tmpl(&mut s, "Markdown Preview/TOPDF code size, points (PVCODESIZE; default: inherit body size)", "PVCODESIZE 10");
         }
+        put(&mut s, "Live Preview pane width -- percent of window (20-80)", format!("PVWIDTH {}", self.preview_width_pct));
         // Preview/TOPDF page margins (per side — emit all four so any mix round-trips). Each value is
         // a length (in/cm/mm/pt); a bare number means inches.
         let m = &self.preview_margins;
@@ -14204,6 +14220,22 @@ impl Host for AppHost {
                 let which = if grammar { "grammar" } else { "spelling" };
                 return Ok(Value::str(format!("{which} underline: {}", style.name())));
             }
+            EditorOp::SetPreviewWidth(pct) => {
+                // `0` is the `PVWIDTH default` sentinel; any other value must be in range.
+                let pct = if pct == 0 {
+                    PREVIEW_WIDTH_DEFAULT
+                } else if PREVIEW_WIDTH_RANGE.contains(&pct) {
+                    pct
+                } else {
+                    return Err(XplError::trappable(format!(
+                        "PVWIDTH: percent must be {}-{} (or 'default'), got {pct}",
+                        PREVIEW_WIDTH_RANGE.start(),
+                        PREVIEW_WIDTH_RANGE.end()
+                    )));
+                };
+                self.preview_width_pct = pct;
+                return Ok(Value::str(format!("Preview width: {pct}% of window")));
+            }
             EditorOp::SetPvMargin { side, value } => {
                 // Validate + normalize (bare number = inches; in/cm/mm/pt), then apply to the side(s).
                 let norm = crate::pdf::normalize_length(&value)
@@ -14799,6 +14831,7 @@ impl Host for AppHost {
                 };
                 Some(Value::str(s))
             }
+            "PVWIDTH" => Some(Value::Int(self.preview_width_pct as i64)),
             "PVMARGINL" => Some(Value::str(self.preview_margins.left.clone())),
             "PVMARGINR" => Some(Value::str(self.preview_margins.right.clone())),
             "PVMARGINT" => Some(Value::str(self.preview_margins.top.clone())),
@@ -16517,6 +16550,25 @@ mod tests {
         assert_eq!(h.special("PANE"), Some(Value::Int(1)));
         h.editor_op(EditorOp::PaneFocusNext).unwrap(); // focus the other (right) pane → position 2
         assert_eq!(h.special("PANE"), Some(Value::Int(2)));
+    }
+
+    #[test]
+    fn pvwidth_default_set_clamp_sentinel_and_savecfg() {
+        use super::{AppHost, EditorOp, PREVIEW_WIDTH_DEFAULT};
+        use xyscript_xpl::{Host, Value};
+        let mut h = AppHost::new();
+        assert_eq!(h.special("PVWIDTH"), Some(Value::Int(PREVIEW_WIDTH_DEFAULT as i64)));
+        h.editor_op(EditorOp::SetPreviewWidth(60)).unwrap();
+        assert_eq!(h.special("PVWIDTH"), Some(Value::Int(60)));
+        // Out of range → trappable error, value unchanged.
+        assert!(h.editor_op(EditorOp::SetPreviewWidth(90)).is_err());
+        assert_eq!(h.special("PVWIDTH"), Some(Value::Int(60)));
+        // `0` (the `PVWIDTH default` sentinel) → reset to the default.
+        h.editor_op(EditorOp::SetPreviewWidth(0)).unwrap();
+        assert_eq!(h.special("PVWIDTH"), Some(Value::Int(PREVIEW_WIDTH_DEFAULT as i64)));
+        // SaveCfg emits it (always, like PVMARGIN).
+        h.editor_op(EditorOp::SetPreviewWidth(65)).unwrap();
+        assert!(h.config_script(false, false).contains("PVWIDTH 65"));
     }
 
     #[test]

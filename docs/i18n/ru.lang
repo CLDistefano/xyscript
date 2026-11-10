@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ru.lang
-# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -265,6 +265,8 @@ menu.settings.appearance.line_spacing.less = Меньше   # Less
 menu.settings.appearance.reset_ui = Сбросить размеры интерфейса   # Reset UI sizing
 menu.settings.appearance.reset_dw = Сбросить окно каталога   # Reset directory window
 menu.settings.preview = Предпросмотр / параметры страницы PDF   # Preview / PDF page setup
+menu.settings.preview.pane_width =    # Pane width (on screen)
+menu.settings.preview.pane_width.custom =    # Custom…
 menu.settings.preview.paper = Формат страницы   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal

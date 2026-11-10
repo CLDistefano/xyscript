@@ -2939,6 +2939,11 @@ struct GuiApp {
     /// then snaps the preview to a proportional position (jumpy + can't reach the bottom). `None` when
     /// the preview is hidden. Same exclusion the tab strip gets via `tab_strip_rect`.
     preview_pane_rect: Option<egui::Rect>,
+    /// Last `PVWIDTH` percent the preview pane was seeded from, and a generation counter that bumps
+    /// when it changes. The panel's id carries the generation, so a `PVWIDTH` change gives the panel a
+    /// fresh id (no stored drag width) and the new `default_size` re-applies immediately.
+    last_pvwidth_pct: u32,
+    preview_width_gen: u64,
     last_text: String,
     last_change_time: f64,
     // M5: menus + status. The command line is the editor's *native* CMline
@@ -3173,6 +3178,8 @@ impl GuiApp {
             preview_seen_w: 0.0,
             preview_synced_line: usize::MAX, // force an initial sync
             preview_pane_rect: None,
+            last_pvwidth_pct: 0, // force a seed on the first preview frame
+            preview_width_gen: 0,
             last_text: String::new(),
             last_change_time: f64::MIN,
             status: startup_status,
@@ -8325,6 +8332,13 @@ impl GuiApp {
                     m_item(self.tr("menu.settings.appearance.reset_dw", "Reset directory window"), "DWRESET"),
                 ]),
                 m_sub(self.tr("menu.settings.preview", "Preview / PDF page setup"), vec![
+                    m_sub(self.tr("menu.settings.preview.pane_width", "Pane width (on screen)"), vec![
+                        m_item("40%", "PVWIDTH 40"),
+                        m_item("50%", "PVWIDTH 50"),
+                        m_item("60%", "PVWIDTH 60"),
+                        m_item("70%", "PVWIDTH 70"),
+                        m_stage(self.tr("menu.settings.preview.pane_width.custom", "Custom…"), "PVWIDTH "),
+                    ]),
                     m_sub(self.tr("menu.settings.preview.paper", "Page format"), vec![
                         m_item(self.tr("menu.settings.preview.paper.letter", "Letter"), "PVPAPER letter"),
                         m_item(self.tr("menu.settings.preview.paper.legal", "Legal"), "PVPAPER legal"),
@@ -10815,7 +10829,21 @@ impl GuiApp {
         let kind = self.editor.active_render_kind();
         // Authored typst styles itself; GFM and HTML both take the user's Preview font settings.
         let is_typst = matches!(kind, RenderKind::Typst);
-        let preview_resp = egui::Panel::right("preview").resizable(true).default_size(380.0).show_inside(ui, |ui| {
+        // Seed the pane width from PVWIDTH (percent of the available content width), clamped to a
+        // readable floor and to leaving the editor usable space. A PVWIDTH change bumps the generation
+        // so the panel gets a fresh id (dropping any dragged width) and the new default_size applies now.
+        let pct = self.editor.host().preview_width_pct();
+        if pct != self.last_pvwidth_pct {
+            self.last_pvwidth_pct = pct;
+            self.preview_width_gen = self.preview_width_gen.wrapping_add(1);
+        }
+        let avail = ui.available_width();
+        const PV_FLOOR: f32 = 320.0; // keep the preview readable
+        const ED_FLOOR: f32 = 320.0; // keep the editor usable
+        let hi = (avail - ED_FLOOR).max(PV_FLOOR);
+        let want = (avail * pct as f32 / 100.0).clamp(PV_FLOOR.min(hi), hi);
+        let preview_id = format!("preview_{}", self.preview_width_gen);
+        let preview_resp = egui::Panel::right(preview_id).resizable(true).default_size(want).show_inside(ui, |ui| {
             ui.label(match kind {
                 RenderKind::Typst => "preview — typst",
                 RenderKind::Gfm => "preview — gfm",

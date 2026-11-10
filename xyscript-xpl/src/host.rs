@@ -1013,6 +1013,9 @@ pub enum EditorOp {
     /// margin(s); `value` is the raw length text (validated + normalized by the host). Read back via
     /// `$PVMARGIN`/`$PVMARGINL/R/T/B`.
     SetPvMargin { side: PvMarginSide, value: String },
+    /// The live Preview pane's initial width as a percent of the window (`PVWIDTH`; 20–80). `0` resets
+    /// to the default. GUI-only layout (not the rendered content); `$PVWIDTH`; SaveCfg.
+    SetPreviewWidth(u32),
     /// Preview/`TOPDF` page format (`PVPAPER` — letter/legal/tabloid/a4/a5/a6). `$PVPAPER`.
     SetPreviewPaper(String),
     /// Preview/`TOPDF` line spacing (`PVLEADING`) — a length, or ""/`default` for Typst's default.

@@ -3683,6 +3683,27 @@ impl Vm<'_, '_> {
                 })?;
                 Ok(Flow::Next)
             }
+            // `PVWIDTH <n|default>` — the live Preview pane's initial width as a percent of the window
+            // (20–80; default 50). Proportional, so it adapts to the window size instead of a fixed
+            // width. Bare reports the current value. `$PVWIDTH`; SaveCfg.
+            "PVWIDTH" => {
+                let a = args.trim();
+                if a.is_empty() {
+                    *self.ctx.status = Some(format!("PVWIDTH: {}", self.special_str("PVWIDTH")));
+                    return Ok(Flow::Next);
+                }
+                let pct = if a.eq_ignore_ascii_case("default") {
+                    0 // sentinel → host resets to the default
+                } else {
+                    a.parse::<u32>().map_err(|_| {
+                        XplError::trappable(format!(
+                            "PVWIDTH: expected a percent 20-80 or 'default', got {a:?}"
+                        ))
+                    })?
+                };
+                self.host_op(EditorOp::SetPreviewWidth(pct))?;
+                Ok(Flow::Next)
+            }
             // `PVMARGIN <len>` sets all four Preview/`TOPDF` page margins; `PVMARGINL/R/T/B` set one
             // side. `<len>` = a number with an optional unit (`in` default, `cm`/`mm`/`pt`). Bare
             // reports the current value. `$PVMARGIN`/`$PVMARGINL/R/T/B`; SaveCfg.
