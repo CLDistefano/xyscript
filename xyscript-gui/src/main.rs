@@ -2721,11 +2721,10 @@ struct GuiApp {
     /// scroll) — which is what keeps URL highlighting off the whole-buffer path on a huge file.
     url_key: Option<(usize, u64, usize, usize)>,
     /// `XLINKHIGHLIGHT` xlink spans (rope offsets) in the active doc — coloured with `XLFGCOLOR`/
-    /// `XLBGCOLOR` and hit-tested for Ctrl+click-to-activate. Cached via `xlink_key` (same scheme as
-    /// `url_highlights`). xlinks are stored (not scanned), but the window still keys the cache so a
-    /// scroll repaints the right slice.
+    /// `XLBGCOLOR` and hit-tested for Ctrl+click-to-activate. Recomputed every frame by `refresh_xlink`
+    /// (not cached — xlinks are cheap stored metadata, and a content-revision cache would miss a newly
+    /// created one; see `refresh_xlink`).
     xlink_highlights: Vec<(usize, usize)>,
-    xlink_key: Option<(usize, u64, usize, usize)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -3105,7 +3104,6 @@ impl GuiApp {
             url_highlights: Vec::new(),
             url_key: None,
             xlink_highlights: Vec::new(),
-            xlink_key: None,
             bal_last: None,
             wi_indent: Vec::new(),
             wi_rows: Vec::new(),
@@ -4286,19 +4284,17 @@ impl GuiApp {
         Some(String::from_utf8_lossy(&doc.slice_bytes(s, e)).into_owned())
     }
 
-    /// Refresh the `XLINKHIGHLIGHT` span set for the active document (cached on `xlink_key`, like
-    /// `refresh_url`). Empty when highlighting is off.
+    /// Refresh the `XLINKHIGHLIGHT` span set for the active document. Recomputed EVERY frame (not cached
+    /// like `refresh_url`): xlinks are STORED metadata — creating one with `XLINK` doesn't bump the
+    /// document revision a content-keyed cache would watch, so a revision cache would leave a new xlink
+    /// unlit until something else invalidated it. `xlink_highlights_in` only filters the stored span
+    /// list to the window, so recomputing each frame is cheap and always correct.
     fn refresh_xlink(&mut self, rope_lo: usize, rope_hi: usize) {
-        if !self.editor.xlink_highlight() {
-            self.xlink_highlights.clear();
-            self.xlink_key = None;
-            return;
-        }
-        let key = Some((self.editor.active_index(), self.editor.doc_revision(), rope_lo, rope_hi));
-        if key != self.xlink_key {
-            self.xlink_highlights = self.editor.xlink_highlights_in(rope_lo, rope_hi);
-            self.xlink_key = key;
-        }
+        self.xlink_highlights = if self.editor.xlink_highlight() {
+            self.editor.xlink_highlights_in(rope_lo, rope_hi)
+        } else {
+            Vec::new()
+        };
     }
 
     /// Whether rope offset `off` falls within a highlighted xlink span (for Ctrl+click activation).
