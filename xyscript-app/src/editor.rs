@@ -348,6 +348,23 @@ impl Editor {
     pub fn open_url(&mut self, url: &str) {
         self.host.open_url(url)
     }
+    /// Whether xlink highlighting + Ctrl+click-to-activate is on (`XLINKHIGHLIGHT`).
+    pub fn xlink_highlight(&self) -> bool {
+        self.host.xlink_highlight()
+    }
+    /// The active document's xlink spans within the visible rope range (empty when highlighting is
+    /// off) — for drawing the highlight and for Ctrl+click hit-testing.
+    pub fn xlink_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        self.host.xlink_highlights_in(rope_lo, rope_hi)
+    }
+    /// The EFFECTIVE xlink-highlight text colour (`XLFGCOLOR`, default a link colour).
+    pub fn xlink_fg_color(&self) -> (u8, u8, u8) {
+        self.host.xlink_fg_color()
+    }
+    /// The xlink-highlight background colour (`None` = no band).
+    pub fn xlink_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.host.xlink_bg_color()
+    }
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.host.auto_reopen()
@@ -6036,6 +6053,60 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         let mut e = ed();
         e.run_command("insert \"from cmd\"");
         assert_eq!(e.document().text(), "from cmd");
+    }
+
+    // ---- xlinks (XLINK / XLDEL / XLGO + GOTOLINE) --------------------------
+
+    #[test]
+    fn gotoline_moves_the_caret_to_the_line_start() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#);
+        e.run_command("GOTOLINE 2");
+        assert_eq!(e.special_str("CP"), "4", "\"aaa\\n\" = 4 bytes → line 2 starts at 4");
+    }
+
+    #[test]
+    fn xlink_create_activate_and_delete() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#);
+        e.run_command("DFA"); // select the whole document
+        e.run_command("XLINK/L 3"); // nav xlink over all → payload "GOTOLINE 3"
+        assert_eq!(e.special_str("XLINKS"), "1");
+        e.run_command("TF"); // caret to top, onto the xlink
+        assert_eq!(e.special_str("XLINK"), "GOTOLINE 3");
+        e.run_command("XLGO"); // activate → jump to line 3
+        assert_eq!(e.special_str("CP"), "8", "\"aaa\\nbbb\\n\" = 8 → line 3 starts at 8");
+        e.run_command("TF");
+        e.run_command("XLDEL");
+        assert_eq!(e.special_str("XLINKS"), "0");
+    }
+
+    #[test]
+    fn xlink_appearance_toggles_and_colors() {
+        let mut e = ed();
+        assert_eq!(e.special_str("XLINKHIGHLIGHT"), "1", "on by default");
+        e.run_command("XLINKHIGHLIGHT off");
+        assert_eq!(e.special_str("XLINKHIGHLIGHT"), "0");
+        e.run_command("XLINKHIGHLIGHT"); // bare toggles
+        assert_eq!(e.special_str("XLINKHIGHLIGHT"), "1");
+        e.run_command("XLFGCOLOR 10 20 30");
+        assert_eq!(e.special_str("XLFGCOLOR"), "10 20 30");
+        e.run_command("XLFGCOLOR default"); // clears to the built-in default
+        assert_eq!(e.special_str("XLFGCOLOR"), "");
+        e.run_command("XLBGCOLOR 1 2 3");
+        assert_eq!(e.special_str("XLBGCOLOR"), "1 2 3");
+    }
+
+    #[test]
+    fn xlgo_refuses_a_non_navigation_payload() {
+        let mut e = ed();
+        e.run_command(r#"insert "hello""#);
+        e.run_command("DFA");
+        e.run_command(r#"XLINK insert "X""#); // a payload that EDITS the document — not navigation
+        assert_eq!(e.special_str("XLINKS"), "1");
+        e.run_command("TF");
+        e.run_command("XLGO"); // must be refused; the payload does not run
+        assert_eq!(e.document().text(), "hello", "a blocked xlink payload never executed");
     }
 
     // ---- binders (LDTX/LDSC/LDPM + @X/&X) ----------------------------------

@@ -2802,6 +2802,61 @@ impl Vm<'_, '_> {
                 self.host_op(op)?;
                 Ok(Flow::Next)
             }
+            // `GOTOLINE <n>` — jump the caret to the start of 1-based line `n` (clamped) and centre it.
+            // A plain navigation verb; also what a nav `XLINK/L` compiles to.
+            "GOTOLINE" => {
+                let arg = args.trim();
+                let n: usize = arg.parse().ok().filter(|&n| n >= 1).ok_or_else(|| {
+                    XplError::trappable(format!("GOTOLINE: expected a line number >= 1, got {arg:?}"))
+                })?;
+                self.host_op(EditorOp::GotoLine(n))?;
+                Ok(Flow::Next)
+            }
+            // `XLINK <payload>` — create an xlink over the SELECTION carrying raw XPL `payload` (stored
+            // verbatim, run on activation; no author-time `$`-expansion — `\;` is already a literal `;`).
+            // `XLINK/L [file:]<line>` — sugar that compiles a NAVIGATION payload (`[OPEN file;]GOTOLINE n`).
+            "XLINK" => {
+                let payload = if vswitches.iter().any(|s| s.eq_ignore_ascii_case("L")) {
+                    build_line_target(raw_args.trim())?
+                } else {
+                    let p = raw_args.trim();
+                    if p.is_empty() {
+                        return Err(XplError::trappable(
+                            "XLINK: select text, then give the XPL to run (or use /L <line>)",
+                        ));
+                    }
+                    p.to_string()
+                };
+                self.host_op(EditorOp::XlinkCreate { payload })?;
+                Ok(Flow::Next)
+            }
+            // `XLDEL` — remove the xlink under the caret; `XLDEL/A` — remove every xlink in the document.
+            "XLDEL" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable("XLDEL takes no argument (use /A for all)"));
+                }
+                let all = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
+                self.host_op(EditorOp::XlinkDelete { all })?;
+                Ok(Flow::Next)
+            }
+            // `XLGO` — activate the xlink under the caret: run its payload, but ONLY if it is pure
+            // navigation (phase 1 is safe by construction; the trusted "action" tier comes later).
+            "XLGO" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable("XLGO takes no argument"));
+                }
+                let payload = self
+                    .ctx
+                    .host
+                    .xlink_payload_at_caret()
+                    .ok_or_else(|| XplError::trappable("XLGO: no xlink at the caret"))?;
+                if !is_navigation_only(&payload) {
+                    return Err(XplError::trappable(
+                        "XLGO: this xlink does more than navigate — blocked for now (trusted activation comes in a later version)",
+                    ));
+                }
+                self.run_source_sync(&payload, &[], false)
+            }
             // `MARKLIST` — a MODAL chooser (sharing the PICK dialog) of the active document's
             // bookmarks; choosing one jumps the caret there (centered). Empty list = a status note.
             "MARKLIST" => {
@@ -4644,6 +4699,36 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetUrlColor { fg: base == "URLFGCOLOR", color })?;
                 Ok(Flow::Next)
             }
+            // `XLINKHIGHLIGHT on|off` (bare toggles) — show xlink spans in the document and make them
+            // Ctrl+click-activatable. On by default. `$XLINKHIGHLIGHT`; SaveCfg.
+            "XLINKHIGHLIGHT" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "XLINKHIGHLIGHT: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetXlinkHighlight(want))?;
+                Ok(Flow::Next)
+            }
+            // `XLFGCOLOR`/`XLBGCOLOR <r g b>` — the xlink-highlight text / background colour (`/HSL`);
+            // bare or `… default` clears it (fg → built-in link colour, bg → no band). `$XLFGCOLOR`/
+            // `$XLBGCOLOR`.
+            "XLFGCOLOR" | "XLBGCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(EditorOp::SetXlinkColor { fg: base == "XLFGCOLOR", color })?;
+                Ok(Flow::Next)
+            }
             "URLFGCOLORS" | "URLBGCOLORS" => {
                 self.host_op(EditorOp::OpenUrlColorPicker { fg: base == "URLFGCOLORS" })?;
                 Ok(Flow::Next)
@@ -6425,6 +6510,66 @@ fn hsl_to_rgb(h: u8, s: u8, l: u8) -> (u8, u8, u8) {
 /// within-line moves (char Left/Right `CL/CR/NC/PC`, `HOME/END/EL/ER`, visual-line `LB/LE`,
 /// same-line `LL/LR`, line up/down `UP/DOWN/LU/LD`) are intentionally EXCLUDED so the caret can
 /// still be moved while editing a command in the cmline.
+/// Compile an `XLINK/L` target spec into a navigation payload. `<line>` → `GOTOLINE <n>` (same
+/// document); `<file>:<line>` → `OPEN <file>;GOTOLINE <n>` (split at the LAST `:`, so a Windows path
+/// like `C:\docs\budget.txt:4200` works). The file text is kept VERBATIM — it is `$`-expanded only
+/// when the xlink is activated, not now. Any other shape is a trappable error.
+fn build_line_target(spec: &str) -> VmResult<String> {
+    if spec.is_empty() {
+        return Err(XplError::trappable("XLINK/L: expected <line> or <file>:<line>"));
+    }
+    if let Ok(n) = spec.parse::<usize>() {
+        if n >= 1 {
+            return Ok(format!("GOTOLINE {n}"));
+        }
+        return Err(XplError::trappable("XLINK/L: line number must be >= 1"));
+    }
+    if let Some(idx) = spec.rfind(':') {
+        let file = spec[..idx].trim();
+        let line = spec[idx + 1..].trim();
+        if !file.is_empty() {
+            if let Ok(n) = line.parse::<usize>() {
+                if n >= 1 {
+                    return Ok(format!("OPEN {file};GOTOLINE {n}"));
+                }
+            }
+        }
+    }
+    Err(XplError::trappable(format!("XLINK/L: expected <line> or <file>:<line>, got {spec:?}")))
+}
+
+/// The navigation-only verb allowlist for xlink activation (phase 1): every statement of an xlink
+/// payload must fold to one of these for `XLGO` to run it. Deny-by-default — any other (or unknown)
+/// verb makes the payload non-navigation, so it is refused rather than run. Kept deliberately small;
+/// the trusted "action" tier (a later phase) is what runs anything else. See `docs/design/xlinks.md`.
+const NAV_VERBS: &[&str] = &[
+    "OPEN", "GOTOLINE", "TF", "BF", "TOP", "BOTTOM", "UP", "DOWN", "LU", "LD", "PU", "PD", "HOME",
+    "END", "NL", "PL", "LL", "LR", "LB", "LE", "MARKNEXT", "MARKPREV", "BUFALT", "DUPVIEW",
+];
+
+/// Whether an xlink `payload` is pure navigation — every statement's leading verb is in [`NAV_VERBS`].
+/// Splits on the same top-level statement separators the VM uses (newlines and `;`), which is
+/// deliberately CONSERVATIVE: a `;` inside a string merely yields an extra fragment whose leading
+/// token won't match a nav verb, so the payload is REFUSED (a safe false-negative) rather than being
+/// mistaken for navigation. Empty and comment (`#`) fragments are skipped. An empty payload is not
+/// navigation (there is nothing to run). Used by `XLGO`.
+pub(crate) fn is_navigation_only(payload: &str) -> bool {
+    let mut saw_statement = false;
+    for raw in payload.split(|c| c == '\n' || c == '\r' || c == ';') {
+        let stmt = raw.trim();
+        if stmt.is_empty() || stmt.starts_with('#') {
+            continue;
+        }
+        saw_statement = true;
+        let tok = stmt.split_whitespace().next().unwrap_or("");
+        let verb = tok.split('/').next().unwrap_or(tok).to_ascii_uppercase();
+        if !NAV_VERBS.contains(&verb.as_str()) {
+            return false;
+        }
+    }
+    saw_statement
+}
+
 const FOCUS_DOC_VERBS: &[&str] = &[
     // Motions — big jumps only: word / sentence / paragraph / line-to-line / page / screen / file,
     // plus the selection-edge jumps `DB`/`DE` (they behave like `JMP $DS`/`JMP $DN`).
@@ -6438,6 +6583,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "REFLOW",
     // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
+    // Line jump + xlinks: navigation and span edits act on the document at the caret/selection.
+    "GOTOLINE", "XLINK", "XLDEL", "XLGO",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",
@@ -6539,7 +6686,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "TXTFGCOLOR" | "TXTBGCOLOR" | "DWFGCOLOR" | "DWBGCOLOR" | "SELBGCOLOR" | "SELFGCOLOR"
         | "TABBGCOLOR" | "TABXCOLOR" | "PAFGCOLOR" | "PABGCOLOR" | "PVFGCOLOR" | "PVBGCOLOR"
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
-        | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR"
+        | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR" | "XLFGCOLOR" | "XLBGCOLOR"
         | "LNFGCOLOR" | "LNBGCOLOR" | "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR"
         | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
@@ -6562,6 +6709,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
         "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
+        "XLINK" => &["L"], // `/L` — build a navigation target from `[file:]<line>` (vs a raw payload)
+        "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
 
         _ => &[],
     };
@@ -7123,6 +7272,40 @@ impl EvalContext for Ctx<'_> {
 mod tests {
     use super::*;
     use crate::host::StubHost;
+
+    #[test]
+    fn nav_classifier_accepts_pure_navigation_only() {
+        // Pure navigation — accepted.
+        assert!(is_navigation_only("GOTOLINE 42"));
+        assert!(is_navigation_only("OPEN budget.txt;GOTOLINE 4200"));
+        assert!(is_navigation_only("open budget.txt ; gotoline 10")); // case + spaces
+        assert!(is_navigation_only("TF\nMARKNEXT")); // newline-separated
+        assert!(is_navigation_only("# a comment\nGOTOLINE 5")); // comments skipped
+        // Anything beyond the allowlist — refused (deny by default), even with a nav prefix.
+        assert!(!is_navigation_only("OPEN x;DEL y"));
+        assert!(!is_navigation_only("GOTOLINE 5;X rm -rf /"));
+        assert!(!is_navigation_only("SAVE"));
+        assert!(!is_navigation_only("WRITEFILE out.txt"));
+        assert!(!is_navigation_only("")); // nothing to run is not navigation
+        assert!(!is_navigation_only("   \n  ")); // whitespace-only, likewise
+        // A `;` inside a quoted arg splits conservatively → the tail isn't a nav verb → refused (safe).
+        assert!(!is_navigation_only("OPEN \"a;b\""));
+    }
+
+    #[test]
+    fn build_line_target_compiles_nav_payloads() {
+        assert_eq!(build_line_target("42").unwrap(), "GOTOLINE 42");
+        assert_eq!(build_line_target("budget.txt:4200").unwrap(), "OPEN budget.txt;GOTOLINE 4200");
+        // Windows path: split at the LAST colon.
+        assert_eq!(
+            build_line_target("C:\\docs\\budget.txt:17").unwrap(),
+            "OPEN C:\\docs\\budget.txt;GOTOLINE 17"
+        );
+        assert!(build_line_target("0").is_err()); // line must be >= 1
+        assert!(build_line_target("notaline").is_err());
+        assert!(build_line_target("file.txt:notaline").is_err());
+        assert!(build_line_target("").is_err());
+    }
 
     #[test]
     fn dirset_splits_switch_strings_every_way() {

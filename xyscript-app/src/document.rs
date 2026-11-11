@@ -309,6 +309,45 @@ pub struct MarkNav {
     pub total: usize,
 }
 
+/// An **xlink** (`XLINK`): a span of text `[start, end)` carrying an XPL `payload` that runs when the
+/// span is activated (Ctrl+click or `XLGO`). Persisted per-document in the `.xymeta` sidecar's
+/// `[xlinks]` section. Each endpoint anchors exactly like a [`Bookmark`]: `start`/`end` are raw
+/// rope-byte offsets that ride edits in-session (right/left gravity, like a colour span), and the
+/// `*_ctx`/`*_split` pairs let each end be RELOCATED by content when the file changed on disk between
+/// sessions (see [`Document::reconcile_xlinks`]). The payload is stored VERBATIM (raw bytes, any
+/// encoding) and is NOT `$`-expanded until activation. Design: `docs/design/xlinks.md`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Xlink {
+    /// Rope-byte offset of the span start. Right gravity: text typed AT the start stays outside.
+    pub start: usize,
+    /// Rope-byte offset of the span end. Left gravity: text typed AT the end stays outside.
+    pub end: usize,
+    /// Relocation anchor for the START point — raw bytes straddling it (up to [`MARK_CTX`] each side).
+    pub start_ctx: Vec<u8>,
+    /// How many bytes of `start_ctx` precede the start point.
+    pub start_split: usize,
+    /// Relocation anchor for the END point.
+    pub end_ctx: Vec<u8>,
+    /// How many bytes of `end_ctx` precede the end point.
+    pub end_split: usize,
+    /// The XPL to run on activation, stored verbatim. Hex-encoded in the sidecar; never author-time
+    /// `$`-expanded.
+    pub payload: Vec<u8>,
+}
+
+/// An xlink with FRESH endpoint contexts captured from the current buffer, for persisting to the
+/// sidecar (see [`Document::xlinks_for_persist`]). Mirrors the `(off, split, ctx)` tuple that
+/// [`Document::marks_for_persist`] yields, but for both ends plus the payload.
+pub struct XlinkPersist {
+    pub start: usize,
+    pub start_split: usize,
+    pub start_ctx: Vec<u8>,
+    pub end: usize,
+    pub end_split: usize,
+    pub end_ctx: Vec<u8>,
+    pub payload: Vec<u8>,
+}
+
 /// Find `ctx` in `text` so the resulting point (`match_start + split`) lands within `[lo, hi]`,
 /// choosing the occurrence whose point is NEAREST `orig`. Raw-byte search (encoding-agnostic); the
 /// scan is bounded to the vicinity so it stays cheap. `None` if the context can't be placed in range.
@@ -444,6 +483,10 @@ pub struct Document {
     /// like the colour spans (via `adjust_color_spans`), persisted to the `.xymeta` sidecar's
     /// `[marks]` section, and relocated by content on reopen. See [`Bookmark`].
     marks: Vec<Bookmark>,
+    /// xlinks (`XLINK`) for THIS document, in rope-byte offsets, sorted by `start`. Ride edits like the
+    /// colour spans (via `adjust_color_spans`), persisted to the `.xymeta` sidecar's `[xlinks]` section,
+    /// and relocated by content on reopen. Non-overlapping (create rejects overlap). See [`Xlink`].
+    xlinks: Vec<Xlink>,
     /// Live language-check underlines for THIS document (`SPELLING`/`GRAMMAR`), in rope-byte offsets.
     /// Held per-document (not host-global) so each pane in a split shows its OWN doc's marks; refreshed
     /// asynchronously by the host's lint worker (see `AppHost::poll_lint`). Session-only, never saved.
@@ -573,6 +616,7 @@ impl Clone for Document {
             bg_spans: self.bg_spans.clone(),
             attr_spans: self.attr_spans.clone(),
             marks: self.marks.clone(),
+            xlinks: self.xlinks.clone(),
             styling_dirty: self.styling_dirty,
             saved_styling_sig: self.saved_styling_sig,
             font_mode: self.font_mode,
@@ -622,6 +666,7 @@ impl Default for Document {
             bg_spans: Vec::new(),
             attr_spans: Vec::new(),
             marks: Vec::new(),
+            xlinks: Vec::new(),
             styling_dirty: false,
             saved_styling_sig: 0,
             font_mode: FontMode::Auto,
@@ -933,6 +978,15 @@ impl Document {
                 mix(byte as u64);
             }
             mix(0xFF); // terminator between marks
+        }
+        mix(0x5B); // separator before the xlink layer
+        for x in &self.xlinks {
+            mix(x.start as u64);
+            mix(x.end as u64);
+            for &byte in &x.payload {
+                mix(byte as u64);
+            }
+            mix(0xFF); // terminator between xlinks
         }
         h
     }
@@ -1668,6 +1722,7 @@ impl Document {
         Self::shift_spans(&mut self.bg_spans, at, removed, inserted);
         Self::shift_spans(&mut self.attr_spans, at, removed, inserted);
         Self::shift_marks(&mut self.marks, at, removed, inserted);
+        Self::shift_xlinks(&mut self.xlinks, at, removed, inserted);
     }
 
     /// Snapshot the MDA styling over the ROPE range `[at, at+len)` from all three layers, clipped to
@@ -1822,6 +1877,31 @@ impl Document {
                 at // inside a deletion → collapse to the edit start
             };
         }
+    }
+
+    /// Edit-follow the xlink spans — the same per-edge gravity as [`shift_spans`] (start right-gravity,
+    /// end left-gravity), run over the two endpoints of each xlink. An xlink the edit empties (its text
+    /// fully deleted → `start >= end`) is dropped, exactly as a colour span is. (Keeping an emptied
+    /// xlink as a visibly "broken" marker is a phase-2 refinement; see `docs/design/xlinks.md`.)
+    fn shift_xlinks(list: &mut Vec<Xlink>, at: usize, removed: usize, inserted: usize) {
+        if list.is_empty() {
+            return;
+        }
+        let shift = |x: usize, left_gravity: bool| -> usize {
+            let before = if left_gravity { x <= at } else { x < at };
+            if before {
+                x
+            } else if x >= at + removed {
+                x - removed + inserted
+            } else {
+                at
+            }
+        };
+        list.retain_mut(|xl| {
+            xl.start = shift(xl.start, false); // start: right gravity
+            xl.end = shift(xl.end, true); // end: left gravity
+            xl.start < xl.end
+        });
     }
 
     /// Edit-follow one span list. Per-edge "gravity" so text typed AT a boundary isn't swept into the
@@ -2140,6 +2220,143 @@ impl Document {
             .collect()
     }
 
+    // ---- xlinks ------------------------------------------------------------
+
+    /// All xlinks for this document, sorted by `start` (`$XLINKS` counts them).
+    pub fn xlinks(&self) -> &[Xlink] {
+        &self.xlinks
+    }
+
+    /// Number of xlinks (`$XLINKS`).
+    pub fn xlink_count(&self) -> usize {
+        self.xlinks.len()
+    }
+
+    /// The xlink whose span contains rope-byte offset `off` (e.g. the caret), if any. Spans never
+    /// overlap, so at most one matches. Used by `XLGO`, `$XLINK`, and the GUI hit-test.
+    pub fn xlink_at(&self, off: usize) -> Option<&Xlink> {
+        self.xlinks.iter().find(|x| x.start <= off && off < x.end)
+    }
+
+    /// `XLINK`: create an xlink over rope range `[start, end)` carrying `payload` (raw bytes, verbatim).
+    /// Rejects an empty range or one that overlaps an existing xlink. Endpoint contexts are captured now
+    /// (like `MARKSET`) so a fresh anchor exists even before the next save.
+    pub fn xlink_create(&mut self, start: usize, end: usize, payload: Vec<u8>) -> Result<(), &'static str> {
+        if start >= end {
+            return Err("empty selection");
+        }
+        if self.xlinks.iter().any(|x| start < x.end && x.start < end) {
+            return Err("overlaps an existing xlink");
+        }
+        let (start_ctx, start_split) = self.capture_ctx(start);
+        let (end_ctx, end_split) = self.capture_ctx(end);
+        self.xlinks.push(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload });
+        self.xlinks.sort_by_key(|x| x.start);
+        self.styling_dirty = true;
+        Ok(())
+    }
+
+    /// `XLDEL`: remove the xlink whose span contains `off`. Returns `true` if one was removed.
+    pub fn xlink_delete_at(&mut self, off: usize) -> bool {
+        let before = self.xlinks.len();
+        self.xlinks.retain(|x| !(x.start <= off && off < x.end));
+        let removed = self.xlinks.len() != before;
+        if removed {
+            self.styling_dirty = true;
+        }
+        removed
+    }
+
+    /// `XLDEL/A`: drop every xlink. Returns how many were removed.
+    pub fn xlink_delete_all(&mut self) -> usize {
+        let n = self.xlinks.len();
+        if n > 0 {
+            self.xlinks.clear();
+            self.styling_dirty = true;
+        }
+        n
+    }
+
+    /// xlinks with FRESH endpoint contexts captured from the current buffer, for persisting to the
+    /// sidecar. Recomputed at save time (like [`marks_for_persist`](Self::marks_for_persist)) so the
+    /// stored anchors match the saved bytes even after a session of edits shifted the live offsets.
+    pub fn xlinks_for_persist(&self) -> Vec<XlinkPersist> {
+        self.xlinks
+            .iter()
+            .map(|x| {
+                let (start_ctx, start_split) = self.capture_ctx(x.start);
+                let (end_ctx, end_split) = self.capture_ctx(x.end);
+                XlinkPersist {
+                    start: x.start,
+                    start_split,
+                    start_ctx,
+                    end: x.end,
+                    end_split,
+                    end_ctx,
+                    payload: x.payload.clone(),
+                }
+            })
+            .collect()
+    }
+
+    /// Restore xlinks read from the sidecar, then reconcile each endpoint against the CURRENT text (an
+    /// endpoint whose stored context no longer sits at its offset is relocated by content). Always runs
+    /// (like bookmarks), even when the byte-guard failed — xlinks self-anchor. Re-baselines styling.
+    pub fn set_xlinks_restored(&mut self, xlinks: Vec<Xlink>) {
+        self.xlinks = xlinks;
+        self.reconcile_xlinks();
+        // xlinks share the sidecar with marks/colours; fold them into the styling baseline so a restored
+        // doc reports clean. Runs AFTER marks are restored (see `apply_xymeta_restore`), so this final
+        // baseline covers the xlink layer too.
+        self.mark_styling_baseline();
+    }
+
+    /// Verify each xlink endpoint still sits on its captured context; relocate the ones that don't (see
+    /// [`find_ctx_near`]). Clamps offsets, drops spans the relocation emptied, sorts. Returns how many
+    /// endpoints were relocated.
+    fn reconcile_xlinks(&mut self) -> usize {
+        if self.xlinks.is_empty() {
+            return 0;
+        }
+        let len = self.buffer.len();
+        let text = self.buffer.slice_bytes(0, len);
+        let mut moved = 0;
+        // Relocate one endpoint: if its context no longer matches in place, search the whole document
+        // for the nearest occurrence. Allowed range is the full buffer — endpoints move independently.
+        let relocate = |text: &[u8], off: usize, split: usize, ctx: &[u8]| -> Option<usize> {
+            if ctx.is_empty() {
+                return None;
+            }
+            let start = off.saturating_sub(split);
+            let ok = start + ctx.len() <= text.len() && text[start..start + ctx.len()] == *ctx;
+            if ok {
+                return None; // still anchored
+            }
+            find_ctx_near(text, ctx, split, 0, text.len(), off)
+        };
+        for i in 0..self.xlinks.len() {
+            let (soff, ssplit, eoff, esplit) = {
+                let x = &self.xlinks[i];
+                (x.start, x.start_split, x.end, x.end_split)
+            };
+            if let Some(n) = relocate(&text, soff, ssplit, &self.xlinks[i].start_ctx) {
+                self.xlinks[i].start = n;
+                moved += 1;
+            }
+            if let Some(n) = relocate(&text, eoff, esplit, &self.xlinks[i].end_ctx) {
+                self.xlinks[i].end = n;
+                moved += 1;
+            }
+        }
+        for x in &mut self.xlinks {
+            x.start = x.start.min(len);
+            x.end = x.end.min(len);
+        }
+        self.xlinks.retain(|x| x.start < x.end); // a relocation that emptied the span → drop (broken)
+        self.xlinks.sort_by_key(|x| x.start);
+        moved
+    }
+
     /// Replace the document's content from freshly-read file **bytes**, adopting
     /// `path`. The bytes are stored **verbatim** (never transformed) — the
     /// byte-exact-round-trip guarantee. The encoding view is chosen by a
@@ -2163,6 +2380,7 @@ impl Document {
         self.bg_spans.clear();
         self.attr_spans.clear();
         self.marks.clear(); // old content's bookmarks; restored from the sidecar right after
+        self.xlinks.clear(); // old content's xlinks; restored from the sidecar right after
         // A freshly-loaded doc matches disk; the host restores sidecar styling right after, which
         // re-baselines. (This empty baseline holds for a file with no sidecar.)
         self.mark_styling_baseline();
@@ -5397,6 +5615,84 @@ mod tests {
         assert_eq!(d.buffer().text(), "ABCDEFGHIJ");
         assert_eq!(d.bg_color_spans_decoded(), vec![(2, 8, (10, 20, 30))], "bg restored");
         assert_eq!(d.attr_spans_decoded(), vec![(2, 8, ATTR_BOLD)], "attrs restored");
+    }
+
+    #[test]
+    fn xlink_create_rejects_empty_and_overlap_and_allows_adjacent() {
+        let mut d = Document::from_str("hello world");
+        assert!(d.xlink_create(3, 3, b"x".to_vec()).is_err(), "empty range rejected");
+        d.xlink_create(0, 5, b"a".to_vec()).unwrap(); // "hello"
+        assert!(d.xlink_create(3, 8, b"b".to_vec()).is_err(), "overlap rejected");
+        d.xlink_create(5, 11, b"c".to_vec()).unwrap(); // " world" — adjacent, allowed
+        assert_eq!(d.xlink_count(), 2);
+    }
+
+    #[test]
+    fn xlink_at_finds_the_span_under_the_caret() {
+        let mut d = Document::from_str("hello world");
+        d.xlink_create(0, 5, b"a".to_vec()).unwrap();
+        d.xlink_create(5, 11, b"c".to_vec()).unwrap();
+        assert_eq!(d.xlink_at(0).unwrap().payload, b"a");
+        assert_eq!(d.xlink_at(4).unwrap().payload, b"a");
+        assert_eq!(d.xlink_at(5).unwrap().payload, b"c", "5 belongs to [5,11)");
+        assert!(d.xlink_at(11).is_none(), "past the last end");
+    }
+
+    #[test]
+    fn xlink_delete_at_and_all() {
+        let mut d = Document::from_str("hello world");
+        d.xlink_create(0, 5, b"a".to_vec()).unwrap();
+        d.xlink_create(5, 11, b"c".to_vec()).unwrap();
+        assert!(d.xlink_delete_at(7), "removes the span containing 7");
+        assert_eq!(d.xlink_count(), 1);
+        assert!(!d.xlink_delete_at(7), "nothing there now");
+        assert_eq!(d.xlink_delete_all(), 1);
+        assert_eq!(d.xlink_count(), 0);
+    }
+
+    #[test]
+    fn xlink_span_rides_edits_and_drops_when_emptied() {
+        let mut d = Document::from_str("0123456789");
+        d.xlink_create(2, 5, b"GO 1".to_vec()).unwrap(); // over "234"
+        d.replace_span(0, 0, "XX"); // insert before → span slides +2
+        assert_eq!((d.xlinks()[0].start, d.xlinks()[0].end), (4, 7));
+        d.replace_span(5, 5, "YY"); // insert INSIDE → end grows
+        assert_eq!((d.xlinks()[0].start, d.xlinks()[0].end), (4, 9));
+        d.replace_span(4, 9, ""); // delete the whole span text → xlink dropped
+        assert!(d.xlinks().is_empty(), "an emptied xlink is dropped");
+    }
+
+    #[test]
+    fn xlink_persist_then_restore_relocates_endpoints_and_keeps_payload() {
+        // Persist an xlink's anchors, then restore them against text where the surrounding content
+        // moved: both endpoints relocate by context, and the payload round-trips verbatim.
+        let t1 = "the quick brown fox BUDGET jumps over the lazy dog";
+        let s = t1.find("BUDGET").unwrap();
+        let e = s + "BUDGET".len();
+        let mut d1 = Document::from_str(t1);
+        d1.xlink_create(s, e, b"OPEN report;GO 5".to_vec()).unwrap();
+        let p = d1.xlinks_for_persist();
+
+        let t2 = "PREFIX PREFIX the quick brown fox BUDGET jumps over the lazy dog";
+        let ns = t2.find("BUDGET").unwrap();
+        let ne = ns + "BUDGET".len();
+        let mut d2 = Document::from_str(t2);
+        let restored: Vec<Xlink> = p
+            .iter()
+            .map(|q| Xlink {
+                start: q.start,
+                end: q.end,
+                start_ctx: q.start_ctx.clone(),
+                start_split: q.start_split,
+                end_ctx: q.end_ctx.clone(),
+                end_split: q.end_split,
+                payload: q.payload.clone(),
+            })
+            .collect();
+        d2.set_xlinks_restored(restored);
+        assert_eq!(d2.xlinks().len(), 1);
+        assert_eq!((d2.xlinks()[0].start, d2.xlinks()[0].end), (ns, ne), "both ends relocated");
+        assert_eq!(d2.xlinks()[0].payload, b"OPEN report;GO 5", "payload preserved");
     }
 
     #[test]

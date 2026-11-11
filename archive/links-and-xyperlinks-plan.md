@@ -7,6 +7,8 @@ status: planning — no code yet. Decisions LK1/LK2/XL1/TH1 OPEN (with leans); X
 
 # Live links & Xyperlinks (plan)
 
+> **Note (2026-11-11):** the Xyperlink half of this plan is superseded by [`docs/design/xlinks.md`](../docs/design/xlinks.md) (the URL-highlighting half shipped as `URLHIGHLIGHT`).
+
 *Two user-requested features that converge on one mechanism: (1) highlight URLs/URIs
 in any document with a user-chosen color and make them **live** (activatable), and
 (2) **Xyperlinks** — the XyWrite idea of highlighted text carrying an embedded XPL
