@@ -42,4 +42,7 @@ pub use parser::{parse as parse_program, ParseError};
 pub use splitter::split_commands;
 pub use subst::substitute;
 pub use value::{fold_ident, xpl_cmp, Number, Value};
-pub use vm::{InputKind, InputRequest, Interpreter, WaitTarget, PREEMPT_SLICE};
+pub use vm::{
+    describe_xlink_payload, InputKind, InputRequest, Interpreter, WaitTarget, XlinkConfirmChoice,
+    PREEMPT_SLICE,
+};
