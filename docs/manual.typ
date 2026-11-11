@@ -610,6 +610,52 @@ instant table of contents for any long file.
 it hands back the outline as text, one section per line, so a script can build its own table of
 contents or index.]
 
+== Xlinks: your own hyperlinks
+
+A bookmark marks a place; an *xlink* marks a place and makes a span of text *take you there* — or do
+anything else XPL can do. An xlink is a stretch of highlighted text with a little block of XPL attached;
+activate it and the XPL runs. The obvious use is a cross-reference — "see the budget" that jumps to the
+right line of another file — but because the attached code is XPL, an xlink is really a button you can
+put inside your prose.
+
+To make one, select the text that should become the link and run #raw("XLINK") followed by the command
+to attach. The simplest kind jumps to a line: #raw("GOTOLINE") moves the cursor to a line number (and
+centres it), so a one-liner is all you need. For that common case there's a shorthand, #raw("XLINK/L"),
+that writes the jump for you:
+
+#raw("XLINK/L 4200") makes the selected text jump to line 4200 of the *same* file, and
+#raw("XLINK/L budget.txt:4200") jumps to line 4200 of another file (opening it first). To attach
+something other than a jump, give the code directly — #raw("XLINK OPEN notes.txt") — and it is stored
+exactly as typed, filename and all, and only worked out when you follow the link (so a path like
+#raw("$CWD\\refs.txt") points wherever you are *then*, not where you were when you made it).
+
+Follow an xlink by *Ctrl+clicking* it, or by putting the cursor on it and running #raw("XLGO"). Xlinks
+show in a distinct colour so you can see them; #raw("XLINKHIGHLIGHT off") hides the colouring (and turns
+off Ctrl+click) if you'd rather a plain screen, and #raw("XLFGCOLOR") / #raw("XLBGCOLOR") set the link
+text and background colours (bare, or #raw("default"), restores the built-in teal and no background).
+
+#tip("For now, an xlink will only navigate")[A link that someone else made could carry any
+command — so, to be safe, this version of XyScript runs an xlink's code only when it is pure
+navigation (opening a file, #raw("GOTOLINE"), moving the cursor). A link that would do anything else —
+write a file, run a shell command — is refused with a note rather than run. Trusted activation of
+richer "action" links is planned for a later version; until then you can always read what a link would
+do with #raw("$XLINK") (see below).]
+
+#raw("XLDEL") removes the xlink under the cursor (the text stays — only the link is removed), and
+#raw("XLDEL/A") clears every xlink in the file. To check from a script, #raw("$XLINKS") is the number
+of xlinks in the file and #raw("$XLINK") is the stored code of the one under the cursor (empty when the
+cursor isn't on one).
+
+Xlinks belong to the file, not the session: like bookmarks, they are saved beside it in the hidden
+#raw(".xymeta") sidecar and restored when you reopen. Each end of the link rides your edits and is
+relocated to its text on reopen, so a link keeps pointing at the right words as the file grows — share
+the file *and its sidecar* together and the links travel with it.
+
+#tip("A navigation link that always resolves")[Pair an xlink with a #raw("GOTOLINE") to a spot you care
+about, and even as the file grows the link's own text stays put (it rides your edits). The line number
+it jumps *to* is fixed, though — if you'll be inserting lines above the target, link to a nearby heading
+you can #raw("GOTOLINE") to by eye, or keep the target near the top.]
+
 == Right-to-left text and the cursor
 
 XyScript shapes and displays right-to-left scripts — Arabic, Hebrew — correctly out of the box: Arabic

@@ -26,7 +26,7 @@ pub use xyscript_xpl::LintFixChoices;
 pub use xyscript_xpl::CmlinePlacement;
 pub use xyscript_xpl::PathPlace;
 
-use crate::document::{Bookmark, Document};
+use crate::document::{Bookmark, Document, Xlink, XlinkPersist};
 use crate::encoding::Encoding;
 use crate::text::{Buffer, Pattern};
 
@@ -251,8 +251,9 @@ fn xymeta_serialize(
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
     marks: &[(usize, usize, Vec<u8>)],
+    xlinks: &[XlinkPersist],
 ) -> Option<String> {
-    if fg.is_empty() && bg.is_empty() && attrs.is_empty() && marks.is_empty() {
+    if fg.is_empty() && bg.is_empty() && attrs.is_empty() && marks.is_empty() && xlinks.is_empty() {
         return None;
     }
     let mut s = String::new();
@@ -283,6 +284,32 @@ fn xymeta_serialize(
             s.push_str(&format!("m {off} {split} {hex}\n"));
         }
     }
+    if !xlinks.is_empty() {
+        // `x <s_off> <s_split> <s_ctx_hex> <e_off> <e_split> <e_ctx_hex> <payload_hex>` — both endpoint
+        // contexts AND the payload are hex (they can hold any bytes, incl. spaces/`;`/newlines), so the
+        // line splits cleanly into exactly 7 fields. A hex field that would be empty is written `-`
+        // (a mid-line empty token would collapse under whitespace-splitting); `-` decodes to no bytes.
+        s.push_str("[xlinks]\n");
+        let hx = |b: &[u8]| -> String {
+            if b.is_empty() {
+                "-".to_string()
+            } else {
+                b.iter().map(|x| format!("{x:02x}")).collect()
+            }
+        };
+        for x in xlinks {
+            s.push_str(&format!(
+                "x {} {} {} {} {} {} {}\n",
+                x.start,
+                x.start_split,
+                hx(&x.start_ctx),
+                x.end,
+                x.end_split,
+                hx(&x.end_ctx),
+                hx(&x.payload),
+            ));
+        }
+    }
     Some(s)
 }
 
@@ -295,9 +322,10 @@ fn xymeta_write(
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
     marks: &[(usize, usize, Vec<u8>)],
+    xlinks: &[XlinkPersist],
 ) {
     let Some(scp) = xymeta_path(target) else { return };
-    let Some(s) = xymeta_serialize(bytes, fg, bg, attrs, marks) else {
+    let Some(s) = xymeta_serialize(bytes, fg, bg, attrs, marks, xlinks) else {
         // Nothing to persist — drop any stale sidecar so a doc whose styling was cleared doesn't
         // reopen still wearing it.
         let _ = std::fs::remove_file(&scp);
@@ -330,6 +358,8 @@ struct XymetaRestore {
     bg: Vec<ColorSpan>,
     attrs: Vec<(usize, usize, u8)>,
     marks: Vec<Bookmark>,
+    /// Like `marks`, returned regardless of `guard_ok` — xlinks self-anchor and relocate on reopen.
+    xlinks: Vec<Xlink>,
 }
 
 /// Read the sidecar next to `target`. Returns `None` only when there's nothing usable (no file, wrong
@@ -354,6 +384,7 @@ fn xymeta_parse(text: &str, bytes: &[u8]) -> Option<XymetaRestore> {
     let (mut fg, mut bg): (Vec<ColorSpan>, Vec<ColorSpan>) = (Vec::new(), Vec::new());
     let mut attrs: Vec<(usize, usize, u8)> = Vec::new();
     let mut marks: Vec<Bookmark> = Vec::new();
+    let mut xlinks: Vec<Xlink> = Vec::new();
     for line in lines {
         let line = line.trim();
         if line.is_empty() {
@@ -364,6 +395,7 @@ fn xymeta_parse(text: &str, bytes: &[u8]) -> Option<XymetaRestore> {
                 "colors" => "colors",
                 "attrs" => "attrs",
                 "marks" => "marks",
+                "xlinks" => "xlinks",
                 _ => "", // unknown section: skip its lines
             };
             continue;
@@ -396,10 +428,49 @@ fn xymeta_parse(text: &str, bytes: &[u8]) -> Option<XymetaRestore> {
                     marks.push(bm);
                 }
             }
+            "xlinks" => {
+                if let Some(x) = parse_xymeta_xlink(line) {
+                    xlinks.push(x);
+                }
+            }
             _ => {}
         }
     }
-    Some(XymetaRestore { guard_ok: len_ok && hash_ok, fg, bg, attrs, marks })
+    Some(XymetaRestore { guard_ok: len_ok && hash_ok, fg, bg, attrs, marks, xlinks })
+}
+
+/// Decode one hex field of a `.xymeta` line. The sentinel `-` (used so a mid-line field is never the
+/// empty string, which whitespace-splitting would swallow) decodes to no bytes. Odd length or a
+/// non-hex digit → `None`, dropping just that line.
+fn parse_hex_field(s: &str) -> Option<Vec<u8>> {
+    if s == "-" {
+        return Some(Vec::new());
+    }
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+/// Parse one `[xlinks]` line: `x <s_off> <s_split> <s_ctx_hex> <e_off> <e_split> <e_ctx_hex>
+/// <payload_hex>`. All three hex fields may be the `-` sentinel. Any malformed field drops just that
+/// line (the rest of the sidecar still loads).
+fn parse_xymeta_xlink(line: &str) -> Option<Xlink> {
+    let mut it = line.split_whitespace();
+    if it.next()? != "x" {
+        return None;
+    }
+    let start: usize = it.next()?.parse().ok()?;
+    let start_split: usize = it.next()?.parse().ok()?;
+    let start_ctx = parse_hex_field(it.next()?)?;
+    let end: usize = it.next()?.parse().ok()?;
+    let end_split: usize = it.next()?.parse().ok()?;
+    let end_ctx = parse_hex_field(it.next()?)?;
+    let payload = parse_hex_field(it.next()?)?;
+    if it.next().is_some() {
+        return None; // trailing junk → malformed
+    }
+    Some(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload })
 }
 
 /// Parse one `[marks]` line: `m <off> <split> <ctx-hex>`. The context hex may be empty (a mark with
@@ -425,6 +496,7 @@ fn apply_xymeta_restore(doc: &mut Document, r: XymetaRestore) {
         doc.set_color_spans_raw(r.fg, r.bg, r.attrs);
     }
     doc.set_marks_restored(r.marks);
+    doc.set_xlinks_restored(r.xlinks); // always restored (self-anchoring), and re-baselines styling last
 }
 
 /// The REFERENCE-matches block for `HELP`/`REF`: the formatted list of entries matching `q` (name
@@ -1503,6 +1575,9 @@ fn open_in_os(path: &Path) -> std::io::Result<()> {
 /// The default URL-highlight text colour (`URLFGCOLOR` unset) — a link blue that reads on light and
 /// dark backgrounds.
 const DEFAULT_URL_FG: (u8, u8, u8) = (74, 137, 232);
+/// The built-in xlink-highlight text colour (a teal, distinct from URL link-blue) when `XLFGCOLOR`
+/// is unset — so xlinks read as their own kind of link rather than looking like auto-detected URLs.
+const DEFAULT_XLINK_FG: (u8, u8, u8) = (56, 161, 154);
 
 /// The regex for `URLHIGHLIGHT` matches: an `http(s)`/`ftp` scheme, a bare `www.`, or a `mailto:`,
 /// then a run of non-whitespace (stopping at angle brackets and quotes). Trailing sentence punctuation
@@ -3042,6 +3117,13 @@ pub struct AppHost {
     /// background (no band). `$URLFGCOLOR`/`$URLBGCOLOR`; SaveCfg.
     url_fg_color: Option<(u8, u8, u8)>,
     url_bg_color: Option<(u8, u8, u8)>,
+    /// Whether xlink spans in the document are highlighted and Ctrl+click-to-activate
+    /// (`XLINKHIGHLIGHT`). On by default. `$XLINKHIGHLIGHT`; SaveCfg.
+    xlink_highlight: bool,
+    /// xlink-highlight colours (`XLFGCOLOR`/`XLBGCOLOR`). `None` = default: a built-in link colour,
+    /// transparent background (no band). `$XLFGCOLOR`/`$XLBGCOLOR`; SaveCfg.
+    xlink_fg_color: Option<(u8, u8, u8)>,
+    xlink_bg_color: Option<(u8, u8, u8)>,
     /// Whether the preview/`TOPDF` render also paints the transient EMPH matches and URL highlights
     /// (`PVMARKS`). Off by default — a printout stays clean unless asked. MDA styling is unaffected
     /// (always rendered). `$PVMARKS`; SaveCfg. Applies to the styler-based kinds (GFM/Typst/Text).
@@ -3581,6 +3663,9 @@ impl AppHost {
             url_highlight: false, // off by default
             url_fg_color: None,
             url_bg_color: None,
+            xlink_highlight: true, // xlinks are visible + clickable by default
+            xlink_fg_color: None,
+            xlink_bg_color: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
             error_log: false, // off by default
@@ -4164,6 +4249,37 @@ impl AppHost {
             })
             .collect()
     }
+    /// Whether xlink highlighting + Ctrl+click-to-activate is on (`XLINKHIGHLIGHT`/`$XLINKHIGHLIGHT`).
+    pub fn xlink_highlight(&self) -> bool {
+        self.xlink_highlight
+    }
+    /// The EFFECTIVE xlink-highlight text colour (`XLFGCOLOR`, default [`DEFAULT_XLINK_FG`]).
+    pub fn xlink_fg_color(&self) -> (u8, u8, u8) {
+        self.xlink_fg_color.unwrap_or(DEFAULT_XLINK_FG)
+    }
+    /// The configured xlink text colour (`None` = default), for SaveCfg / `$XLFGCOLOR`.
+    pub fn xlink_fg_color_opt(&self) -> Option<(u8, u8, u8)> {
+        self.xlink_fg_color
+    }
+    /// The xlink-highlight background colour (`None` = no band).
+    pub fn xlink_bg_color(&self) -> Option<(u8, u8, u8)> {
+        self.xlink_bg_color
+    }
+    /// The active document's xlink spans within the rope range `[rope_lo, rope_hi)` — the windowed
+    /// form the GUI calls each frame (empty when `XLINKHIGHLIGHT` is off). xlinks are stored, not
+    /// scanned, so this just filters the span list to the visible window.
+    pub fn xlink_highlights_in(&self, rope_lo: usize, rope_hi: usize) -> Vec<(usize, usize)> {
+        if !self.xlink_highlight {
+            return Vec::new();
+        }
+        self.active_doc()
+            .xlinks()
+            .iter()
+            .filter(|x| x.start < rope_hi && x.end > rope_lo)
+            .map(|x| (x.start, x.end))
+            .collect()
+    }
+
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
@@ -7840,6 +7956,7 @@ impl AppHost {
                             doc.set_color_spans_raw(r.fg, r.bg, r.attrs);
                         }
                         doc.set_marks_restored(r.marks);
+                        doc.set_xlinks_restored(r.xlinks); // xlinks aren't in the manifest either
                     }
                 }
             }
@@ -9764,6 +9881,9 @@ impl AppHost {
         put(&mut s, "Highlight URLs and Ctrl+click to open them -- on | off", format!("URLHIGHLIGHT {}", if self.url_highlight { "on" } else { "off" }));
         put_opt_color(&mut s, "URL highlight text colour -- R G B, 0-255", "URLFGCOLOR", self.url_fg_color);
         put_opt_color(&mut s, "URL highlight background colour -- R G B, 0-255", "URLBGCOLOR", self.url_bg_color);
+        put(&mut s, "Highlight xlinks and Ctrl+click to activate them -- on | off", format!("XLINKHIGHLIGHT {}", if self.xlink_highlight { "on" } else { "off" }));
+        put_opt_color(&mut s, "xlink highlight text colour -- R G B, 0-255", "XLFGCOLOR", self.xlink_fg_color);
+        put_opt_color(&mut s, "xlink highlight background colour -- R G B, 0-255", "XLBGCOLOR", self.xlink_bg_color);
         put(&mut s, "Render EMPH + URL highlights in preview/TOPDF (MDA always renders) -- on | off", format!("PVMARKS {}", if self.preview_marks { "on" } else { "off" }));
         put(&mut s, "Underline the spaces between words in MDA underline styling -- on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
@@ -10148,7 +10268,7 @@ impl AppHost {
         }
         let target = self.resolve_path(path);
         let (fg, bg) = doc.color_spans_raw();
-        xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist());
+        xymeta_write(&target, bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist(), &doc.xlinks_for_persist());
     }
 
     /// Build the status line for a `MARKNEXT`/`MARKPREV` jump and request the target be scrolled into
@@ -12996,6 +13116,41 @@ impl Host for AppHost {
                 let nav = self.active().mark_prev();
                 return self.mark_nav_status(nav);
             }
+            EditorOp::GotoLine(n) => {
+                self.goto_line(n);
+                self.reveal_center = true; // scroll the target to mid-screen, like a search landing
+                return Ok(Value::str(format!("line {n}")));
+            }
+            EditorOp::XlinkCreate { payload } => {
+                // A document/selection op — target the active DOCUMENT (not `active()`, which may be the
+                // cmline during a cmline-run command), mirroring `FgColor`.
+                let Some((s, e)) = self.docs[self.active].selection_range() else {
+                    return Err(XplError::trappable("XLINK: select the link text first"));
+                };
+                match self.docs[self.active].xlink_create(s, e, payload.into_bytes()) {
+                    Ok(()) => {
+                        let n = self.docs[self.active].xlink_count();
+                        return Ok(Value::str(format!("xlink created ({n} total)")));
+                    }
+                    Err(msg) => return Err(XplError::trappable(format!("XLINK: {msg}"))),
+                }
+            }
+            EditorOp::XlinkDelete { all } => {
+                if all {
+                    let n = self.docs[self.active].xlink_delete_all();
+                    return Ok(Value::str(match n {
+                        0 => "no xlinks to remove".to_string(),
+                        1 => "1 xlink removed".to_string(),
+                        _ => format!("{n} xlinks removed"),
+                    }));
+                }
+                let off = self.docs[self.active].buffer().cursor();
+                if self.docs[self.active].xlink_delete_at(off) {
+                    let n = self.docs[self.active].xlink_count();
+                    return Ok(Value::str(format!("xlink removed ({n} left)")));
+                }
+                return Err(XplError::trappable("XLDEL: no xlink at the caret"));
+            }
             // HEX-view editing (byte-granular; the read-only gate above lets these through in hex view).
             EditorOp::HexSetNibble { hi, val } => {
                 self.active().hex_set_nibble(hi, val);
@@ -13345,7 +13500,7 @@ impl Host for AppHost {
                             let bytes = doc.save_bytes();
                             let name = doc.file_name().unwrap_or_else(|| "Untitled".to_string());
                             let (fg, bg) = doc.color_spans_raw();
-                            let meta = xymeta_serialize(&bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist());
+                            let meta = xymeta_serialize(&bytes, fg, bg, doc.attr_spans_raw(), &doc.marks_for_persist(), &doc.xlinks_for_persist());
                             let dir = doc.path().and_then(|p| p.parent()).map(|d| d.to_path_buf()).unwrap_or_else(|| self.cwd.clone());
                             (name, bytes, meta, dir)
                         }
@@ -14073,6 +14228,25 @@ impl Host for AppHost {
                 return Ok(Value::str(match color {
                     Some((r, g, b)) => format!("URL highlight {what} colour = {r} {g} {b}"),
                     None => format!("URL highlight {what} colour = (default)"),
+                }));
+            }
+            EditorOp::SetXlinkHighlight(opt) => {
+                self.xlink_highlight = opt.unwrap_or(!self.xlink_highlight);
+                return Ok(Value::str(format!(
+                    "XLINKHIGHLIGHT {}",
+                    if self.xlink_highlight { "on" } else { "off" }
+                )));
+            }
+            EditorOp::SetXlinkColor { fg, color } => {
+                if fg {
+                    self.xlink_fg_color = color;
+                } else {
+                    self.xlink_bg_color = color;
+                }
+                let what = if fg { "text" } else { "background" };
+                return Ok(Value::str(match color {
+                    Some((r, g, b)) => format!("xlink highlight {what} colour = {r} {g} {b}"),
+                    None => format!("xlink highlight {what} colour = (default)"),
                 }));
             }
             EditorOp::OpenUrlColorPicker { fg } => {
@@ -14978,6 +15152,18 @@ impl Host for AppHost {
             "HEX" => Some(Value::Int(if self.active_doc().hex_view() { 1 } else { 0 })),
             "MARKS" => Some(Value::Int(self.active_doc().mark_count() as i64)),
             "MARK" => Some(Value::Int(if self.active_doc().mark_at_cursor() { 1 } else { 0 })),
+            // `$XLINKS` — count of xlinks in the active document; `$XLINK` — the payload of the one
+            // under the caret (empty string when the caret isn't on an xlink).
+            "XLINKS" => Some(Value::Int(self.active_doc().xlink_count() as i64)),
+            "XLINK" => {
+                let doc = self.active_doc();
+                let off = doc.buffer().cursor();
+                let payload = doc
+                    .xlink_at(off)
+                    .map(|x| String::from_utf8_lossy(&x.payload).into_owned())
+                    .unwrap_or_default();
+                Some(Value::str(payload))
+            }
             "WRAPHANG" => Some(Value::Int(self.wrap_hang as i64)),
             "REFLOWWIDTH" => Some(Value::Int(self.reflow_width as i64)),
             "UNTITLEDTAB" => Some(Value::Int(if self.untitled_auto_close { 1 } else { 0 })),
@@ -15028,6 +15214,15 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "URLBGCOLOR" => Some(Value::str(match self.url_bg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "XLINKHIGHLIGHT" => Some(Value::Int(if self.xlink_highlight { 1 } else { 0 })),
+            "XLFGCOLOR" => Some(Value::str(match self.xlink_fg_color {
+                Some((r, g, b)) => format!("{r} {g} {b}"),
+                None => String::new(),
+            })),
+            "XLBGCOLOR" => Some(Value::str(match self.xlink_bg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
             })),
@@ -15655,6 +15850,12 @@ impl Host for AppHost {
         self.active_doc().mark_previews()
     }
 
+    fn xlink_payload_at_caret(&self) -> Option<String> {
+        let doc = self.active_doc();
+        let off = doc.buffer().cursor();
+        doc.xlink_at(off).map(|x| String::from_utf8_lossy(&x.payload).into_owned())
+    }
+
     fn outline(&self) -> (Vec<(usize, String)>, usize) {
         let doc = self.active_doc();
         let text = doc.buffer().text();
@@ -15793,6 +15994,52 @@ impl Host for AppHost {
 mod tests {
     use super::fenced_block_at;
     use super::reflow_text;
+
+    #[test]
+    fn xymeta_xlink_round_trips_through_the_sidecar() {
+        use crate::document::XlinkPersist;
+        let bytes = b"the quick brown fox";
+        // payload holding a space, a semicolon, and a newline — all must survive via hex encoding.
+        let xl = XlinkPersist {
+            start: 4,
+            start_split: 4,
+            start_ctx: b"the ".to_vec(),
+            end: 9,
+            end_split: 1,
+            end_ctx: b"k".to_vec(),
+            payload: b"OPEN a b;GO 5\n".to_vec(),
+        };
+        let s = super::xymeta_serialize(bytes, &[], &[], &[], &[], std::slice::from_ref(&xl)).unwrap();
+        assert!(s.contains("[xlinks]"), "section emitted: {s}");
+        let r = super::xymeta_parse(&s, bytes).unwrap();
+        assert_eq!(r.xlinks.len(), 1);
+        let got = &r.xlinks[0];
+        assert_eq!((got.start, got.end), (4, 9));
+        assert_eq!((got.start_split, got.end_split), (4, 1));
+        assert_eq!(got.start_ctx, b"the ");
+        assert_eq!(got.end_ctx, b"k");
+        assert_eq!(got.payload, b"OPEN a b;GO 5\n", "payload with space/;/newline survived");
+    }
+
+    #[test]
+    fn xymeta_empty_hex_sentinel_round_trips() {
+        // A payload/ctx that is empty serializes as `-` and decodes back to no bytes (defensive).
+        use crate::document::XlinkPersist;
+        let bytes = b"abc";
+        let xl = XlinkPersist {
+            start: 0,
+            start_split: 0,
+            start_ctx: Vec::new(),
+            end: 3,
+            end_split: 0,
+            end_ctx: Vec::new(),
+            payload: Vec::new(),
+        };
+        let s = super::xymeta_serialize(bytes, &[], &[], &[], &[], std::slice::from_ref(&xl)).unwrap();
+        let r = super::xymeta_parse(&s, bytes).unwrap();
+        assert_eq!(r.xlinks.len(), 1);
+        assert!(r.xlinks[0].start_ctx.is_empty() && r.xlinks[0].payload.is_empty());
+    }
 
     #[test]
     fn reflow_wraps_words_to_width_without_splitting() {

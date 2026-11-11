@@ -2720,6 +2720,12 @@ struct GuiApp {
     /// / not yet computed. The window range is in the key because the scan is windowed (recompute on
     /// scroll) — which is what keeps URL highlighting off the whole-buffer path on a huge file.
     url_key: Option<(usize, u64, usize, usize)>,
+    /// `XLINKHIGHLIGHT` xlink spans (rope offsets) in the active doc — coloured with `XLFGCOLOR`/
+    /// `XLBGCOLOR` and hit-tested for Ctrl+click-to-activate. Cached via `xlink_key` (same scheme as
+    /// `url_highlights`). xlinks are stored (not scanned), but the window still keys the cache so a
+    /// scroll repaints the right slice.
+    xlink_highlights: Vec<(usize, usize)>,
+    xlink_key: Option<(usize, u64, usize, usize)>,
     /// The last `BALPAIRS` bracket-match state we saw, so we surface the "no matching bracket" status
     /// only on a transition (not every frame — which would stomp all other status text). `None` = not
     /// yet computed.
@@ -3098,6 +3104,8 @@ impl GuiApp {
             emph_key: None,
             url_highlights: Vec::new(),
             url_key: None,
+            xlink_highlights: Vec::new(),
+            xlink_key: None,
             bal_last: None,
             wi_indent: Vec::new(),
             wi_rows: Vec::new(),
@@ -3535,6 +3543,7 @@ impl GuiApp {
         let rope_hi = win.end_byte.saturating_add(HL_SCAN_PAD); // find_all_in_range clamps to len
         self.refresh_emph(rope_lo, rope_hi); // keep the active tab's EMPH match set current before drawing
         self.refresh_url(rope_lo, rope_hi); // and the URLHIGHLIGHT match set
+        self.refresh_xlink(rope_lo, rope_hi); // and the XLINKHIGHLIGHT span set
         let lo = win.start_decoded;
         let hi = win.start_decoded + win.decoded_len;
         // Highlight only what's on screen: make sure the token cache covers this window (a windowed,
@@ -3667,6 +3676,29 @@ impl GuiApp {
                 })
                 .collect()
         };
+        // XLINKHIGHLIGHT span text: every xlink's glyph colour (`XLFGCOLOR`, default a link teal).
+        // Same shape as `url_spans`; `xlink_highlights` are ROPE offsets. Painted after URLs so an
+        // explicit xlink wins over an auto-detected URL on the same text.
+        let xlink_spans: Vec<(usize, usize, CColor)> = if self.xlink_highlights.is_empty() {
+            Vec::new()
+        } else {
+            let doc = self.editor.doc(self.editor.active_index());
+            let (xr, xg, xb) = self.editor.xlink_fg_color();
+            let xlink_c = CColor::rgb(xr, xg, xb);
+            self.xlink_highlights
+                .iter()
+                .filter_map(|&(ms_rope, me_rope)| {
+                    let s = doc.decoded_offset(ms_rope).max(lo);
+                    let e = doc.decoded_offset(me_rope).min(hi);
+                    if s >= e {
+                        return None;
+                    }
+                    let sd = decoded_to_display(s - lo, &win.cr);
+                    let ed = decoded_to_display(e - lo, &win.cr);
+                    (sd < ed).then_some((sd, ed, xlink_c))
+                })
+                .collect()
+        };
         // FIND-highlight match text: the glyph colour of highlighted matches — `FINDFGCOLOR` for
         // ordinary hits, `SELFGCOLOR` for the current (Enter/F3 target). `find_highlights` are ROPE
         // offsets, so convert to decoded before rebasing to window-local display (like `manual`).
@@ -3756,6 +3788,9 @@ impl GuiApp {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &url_spans {
+            colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
+        }
+        for &(s, e, cc) in &xlink_spans {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
         for &(s, e, cc) in &find_spans {
@@ -4249,6 +4284,26 @@ impl GuiApp {
         let (s, e) = *self.url_highlights.iter().find(|&&(s, e)| off >= s && off < e)?;
         let doc = self.editor.doc(self.editor.active_index());
         Some(String::from_utf8_lossy(&doc.slice_bytes(s, e)).into_owned())
+    }
+
+    /// Refresh the `XLINKHIGHLIGHT` span set for the active document (cached on `xlink_key`, like
+    /// `refresh_url`). Empty when highlighting is off.
+    fn refresh_xlink(&mut self, rope_lo: usize, rope_hi: usize) {
+        if !self.editor.xlink_highlight() {
+            self.xlink_highlights.clear();
+            self.xlink_key = None;
+            return;
+        }
+        let key = Some((self.editor.active_index(), self.editor.doc_revision(), rope_lo, rope_hi));
+        if key != self.xlink_key {
+            self.xlink_highlights = self.editor.xlink_highlights_in(rope_lo, rope_hi);
+            self.xlink_key = key;
+        }
+    }
+
+    /// Whether rope offset `off` falls within a highlighted xlink span (for Ctrl+click activation).
+    fn xlink_at_offset(&self, off: usize) -> bool {
+        self.xlink_highlights.iter().any(|&(s, e)| off >= s && off < e)
     }
 
     /// Convenience wrapper: FIND "highlight all" rects (the current match flagged).
@@ -4950,6 +5005,12 @@ impl GuiApp {
         } else {
             self.highlight_rects(&self.url_highlights, None, &buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
         };
+        // XLINKHIGHLIGHT background band — only when `XLBGCOLOR` is set (default: no band, coloured text).
+        let mut xlink_rects = if self.xlink_highlights.is_empty() || self.editor.xlink_bg_color().is_none() {
+            Vec::new()
+        } else {
+            self.highlight_rects(&self.xlink_highlights, None, &buffer, &win, win_lo, win_hi, w as i32, lh_px as i32)
+        };
         // MD block-background rects (`MD/B` colour-on-selection). Persistent per-doc spans in ROPE
         // offsets — feed them one at a time through `highlight_rects` so each carries its own colour,
         // then tag every rect with that colour. Painted at the BOTTOM of the z-order (under EMPH/FIND/
@@ -5085,6 +5146,10 @@ impl GuiApp {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
+            for r in &mut xlink_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
             for r in &mut sec_sel_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
@@ -5156,6 +5221,12 @@ impl GuiApp {
         if let Some((ubr, ubg, ubb)) = self.editor.url_bg_color() {
             for &(x0, y0, x1, y1, _) in &url_rects {
                 fill_blend(&mut canvas, w, h, x0, y0, x1, y1, ubr, ubg, ubb, 1.0);
+            }
+        }
+        // XLINKHIGHLIGHT background band — an opaque `XLBGCOLOR` fill behind each xlink (only when set).
+        if let Some((xbr, xbg, xbb)) = self.editor.xlink_bg_color() {
+            for &(x0, y0, x1, y1, _) in &xlink_rects {
+                fill_blend(&mut canvas, w, h, x0, y0, x1, y1, xbr, xbg, xbb, 1.0);
             }
         }
         // Multi-caret secondary selections — an opaque SELBGCOLOR band behind the glyphs, matching the
@@ -11691,10 +11762,15 @@ impl GuiApp {
                         }
                         // Ctrl+click ADDS a caret (multi-caret); a plain click collapses the set
                         // back to one and places the caret there (the spec's "plain click resets").
-                        // Exception: with URLHIGHLIGHT on, a Ctrl+click that lands on a highlighted URL
-                        // opens it in the OS default app instead of adding a caret.
+                        // Exceptions: a Ctrl+click on a highlighted xlink ACTIVATES it (runs XLGO at
+                        // that point), and on a highlighted URL opens it — instead of adding a caret.
+                        // xlinks are checked first (an explicit link wins over an auto-detected URL).
                         else if ctx.input(|i| i.modifiers.ctrl) {
-                            if let Some(url) = self.url_at_offset(off) {
+                            if self.xlink_at_offset(off) {
+                                self.editor.host_mut().collapse_active_carets();
+                                self.editor.host_mut().click_active_caret(off);
+                                self.editor.run_command("XLGO");
+                            } else if let Some(url) = self.url_at_offset(off) {
                                 self.editor.open_url(&url);
                             } else {
                                 self.editor.host_mut().add_active_caret(off);

@@ -760,6 +760,14 @@ pub enum EditorOp {
     SetUrlColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the URL-highlight text (`URLFGCOLORS`) or background (`URLBGCOLORS`).
     OpenUrlColorPicker { fg: bool },
+    /// Turn xlink highlighting on/off (`XLINKHIGHLIGHT on|off`; `None` toggles). When on, xlink spans
+    /// in the document are coloured (`XLFGCOLOR`/`XLBGCOLOR`) and Ctrl+click on one activates it. On by
+    /// default. Persisted by SaveCfg. `$XLINKHIGHLIGHT`.
+    SetXlinkHighlight(Option<bool>),
+    /// Set the xlink-highlight text colour (`fg = true`, `XLFGCOLOR`) or background (`fg = false`,
+    /// `XLBGCOLOR`). `None` = default (fg = a link colour; bg = transparent, no band). Read back via
+    /// `$XLFGCOLOR`/`$XLBGCOLOR`.
+    SetXlinkColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Toggle whether `MDA` UNDERLINE styling underlines the spaces between words (`ULSPACES on|off`;
     /// `None` toggles). On (default) draws one continuous underline; off breaks it at spaces/tabs so
     /// only word glyphs are underlined. `$ULSPACES`.
@@ -845,6 +853,15 @@ pub enum EditorOp {
     MarkToggle,
     MarkNext,
     MarkPrev,
+    /// `GOTOLINE <n>` — move the caret to the start of 1-based line `n` (clamped) and centre it. A
+    /// plain navigation primitive; also the target a nav `XLINK/L` compiles to.
+    GotoLine(usize),
+    /// `XLINK <payload>` (or `XLINK/L …`) — create an xlink over the current SELECTION carrying
+    /// `payload` (raw XPL, stored verbatim; run on activation). The host reads the selection range.
+    /// No selection, an empty range, or an overlap with an existing xlink is a trappable error.
+    XlinkCreate { payload: String },
+    /// `XLDEL` / `XLDEL/A` — remove the xlink under the caret, or every xlink in the document.
+    XlinkDelete { all: bool },
     /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
     /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
     /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.
@@ -2105,6 +2122,12 @@ pub trait Host {
     /// document order. `preview` is a short label (line number + surrounding text). Default: none.
     fn bookmark_list(&self) -> Vec<(usize, String)> {
         Vec::new()
+    }
+
+    /// The payload (XPL source) of the xlink whose span contains the caret, for `XLGO` and `$XLINK`.
+    /// `None` when the caret isn't on an xlink. Default: none.
+    fn xlink_payload_at_caret(&self) -> Option<String> {
+        None
     }
 
     /// The active document's structure for the `OUTLINE`/`OL` chooser, plus the row to pre-highlight.
