@@ -2,7 +2,7 @@
 title: xlinks
 tags: [design, xlinks, hyperlinks, sidecar, xymeta, bookmarks, security, navigation, xpl]
 created: 2026-11-11
-status: phase 1 BUILT (2026-11-11) — storage, verbs + nav classifier, GUI render + Ctrl+click. See "Phase 1 — as built" below for the one design change (line targets instead of named-bookmark targets). Supersedes the "Xyperlinks" half of archive/links-and-xyperlinks-plan.md (the URL-highlighting half already shipped as URLHIGHLIGHT).
+status: phase 1 BUILT (2026-11-11, merged to main). Phase 2 TRUST/ACTION TIER BUILT (2026-11-11): action payloads run once a document is trusted, with a Run once / Trust / Cancel confirm dialog, a persisted path+payload-hash ledger (xyscript-trust.txt), and XLTRUST/XLUNTRUST/$XLTRUSTED. Remaining phase-2 threads (jumplist, authoring niceties, named xlinks) not yet built. Supersedes the "Xyperlinks" half of archive/links-and-xyperlinks-plan.md (the URL-highlighting half already shipped as URLHIGHLIGHT).
 ---
 
 # xlinks — XyScript hyperlinks (design)
@@ -119,6 +119,11 @@ XLINK OPEN budget.txt;GOTOLINE 4200
 - **Payload stored raw — no `$`-expansion at author time** (the `BC` model, literal
   `raw_args`). You want `XLINK OPEN $CWD\notes.txt;GOTOLINE 500` to resolve `$CWD`
   *when clicked*, not freeze it now. `XLINK/X …` (expand-now) is a later phase.
+- **`XLINK` is an exempt verb** (added to `EXEMPT_VERBS` with `X`/`XY`/`XV`, 2026-11-12):
+  the splitter takes the *rest of the line* as the payload, so a multi-command `;`
+  payload needs no escaping (`XLINK OPEN x;GOTOLINE 5` stores both). `XLINK [payload];next`
+  delimits the payload and resumes `;`-chaining after `]`. (`XLINK*` longer verbs —
+  `XLINKHIGHLIGHT`, `XLDEL`, … — don't match the exempt `XLINK`.)
 - **Selection required** — the span *is* the link (its text is the label; no
   separate alias in v1). Bare **`XLINK`** with a selection opens a payload editor
   (reuse `TXT`/`SCRATCH`/`BEDIT`) for multi-line code; here-strings (`@'…'@`) also
@@ -341,10 +346,18 @@ and validated, so the indirection stays safe-by-default anyway.)
   + `XLGO` activation; the nav-only classifier (so phase 1 is safe by construction,
   no trust machinery yet); `XLINKHIGHLIGHT` + `XLFGCOLOR`/`XLBGCOLOR` style knobs;
   `XLDEL`. (`/M` bookmark targets fell to a later phase — see "Phase 1 — as built".)
-- **Phase 2** — action tier + the trust ledger/confirm flow; the jumplist
-  (`XLBACK`/`XLFWD`), `XLNEXT`/`XLPREV`, the `XLINKS` picker; multi-line payload
-  editor (bare `XLINK`); `/X` expand-now; named xlinks (`/N`, `XLGO <name>`);
-  named-bookmark targets (`/M`) + `XLHERE`/`XLINK/H` once `MARK` gains names.
+- **Phase 2, trust/action tier — DONE (2026-11-11)** — action payloads run once a
+  document is trusted; the `XLGO`/Ctrl+click confirm dialog (Run once / Trust this
+  document / Cancel) suspends like `RUNMENU` and runs the payload on resume; a
+  persisted ledger (`xyscript-trust.txt`, keyed by path → payload-set hash, session
+  trust for path-less buffers); `XLTRUST`/`XLUNTRUST`/`$XLTRUSTED`. Trust
+  auto-invalidates when the payload set changes. The dialog shows a plain-English
+  summary DERIVED from the payload's verbs (`describe_xlink_payload`) above the raw
+  code — never author-supplied text, which could lie over hostile code.
+- **Phase 2, remaining** — the jumplist (`XLBACK`/`XLFWD`), `XLNEXT`/`XLPREV`, the
+  `XLINKS` picker; multi-line payload editor (bare `XLINK`); `/X` expand-now; named
+  xlinks (`/N`, `XLGO <name>`); named-bookmark targets (`/M`) + `XLHERE`/`XLINK/H`
+  once `MARK` gains names.
 - **Phase 3** (maybe never) — cross-document link index / backlinks (that's a wiki,
   a separate feature).
 
@@ -352,12 +365,14 @@ and validated, so the indirection stays safe-by-default anyway.)
 
 ## Still open (to sketch before coding)
 
-- **Activation dispatch** — the exact entry point from Ctrl+click/`XLGO` into the
-  VM, and where the classifier + trust check sit in that path.
+- ~~**Activation dispatch**~~ — DONE. `XLGO` (vm) classifies, then: nav or trusted →
+  `run_source_sync`; untrusted action → suspend `XlinkConfirm`, run on resume. Ctrl+click
+  routes through the same `XLGO`.
+- ~~**Trust-ledger location/format**~~ — DONE. `xyscript-trust.txt` in `$XSDIR`, one
+  `<payload-set-hash>\t<abspath>` per trusted doc; loaded at GUI startup; session trust
+  (a `DocId → hash` map) for path-less buffers.
 - **Jumplist depth & semantics** — size cap, de-duping, whether `XLNEXT` and
-  activation share one list.
-- **Trust-ledger location/format** — confirm `xyscript-trust.txt` alongside the
-  other user-global config (command history, vars), and its exact line format.
+  activation share one list. (Jumplist is a remaining phase-2 thread.)
 - **Broken-xlink UX** — how a relocated-to-empty or unresolved-target xlink is
   shown (distinct style) and what activation does (report, offer to edit/delete).
 

@@ -1319,6 +1319,11 @@ impl Editor {
     pub fn load_learned_words(&mut self) {
         self.host.load_learned_words()
     }
+    /// Load the xlink action-tier trust ledger (`xyscript-trust.txt`) at startup, so `$XLTRUSTED` and
+    /// `XLGO` see documents trusted in a previous session. See [`crate::host::AppHost::load_xlink_trust`].
+    pub fn load_xlink_trust(&mut self) {
+        self.host.load_xlink_trust()
+    }
     /// If a background `CHECK` finished, open its report tab; returns whether it did. Call each frame.
     pub fn poll_check(&mut self) -> bool {
         self.host.poll_check()
@@ -1965,6 +1970,33 @@ impl Editor {
         self.settle();
         if let Some(cmd) = menu_cmd {
             self.run_command(&cmd);
+        }
+    }
+
+    /// A pending `XLGO` action-tier confirm (an untrusted non-navigation payload): the payload code to
+    /// show. The GUI shows the confirm dialog and feeds the choice back via
+    /// [`xlink_confirm_respond`](Self::xlink_confirm_respond). `None` when no confirm is parked.
+    pub fn xlink_confirm_request(&self) -> Option<String> {
+        self.interp.xlink_confirm_request()
+    }
+
+    /// Resume a parked `XLGO` action-tier confirm with the user's choice. Records trust (on `Trust`),
+    /// then — like RUNMENU — captures the payload BEFORE resuming and RUNS it (on `Trust`/`RunOnce`)
+    /// through the normal command path after the script settles. A no-op if nothing is parked.
+    pub fn xlink_confirm_respond(&mut self, choice: xyscript_xpl::XlinkConfirmChoice) {
+        let Some(code) = self.interp.xlink_confirm_request() else {
+            return;
+        };
+        let run = !matches!(choice, xyscript_xpl::XlinkConfirmChoice::Cancel);
+        self.last_error = self
+            .interp
+            .resume_xlink_confirm(choice, &mut self.host)
+            .err()
+            .map(|e| e.message().to_string());
+        self.record_status_line();
+        self.settle();
+        if run {
+            self.run_command(&code);
         }
     }
     /// Parked on `READKEY` — the GUI captures the next raw keystroke for it.
@@ -6066,6 +6098,24 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xlink_payload_keeps_semicolons() {
+        // XLINK is an exempt verb: a `;`-containing payload is captured whole, no escaping needed.
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK OPEN foo;GOTOLINE 5");
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "OPEN foo;GOTOLINE 5");
+        // The bracket form delimits the payload and lets a command chain after it.
+        let mut e2 = ed();
+        e2.run_command(r#"insert "abcdef""#);
+        e2.run_command("DFA");
+        e2.run_command("XLINK [OPEN bar;GOTOLINE 9];TF");
+        e2.run_command("TF");
+        assert_eq!(e2.special_str("XLINK"), "OPEN bar;GOTOLINE 9");
+    }
+
+    #[test]
     fn xlink_create_activate_and_delete() {
         let mut e = ed();
         e.run_command(r#"insert "aaa\nbbb\nccc""#);
@@ -6098,15 +6148,82 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
-    fn xlgo_refuses_a_non_navigation_payload() {
+    fn xlgo_on_untrusted_action_parks_on_the_confirm_dialog() {
         let mut e = ed();
         e.run_command(r#"insert "hello""#);
         e.run_command("DFA");
         e.run_command(r#"XLINK insert "X""#); // a payload that EDITS the document — not navigation
         assert_eq!(e.special_str("XLINKS"), "1");
         e.run_command("TF");
-        e.run_command("XLGO"); // must be refused; the payload does not run
-        assert_eq!(e.document().text(), "hello", "a blocked xlink payload never executed");
+        e.run_command("XLGO"); // untrusted action → parks on the confirm dialog, does NOT run yet
+        assert!(e.xlink_confirm_request().is_some(), "parked on the confirm dialog");
+        assert_eq!(e.document().text(), "hello", "payload not run while awaiting confirmation");
+        e.xlink_confirm_respond(xyscript_xpl::XlinkConfirmChoice::Cancel);
+        assert_eq!(e.document().text(), "hello", "cancel ran nothing");
+    }
+
+    #[test]
+    fn xltrust_lets_an_action_payload_run_without_a_dialog() {
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK MARKSET"); // an ACTION payload (non-navigation; non-shifting)
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLTRUSTED"), "0", "untrusted by default");
+        e.run_command("XLTRUST"); // trust the document up front
+        assert_eq!(e.special_str("XLTRUSTED"), "1");
+        e.run_command("XLGO"); // trusted → runs directly, no dialog
+        assert!(e.xlink_confirm_request().is_none(), "no dialog for a trusted document");
+        assert_eq!(e.special_str("MARKS"), "1", "the action payload ran");
+        e.run_command("XLUNTRUST");
+        assert_eq!(e.special_str("XLTRUSTED"), "0", "trust revoked");
+    }
+
+    #[test]
+    fn xlink_confirm_dialog_gates_an_action_payload() {
+        use xyscript_xpl::XlinkConfirmChoice;
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK MARKSET"); // MARKSET is an ACTION payload (not navigation), and it neither
+                                        // edits text nor moves the caret, so the xlink stays under it.
+        e.run_command("TF");
+        // Untrusted action → XLGO parks on the confirm dialog, carrying the code to show.
+        e.run_command("XLGO");
+        assert_eq!(e.xlink_confirm_request().as_deref(), Some("MARKSET"), "parked on confirm");
+        // Cancel → nothing ran, not trusted.
+        e.xlink_confirm_respond(XlinkConfirmChoice::Cancel);
+        assert!(e.xlink_confirm_request().is_none(), "dialog dismissed");
+        assert_eq!(e.special_str("MARKS"), "0", "cancel ran nothing");
+        assert_eq!(e.special_str("XLTRUSTED"), "0");
+        // Run once → runs the payload (a bookmark appears) but records no trust.
+        e.run_command("XLGO");
+        e.xlink_confirm_respond(XlinkConfirmChoice::RunOnce);
+        assert_eq!(e.special_str("MARKS"), "1", "run once executed MARKSET");
+        assert_eq!(e.special_str("XLTRUSTED"), "0", "run once did not record trust");
+        // Trust → runs AND records trust.
+        e.run_command("MARKCLEARALL");
+        e.run_command("XLGO");
+        e.xlink_confirm_respond(XlinkConfirmChoice::Trust);
+        assert_eq!(e.special_str("XLTRUSTED"), "1", "trust recorded");
+        // Now a trusted document runs the action payload directly — no dialog.
+        e.run_command("MARKCLEARALL");
+        e.run_command("XLGO");
+        assert!(e.xlink_confirm_request().is_none(), "trusted → no confirm dialog");
+        assert_eq!(e.special_str("MARKS"), "1", "ran directly once trusted");
+    }
+
+    #[test]
+    fn xltrust_invalidates_when_the_payload_set_changes() {
+        let mut e = ed();
+        e.run_command(r#"insert "abc""#);
+        e.run_command("DFA");
+        e.run_command(r#"XLINK insert "X""#);
+        e.run_command("TF");
+        e.run_command("XLTRUST");
+        assert_eq!(e.special_str("XLTRUSTED"), "1");
+        e.run_command("XLDEL"); // the payload set changed → the trusted hash no longer matches
+        assert_eq!(e.special_str("XLTRUSTED"), "0", "a changed payload set revokes trust");
     }
 
     // ---- binders (LDTX/LDSC/LDPM + @X/&X) ----------------------------------

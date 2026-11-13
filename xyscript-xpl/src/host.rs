@@ -862,6 +862,10 @@ pub enum EditorOp {
     XlinkCreate { payload: String },
     /// `XLDEL` / `XLDEL/A` — remove the xlink under the caret, or every xlink in the document.
     XlinkDelete { all: bool },
+    /// `XLTRUST` (`trust = true`) / `XLUNTRUST` (`trust = false`) — trust or revoke the active document
+    /// for running ACTION (non-navigation) xlink payloads. Trust is keyed by document path in a
+    /// user-global ledger (session-only for a path-less buffer). `$XLTRUSTED`.
+    SetXlinkTrust { trust: bool },
     /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
     /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
     /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.
@@ -2129,6 +2133,17 @@ pub trait Host {
     fn xlink_payload_at_caret(&self) -> Option<String> {
         None
     }
+
+    /// Whether the active document is trusted to run ACTION (non-navigation) xlink payloads — used by
+    /// `XLGO` to decide whether an action payload runs or needs the confirm dialog. Default: not
+    /// trusted (so an action payload is always gated).
+    fn xlink_action_trusted(&self) -> bool {
+        false
+    }
+
+    /// Record the active document as trusted for action xlink payloads — the confirm dialog's "Trust
+    /// this document" choice (and `XLTRUST`). Default: no-op.
+    fn xlink_trust_active(&mut self) {}
 
     /// The active document's structure for the `OUTLINE`/`OL` chooser, plus the row to pre-highlight.
     /// Returns `(entries, current)`: `entries[i]` is `(offset, label)` per row in document order (label

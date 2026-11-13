@@ -45,12 +45,15 @@
 //! `;`-chained `IF ... ; ... ; ENDIF` is just three commands the *parser* (§6)
 //! folds into one structured block. The splitter has no knowledge of blocks.
 
-/// Verbs whose tail is taken verbatim (no `;` splitting, no unescaping): the shell
-/// pass-throughs (`X`/`XY`/`XV`). The tail is swallowed whole UNLESS it is wrapped in
-/// `[...]`, in which case the brackets delimit the command and `;`-chaining resumes
-/// after them (see [`exempt_split`]). (`CLIP` is NOT exempt — it takes a quoted-string
-/// argument and splits like any other verb.)
-const EXEMPT_VERBS: &[&str] = &["X", "XY", "XV"];
+/// Verbs whose tail is a single *command / payload* taken verbatim (no `;` splitting, no unescaping),
+/// NOT XyScript statements to split here: the shell pass-throughs (`X`/`XY`/`XV`), and `XLINK` (whose
+/// tail is the XPL payload stored on the link, re-parsed only when the link is activated). The tail is
+/// swallowed whole UNLESS it is wrapped in `[...]`, in which case the brackets delimit it and
+/// `;`-chaining resumes after them (see [`exempt_split`]); the outer brackets are stripped from the
+/// emitted chunk. So `XLINK OPEN x;GOTOLINE 5` stores the whole payload, and `XLINK [payload];next`
+/// still lets a command follow. (`CLIP` is NOT exempt — it takes a quoted-string argument and splits
+/// like any other verb.)
+const EXEMPT_VERBS: &[&str] = &["X", "XY", "XV", "XLINK"];
 
 /// Verbs that take a `[...]`-delimited block of XPL CODE (not a shell command): `RUNCODE`. Unlike
 /// the shell pass-throughs, the brackets are KEPT in the emitted chunk (the verb handler strips them
@@ -578,6 +581,19 @@ mod tests {
     fn x_prefix_does_not_falsely_match_other_verbs() {
         // "XISTS" must not be treated as the exempt verb "X".
         assert_eq!(split("XISTS a; PR b"), vec!["XISTS a", "PR b"]);
+    }
+
+    #[test]
+    fn xlink_is_exempt_so_its_payload_keeps_semicolons() {
+        // Bare form: the whole `;`-containing payload is XLINK's single argument.
+        assert_eq!(split("XLINK OPEN x;GOTOLINE 5"), vec!["XLINK OPEN x;GOTOLINE 5"]);
+        // The attached-switch form (`XLINK/L`) is still recognised as the exempt verb.
+        assert_eq!(split("XLINK/L budget.txt:4200"), vec!["XLINK/L budget.txt:4200"]);
+        // Bracketed form delimits the payload and lets a command chain after `]`.
+        assert_eq!(split("XLINK [OPEN x;GOTOLINE 5]; TF"), vec!["XLINK OPEN x;GOTOLINE 5", "TF"]);
+        // The longer XL* verbs must NOT match the exempt "XLINK" — they split normally.
+        assert_eq!(split("XLINKHIGHLIGHT off; PR x"), vec!["XLINKHIGHLIGHT off", "PR x"]);
+        assert_eq!(split("XLDEL; PR x"), vec!["XLDEL", "PR x"]);
     }
 
     // ---- exempt verbs: the bracket-delimited form re-enables `;`-chaining -----------

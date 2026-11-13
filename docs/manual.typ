@@ -629,17 +629,41 @@ something other than a jump, give the code directly — #raw("XLINK OPEN notes.t
 exactly as typed, filename and all, and only worked out when you follow the link (so a path like
 #raw("$CWD\\refs.txt") points wherever you are *then*, not where you were when you made it).
 
+#raw("XLINK") takes the whole rest of the line as the payload (like #raw("X") and its kin), so a
+payload that chains several commands with #raw(";") needs no special handling —
+#raw("XLINK OPEN report.txt;GOTOLINE 4200") stores both. On the rare occasion you want to run another
+command on the #emph[same line] after the #raw("XLINK"), wrap the payload in brackets:
+#raw("XLINK [OPEN x;GOTOLINE 5];TF") attaches the two-command payload and then runs #raw("TF").
+
 Follow an xlink by *Ctrl+clicking* it, or by putting the cursor on it and running #raw("XLGO"). Xlinks
 show in a distinct colour so you can see them; #raw("XLINKHIGHLIGHT off") hides the colouring (and turns
 off Ctrl+click) if you'd rather a plain screen, and #raw("XLFGCOLOR") / #raw("XLBGCOLOR") set the link
 text and background colours (bare, or #raw("default"), restores the built-in teal and no background).
 
-#tip("For now, an xlink will only navigate")[A link that someone else made could carry any
-command — so, to be safe, this version of XyScript runs an xlink's code only when it is pure
-navigation (opening a file, #raw("GOTOLINE"), moving the cursor). A link that would do anything else —
-write a file, run a shell command — is refused with a note rather than run. Trusted activation of
-richer "action" links is planned for a later version; until then you can always read what a link would
-do with #raw("$XLINK") (see below).]
+A link that someone else made could carry any command, so XyScript treats *navigation* and *action*
+links differently. A #emph[navigation] link — one whose every command just opens a file, runs
+#raw("GOTOLINE"), or moves the cursor — always follows. An #emph[action] link — anything else, such as
+inserting text, running a shell command, or writing a file — only runs once you have *trusted the
+document*. The first time you activate an action link in an untrusted document, a dialog shows you a short
+plain-English summary of what the link does (#emph[This xlink runs a shell command, inserts text.],
+worked out from the commands themselves so a document can't dress up its code with a misleading label)
+together with the exact code, and asks: #emph[Run once] (run it this time only), #emph[Trust this
+document] (run it, and remember this file so its action links run without asking again), or
+#emph[Cancel]. You can also decide
+ahead of time with #raw("XLTRUST") (trust the active document) and #raw("XLUNTRUST") (revoke it), and
+read the state with #raw("$XLTRUSTED").
+
+Trust is remembered between sessions — it is saved in #raw("xyscript-trust.txt") beside the program,
+keyed to the document's path and to the exact set of link payloads it had when you trusted it. So if an
+xlink's code later changes, or a new one is added, the trust no longer matches and you are asked
+again — you re-confirm precisely when the code that would run is no longer the code you approved. (A
+buffer with no file on disk is trusted for the current session only.) This is the same idea as a word
+processor asking before it runs a document's macros: opening a file never runs anything, and nothing
+runs that you didn't see and allow.
+
+#tip("Read a link before you follow it")[#raw("$XLINK") gives you the exact code attached to the link
+under the cursor, so you can see what an action link would do without running it — and the confirm
+dialog shows you the same code before you choose.]
 
 #raw("XLDEL") removes the xlink under the cursor (the text stays — only the link is removed), and
 #raw("XLDEL/A") clears every xlink in the file. To check from a script, #raw("$XLINKS") is the number

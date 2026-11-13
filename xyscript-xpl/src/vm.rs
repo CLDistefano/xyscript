@@ -302,6 +302,39 @@ impl Interpreter {
         self.drive_resume(host)
     }
 
+    /// The payload `code` of a parked `XLGO` action-tier confirm, if a script is on one. The editor
+    /// shows the confirm dialog and resumes via [`resume_xlink_confirm`](Self::resume_xlink_confirm).
+    /// It captures this BEFORE resuming (which pops the frame) and runs it afterward — like
+    /// [`run_menu_command`](Self::run_menu_command).
+    pub fn xlink_confirm_request(&self) -> Option<String> {
+        match self.suspended.last().map(|s| &s.reason) {
+            Some(SuspendReason::XlinkConfirm { code }) => Some(code.clone()),
+            _ => None,
+        }
+    }
+
+    /// Resume a parked `XLGO` action-tier confirm with the user's `choice`. On `Trust`, the active
+    /// document is recorded trusted (via the host); `$ERROR` clears when the payload will run (`Trust`
+    /// or `RunOnce`) and is set on `Cancel`. The payload itself is RUN by the editor after this
+    /// returns. No-op if nothing is parked on an `XlinkConfirm`.
+    pub fn resume_xlink_confirm(
+        &mut self,
+        choice: XlinkConfirmChoice,
+        host: &mut dyn Host,
+    ) -> VmResult<()> {
+        if !matches!(
+            self.suspended.last().map(|s| &s.reason),
+            Some(SuspendReason::XlinkConfirm { .. })
+        ) {
+            return Ok(());
+        }
+        if choice == XlinkConfirmChoice::Trust {
+            host.xlink_trust_active();
+        }
+        self.env.error = if choice == XlinkConfirmChoice::Cancel { 1 } else { 0 };
+        self.drive_resume(host)
+    }
+
     /// What a parked `WAIT`/`WAIT/J` is waiting on, if a script is suspended on one.
     pub fn wait_request(&self) -> Option<WaitTarget> {
         match self.suspended.last().map(|s| &s.reason) {
@@ -847,6 +880,17 @@ pub enum WaitTarget {
 }
 
 /// Why a script is parked mid-run (drives how the editor resumes it).
+/// The user's choice in the `XLGO` action-tier confirm dialog (an untrusted non-navigation payload).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum XlinkConfirmChoice {
+    /// Run the payload once, without recording trust.
+    RunOnce,
+    /// Trust this document (record it) and run the payload.
+    Trust,
+    /// Do nothing.
+    Cancel,
+}
+
 enum SuspendReason {
     /// `READKEY <var> [message]` — the keystroke char is written into `var` (`$SC` gets the
     /// scancode). `message`, if given, is shown in a modal box while awaiting the key. `describe`
@@ -914,6 +958,12 @@ enum SuspendReason {
     /// on resume the chosen command is RUN (by the editor, through its normal command path), so Enter
     /// or a double-click executes the highlighted entry. Cancel runs nothing and sets `$ERROR`.
     RunMenu { title: Option<String>, items: Vec<String>, commands: Vec<String> },
+    /// `XLGO` on an ACTION (non-navigation) xlink payload in an UNTRUSTED document — a MODAL
+    /// confirmation showing `code` with the choices Run once / Trust this document / Cancel. Resumed
+    /// via [`resume_xlink_confirm`](Interpreter::resume_xlink_confirm): on Trust the document is
+    /// recorded trusted (via the host), and on Trust-or-once the editor RUNS `code` through its normal
+    /// command path (like `RunMenu`, captured before the resume). Cancel runs nothing and sets `$ERROR`.
+    XlinkConfirm { code: String },
     /// `BK on` / `BK debug` — an inline breakpoint. The script pauses; the editor shows a prompt
     /// (`debug` = a variable-dump dialog, else a simple Y/N stop prompt) and either RESUMES the
     /// script (continue) or ABORTS it. `BK off` doesn't suspend at all. `line`/`col` locate the `BK`
@@ -2850,12 +2900,23 @@ impl Vm<'_, '_> {
                     .host
                     .xlink_payload_at_caret()
                     .ok_or_else(|| XplError::trappable("XLGO: no xlink at the caret"))?;
-                if !is_navigation_only(&payload) {
-                    return Err(XplError::trappable(
-                        "XLGO: this xlink does more than navigate — blocked for now (trusted activation comes in a later version)",
-                    ));
+                // Navigation always runs. An ACTION (non-navigation) payload runs only when the
+                // document is trusted; otherwise pop the confirm dialog (Run once / Trust / Cancel) —
+                // the editor runs the payload on a Trust/Run-once resume.
+                if is_navigation_only(&payload) || self.ctx.host.xlink_action_trusted() {
+                    return self.run_source_sync(&payload, &[], false);
                 }
-                self.run_source_sync(&payload, &[], false)
+                self.suspend = Some(SuspendReason::XlinkConfirm { code: payload });
+                Ok(Flow::Suspend)
+            }
+            // `XLTRUST` / `XLUNTRUST` — trust or revoke the active document for running ACTION
+            // (non-navigation) xlink payloads. `$XLTRUSTED` reads the state.
+            "XLTRUST" | "XLUNTRUST" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable(format!("{base} takes no argument")));
+                }
+                self.host_op(EditorOp::SetXlinkTrust { trust: base == "XLTRUST" })?;
+                Ok(Flow::Next)
             }
             // `MARKLIST` — a MODAL chooser (sharing the PICK dialog) of the active document's
             // bookmarks; choosing one jumps the caret there (centered). Empty list = a status note.
@@ -6553,6 +6614,48 @@ const NAV_VERBS: &[&str] = &[
 /// token won't match a nav verb, so the payload is REFUSED (a safe false-negative) rather than being
 /// mistaken for navigation. Empty and comment (`#`) fragments are skipped. An empty payload is not
 /// navigation (there is nothing to run). Used by `XLGO`.
+/// A short, plain-English summary of what an xlink `payload` does, for the `XLGO` confirm dialog.
+/// DERIVED from the payload's own verbs (never author-supplied text — a description a document could
+/// carry could lie over hostile code, the exact phishing vector a trust dialog must avoid). Coarse and
+/// honest: each statement's verb maps to a human phrase (dangerous ones — shell, scripts, file writes
+/// — named explicitly), anything uncategorized falls to "runs other commands", and the categories are
+/// de-duplicated in order. The dialog shows this ABOVE the raw code, which stays the ground truth.
+pub fn describe_xlink_payload(payload: &str) -> String {
+    let mut cats: Vec<&'static str> = Vec::new();
+    for raw in payload.split(|c| c == '\n' || c == '\r' || c == ';') {
+        let stmt = raw.trim();
+        if stmt.is_empty() || stmt.starts_with('#') {
+            continue;
+        }
+        let tok = stmt.split_whitespace().next().unwrap_or("");
+        let verb = tok.split('/').next().unwrap_or(tok).to_ascii_uppercase();
+        let cat = match verb.as_str() {
+            "OPEN" | "READ" | "CA" | "ED" | "EDIT" => "opens a file",
+            "X" | "XY" | "XV" => "runs a shell command",
+            "RUN" | "RUNCODE" | "RUNHERE" | "BG" => "runs a script",
+            "WRITEFILE" | "WF" | "SAVELIB" | "SAVEVARS" | "SAVECM" | "SAVEKBD" | "SAVECFG" => {
+                "writes a file"
+            }
+            "SAVE" | "SA" | "ST" | "SAAS" | "SAVEAS" | "SAD" => "saves the document",
+            "DEL" | "ERNV" | "RENAME" | "REN" => "deletes or renames a file",
+            "INSERT" | "IT" | "TYPE" | "WRITE" | "WRITELN" | "WR" | "WRL" | "PUT" | "MERGE" | "ME"
+            | "AR" | "PRINTEX" => "inserts text",
+            "DELSEL" | "RW" | "RL" | "RLL" | "RS" | "RP" | "RE" | "BS" => "deletes text",
+            "SENDMAIL" => "sends email",
+            "TRUST" => "enables shell commands",
+            v if NAV_VERBS.contains(&v) => "moves the cursor",
+            _ => "runs other commands",
+        };
+        if !cats.contains(&cat) {
+            cats.push(cat);
+        }
+    }
+    if cats.is_empty() {
+        return "This xlink does nothing.".to_string();
+    }
+    format!("This xlink {}.", cats.join(", "))
+}
+
 pub(crate) fn is_navigation_only(payload: &str) -> bool {
     let mut saw_statement = false;
     for raw in payload.split(|c| c == '\n' || c == '\r' || c == ';') {
@@ -7290,6 +7393,22 @@ mod tests {
         assert!(!is_navigation_only("   \n  ")); // whitespace-only, likewise
         // A `;` inside a quoted arg splits conservatively → the tail isn't a nav verb → refused (safe).
         assert!(!is_navigation_only("OPEN \"a;b\""));
+    }
+
+    #[test]
+    fn describe_xlink_payload_summarizes_by_verb() {
+        assert_eq!(describe_xlink_payload("GOTOLINE 5"), "This xlink moves the cursor.");
+        assert_eq!(describe_xlink_payload("OPEN notes.txt"), "This xlink opens a file.");
+        assert_eq!(describe_xlink_payload(r#"insert "hi""#), "This xlink inserts text.");
+        assert_eq!(describe_xlink_payload("X [rm -rf /]"), "This xlink runs a shell command.");
+        // mixed statements → de-duplicated, in order
+        assert_eq!(
+            describe_xlink_payload(r#"OPEN notes.txt;insert "a";insert "b""#),
+            "This xlink opens a file, inserts text."
+        );
+        // an uncategorized verb falls to the honest catch-all
+        assert_eq!(describe_xlink_payload("FROBNICATE 1"), "This xlink runs other commands.");
+        assert_eq!(describe_xlink_payload("   "), "This xlink does nothing.");
     }
 
     #[test]

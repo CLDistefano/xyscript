@@ -3009,6 +3009,9 @@ impl GuiApp {
         let mut editor = XyEditor::new(km.clone());
         // Personal dictionary (`LEARN`): load `xyscript-dict.txt` beside the executable, if present.
         editor.load_learned_words();
+        // xlink action-tier trust ledger (`xyscript-trust.txt` beside the exe): load it now so a
+        // document trusted in a previous session is recognised before any trust op this session.
+        editor.load_xlink_trust();
         // Portable-folder model (XyWrite-style): default the working directory to the app's OWN folder
         // (`$XSDIR`, the executable's directory), NOT the arbitrary launch directory the OS handed us —
         // and do it BEFORE `startup.xpl` runs. So a relative `LOADKBD mykeys.kbd` / `THEME themes/…` /
@@ -12168,6 +12171,55 @@ impl GuiApp {
                 self.pick_dialog = None;
                 self.pick_filter.clear();
                 self.editor.pick_respond(None);
+                self.surface_command_feedback();
+            }
+        }
+
+        // `XLGO` ACTION-tier confirm: an untrusted, non-navigation xlink payload wants to run. Show
+        // the code and offer Run once / Trust this document / Cancel — the gate that keeps code carried
+        // by someone else's document from running until the user allows it.
+        if let Some(code) = self.editor.xlink_confirm_request() {
+            let mut choice: Option<xyscript_app::XlinkConfirmChoice> = None;
+            let mut open = true;
+            egui::Window::new("Run this xlink?")
+                .id(egui::Id::new("xlink_confirm_dialog"))
+                .collapsible(false)
+                .resizable(true)
+                .default_size(egui::vec2(520.0, 240.0))
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    // A plain-English summary DERIVED from the payload's own verbs (can't be faked by
+                    // the document), shown above the raw code.
+                    ui.label(egui::RichText::new(xyscript_app::describe_xlink_payload(&code)).strong());
+                    ui.label("Only run it if you trust this document.");
+                    ui.add_space(6.0);
+                    egui::ScrollArea::vertical().max_height(150.0).auto_shrink([false, true]).show(
+                        ui,
+                        |ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                            ui.monospace(&code);
+                        },
+                    );
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Run once").clicked() {
+                            choice = Some(xyscript_app::XlinkConfirmChoice::RunOnce);
+                        }
+                        if ui.button("Trust this document").clicked() {
+                            choice = Some(xyscript_app::XlinkConfirmChoice::Trust);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            choice = Some(xyscript_app::XlinkConfirmChoice::Cancel);
+                        }
+                    });
+                });
+            if let Some(c) = choice {
+                self.editor.xlink_confirm_respond(c);
+                self.surface_command_feedback();
+            } else if !open {
+                // Window × — treat as cancel.
+                self.editor.xlink_confirm_respond(xyscript_app::XlinkConfirmChoice::Cancel);
                 self.surface_command_feedback();
             }
         }

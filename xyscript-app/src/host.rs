@@ -3124,6 +3124,17 @@ pub struct AppHost {
     /// transparent background (no band). `$XLFGCOLOR`/`$XLBGCOLOR`; SaveCfg.
     xlink_fg_color: Option<(u8, u8, u8)>,
     xlink_bg_color: Option<(u8, u8, u8)>,
+    /// xlink ACTION-tier trust ledger (phase 2): absolute document path -> the payload-set hash that
+    /// was trusted. A document's NON-navigation xlinks run without a prompt only when its path is here
+    /// AND its current payload-set hash still matches (so new/changed code re-prompts). Persisted to
+    /// `xyscript-trust.txt` in `$XSDIR`; loaded lazily (see `ensure_xlink_trust_loaded`). `$XLTRUSTED`.
+    xlink_trust: HashMap<PathBuf, u64>,
+    /// Session-only action trust for buffers with NO path (nothing on disk to key): `DocId` -> the
+    /// trusted payload-set hash, so a new/changed payload re-prompts just like a path-backed doc.
+    /// Never persisted.
+    xlink_trust_session: HashMap<crate::panes::DocId, u64>,
+    /// Whether `xlink_trust` has been read from disk yet (lazy — the first trust op loads it).
+    xlink_trust_loaded: bool,
     /// Whether the preview/`TOPDF` render also paints the transient EMPH matches and URL highlights
     /// (`PVMARKS`). Off by default — a printout stays clean unless asked. MDA styling is unaffected
     /// (always rendered). `$PVMARKS`; SaveCfg. Applies to the styler-based kinds (GFM/Typst/Text).
@@ -3666,6 +3677,9 @@ impl AppHost {
             xlink_highlight: true, // xlinks are visible + clickable by default
             xlink_fg_color: None,
             xlink_bg_color: None,
+            xlink_trust: HashMap::new(),
+            xlink_trust_session: HashMap::new(),
+            xlink_trust_loaded: false,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
             error_log: false, // off by default
@@ -4278,6 +4292,135 @@ impl AppHost {
             .filter(|x| x.start < rope_hi && x.end > rope_lo)
             .map(|x| (x.start, x.end))
             .collect()
+    }
+
+    // ---- xlink action-tier trust ledger (phase 2) --------------------------
+
+    /// The trust-ledger file path: `xyscript-trust.txt` in `$XSDIR` (next to the executable), like the
+    /// default error log. `None` if the executable directory can't be determined.
+    fn xlink_trust_path(&self) -> Option<PathBuf> {
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("xyscript-trust.txt")))
+    }
+
+    /// Lazily read the ledger from disk into `xlink_trust` (once). A no-op under `virtual_fs` (tests
+    /// keep trust in memory only) and best-effort — a missing or malformed file just yields no entries.
+    fn ensure_xlink_trust_loaded(&mut self) {
+        if self.xlink_trust_loaded {
+            return;
+        }
+        self.xlink_trust_loaded = true;
+        if self.virtual_fs {
+            return;
+        }
+        let Some(path) = self.xlink_trust_path() else { return };
+        let Ok(text) = std::fs::read_to_string(&path) else { return };
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            // `<hash_hex>\t<abspath>` — split on the FIRST tab so a path may contain anything else.
+            if let Some((h, p)) = line.split_once('\t') {
+                if let Ok(hash) = u64::from_str_radix(h.trim(), 16) {
+                    let p = p.trim();
+                    if !p.is_empty() {
+                        self.xlink_trust.insert(PathBuf::from(p), hash);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Write the ledger back to `xyscript-trust.txt` (best-effort; a no-op under `virtual_fs`).
+    fn save_xlink_trust(&self) {
+        if self.virtual_fs {
+            return;
+        }
+        let Some(path) = self.xlink_trust_path() else { return };
+        let mut s = String::from(
+            "# XyScript xlink trust ledger — documents whose action (non-navigation) xlinks you have\n\
+             # trusted to run. Delete a line to revoke it. Format: <payload-set-hash>\\t<path>\n",
+        );
+        for (p, h) in &self.xlink_trust {
+            s.push_str(&format!("{h:016x}\t{}\n", p.display()));
+        }
+        let _ = std::fs::write(&path, s);
+    }
+
+    /// A hash over the active document's xlink PAYLOAD SET (sorted, so order/position/styling don't
+    /// matter) — the value the ledger keys trust to. Changing or adding a payload changes this, which
+    /// is what re-prompts for trust; moving a link or editing surrounding text does not.
+    fn active_xlink_payload_hash(&self) -> u64 {
+        let mut payloads: Vec<&[u8]> = self.active_doc().xlinks().iter().map(|x| &x.payload[..]).collect();
+        payloads.sort_unstable();
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a
+        for p in payloads {
+            for &b in p {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            h ^= 0xFF; // terminator between payloads
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h
+    }
+
+    /// Whether the active document is trusted to run ACTION (non-navigation) xlink payloads: its path
+    /// is in the ledger with a matching payload-set hash, or (for a path-less buffer) it was trusted
+    /// this session. Pure read — the ledger must already be loaded (it is, after the first trust op or
+    /// the GUI's startup `load_xlink_trust`). `$XLTRUSTED`.
+    pub fn xlink_doc_trusted(&self) -> bool {
+        let doc = self.active_doc();
+        let hash = self.active_xlink_payload_hash();
+        match doc.path() {
+            Some(p) => self.xlink_trust.get(p) == Some(&hash),
+            None => self.xlink_trust_session.get(&doc.id()) == Some(&hash),
+        }
+    }
+
+    /// Eagerly load the ledger (called once at GUI startup so `$XLTRUSTED` is correct before any trust
+    /// op). Safe to call more than once.
+    pub fn load_xlink_trust(&mut self) {
+        self.ensure_xlink_trust_loaded();
+    }
+
+    /// `XLTRUST` / the confirm dialog's "Trust this document": record the active document as trusted for
+    /// its current payload set. A path-backed doc persists to the ledger; a path-less buffer is trusted
+    /// for the session only. Returns a status string.
+    fn trust_active_doc(&mut self) -> String {
+        self.ensure_xlink_trust_loaded();
+        let hash = self.active_xlink_payload_hash();
+        let doc = self.active_doc();
+        match doc.path().map(|p| p.to_path_buf()) {
+            Some(p) => {
+                self.xlink_trust.insert(p, hash);
+                self.save_xlink_trust();
+                "xlinks trusted for this document".to_string()
+            }
+            None => {
+                let id = doc.id();
+                self.xlink_trust_session.insert(id, hash);
+                "xlinks trusted for this buffer (this session — unsaved)".to_string()
+            }
+        }
+    }
+
+    /// `XLUNTRUST`: revoke action trust for the active document (both the persisted and session forms).
+    fn untrust_active_doc(&mut self) -> String {
+        self.ensure_xlink_trust_loaded();
+        let doc = self.active_doc();
+        let id = doc.id();
+        let path = doc.path().map(|p| p.to_path_buf());
+        let was_session = self.xlink_trust_session.remove(&id).is_some();
+        let was_persisted = path.as_ref().map(|p| self.xlink_trust.remove(p).is_some()).unwrap_or(false);
+        if was_persisted {
+            self.save_xlink_trust();
+        }
+        if was_persisted || was_session {
+            "xlink trust revoked for this document".to_string()
+        } else {
+            "this document wasn't trusted".to_string()
+        }
     }
 
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
@@ -13151,6 +13294,10 @@ impl Host for AppHost {
                 }
                 return Err(XplError::trappable("XLDEL: no xlink at the caret"));
             }
+            EditorOp::SetXlinkTrust { trust } => {
+                let msg = if trust { self.trust_active_doc() } else { self.untrust_active_doc() };
+                return Ok(Value::str(msg));
+            }
             // HEX-view editing (byte-granular; the read-only gate above lets these through in hex view).
             EditorOp::HexSetNibble { hi, val } => {
                 self.active().hex_set_nibble(hi, val);
@@ -15218,6 +15365,7 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "XLINKHIGHLIGHT" => Some(Value::Int(if self.xlink_highlight { 1 } else { 0 })),
+            "XLTRUSTED" => Some(Value::Int(if self.xlink_doc_trusted() { 1 } else { 0 })),
             "XLFGCOLOR" => Some(Value::str(match self.xlink_fg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
@@ -15854,6 +16002,14 @@ impl Host for AppHost {
         let doc = self.active_doc();
         let off = doc.buffer().cursor();
         doc.xlink_at(off).map(|x| String::from_utf8_lossy(&x.payload).into_owned())
+    }
+
+    fn xlink_action_trusted(&self) -> bool {
+        self.xlink_doc_trusted()
+    }
+
+    fn xlink_trust_active(&mut self) {
+        self.trust_active_doc();
     }
 
     fn outline(&self) -> (Vec<(usize, String)>, usize) {
