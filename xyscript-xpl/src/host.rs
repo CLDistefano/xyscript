@@ -866,6 +866,12 @@ pub enum EditorOp {
     /// for running ACTION (non-navigation) xlink payloads. Trust is keyed by document path in a
     /// user-global ledger (session-only for a path-less buffer). `$XLTRUSTED`.
     SetXlinkTrust { trust: bool },
+    /// `XLNEXT` (`forward = true`) / `XLPREV` — move the caret to the next / previous xlink's start,
+    /// wrapping at the ends, and centre it. A no-op (with a note) when the document has no xlinks.
+    XlinkJump { forward: bool },
+    /// `XLFWD` (`forward = true`) / `XLBACK` — walk the xlink JUMPLIST: go to the next forward / back
+    /// location (where following links took you), centred. A no-op (with a note) when there's none.
+    XlinkHistory { forward: bool },
     /// HEX-view editing (raw bytes, byte-granular; each is one recorded undo unit). These mutate the
     /// buffer but are EXEMPT from the hex read-only gate (they are the intended hex editing) while
     /// still blocked by a genuine `RO` lock. See the `hex_*` document methods.
@@ -2128,6 +2134,12 @@ pub trait Host {
         Vec::new()
     }
 
+    /// The active document's xlinks for the `XLINKS` chooser: `(start-offset, preview)` per row, in
+    /// document order. `preview` is a short label (line number + link text + payload). Default: none.
+    fn xlink_list(&self) -> Vec<(usize, String)> {
+        Vec::new()
+    }
+
     /// The payload (XPL source) of the xlink whose span contains the caret, for `XLGO` and `$XLINK`.
     /// `None` when the caret isn't on an xlink. Default: none.
     fn xlink_payload_at_caret(&self) -> Option<String> {
@@ -2144,6 +2156,14 @@ pub trait Host {
     /// Record the active document as trusted for action xlink payloads — the confirm dialog's "Trust
     /// this document" choice (and `XLTRUST`). Default: no-op.
     fn xlink_trust_active(&mut self) {}
+
+    /// Snapshot the current location just before an xlink activation runs, for the jumplist (`XLBACK`/
+    /// `XLFWD`). Paired with [`xlink_jump_commit`](Self::xlink_jump_commit). Default: no-op.
+    fn xlink_jump_mark(&mut self) {}
+
+    /// After an xlink activation, record the marked location on the jumplist if the activation moved
+    /// the caret. Default: no-op.
+    fn xlink_jump_commit(&mut self) {}
 
     /// The active document's structure for the `OUTLINE`/`OL` chooser, plus the row to pre-highlight.
     /// Returns `(entries, current)`: `entries[i]` is `(offset, label)` per row in document order (label

@@ -2277,6 +2277,54 @@ impl Document {
         n
     }
 
+    /// `(start_offset, preview)` for each xlink, for the `XLINKS` chooser: line number + the link's own
+    /// text, an arrow, and a short of the payload. Sorted by start (as `xlinks` is).
+    pub fn xlink_previews(&self) -> Vec<(usize, String)> {
+        self.xlinks
+            .iter()
+            .map(|x| {
+                let line = self.buffer.line_of(x.start);
+                let raw = self.buffer.slice_bytes(x.start, x.end);
+                let label = String::from_utf8_lossy(&raw);
+                let label = label.trim();
+                let label_short: String = label.chars().take(32).collect();
+                let label_short = if label.chars().count() > 32 {
+                    format!("{label_short}…")
+                } else if label_short.is_empty() {
+                    "(link)".to_string()
+                } else {
+                    label_short
+                };
+                let payload = String::from_utf8_lossy(&x.payload);
+                let payload = payload.trim();
+                let pay_short: String = payload.chars().take(40).collect();
+                let pay_short = if payload.chars().count() > 40 {
+                    format!("{pay_short}…")
+                } else {
+                    pay_short
+                };
+                (x.start, format!("L{}  {label_short}  →  {pay_short}", line + 1))
+            })
+            .collect()
+    }
+
+    /// Move the caret to the next (`forward`) or previous xlink's start, wrapping at the ends. Returns
+    /// the new offset, or `None` when there are no xlinks. For `XLNEXT`/`XLPREV`.
+    pub fn xlink_jump(&mut self, forward: bool) -> Option<usize> {
+        if self.xlinks.is_empty() {
+            return None;
+        }
+        let cur = self.buffer.cursor();
+        let target = if forward {
+            self.xlinks.iter().position(|x| x.start > cur).or(Some(0))
+        } else {
+            self.xlinks.iter().rposition(|x| x.start < cur).or(Some(self.xlinks.len() - 1))
+        }?;
+        let off = self.xlinks[target].start;
+        self.set_caret(off, None);
+        Some(off)
+    }
+
     /// xlinks with FRESH endpoint contexts captured from the current buffer, for persisting to the
     /// sidecar. Recomputed at save time (like [`marks_for_persist`](Self::marks_for_persist)) so the
     /// stored anchors match the saved bytes even after a session of edits shifted the live offsets.

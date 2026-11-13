@@ -2904,7 +2904,13 @@ impl Vm<'_, '_> {
                 // document is trusted; otherwise pop the confirm dialog (Run once / Trust / Cancel) —
                 // the editor runs the payload on a Trust/Run-once resume.
                 if is_navigation_only(&payload) || self.ctx.host.xlink_action_trusted() {
-                    return self.run_source_sync(&payload, &[], false);
+                    // Wrap the run so the jumplist records where we came from (if it moves us).
+                    self.ctx.host.xlink_jump_mark();
+                    let flow = self.run_source_sync(&payload, &[], false);
+                    if matches!(flow, Ok(Flow::Next)) {
+                        self.ctx.host.xlink_jump_commit();
+                    }
+                    return flow;
                 }
                 self.suspend = Some(SuspendReason::XlinkConfirm { code: payload });
                 Ok(Flow::Suspend)
@@ -2917,6 +2923,41 @@ impl Vm<'_, '_> {
                 }
                 self.host_op(EditorOp::SetXlinkTrust { trust: base == "XLTRUST" })?;
                 Ok(Flow::Next)
+            }
+            // `XLNEXT` / `XLPREV` — step the caret to the next / previous xlink (wrapping, centered).
+            "XLNEXT" | "XLPREV" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable(format!("{base} takes no argument")));
+                }
+                self.host_op(EditorOp::XlinkJump { forward: base == "XLNEXT" })?;
+                Ok(Flow::Next)
+            }
+            // `XLBACK` / `XLFWD` — walk the xlink jumplist (where following links took you).
+            "XLBACK" | "XLFWD" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable(format!("{base} takes no argument")));
+                }
+                self.host_op(EditorOp::XlinkHistory { forward: base == "XLFWD" })?;
+                Ok(Flow::Next)
+            }
+            // `XLINKS` — a MODAL chooser (sharing the PICK dialog) of the document's xlinks; choosing
+            // one jumps the caret to it (centered). Reuses the `MarkPick` jump-to-offset resume.
+            "XLINKS" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable("XLINKS takes no argument"));
+                }
+                let links = self.ctx.host.xlink_list();
+                if links.is_empty() {
+                    *self.ctx.status = Some("XLINKS: no xlinks in this document".to_string());
+                    return Ok(Flow::Next);
+                }
+                let (targets, items): (Vec<usize>, Vec<String>) = links.into_iter().unzip();
+                self.suspend = Some(SuspendReason::MarkPick {
+                    title: Some("Go to xlink".to_string()),
+                    items,
+                    targets,
+                });
+                Ok(Flow::Suspend)
             }
             // `MARKLIST` — a MODAL chooser (sharing the PICK dialog) of the active document's
             // bookmarks; choosing one jumps the caret there (centered). Empty list = a status note.
@@ -6687,7 +6728,7 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Line jump + xlinks: navigation and span edits act on the document at the caret/selection.
-    "GOTOLINE", "XLINK", "XLDEL", "XLGO",
+    "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",

@@ -3135,6 +3135,13 @@ pub struct AppHost {
     xlink_trust_session: HashMap<crate::panes::DocId, u64>,
     /// Whether `xlink_trust` has been read from disk yet (lazy — the first trust op loads it).
     xlink_trust_loaded: bool,
+    /// The xlink JUMPLIST (session-only, global across documents): a browser-style back/forward history
+    /// of `(document, caret)` locations. Following an xlink that actually moves you pushes where you
+    /// came from onto `jump_back` (and clears `jump_fwd`); `XLBACK`/`XLFWD` walk it. `jump_pending`
+    /// holds the pre-activation location between `jump_mark` and `jump_commit`.
+    jump_back: Vec<(crate::panes::DocId, usize)>,
+    jump_fwd: Vec<(crate::panes::DocId, usize)>,
+    jump_pending: Option<(crate::panes::DocId, usize)>,
     /// Whether the preview/`TOPDF` render also paints the transient EMPH matches and URL highlights
     /// (`PVMARKS`). Off by default — a printout stays clean unless asked. MDA styling is unaffected
     /// (always rendered). `$PVMARKS`; SaveCfg. Applies to the styler-based kinds (GFM/Typst/Text).
@@ -3680,6 +3687,9 @@ impl AppHost {
             xlink_trust: HashMap::new(),
             xlink_trust_session: HashMap::new(),
             xlink_trust_loaded: false,
+            jump_back: Vec::new(),
+            jump_fwd: Vec::new(),
+            jump_pending: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
             error_log: false, // off by default
@@ -4420,6 +4430,57 @@ impl AppHost {
             "xlink trust revoked for this document".to_string()
         } else {
             "this document wasn't trusted".to_string()
+        }
+    }
+
+    /// The current `(document, caret)` location, for the xlink jumplist.
+    fn current_jumploc(&self) -> (crate::panes::DocId, usize) {
+        let doc = &self.docs[self.active];
+        (doc.id(), doc.buffer().cursor())
+    }
+
+    /// Snapshot the current location just before an xlink activation runs (`XLGO`/Ctrl+click). Paired
+    /// with [`jump_commit`](Self::jump_commit), which records it only if the activation actually moved.
+    pub fn jump_mark(&mut self) {
+        self.jump_pending = Some(self.current_jumploc());
+    }
+
+    /// After an xlink activation, push the marked pre-location onto the back-stack IF the activation
+    /// moved us (different document or caret), and clear the forward-stack — a browser-style history.
+    pub fn jump_commit(&mut self) {
+        const JUMP_CAP: usize = 100;
+        if let Some(pre) = self.jump_pending.take() {
+            if self.current_jumploc() != pre {
+                self.jump_back.push(pre);
+                self.jump_fwd.clear();
+                if self.jump_back.len() > JUMP_CAP {
+                    self.jump_back.remove(0);
+                }
+            }
+        }
+    }
+
+    /// `XLFWD` (`forward = true`) / `XLBACK`: walk the xlink jumplist. Pops the next location from the
+    /// forward / back stack (skipping any whose document has since closed), pushes the current location
+    /// onto the other stack, and navigates there (centered). Returns `false` when there's nowhere to go.
+    pub fn jump_history(&mut self, forward: bool) -> bool {
+        loop {
+            let popped = if forward { self.jump_fwd.pop() } else { self.jump_back.pop() };
+            let Some((doc, off)) = popped else { return false };
+            let Some(idx) = self.docs.iter().position(|d| d.id() == doc) else {
+                continue; // that document was closed — skip this entry and try the next
+            };
+            let cur = self.current_jumploc();
+            if forward {
+                self.jump_back.push(cur);
+            } else {
+                self.jump_fwd.push(cur);
+            }
+            self.set_active(idx);
+            let clamped = off.min(self.docs[self.active].buffer().len());
+            self.docs[self.active].set_caret(clamped, None);
+            self.reveal_center = true;
+            return true;
         }
     }
 
@@ -13298,6 +13359,27 @@ impl Host for AppHost {
                 let msg = if trust { self.trust_active_doc() } else { self.untrust_active_doc() };
                 return Ok(Value::str(msg));
             }
+            EditorOp::XlinkJump { forward } => {
+                match self.docs[self.active].xlink_jump(forward) {
+                    Some(_) => {
+                        self.reveal_center = true; // scroll the target to mid-screen, like MARKNEXT/PREV
+                        let n = self.docs[self.active].xlink_count();
+                        let dir = if forward { "next" } else { "previous" };
+                        return Ok(Value::str(format!("xlink {dir} ({n} in document)")));
+                    }
+                    None => return Err(XplError::trappable("no xlinks in this document")),
+                }
+            }
+            EditorOp::XlinkHistory { forward } => {
+                if self.jump_history(forward) {
+                    return Ok(Value::str(if forward { "xlink forward" } else { "xlink back" }));
+                }
+                return Err(XplError::trappable(if forward {
+                    "no xlink to go forward to"
+                } else {
+                    "no xlink to go back to"
+                }));
+            }
             // HEX-view editing (byte-granular; the read-only gate above lets these through in hex view).
             EditorOp::HexSetNibble { hi, val } => {
                 self.active().hex_set_nibble(hi, val);
@@ -15998,6 +16080,10 @@ impl Host for AppHost {
         self.active_doc().mark_previews()
     }
 
+    fn xlink_list(&self) -> Vec<(usize, String)> {
+        self.active_doc().xlink_previews()
+    }
+
     fn xlink_payload_at_caret(&self) -> Option<String> {
         let doc = self.active_doc();
         let off = doc.buffer().cursor();
@@ -16010,6 +16096,14 @@ impl Host for AppHost {
 
     fn xlink_trust_active(&mut self) {
         self.trust_active_doc();
+    }
+
+    fn xlink_jump_mark(&mut self) {
+        self.jump_mark();
+    }
+
+    fn xlink_jump_commit(&mut self) {
+        self.jump_commit();
     }
 
     fn outline(&self) -> (Vec<(usize, String)>, usize) {

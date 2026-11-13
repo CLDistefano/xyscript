@@ -670,6 +670,20 @@ dialog shows you the same code before you choose.]
 of xlinks in the file and #raw("$XLINK") is the stored code of the one under the cursor (empty when the
 cursor isn't on one).
 
+To move between the links in a document, #raw("XLNEXT") and #raw("XLPREV") step the cursor to the next
+and previous one (wrapping around the ends and scrolling it into view, just like #raw("MARKNEXT") does
+for bookmarks), and #raw("XLINKS") opens a chooser listing every link — its line, its text, and a
+glimpse of what it does — so you can jump straight to one by sight. Bind #raw("XLNEXT")/#raw("XLPREV")
+to a pair of keys and you can walk a document's links the way you page through search hits.
+
+And because following a link can carry you off somewhere — another line, or another file — XyScript keeps
+a *jumplist*, exactly like a web browser's history. Each time you follow a link, where you came from is
+remembered; #raw("XLBACK") returns you there and #raw("XLFWD") re-follows, and starting a fresh jump
+clears the forward trail. The jumplist spans documents (so #raw("XLBACK") out of a file a link opened
+lands you back in the one you started from) and lasts for the session. Only *following* a link records a
+stop — plain stepping with #raw("XLNEXT")/#raw("XLPREV") doesn't — so Back and Forward retrace the path
+you actually travelled.
+
 Xlinks belong to the file, not the session: like bookmarks, they are saved beside it in the hidden
 #raw(".xymeta") sidecar and restored when you reopen. Each end of the link rides your edits and is
 relocated to its text on reopen, so a link keeps pointing at the right words as the file grows — share

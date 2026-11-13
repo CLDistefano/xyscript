@@ -1996,7 +1996,11 @@ impl Editor {
         self.record_status_line();
         self.settle();
         if run {
+            // Wrap so the jumplist records where we came from (if the payload moves us), matching
+            // the nav/trusted path in XLGO.
+            self.host.jump_mark();
             self.run_command(&code);
+            self.host.jump_commit();
         }
     }
     /// Parked on `READKEY` — the GUI captures the next raw keystroke for it.
@@ -6095,6 +6099,56 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command(r#"insert "aaa\nbbb\nccc""#);
         e.run_command("GOTOLINE 2");
         assert_eq!(e.special_str("CP"), "4", "\"aaa\\n\" = 4 bytes → line 2 starts at 4");
+    }
+
+    #[test]
+    fn xlink_next_prev_and_picker_navigate_between_links() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaaa\nbbbb\ncccc""#); // "aaaa"=0-4, "cccc" starts at 10
+        e.run_command("TF");
+        e.run_command("DW"); // select "aaaa"
+        e.run_command("XLINK/L 3");
+        e.run_command("GOTOLINE 3"); // caret to start of line 3 ("cccc", offset 10)
+        e.run_command("DW"); // select "cccc"
+        e.run_command("XLINK/L 1");
+        assert_eq!(e.special_str("XLINKS"), "2");
+
+        // XLNEXT from the top skips the link AT the caret and lands on the next one (cccc @ 10).
+        e.run_command("TF");
+        e.run_command("XLNEXT");
+        assert_eq!(e.special_str("CP"), "10");
+        // Past the last → wraps to the first (aaaa @ 0).
+        e.run_command("XLNEXT");
+        assert_eq!(e.special_str("CP"), "0");
+        // XLPREV before the first → wraps to the last (cccc @ 10).
+        e.run_command("XLPREV");
+        assert_eq!(e.special_str("CP"), "10");
+
+        // The XLINKS picker lists both and jumps to the chosen one.
+        e.run_command("TF");
+        e.run_command("XLINKS");
+        let (_title, items) = e.pick_request().expect("picker open");
+        assert_eq!(items.len(), 2);
+        e.pick_respond(Some(1)); // the 2nd row (cccc, line 3)
+        assert_eq!(e.special_str("CP"), "10");
+    }
+
+    #[test]
+    fn xlink_jumplist_goes_back_and_forward() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaaa\nbbbb\ncccc\ndddd""#); // line 4 ("dddd") starts at 15
+        e.run_command("TF");
+        e.run_command("DW"); // select "aaaa" on line 1
+        e.run_command("XLINK/L 4"); // link that jumps to line 4
+        e.run_command("TF"); // caret 0, on the link
+        e.run_command("XLGO"); // follow it → caret to line 4
+        assert_eq!(e.special_str("CP"), "15", "followed the link to line 4");
+        // Back → where we came from (line 1, caret 0).
+        e.run_command("XLBACK");
+        assert_eq!(e.special_str("CP"), "0", "jumped back to the source");
+        // Forward → redo the jump.
+        e.run_command("XLFWD");
+        assert_eq!(e.special_str("CP"), "15", "jumped forward again");
     }
 
     #[test]
