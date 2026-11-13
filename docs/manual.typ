@@ -629,6 +629,12 @@ something other than a jump, give the code directly — #raw("XLINK OPEN notes.t
 exactly as typed, filename and all, and only worked out when you follow the link (so a path like
 #raw("$CWD\\refs.txt") points wherever you are *then*, not where you were when you made it).
 
+#raw("XLINK") takes the whole rest of the line as the payload (like #raw("X") and its kin), so a
+payload that chains several commands with #raw(";") needs no special handling —
+#raw("XLINK OPEN report.txt;GOTOLINE 4200") stores both. On the rare occasion you want to run another
+command on the #emph[same line] after the #raw("XLINK"), wrap the payload in brackets:
+#raw("XLINK [OPEN x;GOTOLINE 5];TF") attaches the two-command payload and then runs #raw("TF").
+
 Follow an xlink by *Ctrl+clicking* it, or by putting the cursor on it and running #raw("XLGO"). Xlinks
 show in a distinct colour so you can see them; #raw("XLINKHIGHLIGHT off") hides the colouring (and turns
 off Ctrl+click) if you'd rather a plain screen, and #raw("XLFGCOLOR") / #raw("XLBGCOLOR") set the link

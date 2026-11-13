@@ -6098,6 +6098,24 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xlink_payload_keeps_semicolons() {
+        // XLINK is an exempt verb: a `;`-containing payload is captured whole, no escaping needed.
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK OPEN foo;GOTOLINE 5");
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "OPEN foo;GOTOLINE 5");
+        // The bracket form delimits the payload and lets a command chain after it.
+        let mut e2 = ed();
+        e2.run_command(r#"insert "abcdef""#);
+        e2.run_command("DFA");
+        e2.run_command("XLINK [OPEN bar;GOTOLINE 9];TF");
+        e2.run_command("TF");
+        assert_eq!(e2.special_str("XLINK"), "OPEN bar;GOTOLINE 9");
+    }
+
+    #[test]
     fn xlink_create_activate_and_delete() {
         let mut e = ed();
         e.run_command(r#"insert "aaa\nbbb\nccc""#);

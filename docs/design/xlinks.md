@@ -119,6 +119,11 @@ XLINK OPEN budget.txt;GOTOLINE 4200
 - **Payload stored raw — no `$`-expansion at author time** (the `BC` model, literal
   `raw_args`). You want `XLINK OPEN $CWD\notes.txt;GOTOLINE 500` to resolve `$CWD`
   *when clicked*, not freeze it now. `XLINK/X …` (expand-now) is a later phase.
+- **`XLINK` is an exempt verb** (added to `EXEMPT_VERBS` with `X`/`XY`/`XV`, 2026-11-12):
+  the splitter takes the *rest of the line* as the payload, so a multi-command `;`
+  payload needs no escaping (`XLINK OPEN x;GOTOLINE 5` stores both). `XLINK [payload];next`
+  delimits the payload and resumes `;`-chaining after `]`. (`XLINK*` longer verbs —
+  `XLINKHIGHLIGHT`, `XLDEL`, … — don't match the exempt `XLINK`.)
 - **Selection required** — the span *is* the link (its text is the label; no
   separate alias in v1). Bare **`XLINK`** with a selection opens a payload editor
   (reuse `TXT`/`SCRATCH`/`BEDIT`) for multi-line code; here-strings (`@'…'@`) also
