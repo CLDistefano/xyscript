@@ -298,6 +298,10 @@ pub struct Bookmark {
     /// Session-only: set when load-time reconciliation had to RELOCATE this mark (the text moved),
     /// so the next `MARKNEXT`/`MARKPREV` that lands on it can report the move. Not persisted.
     pub moved: bool,
+    /// An optional NAME (`MARKSET <name>`), so the mark can be jumped to by name with `GOMARK <name>`
+    /// (and targeted by an `XLINK/M` xlink). Persisted in the `.xymeta` sidecar. Names are unique:
+    /// setting a name re-homes it to the new spot. `None` = an unnamed positional bookmark.
+    pub name: Option<String>,
 }
 
 /// The outcome of a `MARKNEXT`/`MARKPREV` jump: where the caret landed, whether that bookmark had
@@ -333,11 +337,14 @@ pub struct Xlink {
     /// The XPL to run on activation, stored verbatim. Hex-encoded in the sidecar; never author-time
     /// `$`-expanded.
     pub payload: Vec<u8>,
+    /// An optional NAME (`XLINK/N <name>`), so the link can be activated from anywhere with
+    /// `XLGO <name>`. Persisted in the sidecar. `None` = an anonymous link (addressed by position).
+    pub name: Option<String>,
 }
 
 /// An xlink with FRESH endpoint contexts captured from the current buffer, for persisting to the
 /// sidecar (see [`Document::xlinks_for_persist`]). Mirrors the `(off, split, ctx)` tuple that
-/// [`Document::marks_for_persist`] yields, but for both ends plus the payload.
+/// [`Document::marks_for_persist`] yields, but for both ends plus the payload and optional name.
 pub struct XlinkPersist {
     pub start: usize,
     pub start_split: usize,
@@ -346,6 +353,7 @@ pub struct XlinkPersist {
     pub end_split: usize,
     pub end_ctx: Vec<u8>,
     pub payload: Vec<u8>,
+    pub name: Option<String>,
 }
 
 /// Find `ctx` in `text` so the resulting point (`match_start + split`) lands within `[lo, hi]`,
@@ -977,6 +985,11 @@ impl Document {
             for &byte in &m.ctx {
                 mix(byte as u64);
             }
+            if let Some(n) = &m.name {
+                for &byte in n.as_bytes() {
+                    mix(byte as u64);
+                }
+            }
             mix(0xFF); // terminator between marks
         }
         mix(0x5B); // separator before the xlink layer
@@ -985,6 +998,11 @@ impl Document {
             mix(x.end as u64);
             for &byte in &x.payload {
                 mix(byte as u64);
+            }
+            if let Some(n) = &x.name {
+                for &byte in n.as_bytes() {
+                    mix(byte as u64);
+                }
             }
             mix(0xFF); // terminator between xlinks
         }
@@ -2060,16 +2078,34 @@ impl Document {
     }
 
     /// `MARKSET`: set a bookmark at the caret. Returns `false` (no change) if one is already there.
-    pub fn mark_set(&mut self) -> bool {
+    pub fn mark_set(&mut self, name: Option<String>) -> bool {
         let off = self.buffer.cursor();
-        if self.marks.iter().any(|m| m.off == off) {
+        // A NAMED set re-homes the name: drop any OTHER mark that currently carries it (names unique).
+        if let Some(n) = name.as_deref() {
+            self.marks.retain(|m| m.off == off || m.name.as_deref() != Some(n));
+        }
+        // A mark already at the caret: a bare set is a no-op; a named set (re)assigns the name.
+        if let Some(m) = self.marks.iter_mut().find(|m| m.off == off) {
+            if name.is_some() {
+                m.name = name;
+                self.styling_dirty = true;
+                return true;
+            }
             return false;
         }
         let (ctx, split) = self.capture_ctx(off);
-        self.marks.push(Bookmark { off, ctx, split, moved: false });
+        self.marks.push(Bookmark { off, ctx, split, moved: false, name });
         self.marks.sort_by_key(|m| m.off);
         self.styling_dirty = true; // metadata change → persist on save, count for the save prompt
         true
+    }
+
+    /// `GOMARK <name>`: move the caret to the named bookmark (and return its offset), or `None` if no
+    /// bookmark has that name. Also the primitive an `XLINK/M` link compiles to.
+    pub fn mark_goto_name(&mut self, name: &str) -> Option<usize> {
+        let off = self.marks.iter().find(|m| m.name.as_deref() == Some(name))?.off;
+        self.set_caret(off, None);
+        Some(off)
     }
 
     /// `MARKCLEAR`: remove the bookmark at the caret. Returns `false` if there was none.
@@ -2090,7 +2126,7 @@ impl Document {
         if self.mark_clear() {
             false
         } else {
-            self.mark_set();
+            self.mark_set(None);
             true
         }
     }
@@ -2202,20 +2238,24 @@ impl Document {
                 } else {
                     snippet
                 };
-                (m.off, format!("L{}  {snippet}", line + 1))
+                let tag = match &m.name {
+                    Some(n) => format!("[{n}]  "),
+                    None => String::new(),
+                };
+                (m.off, format!("L{}  {tag}{snippet}", line + 1))
             })
             .collect()
     }
 
     /// Bookmarks with FRESH context captured from the current buffer, for persisting to the sidecar
-    /// (`(off, split, ctx)`). Recomputed at save time so the stored anchor matches the saved bytes,
-    /// even after a session of edits shifted the live offsets.
-    pub fn marks_for_persist(&self) -> Vec<(usize, usize, Vec<u8>)> {
+    /// (`(off, split, ctx, name)`). Recomputed at save time so the stored anchor matches the saved
+    /// bytes, even after a session of edits shifted the live offsets.
+    pub fn marks_for_persist(&self) -> Vec<(usize, usize, Vec<u8>, Option<String>)> {
         self.marks
             .iter()
             .map(|m| {
                 let (ctx, split) = self.capture_ctx(m.off);
-                (m.off, split, ctx)
+                (m.off, split, ctx, m.name.clone())
             })
             .collect()
     }
@@ -2241,19 +2281,37 @@ impl Document {
     /// `XLINK`: create an xlink over rope range `[start, end)` carrying `payload` (raw bytes, verbatim).
     /// Rejects an empty range or one that overlaps an existing xlink. Endpoint contexts are captured now
     /// (like `MARKSET`) so a fresh anchor exists even before the next save.
-    pub fn xlink_create(&mut self, start: usize, end: usize, payload: Vec<u8>) -> Result<(), &'static str> {
+    pub fn xlink_create(
+        &mut self,
+        start: usize,
+        end: usize,
+        payload: Vec<u8>,
+        name: Option<String>,
+    ) -> Result<(), &'static str> {
         if start >= end {
             return Err("empty selection");
         }
         if self.xlinks.iter().any(|x| start < x.end && x.start < end) {
             return Err("overlaps an existing xlink");
         }
+        // A named link re-homes the name: drop any OTHER link that currently carries it (names unique).
+        if let Some(n) = name.as_deref() {
+            self.xlinks.retain(|x| x.name.as_deref() != Some(n));
+        }
         let (start_ctx, start_split) = self.capture_ctx(start);
         let (end_ctx, end_split) = self.capture_ctx(end);
-        self.xlinks.push(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload });
+        self.xlinks.push(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload, name });
         self.xlinks.sort_by_key(|x| x.start);
         self.styling_dirty = true;
         Ok(())
+    }
+
+    /// The payload of the xlink with the given NAME (`XLGO <name>`), or `None` if none has it.
+    pub fn xlink_payload_named(&self, name: &str) -> Option<String> {
+        self.xlinks
+            .iter()
+            .find(|x| x.name.as_deref() == Some(name))
+            .map(|x| String::from_utf8_lossy(&x.payload).into_owned())
     }
 
     /// `XLDEL`: remove the xlink whose span contains `off`. Returns `true` if one was removed.
@@ -2355,6 +2413,7 @@ impl Document {
                     end_split,
                     end_ctx,
                     payload: x.payload.clone(),
+                    name: x.name.clone(),
                 }
             })
             .collect()
@@ -5681,18 +5740,18 @@ mod tests {
     #[test]
     fn xlink_create_rejects_empty_and_overlap_and_allows_adjacent() {
         let mut d = Document::from_str("hello world");
-        assert!(d.xlink_create(3, 3, b"x".to_vec()).is_err(), "empty range rejected");
-        d.xlink_create(0, 5, b"a".to_vec()).unwrap(); // "hello"
-        assert!(d.xlink_create(3, 8, b"b".to_vec()).is_err(), "overlap rejected");
-        d.xlink_create(5, 11, b"c".to_vec()).unwrap(); // " world" — adjacent, allowed
+        assert!(d.xlink_create(3, 3, b"x".to_vec(), None).is_err(), "empty range rejected");
+        d.xlink_create(0, 5, b"a".to_vec(), None).unwrap(); // "hello"
+        assert!(d.xlink_create(3, 8, b"b".to_vec(), None).is_err(), "overlap rejected");
+        d.xlink_create(5, 11, b"c".to_vec(), None).unwrap(); // " world" — adjacent, allowed
         assert_eq!(d.xlink_count(), 2);
     }
 
     #[test]
     fn xlink_at_finds_the_span_under_the_caret() {
         let mut d = Document::from_str("hello world");
-        d.xlink_create(0, 5, b"a".to_vec()).unwrap();
-        d.xlink_create(5, 11, b"c".to_vec()).unwrap();
+        d.xlink_create(0, 5, b"a".to_vec(), None).unwrap();
+        d.xlink_create(5, 11, b"c".to_vec(), None).unwrap();
         assert_eq!(d.xlink_at(0).unwrap().payload, b"a");
         assert_eq!(d.xlink_at(4).unwrap().payload, b"a");
         assert_eq!(d.xlink_at(5).unwrap().payload, b"c", "5 belongs to [5,11)");
@@ -5702,8 +5761,8 @@ mod tests {
     #[test]
     fn xlink_delete_at_and_all() {
         let mut d = Document::from_str("hello world");
-        d.xlink_create(0, 5, b"a".to_vec()).unwrap();
-        d.xlink_create(5, 11, b"c".to_vec()).unwrap();
+        d.xlink_create(0, 5, b"a".to_vec(), None).unwrap();
+        d.xlink_create(5, 11, b"c".to_vec(), None).unwrap();
         assert!(d.xlink_delete_at(7), "removes the span containing 7");
         assert_eq!(d.xlink_count(), 1);
         assert!(!d.xlink_delete_at(7), "nothing there now");
@@ -5714,7 +5773,7 @@ mod tests {
     #[test]
     fn xlink_span_rides_edits_and_drops_when_emptied() {
         let mut d = Document::from_str("0123456789");
-        d.xlink_create(2, 5, b"GO 1".to_vec()).unwrap(); // over "234"
+        d.xlink_create(2, 5, b"GO 1".to_vec(), None).unwrap(); // over "234"
         d.replace_span(0, 0, "XX"); // insert before → span slides +2
         assert_eq!((d.xlinks()[0].start, d.xlinks()[0].end), (4, 7));
         d.replace_span(5, 5, "YY"); // insert INSIDE → end grows
@@ -5731,7 +5790,7 @@ mod tests {
         let s = t1.find("BUDGET").unwrap();
         let e = s + "BUDGET".len();
         let mut d1 = Document::from_str(t1);
-        d1.xlink_create(s, e, b"OPEN report;GO 5".to_vec()).unwrap();
+        d1.xlink_create(s, e, b"OPEN report;GO 5".to_vec(), None).unwrap();
         let p = d1.xlinks_for_persist();
 
         let t2 = "PREFIX PREFIX the quick brown fox BUDGET jumps over the lazy dog";
@@ -5748,6 +5807,7 @@ mod tests {
                 end_ctx: q.end_ctx.clone(),
                 end_split: q.end_split,
                 payload: q.payload.clone(),
+                name: q.name.clone(),
             })
             .collect();
         d2.set_xlinks_restored(restored);

@@ -354,10 +354,16 @@ and validated, so the indirection stays safe-by-default anyway.)
   auto-invalidates when the payload set changes. The dialog shows a plain-English
   summary DERIVED from the payload's verbs (`describe_xlink_payload`) above the raw
   code — never author-supplied text, which could lie over hostile code.
-- **Phase 2, remaining** — the jumplist (`XLBACK`/`XLFWD`), `XLNEXT`/`XLPREV`, the
-  `XLINKS` picker; multi-line payload editor (bare `XLINK`); `/X` expand-now; named
-  xlinks (`/N`, `XLGO <name>`); named-bookmark targets (`/M`) + `XLHERE`/`XLINK/H`
-  once `MARK` gains names.
+- **Navigation & discovery — DONE (2026-11-13)** — `XLNEXT`/`XLPREV`, the `XLINKS`
+  picker, the `XLBACK`/`XLFWD` jumplist.
+- **Authoring polish — DONE (2026-11-15)** — `XLINK/E` (edit in place),
+  `XLFGCOLORS`/`XLBGCOLORS` pickers.
+- **Naming — DONE (2026-11-15)** — `MARKSET <name>` + `GOMARK <name>` (named
+  bookmarks, `.xymeta` `[marks]` gains an optional name field); `XLINK/M [file:]<name>`
+  (bookmark targets — both ends survive edits); `XLINK/N <name> <payload>` + `XLGO
+  <name>` (named xlinks, `[xlinks]` gains an optional name field).
+- **Still remaining** — multi-line payload editor (bare `XLINK` → editable modal);
+  `/X` expand-now; `XLHERE`/`XLINK/H` capture.
 - **Phase 3** (maybe never) — cross-document link index / backlinks (that's a wiki,
   a separate feature).
 
