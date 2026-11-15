@@ -2267,6 +2267,19 @@ impl Document {
         removed
     }
 
+    /// `XLINK/E`: replace the payload (raw bytes) of the xlink whose span contains `off`, keeping its
+    /// span. Returns `false` when the caret isn't on an xlink. (Changing a payload also changes the
+    /// document's payload-set hash, so it re-prompts for trust — see the action-tier ledger.)
+    pub fn xlink_set_payload_at(&mut self, off: usize, payload: Vec<u8>) -> bool {
+        if let Some(x) = self.xlinks.iter_mut().find(|x| x.start <= off && off < x.end) {
+            x.payload = payload;
+            self.styling_dirty = true;
+            true
+        } else {
+            false
+        }
+    }
+
     /// `XLDEL/A`: drop every xlink. Returns how many were removed.
     pub fn xlink_delete_all(&mut self) -> usize {
         let n = self.xlinks.len();

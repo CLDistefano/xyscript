@@ -2866,18 +2866,26 @@ impl Vm<'_, '_> {
             // verbatim, run on activation; no author-time `$`-expansion — `\;` is already a literal `;`).
             // `XLINK/L [file:]<line>` — sugar that compiles a NAVIGATION payload (`[OPEN file;]GOTOLINE n`).
             "XLINK" => {
+                let edit = vswitches.iter().any(|s| s.eq_ignore_ascii_case("E"));
                 let payload = if vswitches.iter().any(|s| s.eq_ignore_ascii_case("L")) {
                     build_line_target(raw_args.trim())?
                 } else {
                     let p = raw_args.trim();
                     if p.is_empty() {
-                        return Err(XplError::trappable(
-                            "XLINK: select text, then give the XPL to run (or use /L <line>)",
-                        ));
+                        return Err(XplError::trappable(if edit {
+                            "XLINK/E: put the caret on an xlink and give its new payload"
+                        } else {
+                            "XLINK: select text, then give the XPL to run (or use /L <line>)"
+                        }));
                     }
                     p.to_string()
                 };
-                self.host_op(EditorOp::XlinkCreate { payload })?;
+                // `/E` replaces the payload of the xlink at the caret; otherwise create over the selection.
+                if edit {
+                    self.host_op(EditorOp::XlinkEdit { payload })?;
+                } else {
+                    self.host_op(EditorOp::XlinkCreate { payload })?;
+                }
                 Ok(Flow::Next)
             }
             // `XLDEL` — remove the xlink under the caret; `XLDEL/A` — remove every xlink in the document.
@@ -4833,6 +4841,10 @@ impl Vm<'_, '_> {
             }
             "URLFGCOLORS" | "URLBGCOLORS" => {
                 self.host_op(EditorOp::OpenUrlColorPicker { fg: base == "URLFGCOLORS" })?;
+                Ok(Flow::Next)
+            }
+            "XLFGCOLORS" | "XLBGCOLORS" => {
+                self.host_op(EditorOp::OpenXlinkColorPicker { fg: base == "XLFGCOLORS" })?;
                 Ok(Flow::Next)
             }
             // `ULSPACES on|off` (bare = toggle) — whether an `MDA` UNDERLINE runs through the spaces
@@ -6853,7 +6865,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
         "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
-        "XLINK" => &["L"], // `/L` — build a navigation target from `[file:]<line>` (vs a raw payload)
+        "XLINK" => &["L", "E"], // `/L` — build a nav target from `[file:]<line>`; `/E` — edit the link at the caret
         "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
 
         _ => &[],

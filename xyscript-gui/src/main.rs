@@ -9130,6 +9130,8 @@ impl GuiApp {
             }
             ColorTarget::UrlFg => self.editor.url_fg_color(), // effective (default link blue)
             ColorTarget::UrlBg => self.editor.url_bg_color().unwrap_or(self.editor.bg_color()),
+            ColorTarget::XlinkFg => self.editor.xlink_fg_color(), // effective (default link teal)
+            ColorTarget::XlinkBg => self.editor.xlink_bg_color().unwrap_or(self.editor.bg_color()),
             // EMPH emphasis colours default to the selection colours when unset — seed with those.
             ColorTarget::EmphFg => self.editor.emph_fg_override().unwrap_or(self.editor.sel_fg_color()),
             ColorTarget::EmphBg => self.editor.emph_bg_override().unwrap_or(self.editor.sel_bg_color()),

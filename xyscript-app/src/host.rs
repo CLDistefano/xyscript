@@ -1891,6 +1891,8 @@ pub enum ColorTarget {
     MsgOkBg,
     UrlFg,
     UrlBg,
+    XlinkFg,
+    XlinkBg,
     EmphFg,
     EmphBg,
     MdaFg,
@@ -1940,6 +1942,8 @@ impl ColorTarget {
             ColorTarget::MsgOkBg => "MSG box OK-button background colour".into(),
             ColorTarget::UrlFg => "URL highlight text colour".into(),
             ColorTarget::UrlBg => "URL highlight background colour".into(),
+            ColorTarget::XlinkFg => "xlink highlight text colour".into(),
+            ColorTarget::XlinkBg => "xlink highlight background colour".into(),
             ColorTarget::EmphFg => "EMPH emphasis text colour".into(),
             ColorTarget::EmphBg => "EMPH emphasis background colour".into(),
             ColorTarget::MdaFg => "Block colour — selection text".into(),
@@ -1988,6 +1992,8 @@ impl ColorTarget {
             ColorTarget::MsgOkBg => "MSGOKBGCOLOR",
             ColorTarget::UrlFg => "URLFGCOLOR",
             ColorTarget::UrlBg => "URLBGCOLOR",
+            ColorTarget::XlinkFg => "XLFGCOLOR",
+            ColorTarget::XlinkBg => "XLBGCOLOR",
             ColorTarget::EmphFg => "EMPHFGCOLOR",
             ColorTarget::EmphBg => "EMPHBGCOLOR",
             // MDA colours the SELECTION's persistent block: bare = foreground, `/B` = background.
@@ -13339,6 +13345,13 @@ impl Host for AppHost {
                     Err(msg) => return Err(XplError::trappable(format!("XLINK: {msg}"))),
                 }
             }
+            EditorOp::XlinkEdit { payload } => {
+                let off = self.docs[self.active].buffer().cursor();
+                if self.docs[self.active].xlink_set_payload_at(off, payload.into_bytes()) {
+                    return Ok(Value::str("xlink payload updated"));
+                }
+                return Err(XplError::trappable("XLINK/E: no xlink at the caret"));
+            }
             EditorOp::XlinkDelete { all } => {
                 if all {
                     let n = self.docs[self.active].xlink_delete_all();
@@ -14481,6 +14494,11 @@ impl Host for AppHost {
             EditorOp::OpenUrlColorPicker { fg } => {
                 self.color_picker_request =
                     Some(if fg { ColorTarget::UrlFg } else { ColorTarget::UrlBg });
+                return Ok(Value::str(""));
+            }
+            EditorOp::OpenXlinkColorPicker { fg } => {
+                self.color_picker_request =
+                    Some(if fg { ColorTarget::XlinkFg } else { ColorTarget::XlinkBg });
                 return Ok(Value::str(""));
             }
             EditorOp::SetUlSpaces(opt) => {
