@@ -2883,8 +2883,28 @@ impl Vm<'_, '_> {
             // verbatim, run on activation; no author-time `$`-expansion — `\;` is already a literal `;`).
             // `XLINK/L [file:]<line>` — sugar that compiles a NAVIGATION payload (`[OPEN file;]GOTOLINE n`).
             "XLINK" => {
-                let edit = vswitches.iter().any(|s| s.eq_ignore_ascii_case("E"));
-                let named = vswitches.iter().any(|s| s.eq_ignore_ascii_case("N"));
+                let has = |sw: &str| vswitches.iter().any(|s| s.eq_ignore_ascii_case(sw));
+                let (edit, named, here, line, mark) =
+                    (has("E"), has("N"), has("H"), has("L"), has("M"));
+                // At most one payload SOURCE: /L (line), /M (named mark), /H (capture), or /E (edit).
+                if [line, mark, here, edit].iter().filter(|&&b| b).count() > 1 {
+                    return Err(XplError::trappable("XLINK: /L, /M, /H and /E can't be combined"));
+                }
+                // `/H` links the selection to the `XLHERE` capture (the host builds the payload). `/N`
+                // then names the link, and with `/H` the WHOLE argument is that name.
+                if here {
+                    let name = if named {
+                        let t = raw_args.trim();
+                        if t.is_empty() {
+                            return Err(XplError::trappable("XLINK/N/H: give a name for the link"));
+                        }
+                        Some(t.to_string())
+                    } else {
+                        None
+                    };
+                    self.host_op(EditorOp::XlinkFromCapture { name })?;
+                    return Ok(Flow::Next);
+                }
                 if edit && named {
                     return Err(XplError::trappable("XLINK: /E and /N can't be combined"));
                 }
@@ -2921,6 +2941,15 @@ impl Vm<'_, '_> {
                 } else {
                     self.host_op(EditorOp::XlinkCreate { payload, name })?;
                 }
+                Ok(Flow::Next)
+            }
+            // `XLHERE` — remember the caret as the destination for the next `XLINK/H` (drops/reuses a
+            // named bookmark here). The "copy link to this location" capture.
+            "XLHERE" => {
+                if !args.trim().is_empty() {
+                    return Err(XplError::trappable("XLHERE takes no argument"));
+                }
+                self.host_op(EditorOp::XlinkHere)?;
                 Ok(Flow::Next)
             }
             // `XLDEL` — remove the xlink under the caret; `XLDEL/A` — remove every xlink in the document.
@@ -6797,7 +6826,7 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev/gomark navigate; list chooses.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST", "GOMARK",
     // Line jump + xlinks: navigation and span edits act on the document at the caret/selection.
-    "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD",
+    "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD", "XLHERE",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
     // document-focusing commands leave the caret in the text, like a command typed on the CMline).
     "RUN", "RUNCODE", "RUNHERE",
@@ -6922,7 +6951,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
         "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
-        "XLINK" => &["L", "M", "E", "N"], // `/L` line / `/M` mark target, `/E` edit at caret, `/N` name the link
+        "XLINK" => &["L", "M", "E", "N", "H"], // `/L` line / `/M` mark / `/H` captured target, `/E` edit, `/N` name
         "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
 
         _ => &[],

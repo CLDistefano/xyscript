@@ -637,7 +637,17 @@ simple but brittle — insert text above the target and it no longer points wher
 that *stays* put, aim it at a named bookmark instead: drop a #raw("MARKSET <name>") at the destination,
 then #raw("XLINK/M <name>") (or #raw("XLINK/M file:<name>") for another file). Now both ends ride their
 anchors — the link's text and its target each follow your edits — so it keeps meaning the right place no
-matter how the files grow. To attach
+matter how the files grow.
+
+If you'd rather point than type, there's a capture gesture — the editor's "copy link to this location."
+Go to the spot you want to link #emph[to] (here or in another file) and run #raw("XLHERE"); then come
+back, select the link text, and run #raw("XLINK/H"). The link is made for you, and it is a robust one:
+#raw("XLHERE") quietly drops (or reuses) a named bookmark at the destination — auto-named #raw("h1"),
+#raw("h2"), and so on — and #raw("XLINK/H") aims the link at that bookmark, so it survives edits at both
+ends just like a hand-made #raw("XLINK/M"). #raw("XLINK/N/H <name>") names the link it makes. The
+capture lasts for the session.
+
+To attach
 something other than a jump, give the code directly — #raw("XLINK OPEN notes.txt") — and it is stored
 exactly as typed, filename and all, and only worked out when you follow the link (so a path like
 #raw("$CWD\\refs.txt") points wherever you are *then*, not where you were when you made it).

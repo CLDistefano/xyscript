@@ -6224,6 +6224,29 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xlhere_and_xlink_h_capture_a_link_to_a_spot() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#); // line 3 ("ccc") starts at 8
+        e.run_command("GOTOLINE 3");
+        e.run_command("XLHERE"); // remember this spot (auto-bookmark "h1")
+        assert_eq!(e.special_str("MARKS"), "1", "a bookmark anchors the capture");
+        e.run_command("TF");
+        e.run_command("DW"); // select "aaa" as the link text
+        e.run_command("XLINK/H"); // link it to the captured spot
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "GOMARK h1", "captured a GOMARK link to the anchor");
+        e.run_command("XLGO"); // follow it → lands at the captured spot
+        assert_eq!(e.special_str("CP"), "8");
+
+        // XLINK/H with nothing captured is a no-op error.
+        let mut e2 = ed();
+        e2.run_command(r#"insert "xyz""#);
+        e2.run_command("DFA");
+        e2.run_command("XLINK/H");
+        assert_eq!(e2.special_str("XLINKS"), "0", "no link made without a prior XLHERE");
+    }
+
+    #[test]
     fn named_xlink_activates_by_name_from_anywhere() {
         let mut e = ed();
         e.run_command(r#"insert "aaa\nbbb\nccc""#); // line 3 ("ccc") starts at 8
