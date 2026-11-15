@@ -250,7 +250,7 @@ fn xymeta_serialize(
     fg: &[ColorSpan],
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
-    marks: &[(usize, usize, Vec<u8>)],
+    marks: &[(usize, usize, Vec<u8>, Option<String>)],
     xlinks: &[XlinkPersist],
 ) -> Option<String> {
     if fg.is_empty() && bg.is_empty() && attrs.is_empty() && marks.is_empty() && xlinks.is_empty() {
@@ -276,19 +276,27 @@ fn xymeta_serialize(
         }
     }
     if !marks.is_empty() {
-        // `m <off> <split> <ctx-hex>` — the context is hex so it survives line-trim and can't collide
-        // with the field separators, whatever raw bytes it holds (any encoding).
+        // `m <off> <split> <ctx-hex> [name-hex]` — context (and the optional NAME) are hex so they
+        // survive line-trim and can't collide with the field separators, whatever raw bytes they hold.
+        // A named mark whose ctx is empty writes the ctx as `-` so the name stays the 4th field.
         s.push_str("[marks]\n");
-        for (off, split, ctx) in marks {
+        for (off, split, ctx, name) in marks {
             let hex: String = ctx.iter().map(|b| format!("{b:02x}")).collect();
-            s.push_str(&format!("m {off} {split} {hex}\n"));
+            match name {
+                Some(n) => {
+                    let ctx_field = if hex.is_empty() { "-".to_string() } else { hex };
+                    let name_hex: String = n.bytes().map(|b| format!("{b:02x}")).collect();
+                    s.push_str(&format!("m {off} {split} {ctx_field} {name_hex}\n"));
+                }
+                None => s.push_str(&format!("m {off} {split} {hex}\n")),
+            }
         }
     }
     if !xlinks.is_empty() {
-        // `x <s_off> <s_split> <s_ctx_hex> <e_off> <e_split> <e_ctx_hex> <payload_hex>` — both endpoint
-        // contexts AND the payload are hex (they can hold any bytes, incl. spaces/`;`/newlines), so the
-        // line splits cleanly into exactly 7 fields. A hex field that would be empty is written `-`
-        // (a mid-line empty token would collapse under whitespace-splitting); `-` decodes to no bytes.
+        // `x <s_off> <s_split> <s_ctx_hex> <e_off> <e_split> <e_ctx_hex> <payload_hex> [name_hex]` — the
+        // endpoint contexts, the payload, and the optional NAME are hex (they can hold any bytes, incl.
+        // spaces/`;`/newlines), so the line splits cleanly into 7 (or 8) fields. A hex field that would
+        // be empty is written `-`; `-` decodes to no bytes. An un-named link omits the 8th field.
         s.push_str("[xlinks]\n");
         let hx = |b: &[u8]| -> String {
             if b.is_empty() {
@@ -299,7 +307,7 @@ fn xymeta_serialize(
         };
         for x in xlinks {
             s.push_str(&format!(
-                "x {} {} {} {} {} {} {}\n",
+                "x {} {} {} {} {} {} {}",
                 x.start,
                 x.start_split,
                 hx(&x.start_ctx),
@@ -308,6 +316,11 @@ fn xymeta_serialize(
                 hx(&x.end_ctx),
                 hx(&x.payload),
             ));
+            if let Some(n) = &x.name {
+                s.push(' ');
+                s.push_str(&hx(n.as_bytes()));
+            }
+            s.push('\n');
         }
     }
     Some(s)
@@ -321,7 +334,7 @@ fn xymeta_write(
     fg: &[ColorSpan],
     bg: &[ColorSpan],
     attrs: &[(usize, usize, u8)],
-    marks: &[(usize, usize, Vec<u8>)],
+    marks: &[(usize, usize, Vec<u8>, Option<String>)],
     xlinks: &[XlinkPersist],
 ) {
     let Some(scp) = xymeta_path(target) else { return };
@@ -453,8 +466,8 @@ fn parse_hex_field(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Parse one `[xlinks]` line: `x <s_off> <s_split> <s_ctx_hex> <e_off> <e_split> <e_ctx_hex>
-/// <payload_hex>`. All three hex fields may be the `-` sentinel. Any malformed field drops just that
-/// line (the rest of the sidecar still loads).
+/// <payload_hex> [name_hex]`. The hex fields may be the `-` sentinel; the 8th (name) is optional (an
+/// old 7-field line has no name). Any malformed field drops just that line.
 fn parse_xymeta_xlink(line: &str) -> Option<Xlink> {
     let mut it = line.split_whitespace();
     if it.next()? != "x" {
@@ -467,26 +480,30 @@ fn parse_xymeta_xlink(line: &str) -> Option<Xlink> {
     let end_split: usize = it.next()?.parse().ok()?;
     let end_ctx = parse_hex_field(it.next()?)?;
     let payload = parse_hex_field(it.next()?)?;
+    let name = match it.next() {
+        Some(h) => Some(String::from_utf8(parse_hex_field(h)?).ok()?),
+        None => None,
+    };
     if it.next().is_some() {
         return None; // trailing junk → malformed
     }
-    Some(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload })
+    Some(Xlink { start, end, start_ctx, start_split, end_ctx, end_split, payload, name })
 }
 
-/// Parse one `[marks]` line: `m <off> <split> <ctx-hex>`. The context hex may be empty (a mark with
-/// no surrounding text). Any malformed field drops just that line.
+/// Parse one `[marks]` line: `m <off> <split> <ctx-hex> [name-hex]`. The context hex may be empty or
+/// the `-` sentinel (a mark with no surrounding text); the 4th field, if present, is the hex-encoded
+/// NAME (`GOMARK`). An old 3-field line parses with no name. Any malformed field drops just that line.
 fn parse_xymeta_mark(line: &str) -> Option<Bookmark> {
     let rest = line.strip_prefix("m ")?;
-    let mut it = rest.splitn(3, ' ');
+    let mut it = rest.splitn(4, ' ');
     let off: usize = it.next()?.trim().parse().ok()?;
     let split: usize = it.next()?.trim().parse().ok()?;
-    let hex = it.next().unwrap_or("").trim();
-    if hex.len() % 2 != 0 {
-        return None;
-    }
-    let ctx: Option<Vec<u8>> =
-        (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok()).collect();
-    Some(Bookmark { off, ctx: ctx?, split, moved: false })
+    let ctx = parse_hex_field(it.next().unwrap_or("").trim())?;
+    let name = match it.next().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(h) => Some(String::from_utf8(parse_hex_field(h)?).ok()?),
+        None => None,
+    };
+    Some(Bookmark { off, ctx, split, moved: false, name })
 }
 
 /// Apply a parsed sidecar to a freshly-loaded document: colour/attribute spans only when the guard
@@ -13287,12 +13304,23 @@ impl Host for AppHost {
                 self.docs[self.active].set_hex_view(on);
                 return Ok(Value::str(if on { "hex view on" } else { "hex view off" }.to_string()));
             }
-            EditorOp::MarkSet => {
-                if self.active().mark_set() {
+            EditorOp::MarkSet { name } => {
+                let named = name.clone();
+                if self.active().mark_set(name) {
                     let n = self.active().mark_count();
-                    return Ok(Value::str(format!("bookmark set ({n} total)")));
+                    return Ok(Value::str(match named {
+                        Some(nm) => format!("bookmark \"{nm}\" set ({n} total)"),
+                        None => format!("bookmark set ({n} total)"),
+                    }));
                 }
                 return Err(XplError::trappable("bookmark already set here"));
+            }
+            EditorOp::MarkGoto { name } => {
+                if self.active().mark_goto_name(&name).is_some() {
+                    self.reveal_center = true; // scroll the target to mid-screen, like MARKNEXT/PREV
+                    return Ok(Value::str(format!("bookmark \"{name}\"")));
+                }
+                return Err(XplError::trappable(format!("GOMARK: no bookmark named \"{name}\"")));
             }
             EditorOp::MarkClear => {
                 if self.active().mark_clear() {
@@ -13331,16 +13359,20 @@ impl Host for AppHost {
                 self.reveal_center = true; // scroll the target to mid-screen, like a search landing
                 return Ok(Value::str(format!("line {n}")));
             }
-            EditorOp::XlinkCreate { payload } => {
+            EditorOp::XlinkCreate { payload, name } => {
                 // A document/selection op — target the active DOCUMENT (not `active()`, which may be the
                 // cmline during a cmline-run command), mirroring `FgColor`.
                 let Some((s, e)) = self.docs[self.active].selection_range() else {
                     return Err(XplError::trappable("XLINK: select the link text first"));
                 };
-                match self.docs[self.active].xlink_create(s, e, payload.into_bytes()) {
+                let named = name.clone();
+                match self.docs[self.active].xlink_create(s, e, payload.into_bytes(), name) {
                     Ok(()) => {
                         let n = self.docs[self.active].xlink_count();
-                        return Ok(Value::str(format!("xlink created ({n} total)")));
+                        return Ok(Value::str(match named {
+                            Some(nm) => format!("xlink \"{nm}\" created ({n} total)"),
+                            None => format!("xlink created ({n} total)"),
+                        }));
                     }
                     Err(msg) => return Err(XplError::trappable(format!("XLINK: {msg}"))),
                 }
@@ -16108,6 +16140,10 @@ impl Host for AppHost {
         doc.xlink_at(off).map(|x| String::from_utf8_lossy(&x.payload).into_owned())
     }
 
+    fn xlink_payload_named(&self, name: &str) -> Option<String> {
+        self.active_doc().xlink_payload_named(name)
+    }
+
     fn xlink_action_trusted(&self) -> bool {
         self.xlink_doc_trusted()
     }
@@ -16264,6 +16300,24 @@ mod tests {
     use super::reflow_text;
 
     #[test]
+    fn xymeta_named_mark_round_trips() {
+        let bytes = b"hello world";
+        // A named mark carries its name (hex) as a 4th field.
+        let marks = vec![(6usize, 2usize, b"lo w".to_vec(), Some("spot".to_string()))];
+        let s = super::xymeta_serialize(bytes, &[], &[], &[], &marks, &[]).unwrap();
+        let r = super::xymeta_parse(&s, bytes).unwrap();
+        assert_eq!(r.marks.len(), 1);
+        assert_eq!(r.marks[0].off, 6);
+        assert_eq!(r.marks[0].ctx, b"lo w");
+        assert_eq!(r.marks[0].name.as_deref(), Some("spot"));
+        // An unnamed mark round-trips as the old 3-field line (no name).
+        let marks2 = vec![(3usize, 1usize, b"abc".to_vec(), None)];
+        let s2 = super::xymeta_serialize(bytes, &[], &[], &[], &marks2, &[]).unwrap();
+        let r2 = super::xymeta_parse(&s2, bytes).unwrap();
+        assert!(r2.marks[0].name.is_none());
+    }
+
+    #[test]
     fn xymeta_xlink_round_trips_through_the_sidecar() {
         use crate::document::XlinkPersist;
         let bytes = b"the quick brown fox";
@@ -16276,6 +16330,7 @@ mod tests {
             end_split: 1,
             end_ctx: b"k".to_vec(),
             payload: b"OPEN a b;GO 5\n".to_vec(),
+            name: None,
         };
         let s = super::xymeta_serialize(bytes, &[], &[], &[], &[], std::slice::from_ref(&xl)).unwrap();
         assert!(s.contains("[xlinks]"), "section emitted: {s}");
@@ -16302,6 +16357,7 @@ mod tests {
             end_split: 0,
             end_ctx: Vec::new(),
             payload: Vec::new(),
+            name: None,
         };
         let s = super::xymeta_serialize(bytes, &[], &[], &[], &[], std::slice::from_ref(&xl)).unwrap();
         let r = super::xymeta_parse(&s, bytes).unwrap();

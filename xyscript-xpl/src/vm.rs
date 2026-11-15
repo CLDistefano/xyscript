@@ -2837,12 +2837,19 @@ impl Vm<'_, '_> {
             // Bookmarks. MARKSET/MARKCLEAR/MARKCLEARALL/MARKTOGGLE act at the caret; MARKNEXT/MARKPREV
             // move the caret to the next/previous bookmark (circular). Set/clear are trappable (already
             // set / nothing there); toggle never errors. The host op returns the status string.
-            "MARKSET" | "MARKCLEAR" | "MARKCLEARALL" | "MARKTOGGLE" | "MARKNEXT" | "MARKPREV" => {
+            // `MARKSET [name]` — bare sets an unnamed bookmark; with an argument, a NAMED one (for
+            // `GOMARK`). The others take no argument.
+            "MARKSET" => {
+                let name = args.trim();
+                let name = if name.is_empty() { None } else { Some(name.to_string()) };
+                self.host_op(EditorOp::MarkSet { name })?;
+                Ok(Flow::Next)
+            }
+            "MARKCLEAR" | "MARKCLEARALL" | "MARKTOGGLE" | "MARKNEXT" | "MARKPREV" => {
                 if !args.trim().is_empty() {
                     return Err(XplError::trappable(format!("{base} takes no argument")));
                 }
                 let op = match base {
-                    "MARKSET" => EditorOp::MarkSet,
                     "MARKCLEAR" => EditorOp::MarkClear,
                     "MARKCLEARALL" => EditorOp::MarkClearAll,
                     "MARKTOGGLE" => EditorOp::MarkToggle,
@@ -2850,6 +2857,16 @@ impl Vm<'_, '_> {
                     _ => EditorOp::MarkPrev,
                 };
                 self.host_op(op)?;
+                Ok(Flow::Next)
+            }
+            // `GOMARK <name>` — jump the caret to a NAMED bookmark (centered). Also what an `XLINK/M`
+            // link compiles to.
+            "GOMARK" => {
+                let name = args.trim();
+                if name.is_empty() {
+                    return Err(XplError::trappable("GOMARK: expected a bookmark name"));
+                }
+                self.host_op(EditorOp::MarkGoto { name: name.to_string() })?;
                 Ok(Flow::Next)
             }
             // `GOTOLINE <n>` — jump the caret to the start of 1-based line `n` (clamped) and centre it.
@@ -2867,24 +2884,42 @@ impl Vm<'_, '_> {
             // `XLINK/L [file:]<line>` — sugar that compiles a NAVIGATION payload (`[OPEN file;]GOTOLINE n`).
             "XLINK" => {
                 let edit = vswitches.iter().any(|s| s.eq_ignore_ascii_case("E"));
-                let payload = if vswitches.iter().any(|s| s.eq_ignore_ascii_case("L")) {
-                    build_line_target(raw_args.trim())?
+                let named = vswitches.iter().any(|s| s.eq_ignore_ascii_case("N"));
+                if edit && named {
+                    return Err(XplError::trappable("XLINK: /E and /N can't be combined"));
+                }
+                // `/N` peels the FIRST whitespace-delimited token as the name; the rest is the payload
+                // source. Without `/N`, the whole argument is the payload source.
+                let (name, src) = if named {
+                    let t = raw_args.trim();
+                    match t.split_once(char::is_whitespace) {
+                        Some((nm, rest)) => (Some(nm.to_string()), rest.trim()),
+                        None => (Some(t.to_string()), ""),
+                    }
                 } else {
-                    let p = raw_args.trim();
-                    if p.is_empty() {
+                    (None, raw_args.trim())
+                };
+                let payload = if vswitches.iter().any(|s| s.eq_ignore_ascii_case("L")) {
+                    build_line_target(src)?
+                } else if vswitches.iter().any(|s| s.eq_ignore_ascii_case("M")) {
+                    build_mark_target(src)?
+                } else {
+                    if src.is_empty() {
                         return Err(XplError::trappable(if edit {
                             "XLINK/E: put the caret on an xlink and give its new payload"
+                        } else if named {
+                            "XLINK/N: give a name and then the XPL to run"
                         } else {
                             "XLINK: select text, then give the XPL to run (or use /L <line>)"
                         }));
                     }
-                    p.to_string()
+                    src.to_string()
                 };
                 // `/E` replaces the payload of the xlink at the caret; otherwise create over the selection.
                 if edit {
                     self.host_op(EditorOp::XlinkEdit { payload })?;
                 } else {
-                    self.host_op(EditorOp::XlinkCreate { payload })?;
+                    self.host_op(EditorOp::XlinkCreate { payload, name })?;
                 }
                 Ok(Flow::Next)
             }
@@ -2897,17 +2932,21 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::XlinkDelete { all })?;
                 Ok(Flow::Next)
             }
-            // `XLGO` — activate the xlink under the caret: run its payload, but ONLY if it is pure
-            // navigation (phase 1 is safe by construction; the trusted "action" tier comes later).
+            // `XLGO [name]` — activate the xlink under the caret, or the NAMED one from anywhere. Runs
+            // its payload through the nav/trust gate.
             "XLGO" => {
-                if !args.trim().is_empty() {
-                    return Err(XplError::trappable("XLGO takes no argument"));
-                }
-                let payload = self
-                    .ctx
-                    .host
-                    .xlink_payload_at_caret()
-                    .ok_or_else(|| XplError::trappable("XLGO: no xlink at the caret"))?;
+                let arg = args.trim();
+                let payload = if arg.is_empty() {
+                    self.ctx
+                        .host
+                        .xlink_payload_at_caret()
+                        .ok_or_else(|| XplError::trappable("XLGO: no xlink at the caret"))?
+                } else {
+                    self.ctx
+                        .host
+                        .xlink_payload_named(arg)
+                        .ok_or_else(|| XplError::trappable(format!("XLGO: no xlink named {arg:?}")))?
+                };
                 // Navigation always runs. An ACTION (non-navigation) payload runs only when the
                 // document is trusted; otherwise pop the confirm dialog (Run once / Trust / Cancel) —
                 // the editor runs the payload on a Trust/Run-once resume.
@@ -6652,13 +6691,31 @@ fn build_line_target(spec: &str) -> VmResult<String> {
     Err(XplError::trappable(format!("XLINK/L: expected <line> or <file>:<line>, got {spec:?}")))
 }
 
+/// Compile an `XLINK/M` target spec into a navigation payload. `<name>` → `GOMARK <name>` (jump to a
+/// named bookmark in the current document); `<file>:<name>` → `OPEN <file>;GOMARK <name>` (split at
+/// the LAST `:`, so a Windows path works). Unlike `/L` line targets, both ends then ride their anchors
+/// across edits. The file text is kept verbatim (expanded at activation). Empty → a trappable error.
+fn build_mark_target(spec: &str) -> VmResult<String> {
+    if spec.is_empty() {
+        return Err(XplError::trappable("XLINK/M: expected <name> or <file>:<name>"));
+    }
+    if let Some(idx) = spec.rfind(':') {
+        let file = spec[..idx].trim();
+        let name = spec[idx + 1..].trim();
+        if !file.is_empty() && !name.is_empty() {
+            return Ok(format!("OPEN {file};GOMARK {name}"));
+        }
+    }
+    Ok(format!("GOMARK {spec}"))
+}
+
 /// The navigation-only verb allowlist for xlink activation (phase 1): every statement of an xlink
 /// payload must fold to one of these for `XLGO` to run it. Deny-by-default — any other (or unknown)
 /// verb makes the payload non-navigation, so it is refused rather than run. Kept deliberately small;
 /// the trusted "action" tier (a later phase) is what runs anything else. See `docs/design/xlinks.md`.
 const NAV_VERBS: &[&str] = &[
-    "OPEN", "GOTOLINE", "TF", "BF", "TOP", "BOTTOM", "UP", "DOWN", "LU", "LD", "PU", "PD", "HOME",
-    "END", "NL", "PL", "LL", "LR", "LB", "LE", "MARKNEXT", "MARKPREV", "BUFALT", "DUPVIEW",
+    "OPEN", "GOTOLINE", "GOMARK", "TF", "BF", "TOP", "BOTTOM", "UP", "DOWN", "LU", "LD", "PU", "PD",
+    "HOME", "END", "NL", "PL", "LL", "LR", "LB", "LE", "MARKNEXT", "MARKPREV", "BUFALT", "DUPVIEW",
 ];
 
 /// Whether an xlink `payload` is pure navigation — every statement's leading verb is in [`NAV_VERBS`].
@@ -6737,8 +6794,8 @@ const FOCUS_DOC_VERBS: &[&str] = &[
     "DELSEL", "RW", "RL", "RLL", "RS", "RP", "RE",
     // Reflow edits the document at the caret/selection — land the caret in the text.
     "REFLOW",
-    // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev navigate; list chooses.
-    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
+    // Bookmark group: set/clear/toggle act on the doc at the caret; next/prev/gomark navigate; list chooses.
+    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST", "GOMARK",
     // Line jump + xlinks: navigation and span edits act on the document at the caret/selection.
     "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD",
     // Script launchers: a script run from the CMline should act on the DOCUMENT (and so its
@@ -6865,7 +6922,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
         "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
-        "XLINK" => &["L", "E"], // `/L` — build a nav target from `[file:]<line>`; `/E` — edit the link at the caret
+        "XLINK" => &["L", "M", "E", "N"], // `/L` line / `/M` mark target, `/E` edit at caret, `/N` name the link
         "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
 
         _ => &[],
@@ -7462,6 +7519,18 @@ mod tests {
         // an uncategorized verb falls to the honest catch-all
         assert_eq!(describe_xlink_payload("FROBNICATE 1"), "This xlink runs other commands.");
         assert_eq!(describe_xlink_payload("   "), "This xlink does nothing.");
+    }
+
+    #[test]
+    fn build_mark_target_compiles_gomark_payloads() {
+        assert_eq!(build_mark_target("q3").unwrap(), "GOMARK q3");
+        assert_eq!(build_mark_target("budget.txt:q3").unwrap(), "OPEN budget.txt;GOMARK q3");
+        // Windows path: split at the LAST colon.
+        assert_eq!(build_mark_target("C:\\docs\\b.txt:spot").unwrap(), "OPEN C:\\docs\\b.txt;GOMARK spot");
+        assert!(build_mark_target("").is_err());
+        // A GOMARK payload is navigation (so an XLINK/M link runs without a trust prompt).
+        assert!(is_navigation_only("GOMARK q3"));
+        assert!(is_navigation_only("OPEN budget.txt;GOMARK q3"));
     }
 
     #[test]

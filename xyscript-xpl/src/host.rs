@@ -849,19 +849,25 @@ pub enum EditorOp {
     /// Bookmarks (`MARK*`): set / clear / clear-all / toggle a bookmark at the caret, or move the
     /// caret to the next / previous one (circular). Persisted per-document in the `.xymeta` sidecar;
     /// `$MARKS` counts them and `$MARK` reports whether the caret is on one.
-    MarkSet,
+    /// `MARKSET [name]` — set a bookmark at the caret, optionally NAMED (so `GOMARK <name>` / an
+    /// `XLINK/M` link can target it). `None` = an unnamed positional bookmark, as before.
+    MarkSet { name: Option<String> },
     MarkClear,
     MarkClearAll,
     MarkToggle,
     MarkNext,
     MarkPrev,
+    /// `GOMARK <name>` — move the caret to the named bookmark (centered). A trappable error when no
+    /// bookmark has that name.
+    MarkGoto { name: String },
     /// `GOTOLINE <n>` — move the caret to the start of 1-based line `n` (clamped) and centre it. A
     /// plain navigation primitive; also the target a nav `XLINK/L` compiles to.
     GotoLine(usize),
     /// `XLINK <payload>` (or `XLINK/L …`) — create an xlink over the current SELECTION carrying
-    /// `payload` (raw XPL, stored verbatim; run on activation). The host reads the selection range.
-    /// No selection, an empty range, or an overlap with an existing xlink is a trappable error.
-    XlinkCreate { payload: String },
+    /// `payload` (raw XPL, stored verbatim; run on activation), optionally NAMED (`XLINK/N <name> …`,
+    /// so `XLGO <name>` can activate it). The host reads the selection range. No selection, an empty
+    /// range, or an overlap with an existing xlink is a trappable error.
+    XlinkCreate { payload: String, name: Option<String> },
     /// `XLDEL` / `XLDEL/A` — remove the xlink under the caret, or every xlink in the document.
     XlinkDelete { all: bool },
     /// `XLINK/E <payload>` — replace the payload of the xlink under the caret (keeping its span). A
@@ -2148,6 +2154,12 @@ pub trait Host {
     /// The payload (XPL source) of the xlink whose span contains the caret, for `XLGO` and `$XLINK`.
     /// `None` when the caret isn't on an xlink. Default: none.
     fn xlink_payload_at_caret(&self) -> Option<String> {
+        None
+    }
+
+    /// The payload of the xlink with the given NAME (`XLGO <name>`), or `None` if none has it.
+    /// Default: none.
+    fn xlink_payload_named(&self, _name: &str) -> Option<String> {
         None
     }
 

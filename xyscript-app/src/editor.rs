@@ -6102,6 +6102,44 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xlink_mark_target_follows_a_named_bookmark() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#);
+        e.run_command("GOTOLINE 3"); // caret at line 3 (offset 8)
+        e.run_command("MARKSET dest"); // a named bookmark there
+        e.run_command("TF");
+        e.run_command("DW"); // select "aaa"
+        e.run_command("XLINK/M dest"); // link that jumps to the "dest" bookmark
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "GOMARK dest", "compiled to a GOMARK payload");
+        e.run_command("XLGO"); // follow it (navigation → runs without a trust prompt)
+        assert_eq!(e.special_str("CP"), "8", "jumped to the named bookmark");
+    }
+
+    #[test]
+    fn named_bookmark_set_and_gomark() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#); // line 3 ("ccc") starts at 8
+        e.run_command("GOTOLINE 3");
+        e.run_command("MARKSET here"); // a NAMED bookmark at the caret
+        assert_eq!(e.special_str("MARKS"), "1");
+        e.run_command("TF");
+        assert_eq!(e.special_str("CP"), "0");
+        e.run_command("GOMARK here"); // jump to it by name
+        assert_eq!(e.special_str("CP"), "8");
+        // An unknown name is a no-op (caret unchanged).
+        e.run_command("TF");
+        e.run_command("GOMARK nope");
+        assert_eq!(e.special_str("CP"), "0", "unknown name did not move the caret");
+        // Re-using the name re-homes it: set "here" at the top; now GOMARK lands there.
+        e.run_command("MARKSET here");
+        assert_eq!(e.special_str("MARKS"), "1", "re-homed, not duplicated");
+        e.run_command("GOTOLINE 3");
+        e.run_command("GOMARK here");
+        assert_eq!(e.special_str("CP"), "0", "name moved to the new spot");
+    }
+
+    #[test]
     fn xlink_next_prev_and_picker_navigate_between_links() {
         let mut e = ed();
         e.run_command(r#"insert "aaaa\nbbbb\ncccc""#); // "aaaa"=0-4, "cccc" starts at 10
@@ -6183,6 +6221,24 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         e.run_command("TF");
         e.run_command("XLDEL");
         assert_eq!(e.special_str("XLINKS"), "0");
+    }
+
+    #[test]
+    fn named_xlink_activates_by_name_from_anywhere() {
+        let mut e = ed();
+        e.run_command(r#"insert "aaa\nbbb\nccc""#); // line 3 ("ccc") starts at 8
+        e.run_command("TF");
+        e.run_command("DW"); // select "aaa" on line 1
+        e.run_command("XLINK/N togo GOTOLINE 3"); // a NAMED link "togo"
+        assert_eq!(e.special_str("XLINKS"), "1");
+        // Activate it by name from a spot NOT on the link.
+        e.run_command("GOTOLINE 2"); // caret off the link
+        e.run_command("XLGO togo"); // runs the named link → jumps to line 3
+        assert_eq!(e.special_str("CP"), "8");
+        // Unknown name is a no-op.
+        e.run_command("TF");
+        e.run_command("XLGO nope");
+        assert_eq!(e.special_str("CP"), "0", "unknown name did not activate anything");
     }
 
     #[test]
@@ -14609,7 +14665,7 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         // Live anchor: an insert BEFORE the mark shifts its offset, no relocation.
         let mut d = Document::from_str("hello world foo");
         d.set_caret(6, None); // start of "world"
-        assert!(d.mark_set());
+        assert!(d.mark_set(None));
         d.set_caret(0, None);
         d.insert("XYZ ");
         assert_eq!(d.marks()[0].off, 10, "live anchor followed the insert");
@@ -14619,7 +14675,7 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         // anchor relocates it (and flags the move).
         let mut src = Document::from_str("hello world foo");
         src.set_caret(6, None);
-        src.mark_set();
+        src.mark_set(None);
         let saved = src.marks().to_vec();
         let mut d2 = Document::from_str("XYZ hello world foo");
         d2.set_marks_restored(saved);

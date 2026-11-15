@@ -75,7 +75,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     "DF", "DM", "DZ", "DFA", "XD", "YD", "DB", "DE",
     // Bookmarks (`MARK*`): set / clear / clear-all / toggle at the caret; next / prev navigate;
     // list opens a chooser.
-    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
+    "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST", "GOMARK",
     // Navigation + xlinks (hyperlinks): jump to a line; create/delete/activate an xlink; appearance; trust; navigate.
     "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLINKHIGHLIGHT", "XLFGCOLOR", "XLFGCOLORS", "XLBGCOLOR", "XLBGCOLORS", "XLTRUST", "XLUNTRUST",
     "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD",

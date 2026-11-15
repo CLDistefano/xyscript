@@ -563,6 +563,14 @@ When you have several, #raw("MARKLIST") opens a chooser — one row per bookmark
 number and the text there — and jumps to whichever you pick. It is the quickest way back to a spot
 you can recognise but can't remember the order of; bind it to a key for a pop-up "go to bookmark" menu.
 
+A bookmark can also carry a #emph[name]. #raw("MARKSET <name>") sets a named bookmark at the cursor
+(bare #raw("MARKSET") stays unnamed, as above), and #raw("GOMARK <name>") jumps straight to it — no
+stepping or picking. Names are unique, so #raw("MARKSET <name>") again just moves that name to the new
+spot. A named bookmark is still an ordinary bookmark in every other way (it shows in the gutter and in
+#raw("MARKNEXT")/#raw("MARKPREV")); the name simply gives you a stable handle — which is what lets an
+xlink point at it (see #emph[Xlinks], `XLINK/M`) so the link's destination rides the bookmark through
+edits.
+
 The margin strip has three modes, set with #raw("MARKGUTTER"). #raw("MARKGUTTER off") hides it
 entirely (the bookmarks still work — you just navigate them with the commands above); #raw("MARKGUTTER
 on"), the default, shows the strip only while the file has bookmarks, so an unbookmarked file's layout
@@ -624,7 +632,12 @@ centres it), so a one-liner is all you need. For that common case there's a shor
 that writes the jump for you:
 
 #raw("XLINK/L 4200") makes the selected text jump to line 4200 of the *same* file, and
-#raw("XLINK/L budget.txt:4200") jumps to line 4200 of another file (opening it first). To attach
+#raw("XLINK/L budget.txt:4200") jumps to line 4200 of another file (opening it first). A line number is
+simple but brittle — insert text above the target and it no longer points where you meant. For a link
+that *stays* put, aim it at a named bookmark instead: drop a #raw("MARKSET <name>") at the destination,
+then #raw("XLINK/M <name>") (or #raw("XLINK/M file:<name>") for another file). Now both ends ride their
+anchors — the link's text and its target each follow your edits — so it keeps meaning the right place no
+matter how the files grow. To attach
 something other than a jump, give the code directly — #raw("XLINK OPEN notes.txt") — and it is stored
 exactly as typed, filename and all, and only worked out when you follow the link (so a path like
 #raw("$CWD\\refs.txt") points wherever you are *then*, not where you were when you made it).
@@ -640,6 +653,12 @@ payload — it replaces the code in place, keeping the highlighted span, so ther
 redraw the link. (Peek at the current payload first with #raw("$XLINK").) If the link was an action
 link you'd trusted, editing its code naturally un-trusts it — you'll be asked again the next time you
 follow it, since the code is no longer the code you approved.
+
+A link can also be given a *name*, so you can follow it without having to find it first.
+#raw("XLINK/N <name> <payload>") makes a named link (the first word is the name, the rest is the
+payload), and #raw("XLGO <name>") activates it from anywhere — handy for a script or a bound key that
+should always jump to one particular place, or for building a little menu of links. `/N` combines with
+the target shorthands, so #raw("XLINK/N/M home intro") is a named link to the `intro` bookmark.
 
 Follow an xlink by *Ctrl+clicking* it, or by putting the cursor on it and running #raw("XLGO"). Xlinks
 show in a distinct colour so you can see them; #raw("XLINKHIGHLIGHT off") hides the colouring (and turns
