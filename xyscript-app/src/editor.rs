@@ -6186,6 +6186,35 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xlink_edit_replaces_the_payload_in_place() {
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK/L 3"); // payload "GOTOLINE 3", span over "abcdef"
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "GOTOLINE 3");
+        // Edit in place — the span is kept, only the payload changes.
+        e.run_command("XLINK/E OPEN other.txt;GOTOLINE 9");
+        assert_eq!(e.special_str("XLINK"), "OPEN other.txt;GOTOLINE 9", "payload replaced");
+        assert_eq!(e.special_str("XLINKS"), "1", "still one xlink (span kept)");
+        // /E with the caret off any xlink does nothing.
+        e.run_command("BF"); // caret to end, past the span
+        e.run_command("XLINK/E should-not-apply");
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLINK"), "OPEN other.txt;GOTOLINE 9", "edit off a link was a no-op");
+    }
+
+    #[test]
+    fn xlink_color_picker_verbs_request_the_right_target() {
+        use crate::host::ColorTarget;
+        let mut e = ed();
+        e.run_command("XLFGCOLORS");
+        assert!(matches!(e.take_color_picker_request(), Some(ColorTarget::XlinkFg)));
+        e.run_command("XLBGCOLORS");
+        assert!(matches!(e.take_color_picker_request(), Some(ColorTarget::XlinkBg)));
+    }
+
+    #[test]
     fn xlink_appearance_toggles_and_colors() {
         let mut e = ed();
         assert_eq!(e.special_str("XLINKHIGHLIGHT"), "1", "on by default");

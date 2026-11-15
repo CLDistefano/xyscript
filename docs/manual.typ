@@ -635,6 +635,12 @@ payload that chains several commands with #raw(";") needs no special handling �
 command on the #emph[same line] after the #raw("XLINK"), wrap the payload in brackets:
 #raw("XLINK [OPEN x;GOTOLINE 5];TF") attaches the two-command payload and then runs #raw("TF").
 
+To change a link you've already made, put the cursor on it and type #raw("XLINK/E") followed by the new
+payload — it replaces the code in place, keeping the highlighted span, so there's no need to delete and
+redraw the link. (Peek at the current payload first with #raw("$XLINK").) If the link was an action
+link you'd trusted, editing its code naturally un-trusts it — you'll be asked again the next time you
+follow it, since the code is no longer the code you approved.
+
 Follow an xlink by *Ctrl+clicking* it, or by putting the cursor on it and running #raw("XLGO"). Xlinks
 show in a distinct colour so you can see them; #raw("XLINKHIGHLIGHT off") hides the colouring (and turns
 off Ctrl+click) if you'd rather a plain screen, and #raw("XLFGCOLOR") / #raw("XLBGCOLOR") set the link

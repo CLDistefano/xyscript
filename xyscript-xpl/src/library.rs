@@ -77,7 +77,7 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // list opens a chooser.
     "MARKSET", "MARKCLEAR", "MARKCLEARALL", "MARKTOGGLE", "MARKNEXT", "MARKPREV", "MARKLIST",
     // Navigation + xlinks (hyperlinks): jump to a line; create/delete/activate an xlink; appearance; trust; navigate.
-    "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLINKHIGHLIGHT", "XLFGCOLOR", "XLBGCOLOR", "XLTRUST", "XLUNTRUST",
+    "GOTOLINE", "XLINK", "XLDEL", "XLGO", "XLINKHIGHLIGHT", "XLFGCOLOR", "XLFGCOLORS", "XLBGCOLOR", "XLBGCOLORS", "XLTRUST", "XLUNTRUST",
     "XLNEXT", "XLPREV", "XLINKS", "XLBACK", "XLFWD",
     // Define a unit (word / line / sentence / paragraph) at the cursor; the `+`
     // forms include the trailing separator.

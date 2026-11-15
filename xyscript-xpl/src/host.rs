@@ -760,6 +760,8 @@ pub enum EditorOp {
     SetUrlColor { fg: bool, color: Option<(u8, u8, u8)> },
     /// Open the colour picker for the URL-highlight text (`URLFGCOLORS`) or background (`URLBGCOLORS`).
     OpenUrlColorPicker { fg: bool },
+    /// Open the colour picker for the xlink-highlight text (`XLFGCOLORS`) or background (`XLBGCOLORS`).
+    OpenXlinkColorPicker { fg: bool },
     /// Turn xlink highlighting on/off (`XLINKHIGHLIGHT on|off`; `None` toggles). When on, xlink spans
     /// in the document are coloured (`XLFGCOLOR`/`XLBGCOLOR`) and Ctrl+click on one activates it. On by
     /// default. Persisted by SaveCfg. `$XLINKHIGHLIGHT`.
@@ -862,6 +864,9 @@ pub enum EditorOp {
     XlinkCreate { payload: String },
     /// `XLDEL` / `XLDEL/A` — remove the xlink under the caret, or every xlink in the document.
     XlinkDelete { all: bool },
+    /// `XLINK/E <payload>` — replace the payload of the xlink under the caret (keeping its span). A
+    /// trappable error when the caret isn't on an xlink.
+    XlinkEdit { payload: String },
     /// `XLTRUST` (`trust = true`) / `XLUNTRUST` (`trust = false`) — trust or revoke the active document
     /// for running ACTION (non-navigation) xlink payloads. Trust is keyed by document path in a
     /// user-global ledger (session-only for a path-less buffer). `$XLTRUSTED`.
