@@ -2108,6 +2108,23 @@ impl Document {
         Some(off)
     }
 
+    /// `XLHERE`: ensure there's a NAMED bookmark at the caret and return its name — reusing a named
+    /// bookmark already here, naming an unnamed one that's here, or creating a fresh auto-named one
+    /// (`h1`, `h2`, …). The anchor an `XLINK/H` captured link rides.
+    pub fn mark_ensure_named_here(&mut self) -> String {
+        let off = self.buffer.cursor();
+        if let Some(n) = self.marks.iter().find(|m| m.off == off).and_then(|m| m.name.clone()) {
+            return n; // a named bookmark is already here
+        }
+        // Smallest `h<k>` not already used as a name in this document.
+        let name = (1..)
+            .map(|k| format!("h{k}"))
+            .find(|cand| !self.marks.iter().any(|m| m.name.as_deref() == Some(cand.as_str())))
+            .expect("an unused h<k> always exists");
+        self.mark_set(Some(name.clone())); // names/creates the mark at the caret
+        name
+    }
+
     /// `MARKCLEAR`: remove the bookmark at the caret. Returns `false` if there was none.
     pub fn mark_clear(&mut self) -> bool {
         let off = self.buffer.cursor();

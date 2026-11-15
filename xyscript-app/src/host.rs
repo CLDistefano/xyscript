@@ -3165,6 +3165,10 @@ pub struct AppHost {
     jump_back: Vec<(crate::panes::DocId, usize)>,
     jump_fwd: Vec<(crate::panes::DocId, usize)>,
     jump_pending: Option<(crate::panes::DocId, usize)>,
+    /// `XLHERE` capture (session-only): the destination an `XLINK/H` link will point at — the
+    /// document it's in (`DocId` for same-doc detection, path for the cross-doc `OPEN`) and the name
+    /// of the bookmark anchoring the spot.
+    xlink_capture: Option<(crate::panes::DocId, Option<PathBuf>, String)>,
     /// Whether the preview/`TOPDF` render also paints the transient EMPH matches and URL highlights
     /// (`PVMARKS`). Off by default — a printout stays clean unless asked. MDA styling is unaffected
     /// (always rendered). `$PVMARKS`; SaveCfg. Applies to the styler-based kinds (GFM/Typst/Text).
@@ -3713,6 +3717,7 @@ impl AppHost {
             jump_back: Vec::new(),
             jump_fwd: Vec::new(),
             jump_pending: None,
+            xlink_capture: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
             error_log: false, // off by default
@@ -13372,6 +13377,45 @@ impl Host for AppHost {
                         return Ok(Value::str(match named {
                             Some(nm) => format!("xlink \"{nm}\" created ({n} total)"),
                             None => format!("xlink created ({n} total)"),
+                        }));
+                    }
+                    Err(msg) => return Err(XplError::trappable(format!("XLINK: {msg}"))),
+                }
+            }
+            EditorOp::XlinkHere => {
+                // Ensure a named bookmark marks the caret, and stash it as the capture destination.
+                let name = self.docs[self.active].mark_ensure_named_here();
+                let id = self.docs[self.active].id();
+                let path = self.docs[self.active].path().map(|p| p.to_path_buf());
+                self.xlink_capture = Some((id, path, name.clone()));
+                return Ok(Value::str(format!("captured \"{name}\" — select the link text, then XLINK/H")));
+            }
+            EditorOp::XlinkFromCapture { name } => {
+                let Some((cap_id, cap_path, cap_name)) = self.xlink_capture.clone() else {
+                    return Err(XplError::trappable("XLINK/H: run XLHERE at the destination first"));
+                };
+                let Some((s, e)) = self.docs[self.active].selection_range() else {
+                    return Err(XplError::trappable("XLINK/H: select the link text first"));
+                };
+                let payload = if self.docs[self.active].id() == cap_id {
+                    format!("GOMARK {cap_name}")
+                } else {
+                    match cap_path {
+                        Some(p) => format!("OPEN {};GOMARK {cap_name}", p.display()),
+                        None => {
+                            return Err(XplError::trappable(
+                                "XLINK/H: the captured spot is in an unsaved buffer — save it first",
+                            ))
+                        }
+                    }
+                };
+                let named = name.clone();
+                match self.docs[self.active].xlink_create(s, e, payload.into_bytes(), name) {
+                    Ok(()) => {
+                        let n = self.docs[self.active].xlink_count();
+                        return Ok(Value::str(match named {
+                            Some(nm) => format!("xlink \"{nm}\" → {cap_name} ({n} total)"),
+                            None => format!("xlink → {cap_name} ({n} total)"),
                         }));
                     }
                     Err(msg) => return Err(XplError::trappable(format!("XLINK: {msg}"))),

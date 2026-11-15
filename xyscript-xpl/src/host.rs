@@ -873,6 +873,12 @@ pub enum EditorOp {
     /// `XLINK/E <payload>` — replace the payload of the xlink under the caret (keeping its span). A
     /// trappable error when the caret isn't on an xlink.
     XlinkEdit { payload: String },
+    /// `XLHERE` — mark the caret as the destination an `XLINK/H` link will point at: ensure a named
+    /// bookmark here and stash it (session-only). The "copy link to this location" capture.
+    XlinkHere,
+    /// `XLINK/H` — create an xlink over the SELECTION pointing at the `XLHERE` capture (compiles to a
+    /// `GOMARK` of the captured bookmark, cross-document via `OPEN` when needed), optionally NAMED.
+    XlinkFromCapture { name: Option<String> },
     /// `XLTRUST` (`trust = true`) / `XLUNTRUST` (`trust = false`) — trust or revoke the active document
     /// for running ACTION (non-navigation) xlink payloads. Trust is keyed by document path in a
     /// user-global ledger (session-only for a path-less buffer). `$XLTRUSTED`.
