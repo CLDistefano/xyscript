@@ -142,7 +142,7 @@ SUB dellines
 	local ctr str
 	if not $1; pr DELLINES <string>; ex; ei
 	tf
-	set str = $1
+	set str = $*
 	set ctr = 0
 	while $CP < $FS
 		if contains(upper($li), upper($str))
@@ -209,29 +209,31 @@ SUB puts
 	# DOC: PUTS U underscores the line above the cursor
 	QUIET
 	IF NOT $1 EXIT
-	LOCAL bX ctr n str out
-	SET bX = 0
+	LOCAL ctr flag n str out
+	SET flag = 0
 	SET ctr = 1
 	SET n = 1
 	SET out = ""
 	SET str = $1
-	IF UPPER($str) == "U" AND NOT $2
+	IF UPPER($str) == "U"
 		SET str = "-"
-		SET bX = 1
+		SET flag = 1
+		GOTO :a
 	EI
 	IF UPPER($2) != "U"
 		SET n = $2
 	ELSE
-		SET bX = 1
+		SET flag = 1
 	EI
-	IF $bX SET n = Len($LI)
+	:a
+	IF $flag; SET n = Len($LI); ER; EI
 	WHILE $ctr <= $n
 		SET out = $out . $str
 		SET ctr = $ctr + 1
 	ENDWHILE
-	IF $bx SET out = $NL.$out.$NL
+	IF $flag SET out = $NL.$out.$NL
 	ER; WR $out
-	IF $bx; ER; EI
+	IF $flag; ER; EI
 	RETURN $out
 ENDSUB
 
@@ -324,7 +326,10 @@ ENDSUB
 
 SUB pdfedit
 	# DOC: Open a PDF file for editing
-	IF NOT $1 GOTO :err
+	IF NOT $1
+		MSG PDFedit <file>
+		RETURN
+	EI
 	SET file = $1
 	SET bF = EXISTS($file)
 	IF NOT $bF
@@ -333,40 +338,36 @@ SUB pdfedit
 	EI
 	X/NV start $PDFeditor $file
 	EXIT
-	:err
-	MSG PDFedit <file>
 ENDSUB
 
 SUB pdfread
 	# DOC: Open a PDF file for reading
 	# DOC: UserVar: $PDFreader
-	IF NOT $1 GOTO :err
+	IF NOT $1
+		MSG Usage:${NL}PDFread <file>
+		RETURN
+	EI
 	SET file = $1
-	SET bF = EXISTS($file)
-	IF NOT $bF
+	IF NOT EXISTS($file)
 		MSG $file does not exist.
-		EXIT
+		RETURN
 	EI
 	X/NV start $PDFreader $file
-	EXIT
-	:err
-	MSG "Usage:\nPDFread <file>"
 ENDSUB
 
 SUB pdfread2
 	# DOC: Open a PDF file for reading
 	# DOC: UserVar: $PDFreader2
-	IF NOT $1 GOTO :err
+	IF NOT $1
+		MSG "Usage:\nPDFread2 <file>"
+		RETURN
+	EI
 	SET file = $1
-	SET bF = EXISTS($file)
-	IF NOT $bF
+	IF NOT EXISTS($file)
 		MSG $file does not exist.
-		EXIT
+		RETURN
 	EI
 	X/NV start $PDFreader2 $file
-	EXIT
-	:err
-	MSG "Usage:\nPDFread2 <file>"
 ENDSUB
 
 #####  File & Directory Management  #####
@@ -410,7 +411,7 @@ SUB apfil
 	EI
 	IF $DF < 1
 		MSG No text selected
-		GOTO :end
+		RETURN
 	EI
 	SET text = SEL() . "\n"
 	SET nil = "\x00"
@@ -421,7 +422,6 @@ SUB apfil
 	RF $file content
 	SET content = $content . "\n" . $text
 	WF content $file
-	:end
 ENDSUB
 
 SUB aptop
@@ -434,7 +434,7 @@ SUB aptop
 	EI
 	IF $DF < 1
 		MSG No text selected
-		GOTO :end
+		RETURN
 	EI
 	SET text = SEL() . "\n"
 	SET nil = "\x00"
@@ -445,7 +445,6 @@ SUB aptop
 	RF $file content
 	SET content = $text . "\n" . $content
 	WF content $file
-	:end
 ENDSUB
 
 SUB d
@@ -540,7 +539,7 @@ SUB ecp
 	LOCAL cmnd fnm
 	IF $OS == "windows"; SET cmnd = "copy/y"; ELSE; SET cmnd = "\\cp"; EI
 	IF $D1; SET fnm = $DR; ELSE; SET fnm = $FP; EI
-	X $cmnd $fnm $1
+	X [$cmnd $fnm $1]
 	IF $RC > 0; PR Error: $RC
 		ELSE; PR; MSG /T:1 Copied.; EI
 ENDSUB
@@ -673,6 +672,7 @@ ENDSUB
 SUB sab
 	# DOC: Make a backup save of the current file
 	# DOC: Format filename-yyyymmddThhmmss.ext
+	# DOC: User variable $BackupDir
 	QUIET/NV
 	LOCAL bdir bname fna
 	SET bdir = $BackupDir
@@ -835,7 +835,7 @@ SUB charse
 ENDSUB
 
 SUB uchar
-	# DOC: Put Unicode (UTF-8) character or list range of chars
+	# DOC: Put single Unicode (UTF-8) character or list range of chars
 	# DOC: Usage: UCHAR n [- n] (decimal)
 	local array n rchar rchar0 rchar1
 	set rchar = $*
@@ -2172,7 +2172,7 @@ SUB U2
 ENDSUB
 
 SUB uservars
-	# DOC: Open the XyWWWeb.qnu user variables file
+	# DOC: Open the user variables file
 	LOCAL fn
 	SET fn = $XSDIR.$DC."user-variables.xpl"
 	SET bX = EXISTS($fn)
