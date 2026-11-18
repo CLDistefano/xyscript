@@ -884,6 +884,10 @@ pub enum EditorOp {
     /// for running ACTION (non-navigation) xlink payloads. Trust is keyed by document path in a
     /// user-global ledger (session-only for a path-less buffer). `$XLTRUSTED`.
     SetXlinkTrust { trust: bool },
+    /// `XLTRUST/A on|off` (bare toggles): author mode. While on, an author verb that changes a payload
+    /// re-affirms session trust for the active doc, so editing-then-testing an action xlink doesn't
+    /// re-prompt. `Some(true/false)` sets, `None` toggles. Session-only. `$XLTRUSTAUTHOR`.
+    SetXlinkAuthor(Option<bool>),
     /// `XLNEXT` (`forward = true`) / `XLPREV` — move the caret to the next / previous xlink's start,
     /// wrapping at the ends, and centre it. A no-op (with a note) when the document has no xlinks.
     XlinkJump { forward: bool },

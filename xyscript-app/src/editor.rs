@@ -6394,6 +6394,47 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn xltrust_author_mode_reaffirms_on_your_own_edits() {
+        // XLTRUST/A: while author mode is on, a payload you create or edit yourself is trusted, so an
+        // edit-then-test loop never re-prompts. Trust is session-scoped (never persisted).
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("XLTRUST/A on"); // author mode on FIRST (it doesn't retroactively trust anything)
+        assert_eq!(e.special_str("XLTRUSTAUTHOR"), "1");
+        // Create an action xlink THROUGH an author verb → re-affirmed, so the first test runs cleanly.
+        e.run_command("DFA");
+        e.run_command("XLINK MARKSET"); // an ACTION payload (non-navigation)
+        e.run_command("TF"); // caret onto the xlink span
+        assert_eq!(e.special_str("XLTRUSTED"), "1", "a payload you author under author mode is trusted");
+        // Edit the payload — editing is vetting, so trust carries to the new payload set, no re-prompt.
+        e.run_command("XLINK/E MARKNEXT"); // a DIFFERENT payload → new hash
+        assert_eq!(e.special_str("XLTRUSTED"), "1", "your own edit keeps trust under author mode");
+        // Turn author mode off; a further change is NOT auto-trusted — normal re-prompt returns.
+        e.run_command("XLTRUST/A off");
+        assert_eq!(e.special_str("XLTRUSTAUTHOR"), "0");
+        e.run_command("XLINK/E MARKPREV");
+        assert_eq!(e.special_str("XLTRUSTED"), "0", "author mode off → a changed payload re-prompts");
+    }
+
+    #[test]
+    fn xltrust_author_mode_never_retroactively_trusts() {
+        // The paradigm guard: enabling author mode must NOT bless payloads already present (as if from a
+        // freshly-opened foreign document). Only a payload you author/edit AFTER enabling is trusted.
+        let mut e = ed();
+        e.run_command(r#"insert "abcdef""#);
+        e.run_command("DFA");
+        e.run_command("XLINK MARKSET"); // created with author mode OFF — stands in for a loaded payload
+        e.run_command("TF");
+        assert_eq!(e.special_str("XLTRUSTED"), "0");
+        e.run_command("XLTRUST/A on"); // enabling must leave the untouched payload UNtrusted
+        assert_eq!(
+            e.special_str("XLTRUSTED"),
+            "0",
+            "author mode never retroactively trusts; only your own edits do"
+        );
+    }
+
+    #[test]
     fn xltrust_invalidates_when_the_payload_set_changes() {
         let mut e = ed();
         e.run_command(r#"insert "abc""#);

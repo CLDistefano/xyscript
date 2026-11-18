@@ -2994,6 +2994,25 @@ impl Vm<'_, '_> {
             // `XLTRUST` / `XLUNTRUST` — trust or revoke the active document for running ACTION
             // (non-navigation) xlink payloads. `$XLTRUSTED` reads the state.
             "XLTRUST" | "XLUNTRUST" => {
+                // `XLTRUST/A on|off` (bare toggles): author mode — editing your own xlink payloads
+                // re-affirms trust, so an edit-then-test loop doesn't re-prompt (session-only).
+                if vswitches.iter().any(|s| s.eq_ignore_ascii_case("A")) {
+                    if base == "XLUNTRUST" {
+                        return Err(XplError::trappable("XLUNTRUST has no /A mode (use XLTRUST/A off)"));
+                    }
+                    let want = match args.trim().to_ascii_lowercase().as_str() {
+                        "" => None,
+                        "on" => Some(true),
+                        "off" => Some(false),
+                        other => {
+                            return Err(XplError::trappable(format!(
+                                "XLTRUST/A: expected on or off, got {other:?}"
+                            )))
+                        }
+                    };
+                    self.host_op(EditorOp::SetXlinkAuthor(want))?;
+                    return Ok(Flow::Next);
+                }
                 if !args.trim().is_empty() {
                     return Err(XplError::trappable(format!("{base} takes no argument")));
                 }
@@ -6971,6 +6990,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         "CHECK" => &["S"], // `/S` — check the SELECTION only
         "XLINK" => &["L", "M", "E", "N", "H"], // `/L` line / `/M` mark / `/H` captured target, `/E` edit, `/N` name
         "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
+        "XLTRUST" => &["A"], // `/A` — author mode toggle (XLTRUST/A on|off)
 
         _ => &[],
     };
