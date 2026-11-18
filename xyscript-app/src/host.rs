@@ -1017,6 +1017,16 @@ fn build_check_report(
     }
 }
 
+/// Parse the leading `line:col` of a `CHECK` report issue line (`"1:11 [Spelling] …"`) → `(1, 11)`.
+/// Returns `None` for any line that isn't an issue — the `"N issue(s):"` header, `"No language issues
+/// found."`, a blank line — so only real issues become navigable `GJ`/`NERR` targets.
+#[cfg(feature = "lint")]
+fn parse_check_loc(line: &str) -> Option<(usize, usize)> {
+    let coord = line.split(" [").next()?; // everything before " [kind]" — i.e. "line:col"
+    let (l, c) = coord.split_once(':')?;
+    Some((l.parse().ok()?, c.parse().ok()?))
+}
+
 /// 1-based line and column (column counted in **characters**) for a byte offset into `text`.
 /// Used to render `CHECK`'s issue locations.
 #[cfg(feature = "lint")]
@@ -3290,6 +3300,11 @@ pub struct AppHost {
     /// until its result lands, then opens the results tab. `None` = no check running.
     #[cfg(feature = "lint")]
     check_pending: Option<std::sync::mpsc::Receiver<String>>,
+    /// The document the in-flight `CHECK` is examining: its id (so the results tab's `GJ`/`NERR` jump
+    /// to that exact live tab, edits and all) and its path (a fallback / display if the tab was closed).
+    /// Captured when the check is launched, consumed when its report lands. `None` = no check running.
+    #[cfg(feature = "lint")]
+    check_source: Option<(u32, Option<PathBuf>)>,
     /// Per document, the `(rev, lo, hi)` view its underlines currently SATISFY — so `request_lint`
     /// skips a doc whose visible window is already checked (dedup keyed on the applied RESULT, not the
     /// send, so a request dropped by the worker's coalescing is re-issued rather than starved). Keyed
@@ -3641,6 +3656,8 @@ impl AppHost {
             lint_pending: None,
             #[cfg(feature = "lint")]
             check_pending: None,
+            #[cfg(feature = "lint")]
+            check_source: None,
             #[cfg(feature = "lint")]
             lint_done: std::collections::HashMap::new(),
             #[cfg(feature = "lint")]
@@ -5964,11 +5981,20 @@ impl AppHost {
     /// Put a `CHECK` report into a dedicated read-only `*Language Check*` tab (replacing any prior
     /// report) and switch to it — so a long report is scrollable/searchable in its own buffer instead
     /// of crammed onto the status line.
-    fn show_check_results(&mut self, report: &str) {
+    fn show_check_results(&mut self, report: &str, hits: Vec<crate::grep::GrepHit>) {
         const NAME: &str = "*Language Check*";
+        let navigable = hits.iter().any(|h| h.kind == crate::grep::HitKind::Match);
         let mut d = Document::new();
         d.set_label(NAME.to_string());
-        d.append_log(report);
+        if navigable {
+            // Make it a real results listing (like GREP/COMPILE): `GJ`/Enter/double-click jump to the
+            // issue in the checked document, and NERR/PERR step through issues. `base` is unused for a
+            // check listing (every hit carries its own source) — $CWD is a harmless placeholder.
+            d.open_check_listing(report, hits, self.cwd.clone());
+        } else {
+            // No issues (or language checking unavailable) — a plain read-only note, nothing to jump to.
+            d.append_log(report);
+        }
         let idx = match self.docs.iter().position(|x| x.label() == Some(NAME)) {
             Some(i) => {
                 self.docs[i] = d;
@@ -5979,9 +6005,40 @@ impl AppHost {
                 self.docs.len() - 1
             }
         };
+        if navigable {
+            self.error_list = Some(self.docs[idx].id()); // NERR/PERR step this report's issues
+            self.error_cursor = None;
+        }
         // (Underlines are per-document now, so switching to the results tab shows its own — none — with
         // no risk of dragging the checked doc's marks along.)
         self.switch_buffer(idx);
+    }
+
+    /// One navigable hit per issue line of a `CHECK` report, so the `*Language Check*` tab plugs into
+    /// the shared `GJ`/`NERR` jump machinery. Line N of the report maps to `hits[N]`: a `line:col […]`
+    /// issue line becomes a `Match` pointing at `source` (the checked document), every other line (the
+    /// `"N issue(s):"` header, a stray wrap) a non-navigable `Separator`. `source` is `(id, path)`.
+    #[cfg(feature = "lint")]
+    fn check_report_hits(
+        report: &str,
+        source: (u32, Option<PathBuf>),
+    ) -> Vec<crate::grep::GrepHit> {
+        let (src_id, src_path) = source;
+        let path = src_path.unwrap_or_default();
+        report
+            .split('\n')
+            .map(|line| match parse_check_loc(line) {
+                Some((l, c)) => crate::grep::GrepHit {
+                    path: path.clone(),
+                    line: l,
+                    col: c,
+                    text: line.to_string(),
+                    kind: crate::grep::HitKind::Match,
+                    source: Some(src_id),
+                },
+                None => crate::grep::GrepHit::separator(),
+            })
+            .collect()
     }
 
     /// Start a whole-document `CHECK` on a BACKGROUND thread (harper over a big doc freezes the UI if
@@ -5994,11 +6051,16 @@ impl AppHost {
             let _ = range;
             self.show_check_results(
                 "Language checking is not available in this build (rebuild with --features lint).",
+                Vec::new(),
             );
         }
         #[cfg(feature = "lint")]
         {
-            let text = self.docs[self.active].buffer().text();
+            // Remember WHICH document this report is about, so the results tab's `GJ`/`NERR`/Enter jump
+            // back to that exact live tab (by id — edits and all; path is the closed-tab fallback).
+            let src = &self.docs[self.active];
+            self.check_source = Some((src.id().0, src.path().map(Path::to_path_buf)));
+            let text = src.buffer().text();
             let (flavor, dialect) = (self.lint_flavor(), self.lint_dialect);
             let (engine, dicts, bin) = (self.spell_engine, self.spell_dicts.clone(), self.spell_bin.clone());
             let learned = self.learned_words.clone();
@@ -6034,7 +6096,12 @@ impl AppHost {
         {
             if let Some(report) = self.check_pending.as_ref().and_then(|rx| rx.try_recv().ok()) {
                 self.check_pending = None;
-                self.show_check_results(&report);
+                let hits = self
+                    .check_source
+                    .take()
+                    .map(|src| Self::check_report_hits(&report, src))
+                    .unwrap_or_default();
+                self.show_check_results(&report, hits);
                 return true;
             }
         }

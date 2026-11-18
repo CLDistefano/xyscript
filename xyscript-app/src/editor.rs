@@ -8638,6 +8638,38 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    #[cfg(feature = "lint")]
+    fn check_tab_jumps_back_to_the_document() {
+        // The *Language Check* tab is a navigable results listing: putting the caret on an issue line
+        // and running GJ (what Enter/double-click also do) jumps back to that spot in the checked
+        // document. Regression guard for "ENTER and GJ did nothing in the Language Check tab".
+        let mut e = ed();
+        e.insert_str("café qick brown fox"); // 'qick' misspelled; col 6 after the 2-byte é
+        e.run_command("CHECK");
+        while e.check_in_progress() {
+            if !e.poll_check() {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+        assert!(e.active_is_grep_listing(), "the check tab should be a navigable results listing");
+        // NERR (next-error) targets the check tab via `error_list` and jumps to the first issue.
+        e.run_command("NERR");
+        assert_eq!(e.document().text(), "café qick brown fox", "NERR jumped to the checked document");
+        assert_eq!(e.special_str("CP"), "5", "NERR landed on the issue");
+        e.run_command("BUFALT"); // back to the *Language Check* tab (the alternate buffer)
+        assert!(e.active_is_grep_listing(), "returned to the results tab");
+        // Line 1 (1-based) is the "N issue(s):" header; line 2 is the first issue. GJ from the header
+        // is a no-op (Separator); GJ from the issue line jumps.
+        e.run_command("GOTOLINE 2");
+        e.run_command("GJ");
+        assert!(!e.active_is_grep_listing(), "GJ left the results tab for the document");
+        assert_eq!(e.document().text(), "café qick brown fox", "landed on the checked document");
+        // Caret sits at the misspelling: char offset 5 ('q' — c,a,f,é,space,q), i.e. document-relative
+        // line 1 col 6. The jump honours character columns, so the 2-byte é doesn't throw it off.
+        assert_eq!(e.special_str("CP"), "5", "caret landed on the issue");
+    }
+
+    #[test]
     fn find_all_returns_every_match_span_and_honors_case() {
         // Backs the FIND dialog's live "highlight all". Read-only, whole-document, in order.
         let mut e = ed();

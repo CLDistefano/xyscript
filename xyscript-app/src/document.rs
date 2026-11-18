@@ -3358,6 +3358,40 @@ impl Document {
         self.grep.as_mut().unwrap().hits.extend_from_slice(hits);
     }
 
+    /// Turn this buffer into a `CHECK` (`*Language Check*`) results listing: the pre-rendered `report`
+    /// text becomes the buffer (line N → `hits[N]`, so the caret's line resolves its issue), read-only,
+    /// caret at the top. Each issue line is a navigable `Match` carrying the checked document's id/path;
+    /// the header line is a `Separator`. Shares the `GREP` listing state so `GJ`/`NERR`/Enter/double-click
+    /// all work — a check report is just another read-only, line-indexed hit buffer.
+    pub fn open_check_listing(
+        &mut self,
+        report: &str,
+        hits: Vec<crate::grep::GrepHit>,
+        base: PathBuf,
+    ) {
+        self.gen = next_content_gen();
+        self.buffer = Buffer::from_str(report);
+        self.buffer.set_caret(0, None);
+        self.undo.clear();
+        self.redo.clear();
+        self.coalescing = false;
+        self.saved_len = Some(0);
+        self.path = None;
+        self.line_ending = LineEnding::Lf;
+        self.read_only = true;
+        self.highlighter = None;
+        self.tokens.clear();
+        // The caller sets the `*Language Check*` label; keep it rather than overwriting with "grep …".
+        self.grep = Some(crate::grep::GrepState {
+            base,
+            pattern: "check".to_string(),
+            regex: false,
+            perl: false,
+            capped: false,
+            hits,
+        });
+    }
+
     /// Turn this buffer into a `COMPILE` results listing: empty, read-only, caret at the top, tracked
     /// as a hit listing (so `GJ`/`NERR` work) with the command as its label. The build's output lines
     /// stream in via [`push_output_line`](Self::push_output_line). Reuses the `GREP` listing state —

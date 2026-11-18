@@ -1766,8 +1766,11 @@ produces nothing: no error, no underlines. (This multilingual spelling is newer,
 
 When you would rather see everything at once than hunt underline by underline, #raw("CHECK") runs the
 whole document and opens a read-only #raw("*Language Check*") tab listing every issue as
-#raw("line:col [kind] \"text\": message"). Under #raw("CAPTURE") the report goes into a variable
-instead, for a script to sift.
+#raw("line:col [kind] \"text\": message"). The report tab is navigable, exactly like a #raw("GREP")
+or #raw("COMPILE") results tab: put the caret on an issue line and press #raw("Enter") (or run
+#raw("GJ"), or double-click) to jump straight to that spot in the checked document, and #raw("NERR") /
+#raw("PERR") step forward and back through the issues without leaving the keyboard. Under #raw("CAPTURE")
+the report goes into a variable instead, for a script to sift.
 
 To check just a passage — a paragraph you have reworked, a quoted block you do not want flagged — select
 it and run #raw("CHECK/S"). Only the selection is checked (with an error on the status line if nothing is
