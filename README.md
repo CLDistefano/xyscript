@@ -26,6 +26,7 @@ A file is always just text on disk, openable in any other editor. XyScript under
 - **Editable hex view** for binary and other files
 - **Tight OS integration** — a freely editable Console tab, shell command output routed into the editor, and email (send/receive) via `curl`
 - **A command line** that gives immediate access to every feature and option
+- **Xlinks** — in-document hyperlinks that jump to a location (in this file or another) or run arbitrary XPL actions on click, with a per-document trust gate so code from someone else's file never runs unasked
 - **XPL**, the XyScript Programming Language — plain-text scripts, readable keywords, expressions with functions/arrays/maps, arbitrary-precision integers, and access to the operating system shell
 
 ## Download

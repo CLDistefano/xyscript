@@ -97,6 +97,7 @@
   - Editable hex view for binary and other files
   - Easy access to shell commands via a freely-editable Console tab, and tight integration with the underlying operating system (stdout to editor)
   - A command line that gives immediate access to all features and options
+  - Hyperlinks ("xlinks") capable of running commands and performing virtually any scriptable action
 
   A powerful scripting language---the XyScript Programming Language (XPL)---binds it all together to form a
   cohesive, endlessly adaptable writing instrument.
