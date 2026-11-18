@@ -5109,6 +5109,22 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetPathLen(n))?;
                 Ok(Flow::Next)
             }
+            // `STATUSPATH on|off` (bare toggles) — show the active file's full path on the status line
+            // instead of just its name (truncated to PATHLEN). `$STATUSPATH`; SaveCfg.
+            "STATUSPATH" => {
+                let want = match args.trim().to_ascii_lowercase().as_str() {
+                    "" => None,
+                    "on" => Some(true),
+                    "off" => Some(false),
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "STATUSPATH: expected on or off, got {other:?}"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::SetStatusPath(want))?;
+                Ok(Flow::Next)
+            }
             // `TEXTFILES <.ext,…>` — extra text-file extensions for the File ▸ Open "Text files" filter.
             // Bare reports; `default`/`none` clears; otherwise a comma/space list (dots optional). `$TEXTFILES`.
             "TEXTFILES" => {
@@ -5401,17 +5417,18 @@ impl Vm<'_, '_> {
                 Ok(Flow::Next)
             }
             "CHECK" => {
-                // Run harper over the active doc via the host, which returns the report. Under CAPTURE
-                // it goes to the variable; otherwise it opens in a scrollable `*Language Check*` tab
-                // (the report can be long — the status line can't hold it).
+                // Run harper over the active doc via the host, which returns the report. `/S` checks the
+                // SELECTION only. Under CAPTURE the report goes to the variable; otherwise it opens in a
+                // scrollable `*Language Check*` tab (the report can be long — the status line can't hold it).
+                let selection = vswitches.iter().any(|s| s.eq_ignore_ascii_case("S"));
                 if self.is_capturing() {
                     // CAPTURE needs the report NOW → synchronous.
-                    let report = self.host_op_value(EditorOp::RunLint)?.to_str();
+                    let report = self.host_op_value(EditorOp::RunLint { selection })?.to_str();
                     self.capture_push(&report);
                 } else {
                     // Interactive: run on a background thread (no UI freeze); it opens the results tab
                     // when done, with a "Working…" status meanwhile.
-                    self.host_op(EditorOp::RequestFullCheck)?;
+                    self.host_op(EditorOp::RequestFullCheck { selection })?;
                 }
                 Ok(Flow::Next)
             }
@@ -6951,6 +6968,7 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         #[cfg(feature = "email")]
         "LISTMAIL" | "SAVEMAIL" | "DELMAIL" => &["W"], // `/W` — run synchronously, so $RC is set on return
         "COMPILE" => &["NW"], // `/NW` — force a NEW results tab (don't reuse the matching one)
+        "CHECK" => &["S"], // `/S` — check the SELECTION only
         "XLINK" => &["L", "M", "E", "N", "H"], // `/L` line / `/M` mark / `/H` captured target, `/E` edit, `/N` name
         "XLDEL" => &["A"], // `/A` — remove ALL xlinks in the document (bare = the one at the caret)
 

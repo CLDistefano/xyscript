@@ -371,14 +371,15 @@ pub enum EditorOp {
     /// `SPELLNEXT`/`SPELLPREV`/`GRAMMARNEXT`/`GRAMMARPREV` — move the caret to (and select) the next
     /// or previous spelling / grammar issue, scanning beyond the viewport as needed.
     LintNav { spelling: bool, forward: bool },
-    /// Start a background `CHECK` (whole-doc harper on its own thread); its report opens in a
-    /// read-only results tab when it finishes. The GUI shows "Working…" meanwhile.
-    RequestFullCheck,
-    /// `CHECK` — run the language checker (harper) over the active document and return a report
-    /// (one line per issue: `line:col [kind] "snippet": message`, or a "no issues" line). Phase 0:
-    /// the report is the return `Value`; the host also stashes the issues (rope-offset spans) for
-    /// later phases (live underlines, navigation). See `AppHost::run_lint`.
-    RunLint,
+    /// Start a background `CHECK` (harper on its own thread); its report opens in a read-only results
+    /// tab when it finishes. The GUI shows "Working…" meanwhile. `selection` (`CHECK/S`) checks only the
+    /// selected text (a trappable error if nothing is selected); the report's `line:col` stay
+    /// document-relative so a jump still works.
+    RequestFullCheck { selection: bool },
+    /// `CHECK` — run the language checker (harper) over the active document (or, with `selection`, the
+    /// selected text only) and return a report (one line per issue: `line:col [kind] "snippet":
+    /// message`, or a "no issues" line). The report is the return `Value` (the CAPTURE path).
+    RunLint { selection: bool },
     /// `MESSAGE [/T:"title"] <text>` — pop an OS-NATIVE message box (a real desktop dialog),
     /// launched as a separate detached process so it works from a headless background (`RUN/BG`)
     /// child and survives the script. Unlike `ShowMessage`, it needs no running GUI and never
@@ -1095,6 +1096,9 @@ pub enum EditorOp {
     SetPathPlace(PathPlace),
     /// Set the max width (chars) of the displayed `$CWD` path (`PATHLEN n`). Read back via `$PATHLEN`.
     SetPathLen(usize),
+    /// `STATUSPATH on|off` (bare toggles) — show the active file's FULL PATH on the status line instead
+    /// of just its name (truncated to `PATHLEN`). Off by default. `$STATUSPATH`; SaveCfg.
+    SetStatusPath(Option<bool>),
     /// `TEXTFILES <.ext,…>` — the user's EXTRA text-file extensions, appended to the built-in set the
     /// File ▸ Open dialog's "Text files" filter matches. `Some(list)` replaces them (an empty list, from
     /// `TEXTFILES default`, clears); `None` reports the current list. Read back via `$TEXTFILES`.

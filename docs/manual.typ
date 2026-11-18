@@ -505,6 +505,10 @@ Two rows are the heart of XyScript. The *CMline* (by default, near the top of th
 - Past commands are recalled with the up / down arrows, or browsed with #raw("HISTORY") (#raw("HI")).
 - By default a command *stays* on the line after it runs, so you can re-run or edit it (XyWrite-style);
   #raw("CMBLANK on") clears the line after each command instead (whether run with #kbd("Enter") or #raw("XC")).
+- When idle, the status line shows the active file's name, the cursor's line and column, and the file's
+  encoding. #raw("STATUSPATH on") shows the file's *full path* there instead of just its name — handy when
+  you keep several same-named files open in different folders; a long path is shortened the same way the
+  working directory is (keeping the drive and the trailing folders, with #raw("PATHLEN") setting the width).
 
 Whether you submit with #kbd("Enter") or execute the CMline's contents from elsewhere with #raw("XC"),
 the command runs against the document. The full story — focus, the optional pop-up command line, staging
@@ -1764,6 +1768,11 @@ When you would rather see everything at once than hunt underline by underline, #
 whole document and opens a read-only #raw("*Language Check*") tab listing every issue as
 #raw("line:col [kind] \"text\": message"). Under #raw("CAPTURE") the report goes into a variable
 instead, for a script to sift.
+
+To check just a passage — a paragraph you have reworked, a quoted block you do not want flagged — select
+it and run #raw("CHECK/S"). Only the selection is checked (with an error on the status line if nothing is
+selected), but each issue's #raw("line:col") stays relative to the whole document, so jumping to a reported
+location still lands on the right spot.
 
 // ===================================================================================================
 = The Command Line (CMline)

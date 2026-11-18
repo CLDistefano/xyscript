@@ -10555,7 +10555,16 @@ impl GuiApp {
         } else {
             plain_status = true;
             let doc = self.editor.document();
-            let name = self.editor.active_file_name().unwrap_or_else(|| "(untitled)".into());
+            // `STATUSPATH on` shows the active file's FULL PATH (truncated to PATHLEN) instead of just
+            // its name; an untitled buffer (no path) falls back to the name.
+            let name = match (self.editor.status_path(), self.editor.active_path()) {
+                (true, Some(p)) => {
+                    let full = p.to_string_lossy().into_owned();
+                    let plen: usize = self.editor.special_str("PATHLEN").parse().unwrap_or(45);
+                    truncate_path(&full, plen)
+                }
+                _ => self.editor.active_file_name().unwrap_or_else(|| "(untitled)".into()),
+            };
             let ime = if self.preedit.is_empty() {
                 String::new()
             } else {
