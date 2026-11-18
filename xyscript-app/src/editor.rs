@@ -219,6 +219,10 @@ impl Editor {
     pub fn active_path(&self) -> Option<std::path::PathBuf> {
         self.host.active_doc().path().map(|p| p.to_path_buf())
     }
+    /// Whether the status line shows the active file's full path instead of its name (`STATUSPATH`).
+    pub fn status_path(&self) -> bool {
+        self.host.status_path()
+    }
 
     /// The active document's highlight tokens (empty when highlighting is off). For a large file these
     /// cover only the windowed region last requested via [`ensure_highlights`](Editor::ensure_highlights).
@@ -6091,6 +6095,20 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert_eq!(e.document().text(), "from cmd");
     }
 
+    #[test]
+    fn statuspath_toggles_and_reads() {
+        let mut e = ed();
+        assert_eq!(e.special_str("STATUSPATH"), "0", "off by default");
+        assert!(!e.status_path());
+        e.run_command("STATUSPATH on");
+        assert_eq!(e.special_str("STATUSPATH"), "1");
+        assert!(e.status_path());
+        e.run_command("STATUSPATH"); // bare toggles
+        assert_eq!(e.special_str("STATUSPATH"), "0");
+        e.run_command("STATUSPATH off");
+        assert_eq!(e.special_str("STATUSPATH"), "0");
+    }
+
     // ---- xlinks (XLINK / XLDEL / XLGO + GOTOLINE) --------------------------
 
     #[test]
@@ -8586,6 +8604,37 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         );
         // 'qick' is char index 5 (byte 6, after the 2-byte é) on line 1 → column 6.
         assert!(out.contains("1:6"), "expected the typo at line:col 1:6:\n{out}");
+    }
+
+    #[test]
+    #[cfg(feature = "lint")]
+    fn check_slash_s_scopes_to_the_selection_but_keeps_document_coords() {
+        // CHECK/S checks ONLY the selection, yet reports DOCUMENT-relative line:col so a jump still
+        // lands on the real location. The 2-byte 'é' before the typo keeps the char→byte mapping honest.
+        let mut e = ed();
+        e.run_command(r#"insert "good café qick brown""#); // 'qick' misspelled, char index 10
+        e.run_command("TOP");
+        e.run_command("SE qick"); // select just the misspelling
+        assert_eq!(e.selection_text(), "qick");
+        // CAPTURE forces the synchronous path → the report lands in $rep immediately.
+        e.run_command("CAPTURE rep CHECK/S");
+        e.run_command("PR $rep");
+        let out = e.output().last().unwrap().clone();
+        assert!(out.contains("\"qick\""), "the selected typo should be reported:\n{out}");
+        // 'qick' starts at char index 10 → column 11 on line 1 (document-relative, not selection-relative).
+        assert!(out.contains("1:11"), "coords must be document-relative:\n{out}");
+        // Words OUTSIDE the selection are not checked: 'brown'/'good' never appear in the report.
+        assert!(!out.contains("brown") && !out.contains("good"), "only the selection is checked:\n{out}");
+    }
+
+    #[test]
+    #[cfg(feature = "lint")]
+    fn check_slash_s_errors_without_a_selection() {
+        let mut e = ed();
+        e.run_command(r#"insert "qick brown fox""#);
+        e.run_command("CHECK/S"); // nothing selected → a trappable error on the status line
+        assert_eq!(e.special_str("LS"), "CHECK/S: select the text to check first");
+        assert_ne!(e.special_str("ERROR"), "0", "a trappable error sets $ERROR");
     }
 
     #[test]

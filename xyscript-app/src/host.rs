@@ -967,6 +967,7 @@ impl LintWorker {
 #[allow(clippy::too_many_arguments)]
 fn build_check_report(
     text: &str,
+    range: Option<(usize, usize)>,
     flavor: crate::lint::Flavor,
     dialect: crate::lint::Dialect,
     engine: crate::lint::SpellEngine,
@@ -974,20 +975,30 @@ fn build_check_report(
     bin: &str,
     learned: &std::collections::BTreeSet<String>,
 ) -> String {
+    // `range` (CHECK/S) restricts the check to that byte span of `text`; the issue coordinates stay
+    // relative to the WHOLE `text` (document-relative), so a jump still lands correctly. `None` = whole
+    // document. Clamp defensively so a stale range can't panic.
+    let (base, scope) = match range {
+        Some((s, e)) => {
+            let (s, e) = (s.min(text.len()), e.min(text.len()));
+            (s, &text[s..e.max(s)])
+        }
+        None => (0, text),
+    };
     // Same engine split as the live underlines: Hunspell gives multilingual SPELLING issues; Harper
     // gives English spelling + grammar. (Hunspell mode is spelling-only — it's a speller, not a
     // grammar checker.)
     let spans = match engine {
         crate::lint::SpellEngine::Hunspell => {
-            crate::lint::hunspell_check(&crate::lint::mask_markup(text, flavor), dicts, bin)
+            crate::lint::hunspell_check(&crate::lint::mask_markup(scope, flavor), dicts, bin)
         }
-        crate::lint::SpellEngine::Harper => crate::lint::LintEngine::new(dialect).lint_region(text, flavor),
+        crate::lint::SpellEngine::Harper => crate::lint::LintEngine::new(dialect).lint_region(scope, flavor),
     };
     let has_learned = !learned.is_empty();
     let mut body = String::new();
     let mut count = 0usize;
     for (bs, be, kind, message) in &spans {
-        let snippet = &text[*bs..*be];
+        let snippet = &scope[*bs..*be];
         // Honour the user dictionary — same filter as the underlines (`map_lint_spans`).
         if has_learned
             && crate::lint::is_spelling_kind(kind)
@@ -995,7 +1006,7 @@ fn build_check_report(
         {
             continue;
         }
-        let (line, col) = lint_line_col(text, *bs);
+        let (line, col) = lint_line_col(text, base + *bs);
         body.push_str(&format!("{line}:{col} [{kind}] {snippet:?}: {message}\n"));
         count += 1;
     }
@@ -3085,6 +3096,9 @@ pub struct AppHost {
     path_place: PathPlace,
     /// Max width (chars) of the displayed `$CWD` path before it's truncated (`PATHLEN`; `$PATHLEN`).
     path_len: usize,
+    /// Whether the status line shows the active file's FULL PATH instead of just its name
+    /// (`STATUSPATH`; `$STATUSPATH`). Off by default. Truncated to `path_len` like `$CWD`. SaveCfg.
+    status_path: bool,
     /// User-added text-file extensions (`TEXTFILES`; `$TEXTFILES`), lowercased and dot-stripped —
     /// appended to the built-in list the File ▸ Open dialog's "Text files" filter matches. Empty by
     /// default (`OPEN <path>` opens any file regardless; this only widens the dialog's convenience filter).
@@ -3687,6 +3701,7 @@ impl AppHost {
             status_line_top: false, // default: status at the bottom edge
             path_place: PathPlace::Status,
             path_len: 45,
+            status_path: false,
             text_file_exts: Vec::new(),
             cmline_blank: false,
             caret_visual: false,
@@ -4166,6 +4181,10 @@ impl AppHost {
     /// Max width (chars) of the displayed `$CWD` path (`PATHLEN`/`$PATHLEN`).
     pub fn path_len(&self) -> usize {
         self.path_len
+    }
+    /// Whether the status line shows the active file's full path (`STATUSPATH`/`$STATUSPATH`).
+    pub fn status_path(&self) -> bool {
+        self.status_path
     }
     /// The user's extra text-file extensions (`TEXTFILES`), lowercased and dot-stripped — the GUI
     /// appends these to the built-in list its File ▸ Open "Text files" filter matches.
@@ -5969,9 +5988,10 @@ impl AppHost {
     /// run inline). The GUI shows "Working…" via [`check_in_progress`](Self::check_in_progress) and
     /// opens the results tab when [`poll_check`](Self::poll_check) picks up the result. Supersedes any
     /// prior in-flight check. Without the `lint` feature, opens the "not available" note immediately.
-    pub fn request_full_check(&mut self) {
+    pub fn request_full_check(&mut self, range: Option<(usize, usize)>) {
         #[cfg(not(feature = "lint"))]
         {
+            let _ = range;
             self.show_check_results(
                 "Language checking is not available in this build (rebuild with --features lint).",
             );
@@ -5984,9 +6004,26 @@ impl AppHost {
             let learned = self.learned_words.clone();
             let (tx, rx) = std::sync::mpsc::channel::<String>();
             std::thread::spawn(move || {
-                let _ = tx.send(build_check_report(&text, flavor, dialect, engine, &dicts, &bin, &learned));
+                let _ = tx.send(build_check_report(&text, range, flavor, dialect, engine, &dicts, &bin, &learned));
             });
             self.check_pending = Some(rx); // drops any prior receiver → its result is ignored
+        }
+    }
+
+    /// The decoded byte range `CHECK/S` should check: the current selection (a trappable error if
+    /// nothing is selected), or `None` for the whole document (`selection = false`).
+    #[cfg(feature = "lint")]
+    fn lint_range(&self, selection: bool) -> Result<Option<(usize, usize)>, XplError> {
+        if !selection {
+            return Ok(None);
+        }
+        let doc = &self.docs[self.active];
+        match doc.selection_range() {
+            Some((rs, re)) => {
+                let (ds, de) = (doc.buffer().decoded_offset(rs), doc.buffer().decoded_offset(re));
+                Ok(Some((ds, de)))
+            }
+            None => Err(XplError::trappable("CHECK/S: select the text to check first")),
         }
     }
 
@@ -10120,6 +10157,7 @@ impl AppHost {
         put(&mut s, "Underline the spaces between words in MDA underline styling -- on | off", format!("ULSPACES {}", if self.ul_spaces { "on" } else { "off" }));
         put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path -- max display width in characters", format!("PATHLEN {}", self.path_len));
+        put(&mut s, "Show the active file's full path on the status line -- on | off", format!("STATUSPATH {}", if self.status_path { "on" } else { "off" }));
         {
             // Extra text-file extensions for the File ▸ Open "Text files" filter (the built-in set is
             // always matched too). Emitted even when empty (`default`) so the setting is visible.
@@ -11646,9 +11684,10 @@ impl Host for AppHost {
                 crate::os_message::show(title.as_deref(), &text);
                 return Ok(Value::str(""));
             }
-            EditorOp::RunLint => {
+            EditorOp::RunLint { selection } => {
                 #[cfg(not(feature = "lint"))]
                 {
+                    let _ = selection;
                     return Ok(Value::str(
                         "Language checking is not available in this build (rebuild with --features lint).",
                     ));
@@ -11656,11 +11695,15 @@ impl Host for AppHost {
                 // Run harper over the active doc and return the report (the CAPTURE path — synchronous
                 // so the variable is filled immediately). The interactive path uses the background
                 // `RequestFullCheck` instead. `CHECK` is a report only — no touching `self.lints`.
+                // `CHECK/S` (selection = true) checks only the selection, but keeps document-relative
+                // line:col so jump/GJ still land correctly.
                 #[cfg(feature = "lint")]
                 {
+                    let range = self.lint_range(selection)?;
                     let text = self.docs[self.active].buffer().text();
                     let report = build_check_report(
                         &text,
+                        range,
                         self.lint_flavor(),
                         self.lint_dialect,
                         self.spell_engine,
@@ -11671,8 +11714,17 @@ impl Host for AppHost {
                     return Ok(Value::str(report));
                 }
             }
-            EditorOp::RequestFullCheck => {
-                self.request_full_check();
+            EditorOp::RequestFullCheck { selection } => {
+                #[cfg(not(feature = "lint"))]
+                {
+                    let _ = selection;
+                    self.request_full_check(None);
+                }
+                #[cfg(feature = "lint")]
+                {
+                    let range = self.lint_range(selection)?;
+                    self.request_full_check(range);
+                }
                 return Ok(Value::str(""));
             }
             EditorOp::LintNav { spelling, forward } => {
@@ -14687,6 +14739,13 @@ impl Host for AppHost {
                 self.path_len = n.max(1); // never zero — a length of 0 would hide the path entirely
                 return Ok(Value::str(format!("path length: {}", self.path_len)));
             }
+            EditorOp::SetStatusPath(opt) => {
+                self.status_path = opt.unwrap_or(!self.status_path);
+                return Ok(Value::str(format!(
+                    "STATUSPATH {}",
+                    if self.status_path { "on" } else { "off" }
+                )));
+            }
             EditorOp::SetTextFileExts(list) => {
                 let report = |exts: &[String]| {
                     if exts.is_empty() {
@@ -15585,6 +15644,7 @@ impl Host for AppHost {
             "MAILDEBUG" => Some(Value::Int(0)),
             "PAPLACE" => Some(Value::str(self.path_place.name())),
             "PATHLEN" => Some(Value::Int(self.path_len as i64)),
+            "STATUSPATH" => Some(Value::Int(if self.status_path { 1 } else { 0 })),
             "TEXTFILES" => Some(Value::str(
                 self.text_file_exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(","),
             )),
