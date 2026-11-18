@@ -700,6 +700,18 @@ buffer with no file on disk is trusted for the current session only.) This is th
 processor asking before it runs a document's macros: opening a file never runs anything, and nothing
 runs that you didn't see and allow.
 
+That re-confirm-on-change is exactly what you want for a file from someone else — but it gets in the way
+while you are #emph[authoring] a link, tweaking its code and testing it over and over, since each edit
+changes the payload and asks again. For that, turn on #emph[author mode] with #raw("XLTRUST/A on") (a bare
+#raw("XLTRUST/A") toggles it; #raw("$XLTRUSTAUTHOR") reads it). While it is on, a payload you create or
+edit yourself — with #raw("XLINK"), #raw("XLINK/E"), and the rest — re-affirms trust as you go, so you can
+edit an action link and activate it with #raw("XLGO") without re-confirming after every edit. This does not
+weaken the guarantee: editing a payload #emph[is] vetting it — you wrote the code that will run — so the
+only thing author mode skips is asking you to approve your own just-typed edit. It never trusts anything
+retroactively (a link that was already there, or one in a document you just opened, still prompts the first
+time), and the re-affirmation lasts only for the session — it is never written to #raw("xyscript-trust.txt").
+Turn it off (or just close the document) and ordinary trust rules resume.
+
 #tip("Read a link before you follow it")[#raw("$XLINK") gives you the exact code attached to the link
 under the cursor, so you can see what an action link would do without running it — and the confirm
 dialog shows you the same code before you choose.]

@@ -3176,10 +3176,17 @@ pub struct AppHost {
     /// AND its current payload-set hash still matches (so new/changed code re-prompts). Persisted to
     /// `xyscript-trust.txt` in `$XSDIR`; loaded lazily (see `ensure_xlink_trust_loaded`). `$XLTRUSTED`.
     xlink_trust: HashMap<PathBuf, u64>,
-    /// Session-only action trust for buffers with NO path (nothing on disk to key): `DocId` -> the
-    /// trusted payload-set hash, so a new/changed payload re-prompts just like a path-backed doc.
-    /// Never persisted.
+    /// Session-only action trust keyed by `DocId` -> the trusted payload-set hash. Two sources, both
+    /// session-scoped and never persisted: (1) a path-less buffer trusted via `XLTRUST` (nothing on
+    /// disk to key); (2) author mode (`xlink_author_mode`) re-affirming trust after YOU edit a payload.
+    /// A new/changed payload re-prompts just like a path-backed doc unless one of these re-matches.
     xlink_trust_session: HashMap<crate::panes::DocId, u64>,
+    /// `XLTRUST/A` — author mode. While on, an author verb that changes a payload (`XLINK`, `XLINK/E`,
+    /// `XLINK/N`, `XLINK/H`, …) re-affirms session trust for the active doc, so you can edit-then-test an
+    /// action xlink without re-confirming after every edit. Session-only (never persisted / SaveCfg'd):
+    /// turning it on is a deliberate per-session authoring choice, and it blesses ONLY payloads you
+    /// authored this session — a foreign/opened or sidecar-reloaded payload still prompts. `$XLTRUSTAUTHOR`.
+    xlink_author_mode: bool,
     /// Whether `xlink_trust` has been read from disk yet (lazy — the first trust op loads it).
     xlink_trust_loaded: bool,
     /// The xlink JUMPLIST (session-only, global across documents): a browser-style back/forward history
@@ -3745,6 +3752,7 @@ impl AppHost {
             xlink_bg_color: None,
             xlink_trust: HashMap::new(),
             xlink_trust_session: HashMap::new(),
+            xlink_author_mode: false,
             xlink_trust_loaded: false,
             jump_back: Vec::new(),
             jump_fwd: Vec::new(),
@@ -4446,10 +4454,41 @@ impl AppHost {
     pub fn xlink_doc_trusted(&self) -> bool {
         let doc = self.active_doc();
         let hash = self.active_xlink_payload_hash();
+        // Session trust (an unsaved buffer trusted via XLTRUST, or author-mode re-affirmation) wins for
+        // ANY document; a path-backed doc also matches the persisted ledger.
+        if self.xlink_trust_session.get(&doc.id()) == Some(&hash) {
+            return true;
+        }
         match doc.path() {
             Some(p) => self.xlink_trust.get(p) == Some(&hash),
-            None => self.xlink_trust_session.get(&doc.id()) == Some(&hash),
+            None => false,
         }
+    }
+
+    /// `XLTRUST/A on|off` (bare toggles): turn author mode on or off. Returns a status string.
+    /// Enabling the mode does NOT retroactively trust anything already present (that would bless a
+    /// freshly-opened foreign document's payloads) — only a subsequent author-verb edit re-affirms.
+    /// Use plain `XLTRUST` to trust the current set as it stands.
+    fn set_xlink_author(&mut self, want: Option<bool>) -> String {
+        self.xlink_author_mode = want.unwrap_or(!self.xlink_author_mode);
+        if self.xlink_author_mode {
+            "xlink author mode on — your own payload edits won't re-prompt (this session)".to_string()
+        } else {
+            "xlink author mode off".to_string()
+        }
+    }
+
+    /// Author mode's hook: after an author verb changes the active doc's payloads, record session trust
+    /// for the NEW payload set so the edit-then-test loop doesn't re-prompt. A no-op when author mode is
+    /// off. Session-scoped (never persisted) and keyed by `DocId`, so it covers path-backed docs too
+    /// without baking permanent trust into the on-disk ledger.
+    fn xlink_author_reaffirm(&mut self) {
+        if !self.xlink_author_mode {
+            return;
+        }
+        let hash = self.active_xlink_payload_hash();
+        let id = self.active_doc().id();
+        self.xlink_trust_session.insert(id, hash);
     }
 
     /// Eagerly load the ledger (called once at GUI startup so `$XLTRUSTED` is correct before any trust
@@ -13492,6 +13531,7 @@ impl Host for AppHost {
                 let named = name.clone();
                 match self.docs[self.active].xlink_create(s, e, payload.into_bytes(), name) {
                     Ok(()) => {
+                        self.xlink_author_reaffirm(); // author mode: trust this just-authored payload
                         let n = self.docs[self.active].xlink_count();
                         return Ok(Value::str(match named {
                             Some(nm) => format!("xlink \"{nm}\" created ({n} total)"),
@@ -13531,6 +13571,7 @@ impl Host for AppHost {
                 let named = name.clone();
                 match self.docs[self.active].xlink_create(s, e, payload.into_bytes(), name) {
                     Ok(()) => {
+                        self.xlink_author_reaffirm(); // author mode: trust this just-authored payload
                         let n = self.docs[self.active].xlink_count();
                         return Ok(Value::str(match named {
                             Some(nm) => format!("xlink \"{nm}\" → {cap_name} ({n} total)"),
@@ -13543,6 +13584,7 @@ impl Host for AppHost {
             EditorOp::XlinkEdit { payload } => {
                 let off = self.docs[self.active].buffer().cursor();
                 if self.docs[self.active].xlink_set_payload_at(off, payload.into_bytes()) {
+                    self.xlink_author_reaffirm(); // author mode: trust the edited payload (edit = vetting)
                     return Ok(Value::str("xlink payload updated"));
                 }
                 return Err(XplError::trappable("XLINK/E: no xlink at the caret"));
@@ -13566,6 +13608,9 @@ impl Host for AppHost {
             EditorOp::SetXlinkTrust { trust } => {
                 let msg = if trust { self.trust_active_doc() } else { self.untrust_active_doc() };
                 return Ok(Value::str(msg));
+            }
+            EditorOp::SetXlinkAuthor(want) => {
+                return Ok(Value::str(self.set_xlink_author(want)));
             }
             EditorOp::XlinkJump { forward } => {
                 match self.docs[self.active].xlink_jump(forward) {
@@ -15668,6 +15713,7 @@ impl Host for AppHost {
             })),
             "XLINKHIGHLIGHT" => Some(Value::Int(if self.xlink_highlight { 1 } else { 0 })),
             "XLTRUSTED" => Some(Value::Int(if self.xlink_doc_trusted() { 1 } else { 0 })),
+            "XLTRUSTAUTHOR" => Some(Value::Int(if self.xlink_author_mode { 1 } else { 0 })),
             "XLFGCOLOR" => Some(Value::str(match self.xlink_fg_color {
                 Some((r, g, b)) => format!("{r} {g} {b}"),
                 None => String::new(),
