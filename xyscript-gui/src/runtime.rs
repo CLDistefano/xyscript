@@ -1122,7 +1122,7 @@ impl Handler {
                         st.italic(),
                     );
                 }
-                None => txt.ctx.set_fonts(egui::FontDefinitions::default()),
+                None => txt.ctx.set_fonts(crate::default_fonts()),
             }
             txt.applied_family = want_txt;
         }
@@ -1555,7 +1555,7 @@ impl Handler {
                         st.italic(),
                     );
                 }
-                None => d.ctx.set_fonts(egui::FontDefinitions::default()),
+                None => d.ctx.set_fonts(crate::default_fonts()),
             }
             d.applied_family = want_family;
         }
@@ -1998,7 +1998,7 @@ impl Handler {
                         st.italic(),
                     );
                 }
-                None => sw.ctx.set_fonts(egui::FontDefinitions::default()),
+                None => sw.ctx.set_fonts(crate::default_fonts()),
             }
             sw.applied_family = want;
         }

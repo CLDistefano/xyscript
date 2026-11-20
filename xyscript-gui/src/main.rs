@@ -74,6 +74,39 @@ fn load_face_into(
     true
 }
 
+/// The bundled chrome-symbol face: a tiny (9-glyph) subset of Hack covering the "technical" symbols
+/// the chrome draws — middle dot `·`, box bar `│`, the arrows `← ↑ → ↓`, triangles `▸ ▾`, times `×`.
+/// egui has NO system-font fallback and renders a codepoint from the FIRST font in the family list
+/// that maps it — even to a BLANK glyph — so these must come from a face prepended AHEAD of any
+/// `UIFAMILY` choice. Otherwise a UI font that lacks them (egui's default Ubuntu-Light is itself
+/// missing the arrows and box bar) — or maps one to an empty glyph — shows tofu on the status line
+/// and in picker legends. Letters are untouched: the subset has only those 9 glyphs, so everything
+/// else falls through to the next font in the list.
+pub(crate) const CHROME_SYMBOLS_TTF: &[u8] = include_bytes!("../assets/chrome-symbols.ttf");
+
+/// Prepend [`CHROME_SYMBOLS_TTF`] to the Proportional and Monospace families so chrome symbols render
+/// under any `UIFAMILY`. Idempotent, and leaves the face at index 0 (tried first). Call it LAST, after
+/// any `UIFAMILY`/preview face is inserted, so the symbol face stays ahead of the user's font.
+pub(crate) fn install_chrome_symbols(defs: &mut egui::FontDefinitions) {
+    defs.font_data
+        .entry("xy-chrome-symbols".to_owned())
+        .or_insert_with(|| std::sync::Arc::new(egui::FontData::from_static(CHROME_SYMBOLS_TTF)));
+    for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        let list = defs.families.entry(fam).or_default();
+        list.retain(|k| k != "xy-chrome-symbols");
+        list.insert(0, "xy-chrome-symbols".to_owned());
+    }
+}
+
+/// egui's default fonts plus the bundled chrome-symbol face (symbols first). The base for every egui
+/// context without a `UIFAMILY` of its own (the main context at the default, and the secondary
+/// TXT/DIR/Shell windows when their family is cleared).
+pub(crate) fn default_fonts() -> egui::FontDefinitions {
+    let mut defs = egui::FontDefinitions::default();
+    install_chrome_symbols(&mut defs);
+    defs
+}
+
 /// Build `family` into a fresh `FontDefinitions` (egui's embedded fallbacks retained) and install
 /// it on `ctx`, prepending it to each `target` family. Used for the separate `TXT` window context
 /// (one custom family). `set_fonts` rebuilds the atlas, so callers gate this on an actual change.
@@ -87,6 +120,7 @@ pub(crate) fn apply_egui_family(
 ) -> bool {
     let mut defs = egui::FontDefinitions::default();
     if load_face_into(&mut defs, db, family, "xy-family", targets, bold, italic) {
+        install_chrome_symbols(&mut defs); // keep chrome symbols ahead of the user's face
         ctx.set_fonts(defs);
         true
     } else {
@@ -1113,6 +1147,48 @@ fn discover_langs(dirs: &[std::path::PathBuf]) -> Vec<LangChoice> {
 #[cfg(test)]
 mod menu_tests {
     use super::*;
+
+    #[test]
+    fn chrome_symbol_face_is_prepended_so_separators_never_tofu() {
+        // egui renders a codepoint from the FIRST font in the family that maps it (even to a blank
+        // glyph), so the bundled chrome-symbol face must sit at index 0 of both chrome families — ahead
+        // of any UIFAMILY the user sets. Guards the robustness fix for the status-line "·"/"│"/arrows.
+        let defs = default_fonts();
+        assert!(defs.font_data.contains_key("xy-chrome-symbols"), "symbol face registered");
+        for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            let list = defs.families.get(&fam).expect("family present");
+            assert_eq!(
+                list.first().map(String::as_str),
+                Some("xy-chrome-symbols"),
+                "chrome symbols must be first in {fam:?}, ahead of any UIFAMILY font"
+            );
+        }
+    }
+
+    #[test]
+    fn chrome_symbols_stay_ahead_of_a_uifamily_face() {
+        // The robustness crux: even after a UIFAMILY face is prepended, install_chrome_symbols must put
+        // the symbol face FIRST — otherwise a user font that maps "·" to a blank glyph still wins.
+        let mut defs = egui::FontDefinitions::default();
+        let some_face = defs.font_data.values().next().unwrap().clone();
+        defs.font_data.insert("xy-ui".to_owned(), some_face); // simulate load_face_into's UIFAMILY
+        for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            defs.families.entry(fam).or_default().insert(0, "xy-ui".to_owned());
+        }
+        install_chrome_symbols(&mut defs);
+        for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            let list = &defs.families[&fam];
+            assert_eq!(list[0], "xy-chrome-symbols", "symbol face is first in {fam:?}");
+            assert_eq!(list[1], "xy-ui", "UIFAMILY face sits just behind it");
+        }
+    }
+
+    #[test]
+    fn chrome_symbol_font_asset_is_a_valid_truetype() {
+        // A non-empty TrueType (sfnt signature 0x00010000) — catches the asset going missing or corrupt.
+        assert!(CHROME_SYMBOLS_TTF.len() > 100, "bundled symbol font is present");
+        assert_eq!(&CHROME_SYMBOLS_TTF[0..4], &[0x00, 0x01, 0x00, 0x00], "TrueType sfnt header");
+    }
 
     /// There are two physical copies of the startup keymap: the one the exe BAKES
     /// (`xyscript-kbd/kbd/xyscript-internal.kbd`, the `INTERNAL_KBD` const above) and the loose copy
@@ -2671,6 +2747,9 @@ struct GuiApp {
     /// The `UIFAMILY` + `UISTYLE` currently installed into the main egui context (`None` = egui's
     /// built-in default). Compared each frame so we only `set_fonts` (atlas rebuild) on a change.
     applied_ui_family: Option<(String, FontStyle)>,
+    /// Whether the main egui context's fonts have been installed at least once. Forces the first
+    /// install even at the default (no `UIFAMILY`) so the bundled chrome-symbol face gets prepended.
+    fonts_installed: bool,
     /// The family + style currently loaded into the main ctx's `xy-preview` egui family for the
     /// font picker's live preview (`None` = picker closed). Gates the (atlas-rebuilding) `set_fonts`.
     applied_preview: Option<(String, FontStyle)>,
@@ -3102,6 +3181,7 @@ impl GuiApp {
             swash: SwashCache::new(),
             mono_family,
             applied_ui_family: None,
+            fonts_installed: false,
             applied_preview: None,
             font_picker: None,
             find_dialog: None,
@@ -6869,6 +6949,7 @@ impl GuiApp {
         if let Some((fam, st)) = preview {
             load_face_into(&mut defs, db, fam, "xy-preview-face", &[preview_family_name()], st.bold(), st.italic());
         }
+        install_chrome_symbols(&mut defs); // LAST, so chrome symbols stay ahead of UIFAMILY
         ctx.set_fonts(defs);
     }
 
@@ -9475,8 +9556,14 @@ impl GuiApp {
             .filter(|s| !s.is_empty())
             .map(|s| (s.to_string(), self.editor.ui_font_style()));
         let want_preview = self.font_picker.as_ref().map(|p| (p.selected.clone(), p.style));
-        if want_ui_family != self.applied_ui_family || want_preview != self.applied_preview {
+        // `!fonts_installed` forces one build on the first frame even at the default (no UIFAMILY, no
+        // preview) — otherwise the chrome-symbol face would never get installed into the main context.
+        if !self.fonts_installed
+            || want_ui_family != self.applied_ui_family
+            || want_preview != self.applied_preview
+        {
             self.rebuild_main_fonts(&ctx, want_ui_family.as_ref(), want_preview.as_ref());
+            self.fonts_installed = true;
             self.applied_ui_family = want_ui_family;
             self.applied_preview = want_preview;
             ctx.request_repaint();
