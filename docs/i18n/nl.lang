@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\nl.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Minder   # Less
 menu.settings.appearance.reset_ui = Interfacegrootte herstellen   # Reset UI sizing
 menu.settings.appearance.reset_dw = Mapvenster herstellen   # Reset directory window
 menu.settings.preview = Voorbeeld / PDF-pagina-instelling   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Vensterbreedte (op het scherm)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Aangepast…   # Custom…
 menu.settings.preview.paper = Paginaformaat   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,17 @@ msg.grep.summary_capped = GREP: {matches} in {files} (beperkt tot {cap})   # GRE
 msg.grep.summary = GREP: {matches} in {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} tot nu toe…   # GREP: {matches} so far…
 msg.search.not_found = niet gevonden: {find}   # not found: {find}
+msg.replace.count.one = {n} wijziging   # {n} change
+msg.replace.count.other = {n} wijzigingen   # {n} changes
 msg.open.not_found = bestand niet gevonden: {path}   # file not found: {path}
 msg.save.written = opgeslagen {name}   # saved {name}
 msg.readonly = document is alleen-lezen (RO om te ontgrendelen)   # document is read-only (RO to unlock)
 msg.hex_readonly = hex-weergave is alleen-lezen voor tekstbewerkingen (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: bezig met zoeken…   # GREP: searching…
+msg.count.selection = Selectie   # Selection
+msg.count.document = Document   # Document
+msg.count.word.one = woord   # word
+msg.count.word.other = woorden   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.char.one = teken   # character
+msg.count.char.other = tekens   # characters

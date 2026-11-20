@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\no.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Mindre   # Less
 menu.settings.appearance.reset_ui = Tilbakestill grensesnittsstørrelse   # Reset UI sizing
 menu.settings.appearance.reset_dw = Tilbakestill katalogvindu   # Reset directory window
 menu.settings.preview = Forhåndsvisning / PDF-sideoppsett   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Rutebredde (på skjermen)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Tilpasset…   # Custom…
 menu.settings.preview.paper = Sideformat   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,17 @@ msg.grep.summary_capped = GREP: {matches} i {files} (begrenset til {cap})   # GR
 msg.grep.summary = GREP: {matches} i {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} så langt…   # GREP: {matches} so far…
 msg.search.not_found = ikke funnet: {find}   # not found: {find}
+msg.replace.count.one = {n} endring   # {n} change
+msg.replace.count.other = {n} endringer   # {n} changes
 msg.open.not_found = fant ikke filen: {path}   # file not found: {path}
 msg.save.written = lagret {name}   # saved {name}
 msg.readonly = dokumentet er skrivebeskyttet (RO for å låse opp)   # document is read-only (RO to unlock)
 msg.hex_readonly = hex-visning er skrivebeskyttet for tekstredigering (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: søker…   # GREP: searching…
+msg.count.selection = Merket område   # Selection
+msg.count.document = Dokument   # Document
+msg.count.word.one = ord   # word
+msg.count.word.other = ord   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.char.one = tegn   # character
+msg.count.char.other = tegn   # characters

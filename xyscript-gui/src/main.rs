@@ -1947,6 +1947,12 @@ mod menu_tests {
             if path.extension().and_then(|x| x.to_str()) != Some("lang") {
                 continue;
             }
+            // Skip user-override overlays (`<xx>.local.lang`) — they're PARTIAL files (just a user's
+            // tweaked keys), not full catalogs, so loading one as a catalog leaves most labels English.
+            // Same exclusion the Language menu's `discover_langs` applies.
+            if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".local.lang")) {
+                continue;
+            }
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
             // Skip the English source and the pseudolocale — same exclusions as the Language menu.
             if NON_LANGUAGE_LANGS.iter().any(|s| stem.eq_ignore_ascii_case(s)) {

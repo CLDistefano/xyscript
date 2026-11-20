@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ru.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -265,8 +265,8 @@ menu.settings.appearance.line_spacing.less = Меньше   # Less
 menu.settings.appearance.reset_ui = Сбросить размеры интерфейса   # Reset UI sizing
 menu.settings.appearance.reset_dw = Сбросить окно каталога   # Reset directory window
 menu.settings.preview = Предпросмотр / параметры страницы PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Ширина панели (на экране)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Другое…   # Custom…
 menu.settings.preview.paper = Формат страницы   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -408,8 +408,20 @@ msg.grep.summary_capped = GREP: {matches}, {files} (не более {cap})   # G
 msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: пока {matches}…   # GREP: {matches} so far…
 msg.search.not_found = не найдено: {find}   # not found: {find}
+msg.replace.count.one = {n} изменение   # {n} change
+msg.replace.count.few = {n} изменения   # {n} changes
+msg.replace.count.many = {n} изменений   # {n} changes
 msg.open.not_found = файл не найден: {path}   # file not found: {path}
 msg.save.written = сохранено {name}   # saved {name}
 msg.readonly = документ только для чтения (RO для разблокировки)   # document is read-only (RO to unlock)
 msg.hex_readonly = шестнадцатеричный вид доступен только для чтения текста (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: поиск…   # GREP: searching…
+msg.count.selection = Выделенное   # Selection
+msg.count.document = Документ   # Document
+msg.count.word.one = слово   # word
+msg.count.word.few = слова   # words
+msg.count.word.many = слов   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.char.one = символ   # character
+msg.count.char.few = символа   # characters
+msg.count.char.many = символов   # characters

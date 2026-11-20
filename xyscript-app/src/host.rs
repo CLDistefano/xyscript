@@ -7832,8 +7832,7 @@ impl AppHost {
                     Err(XplError::trappable_code(ErrCode::SearchNotFound, self.tr_fmt("msg.search.not_found", "not found: {find}", &[("find", &find)])))
                 } else {
                     // XyWrite-style: the caret stayed put, so report the tally on the status line.
-                    let msg = if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
-                    Ok(Value::str(msg))
+                    Ok(Value::str(self.tr_plural("msg.replace.count", "{n} change", "{n} changes", n)))
                 }
             }
         }
@@ -13402,24 +13401,38 @@ impl Host for AppHost {
                 return Ok(Value::str(format!("document type: {kind} ({how})")));
             }
             EditorOp::WordCount => {
-                let b = self.docs[self.active].buffer();
-                let (n, label) = if b.has_selection() {
-                    (b.selection_word_count(), "Selection")
-                } else {
-                    (b.word_count(), "Document")
+                let (n, selected) = {
+                    let b = self.docs[self.active].buffer();
+                    if b.has_selection() { (b.selection_word_count(), true) } else { (b.word_count(), false) }
                 };
-                let s = if n == 1 { "" } else { "s" };
-                return Ok(Value::str(format!("{label}: {n} word{s}")));
+                let scope = if selected {
+                    self.tr_msg("msg.count.selection", "Selection")
+                } else {
+                    self.tr_msg("msg.count.document", "Document")
+                };
+                let noun = self.tr_plural("msg.count.word", "word", "words", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.count.result",
+                    "{scope}: {n} {noun}",
+                    &[("scope", &scope), ("n", &n), ("noun", &noun)],
+                )));
             }
             EditorOp::CharCount => {
-                let b = self.docs[self.active].buffer();
-                let (n, label) = if b.has_selection() {
-                    (b.selection_char_count(), "Selection")
-                } else {
-                    (b.char_count(), "Document")
+                let (n, selected) = {
+                    let b = self.docs[self.active].buffer();
+                    if b.has_selection() { (b.selection_char_count(), true) } else { (b.char_count(), false) }
                 };
-                let s = if n == 1 { "" } else { "s" };
-                return Ok(Value::str(format!("{label}: {n} character{s}")));
+                let scope = if selected {
+                    self.tr_msg("msg.count.selection", "Selection")
+                } else {
+                    self.tr_msg("msg.count.document", "Document")
+                };
+                let noun = self.tr_plural("msg.count.char", "character", "characters", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.count.result",
+                    "{scope}: {n} {noun}",
+                    &[("scope", &scope), ("n", &n), ("noun", &noun)],
+                )));
             }
             EditorOp::Sort(spec) => {
                 let (n_in, n_out) = self.active().sort_selection(&spec).map_err(XplError::trappable)?;

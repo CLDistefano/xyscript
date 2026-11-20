@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fi.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Vähemmän   # Less
 menu.settings.appearance.reset_ui = Palauta käyttöliittymän koko   # Reset UI sizing
 menu.settings.appearance.reset_dw = Palauta hakemistoikkuna   # Reset directory window
 menu.settings.preview = Esikatselu / PDF-sivuasetukset   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Esikatseluruudun leveys (näytöllä)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Mukautettu…   # Custom…
 menu.settings.preview.paper = Sivukoko   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,17 @@ msg.grep.summary_capped = GREP: {matches}, {files} (enintään {cap})   # GREP: 
 msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} toistaiseksi…   # GREP: {matches} so far…
 msg.search.not_found = ei löytynyt: {find}   # not found: {find}
+msg.replace.count.one = {n} muutos   # {n} change
+msg.replace.count.other = {n} muutosta   # {n} changes
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
 msg.save.written = tallennettu {name}   # saved {name}
 msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
 msg.hex_readonly = heksanäkymä on vain luku -tilassa tekstimuokkauksille (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: etsitään…   # GREP: searching…
+msg.count.selection = Valinta   # Selection
+msg.count.document = Asiakirja   # Document
+msg.count.word.one = sana   # word
+msg.count.word.other = sanaa   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.char.one = merkki   # character
+msg.count.char.other = merkkiä   # characters

@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\pt.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Menos   # Less
 menu.settings.appearance.reset_ui = Repor dimensões da interface   # Reset UI sizing
 menu.settings.appearance.reset_dw = Repor janela de diretório   # Reset directory window
 menu.settings.preview = Pré-visualização / configuração de página PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Largura do painel (no ecrã)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Personalizado…   # Custom…
 menu.settings.preview.paper = Formato da página   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,17 @@ msg.grep.summary_capped = GREP: {matches} em {files} (limitado a {cap})   # GREP
 msg.grep.summary = GREP: {matches} em {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} até agora…   # GREP: {matches} so far…
 msg.search.not_found = não encontrado: {find}   # not found: {find}
+msg.replace.count.one = {n} alteração   # {n} change
+msg.replace.count.other = {n} alterações   # {n} changes
 msg.open.not_found = ficheiro não encontrado: {path}   # file not found: {path}
 msg.save.written = guardado {name}   # saved {name}
 msg.readonly = documento só de leitura (RO para desbloquear)   # document is read-only (RO to unlock)
 msg.hex_readonly = a vista hexadecimal é só de leitura para edições de texto (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: a procurar…   # GREP: searching…
+msg.count.selection = Seleção   # Selection
+msg.count.document = Documento   # Document
+msg.count.word.one = palavra   # word
+msg.count.word.other = palavras   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.char.one = caractere   # character
+msg.count.char.other = caracteres   # characters
