@@ -8145,6 +8145,43 @@ msg.replace.count.other = {n} muutosta
     }
 
     #[test]
+    fn clip_sort_bookmark_messages_localize() {
+        // Clipboard (character counts), sort, and bookmark status reports route through the catalog.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        let cat = "\
+msg.count.char.one = merkki
+msg.count.char.other = merkkiä
+msg.count.line.one = rivi
+msg.count.line.other = riviä
+msg.clip.copied = kopioitu {n} {noun}
+msg.sort.sorted = järjestetty {n} {noun}
+msg.bookmark.set = kirjanmerkki asetettu ({n} yhteensä)
+msg.bookmark.nav = kirjanmerkki {index}/{total}
+msg.bookmark.nav_moved = kirjanmerkki {index}/{total} — siirretty
+";
+        e.host_mut().files.insert("fi.lang".into(), cat.into());
+        e.run_command("LANG fi.lang");
+        e.run_command("insert \"charlie\\nbravo\\nalpha\\n\""); // 20 chars, 3 lines
+        e.run_command("TOP");
+        e.run_command("DF");
+        e.run_command("BOTTOM"); // select the whole document
+        e.run_command("COPY");
+        assert_eq!(e.status_message(), Some("kopioitu 20 merkkiä")); // Finnish partitive noun
+        e.run_command("SORT"); // "SORT{flags}:" prefix stays, the body localizes
+        assert_eq!(e.status_message(), Some("SORT: järjestetty 3 riviä"));
+        e.run_command("TOP");
+        e.run_command("MARKSET");
+        assert_eq!(e.status_message(), Some("kirjanmerkki asetettu (1 yhteensä)"));
+        e.run_command("MARKNEXT"); // navigation frame localizes ("bookmark 2/5" family)
+        assert!(
+            e.status_message().is_some_and(|s| s.starts_with("kirjanmerkki 1/1")),
+            "bookmark nav localized: {:?}",
+            e.status_message()
+        );
+    }
+
+    #[test]
     fn extend_search_switch_grows_a_define_to_the_match() {
         // The "delete to the next period" gesture: DF at the cursor, then SE/X extends the define
         // through the match instead of replacing the selection with just ".".

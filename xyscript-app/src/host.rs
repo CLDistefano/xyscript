@@ -7857,7 +7857,8 @@ impl AppHost {
                     let bytes = bytes.ok_or_else(|| XplError::trappable_code(ErrCode::NothingSelected, "no bytes selected"))?;
                     let n = bytes.len();
                     self.hex_clipboard = bytes;
-                    return Ok(Value::str(format!("copied {n} byte{}", if n == 1 { "" } else { "s" })));
+                    let noun = self.tr_plural("msg.count.byte", "byte", "bytes", n);
+                    return Ok(Value::str(self.tr_fmt("msg.clip.copied", "copied {n} {noun}", &[("n", &n), ("noun", &noun)])));
                 }
                 ClipKind::Cut => {
                     let removed = self.active().hex_delete_selection();
@@ -7866,16 +7867,18 @@ impl AppHost {
                     }
                     let n = removed.len();
                     self.hex_clipboard = removed;
-                    return Ok(Value::str(format!("cut {n} byte{}", if n == 1 { "" } else { "s" })));
+                    let noun = self.tr_plural("msg.count.byte", "byte", "bytes", n);
+                    return Ok(Value::str(self.tr_fmt("msg.clip.cut", "cut {n} {noun}", &[("n", &n), ("noun", &noun)])));
                 }
                 ClipKind::Paste => {
                     if self.hex_clipboard.is_empty() {
-                        return Ok(Value::str("byte clipboard is empty"));
+                        return Ok(Value::str(self.tr_msg("msg.clip.hex_empty", "byte clipboard is empty")));
                     }
                     let bytes = self.hex_clipboard.clone();
                     let n = bytes.len();
                     self.active().hex_paste(&bytes);
-                    return Ok(Value::str(format!("pasted {n} byte{}", if n == 1 { "" } else { "s" })));
+                    let noun = self.tr_plural("msg.count.byte", "byte", "bytes", n);
+                    return Ok(Value::str(self.tr_fmt("msg.clip.pasted", "pasted {n} {noun}", &[("n", &n), ("noun", &noun)])));
                 }
                 _ => unreachable!("guard restricts to Copy/Cut/Paste"),
             }
@@ -7896,8 +7899,7 @@ impl AppHost {
                 Vec::new()
             }
         };
-        // Each arm yields the status message (surfaced by the VM's `host_op`). `chars` = "N character(s)".
-        let chars = |n: usize| format!("{n} character{}", if n == 1 { "" } else { "s" });
+        // Each arm yields the status message (surfaced by the VM's `host_op`).
         let msg = match kind {
             ClipKind::Set(text) => {
                 self.clipboard = text;
@@ -7920,7 +7922,9 @@ impl AppHost {
                     self.clipboard_pieces = pieces;
                     self.clipboard_style = None; // per-piece multi-caret styling not carried yet
                 }
-                format!("copied {}", chars(self.clipboard.chars().count()))
+                let count = self.clipboard.chars().count();
+                let noun = self.tr_plural("msg.count.char", "character", "characters", count);
+                self.tr_fmt("msg.clip.copied", "copied {n} {noun}", &[("n", &count), ("noun", &noun)])
             }
             ClipKind::Cut => {
                 let pieces = multi_pieces(self);
@@ -7938,20 +7942,22 @@ impl AppHost {
                     self.clipboard_style = None;
                     self.active().delete_all_selections();
                 }
-                format!("cut {}", chars(self.clipboard.chars().count()))
+                let count = self.clipboard.chars().count();
+                let noun = self.tr_plural("msg.count.char", "character", "characters", count);
+                self.tr_fmt("msg.clip.cut", "cut {n} {noun}", &[("n", &count), ("noun", &noun)])
             }
             ClipKind::Append => {
                 self.clipboard.push_str(&selection.ok_or_else(need_selection)?);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
                 self.clipboard_style = None; // the concatenation no longer maps to one styled run
-                "appended the selection to the clipboard".to_string()
+                self.tr_msg("msg.clip.appended", "appended the selection to the clipboard")
             }
             ClipKind::Prepend => {
                 self.clipboard =
                     format!("{}{}", selection.ok_or_else(need_selection)?, self.clipboard);
                 self.clipboard_pieces = vec![self.clipboard.clone()];
                 self.clipboard_style = None;
-                "prepended the selection to the clipboard".to_string()
+                self.tr_msg("msg.clip.prepended", "prepended the selection to the clipboard")
             }
             ClipKind::Paste => {
                 let n = self.active().caret_count();
@@ -7970,7 +7976,8 @@ impl AppHost {
                     self.active().insert_styled(&text, style.as_ref());
                     count
                 };
-                format!("pasted {}", chars(pasted))
+                let noun = self.tr_plural("msg.count.char", "character", "characters", pasted);
+                self.tr_fmt("msg.clip.pasted", "pasted {n} {noun}", &[("n", &pasted), ("noun", &noun)])
             }
         };
         Ok(Value::str(msg))
@@ -10652,10 +10659,16 @@ impl AppHost {
         match nav {
             Some(nav) => {
                 self.reveal_center = true; // scroll the target to mid-screen, like a search landing
-                let moved = if nav.moved { " — moved" } else { "" };
-                Ok(Value::str(format!("bookmark {}/{}{moved}", nav.index, nav.total)))
+                // Two whole frames rather than a " — moved" fragment: catalog values are trimmed on
+                // load, so a leading-space suffix would lose its separator in a translated catalog.
+                let args: &[(&str, &dyn std::fmt::Display)] = &[("index", &nav.index), ("total", &nav.total)];
+                Ok(Value::str(if nav.moved {
+                    self.tr_fmt("msg.bookmark.nav_moved", "bookmark {index}/{total} — moved", args)
+                } else {
+                    self.tr_fmt("msg.bookmark.nav", "bookmark {index}/{total}", args)
+                }))
             }
-            None => Err(XplError::trappable("no bookmarks")),
+            None => Err(XplError::trappable(self.tr_msg("msg.bookmark.none", "no bookmarks"))),
         }
     }
 }
@@ -13452,15 +13465,21 @@ impl Host for AppHost {
                 if let Some(n) = spec.n_take {
                     flags.push_str(&format!("/N:{n}"));
                 }
-                let msg = if spec.dedup && n_out < n_in {
+                let body = if spec.dedup && n_out < n_in {
                     let removed = n_in - n_out;
-                    let s = if removed == 1 { "" } else { "s" };
-                    format!("SORT{flags}: {n_in} -> {n_out} lines ({removed} dup{s} removed)")
+                    let noun = self.tr_plural("msg.count.line", "line", "lines", n_out);
+                    let dups = self.tr_plural("msg.sort.dup", "{n} dup", "{n} dups", removed);
+                    self.tr_fmt(
+                        "msg.sort.deduped",
+                        "{from} -> {to} {noun} ({dups} removed)",
+                        &[("from", &n_in), ("to", &n_out), ("noun", &noun), ("dups", &dups)],
+                    )
                 } else {
-                    let s = if n_out == 1 { "" } else { "s" };
-                    format!("SORT{flags}: sorted {n_out} line{s}")
+                    let noun = self.tr_plural("msg.count.line", "line", "lines", n_out);
+                    self.tr_fmt("msg.sort.sorted", "sorted {n} {noun}", &[("n", &n_out), ("noun", &noun)])
                 };
-                return Ok(Value::str(msg));
+                // `SORT{flags}:` echoes the command + its English switches; the body is localized.
+                return Ok(Value::str(format!("SORT{flags}: {body}")));
             }
             EditorOp::SetHighlight(on) => {
                 // Highlighting acts on the active document (not the cmline). The document resolves
@@ -13485,41 +13504,41 @@ impl Host for AppHost {
                 if self.active().mark_set(name) {
                     let n = self.active().mark_count();
                     return Ok(Value::str(match named {
-                        Some(nm) => format!("bookmark \"{nm}\" set ({n} total)"),
-                        None => format!("bookmark set ({n} total)"),
+                        Some(nm) => self.tr_fmt("msg.bookmark.set_named", "bookmark \"{name}\" set ({n} total)", &[("name", &nm), ("n", &n)]),
+                        None => self.tr_fmt("msg.bookmark.set", "bookmark set ({n} total)", &[("n", &n)]),
                     }));
                 }
-                return Err(XplError::trappable("bookmark already set here"));
+                return Err(XplError::trappable(self.tr_msg("msg.bookmark.already_set", "bookmark already set here")));
             }
             EditorOp::MarkGoto { name } => {
                 if self.active().mark_goto_name(&name).is_some() {
                     self.reveal_center = true; // scroll the target to mid-screen, like MARKNEXT/PREV
-                    return Ok(Value::str(format!("bookmark \"{name}\"")));
+                    return Ok(Value::str(self.tr_fmt("msg.bookmark.goto", "bookmark \"{name}\"", &[("name", &name)])));
                 }
-                return Err(XplError::trappable(format!("GOMARK: no bookmark named \"{name}\"")));
+                return Err(XplError::trappable(self.tr_fmt("msg.bookmark.goto_missing", "GOMARK: no bookmark named \"{name}\"", &[("name", &name)])));
             }
             EditorOp::MarkClear => {
                 if self.active().mark_clear() {
                     let n = self.active().mark_count();
-                    return Ok(Value::str(format!("bookmark cleared ({n} left)")));
+                    return Ok(Value::str(self.tr_fmt("msg.bookmark.cleared", "bookmark cleared ({n} left)", &[("n", &n)])));
                 }
-                return Err(XplError::trappable("no bookmark here"));
+                return Err(XplError::trappable(self.tr_msg("msg.bookmark.none_here", "no bookmark here")));
             }
             EditorOp::MarkClearAll => {
                 let n = self.active().mark_clear_all();
-                return Ok(Value::str(match n {
-                    0 => "no bookmarks to clear".to_string(),
-                    1 => "1 bookmark cleared".to_string(),
-                    _ => format!("{n} bookmarks cleared"),
+                return Ok(Value::str(if n == 0 {
+                    self.tr_msg("msg.bookmark.none_to_clear", "no bookmarks to clear")
+                } else {
+                    self.tr_plural("msg.bookmark.clearall", "{n} bookmark cleared", "{n} bookmarks cleared", n)
                 }));
             }
             EditorOp::MarkToggle => {
                 let now = self.active().mark_toggle();
                 let n = self.active().mark_count();
                 return Ok(Value::str(if now {
-                    format!("bookmark set ({n} total)")
+                    self.tr_fmt("msg.bookmark.set", "bookmark set ({n} total)", &[("n", &n)])
                 } else {
-                    format!("bookmark cleared ({n} left)")
+                    self.tr_fmt("msg.bookmark.cleared", "bookmark cleared ({n} left)", &[("n", &n)])
                 }));
             }
             EditorOp::MarkNext => {
