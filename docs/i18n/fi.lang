@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fi.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Vähemmän   # Less
 menu.settings.appearance.reset_ui = Palauta käyttöliittymän koko   # Reset UI sizing
 menu.settings.appearance.reset_dw = Palauta hakemistoikkuna   # Reset directory window
 menu.settings.preview = Esikatselu / PDF-sivuasetukset   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Esikatseluruudun leveys (näytöllä)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Mukautettu…   # Custom…
 menu.settings.preview.paper = Sivukoko   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP: {matches}, {files} (enintään {cap})   # GREP: 
 msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} toistaiseksi…   # GREP: {matches} so far…
 msg.search.not_found = ei löytynyt: {find}   # not found: {find}
+msg.replace.count.one = {n} muutos   # {n} change
+msg.replace.count.other = {n} muutosta   # {n} changes
+msg.count.byte.one = tavu   # byte
+msg.count.byte.other = tavua   # bytes
+msg.clip.copied = kopioitu {n} {noun}   # copied {n} {noun}
+msg.clip.cut = leikattu {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = tavuleikepöytä on tyhjä   # byte clipboard is empty
+msg.clip.pasted = liitetty {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = merkki   # character
+msg.count.char.other = merkkiä   # characters
+msg.clip.appended = valinta lisätty leikepöydän loppuun   # appended the selection to the clipboard
+msg.clip.prepended = valinta lisätty leikepöydän alkuun   # prepended the selection to the clipboard
 msg.open.not_found = tiedostoa ei löytynyt: {path}   # file not found: {path}
 msg.save.written = tallennettu {name}   # saved {name}
+msg.bookmark.nav_moved = kirjanmerkki {index}/{total} — siirretty   # bookmark {index}/{total} — moved
+msg.bookmark.nav = kirjanmerkki {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = ei kirjanmerkkejä   # no bookmarks
 msg.readonly = asiakirja on vain luku -tilassa (RO avaa lukituksen)   # document is read-only (RO to unlock)
 msg.hex_readonly = heksanäkymä on vain luku -tilassa tekstimuokkauksille (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: etsitään…   # GREP: searching…
+msg.count.selection = Valinta   # Selection
+msg.count.document = Asiakirja   # Document
+msg.count.word.one = sana   # word
+msg.count.word.other = sanaa   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = rivi   # line
+msg.count.line.other = riviä   # lines
+msg.sort.dup.one = {n} kaksoiskappale   # {n} dup
+msg.sort.dup.other = {n} kaksoiskappaletta   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} poistettu)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = järjestetty {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = kirjanmerkki "{name}" asetettu ({n} yhteensä)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = kirjanmerkki asetettu ({n} yhteensä)   # bookmark set ({n} total)
+msg.bookmark.already_set = kirjanmerkki on jo asetettu tähän   # bookmark already set here
+msg.bookmark.goto = kirjanmerkki "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: ei kirjanmerkkiä nimeltä "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = kirjanmerkki poistettu ({n} jäljellä)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = ei kirjanmerkkiä tässä   # no bookmark here
+msg.bookmark.none_to_clear = ei poistettavia kirjanmerkkejä   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} kirjanmerkki poistettu   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} kirjanmerkkiä poistettu   # {n} bookmarks cleared

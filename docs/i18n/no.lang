@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\no.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Mindre   # Less
 menu.settings.appearance.reset_ui = Tilbakestill grensesnittsstørrelse   # Reset UI sizing
 menu.settings.appearance.reset_dw = Tilbakestill katalogvindu   # Reset directory window
 menu.settings.preview = Forhåndsvisning / PDF-sideoppsett   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Rutebredde (på skjermen)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Tilpasset…   # Custom…
 menu.settings.preview.paper = Sideformat   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP: {matches} i {files} (begrenset til {cap})   # GR
 msg.grep.summary = GREP: {matches} i {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} så langt…   # GREP: {matches} so far…
 msg.search.not_found = ikke funnet: {find}   # not found: {find}
+msg.replace.count.one = {n} endring   # {n} change
+msg.replace.count.other = {n} endringer   # {n} changes
+msg.count.byte.one = byte   # byte
+msg.count.byte.other = byte   # bytes
+msg.clip.copied = kopierte {n} {noun}   # copied {n} {noun}
+msg.clip.cut = klippet ut {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = byte-utklippstavlen er tom   # byte clipboard is empty
+msg.clip.pasted = limte inn {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = tegn   # character
+msg.count.char.other = tegn   # characters
+msg.clip.appended = la til det merkede området på utklippstavlen   # appended the selection to the clipboard
+msg.clip.prepended = satte det merkede området foran på utklippstavlen   # prepended the selection to the clipboard
 msg.open.not_found = fant ikke filen: {path}   # file not found: {path}
 msg.save.written = lagret {name}   # saved {name}
+msg.bookmark.nav_moved = bokmerke {index}/{total} — flyttet   # bookmark {index}/{total} — moved
+msg.bookmark.nav = bokmerke {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = ingen bokmerker   # no bookmarks
 msg.readonly = dokumentet er skrivebeskyttet (RO for å låse opp)   # document is read-only (RO to unlock)
 msg.hex_readonly = hex-visning er skrivebeskyttet for tekstredigering (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: søker…   # GREP: searching…
+msg.count.selection = Merket område   # Selection
+msg.count.document = Dokument   # Document
+msg.count.word.one = ord   # word
+msg.count.word.other = ord   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = linje   # line
+msg.count.line.other = linjer   # lines
+msg.sort.dup.one = {n} duplikat   # {n} dup
+msg.sort.dup.other = {n} duplikater   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} fjernet)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = sorterte {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = bokmerke "{name}" satt ({n} totalt)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = bokmerke satt ({n} totalt)   # bookmark set ({n} total)
+msg.bookmark.already_set = bokmerke allerede satt her   # bookmark already set here
+msg.bookmark.goto = bokmerke "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: ingen bokmerke med navnet "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = bokmerke fjernet ({n} igjen)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = ingen bokmerke her   # no bookmark here
+msg.bookmark.none_to_clear = ingen bokmerker å fjerne   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} bokmerke fjernet   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} bokmerker fjernet   # {n} bookmarks cleared

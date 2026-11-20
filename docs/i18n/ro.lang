@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\ro.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -265,8 +265,8 @@ menu.settings.appearance.line_spacing.less = Mai mică   # Less
 menu.settings.appearance.reset_ui = Resetează dimensiunea interfeței   # Reset UI sizing
 menu.settings.appearance.reset_dw = Resetează fereastra directorului   # Reset directory window
 menu.settings.preview = Previzualizare / configurare pagină PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Lățimea panoului (pe ecran)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Personalizat…   # Custom…
 menu.settings.preview.paper = Format pagină   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -408,8 +408,51 @@ msg.grep.summary_capped = GREP: {matches} în {files} (limitat la {cap})   # GRE
 msg.grep.summary = GREP: {matches} în {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} până acum…   # GREP: {matches} so far…
 msg.search.not_found = negăsit: {find}   # not found: {find}
+msg.replace.count.one = {n} modificare   # {n} change
+msg.replace.count.few = {n} modificări   # {n} changes
+msg.replace.count.other = {n} de modificări   # {n} changes
+msg.count.byte.one = octet   # byte
+msg.count.byte.few = octeți   # bytes
+msg.count.byte.other = de octeți   # bytes
+msg.clip.copied = copiat {n} {noun}   # copied {n} {noun}
+msg.clip.cut = decupat {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = clipboardul de octeți este gol   # byte clipboard is empty
+msg.clip.pasted = lipit {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = caracter   # character
+msg.count.char.few = caractere   # characters
+msg.count.char.other = de caractere   # characters
+msg.clip.appended = selecția adăugată la clipboard   # appended the selection to the clipboard
+msg.clip.prepended = selecția adăugată la începutul clipboardului   # prepended the selection to the clipboard
 msg.open.not_found = fișier negăsit: {path}   # file not found: {path}
 msg.save.written = salvat {name}   # saved {name}
+msg.bookmark.nav_moved = marcaj {index}/{total} — mutat   # bookmark {index}/{total} — moved
+msg.bookmark.nav = marcaj {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = niciun marcaj   # no bookmarks
 msg.readonly = documentul este doar-citire (RO pentru deblocare)   # document is read-only (RO to unlock)
 msg.hex_readonly = vizualizarea hexazecimală este doar-citire pentru editarea textului (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: se caută…   # GREP: searching…
+msg.count.selection = Selecția   # Selection
+msg.count.document = Document   # Document
+msg.count.word.one = cuvânt   # word
+msg.count.word.few = cuvinte   # words
+msg.count.word.other = de cuvinte   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = rând   # line
+msg.count.line.few = rânduri   # lines
+msg.count.line.other = de rânduri   # lines
+msg.sort.dup.one = {n} duplicat   # {n} dup
+msg.sort.dup.few = {n} duplicate   # {n} dups
+msg.sort.dup.other = {n} de duplicate   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} eliminate)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = sortat {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = marcaj "{name}" setat ({n} în total)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = marcaj setat ({n} în total)   # bookmark set ({n} total)
+msg.bookmark.already_set = marcaj deja setat aici   # bookmark already set here
+msg.bookmark.goto = marcaj "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: niciun marcaj numit "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = marcaj șters ({n} rămase)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = niciun marcaj aici   # no bookmark here
+msg.bookmark.none_to_clear = niciun marcaj de șters   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} marcaj șters   # {n} bookmark cleared
+msg.bookmark.clearall.few = {n} marcaje șterse   # {n} bookmarks cleared
+msg.bookmark.clearall.other = {n} de marcaje șterse   # {n} bookmarks cleared

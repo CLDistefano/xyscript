@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\pl.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 # Plural rule for this language — drives the singular/few/many selection in count
@@ -265,8 +265,8 @@ menu.settings.appearance.line_spacing.less = Mniejszy   # Less
 menu.settings.appearance.reset_ui = Przywróć rozmiary interfejsu   # Reset UI sizing
 menu.settings.appearance.reset_dw = Przywróć okno katalogu   # Reset directory window
 menu.settings.preview = Podgląd / ustawienia strony PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Szerokość panelu (na ekranie)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Niestandardowy…   # Custom…
 menu.settings.preview.paper = Format strony   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -408,8 +408,51 @@ msg.grep.summary_capped = GREP: {matches}, {files} (ograniczono do {cap})   # GR
 msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: dotychczas {matches}…   # GREP: {matches} so far…
 msg.search.not_found = nie znaleziono: {find}   # not found: {find}
+msg.replace.count.one = {n} zmiana   # {n} change
+msg.replace.count.few = {n} zmiany   # {n} changes
+msg.replace.count.many = {n} zmian   # {n} changes
+msg.count.byte.one = bajt   # byte
+msg.count.byte.few = bajty   # bytes
+msg.count.byte.many = bajtów   # bytes
+msg.clip.copied = skopiowano {n} {noun}   # copied {n} {noun}
+msg.clip.cut = wycięto {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = schowek bajtów jest pusty   # byte clipboard is empty
+msg.clip.pasted = wklejono {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = znak   # character
+msg.count.char.few = znaki   # characters
+msg.count.char.many = znaków   # characters
+msg.clip.appended = dołączono zaznaczenie do schowka   # appended the selection to the clipboard
+msg.clip.prepended = wstawiono zaznaczenie na początek schowka   # prepended the selection to the clipboard
 msg.open.not_found = nie znaleziono pliku: {path}   # file not found: {path}
 msg.save.written = zapisano {name}   # saved {name}
+msg.bookmark.nav_moved = zakładka {index}/{total} — przeniesiona   # bookmark {index}/{total} — moved
+msg.bookmark.nav = zakładka {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = brak zakładek   # no bookmarks
 msg.readonly = dokument jest tylko do odczytu (RO odblokowuje)   # document is read-only (RO to unlock)
 msg.hex_readonly = widok szesnastkowy jest tylko do odczytu dla zmian tekstu (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: wyszukiwanie…   # GREP: searching…
+msg.count.selection = Zaznaczenie   # Selection
+msg.count.document = Dokument   # Document
+msg.count.word.one = słowo   # word
+msg.count.word.few = słowa   # words
+msg.count.word.many = słów   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = wiersz   # line
+msg.count.line.few = wiersze   # lines
+msg.count.line.many = wierszy   # lines
+msg.sort.dup.one = {n} duplikat   # {n} dup
+msg.sort.dup.few = {n} duplikaty   # {n} dups
+msg.sort.dup.many = {n} duplikatów   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} (usunięto {dups})   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = posortowano {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = ustawiono zakładkę „{name}” (łącznie {n})   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = ustawiono zakładkę (łącznie {n})   # bookmark set ({n} total)
+msg.bookmark.already_set = zakładka już tu ustawiona   # bookmark already set here
+msg.bookmark.goto = zakładka „{name}”   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: brak zakładki o nazwie „{name}”   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = usunięto zakładkę (pozostało {n})   # bookmark cleared ({n} left)
+msg.bookmark.none_here = brak zakładki w tym miejscu   # no bookmark here
+msg.bookmark.none_to_clear = brak zakładek do usunięcia   # no bookmarks to clear
+msg.bookmark.clearall.one = usunięto {n} zakładkę   # {n} bookmark cleared
+msg.bookmark.clearall.few = usunięto {n} zakładki   # {n} bookmarks cleared
+msg.bookmark.clearall.many = usunięto {n} zakładek   # {n} bookmarks cleared

@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\nl.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Minder   # Less
 menu.settings.appearance.reset_ui = Interfacegrootte herstellen   # Reset UI sizing
 menu.settings.appearance.reset_dw = Mapvenster herstellen   # Reset directory window
 menu.settings.preview = Voorbeeld / PDF-pagina-instelling   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Vensterbreedte (op het scherm)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Aangepast…   # Custom…
 menu.settings.preview.paper = Paginaformaat   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP: {matches} in {files} (beperkt tot {cap})   # GRE
 msg.grep.summary = GREP: {matches} in {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} tot nu toe…   # GREP: {matches} so far…
 msg.search.not_found = niet gevonden: {find}   # not found: {find}
+msg.replace.count.one = {n} wijziging   # {n} change
+msg.replace.count.other = {n} wijzigingen   # {n} changes
+msg.count.byte.one = byte   # byte
+msg.count.byte.other = bytes   # bytes
+msg.clip.copied = {n} {noun} gekopieerd   # copied {n} {noun}
+msg.clip.cut = {n} {noun} geknipt   # cut {n} {noun}
+msg.clip.hex_empty = byteklembord is leeg   # byte clipboard is empty
+msg.clip.pasted = {n} {noun} geplakt   # pasted {n} {noun}
+msg.count.char.one = teken   # character
+msg.count.char.other = tekens   # characters
+msg.clip.appended = de selectie aan het klembord toegevoegd   # appended the selection to the clipboard
+msg.clip.prepended = de selectie vooraan aan het klembord toegevoegd   # prepended the selection to the clipboard
 msg.open.not_found = bestand niet gevonden: {path}   # file not found: {path}
 msg.save.written = opgeslagen {name}   # saved {name}
+msg.bookmark.nav_moved = bladwijzer {index}/{total} — verplaatst   # bookmark {index}/{total} — moved
+msg.bookmark.nav = bladwijzer {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = geen bladwijzers   # no bookmarks
 msg.readonly = document is alleen-lezen (RO om te ontgrendelen)   # document is read-only (RO to unlock)
 msg.hex_readonly = hex-weergave is alleen-lezen voor tekstbewerkingen (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: bezig met zoeken…   # GREP: searching…
+msg.count.selection = Selectie   # Selection
+msg.count.document = Document   # Document
+msg.count.word.one = woord   # word
+msg.count.word.other = woorden   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = regel   # line
+msg.count.line.other = regels   # lines
+msg.sort.dup.one = {n} duplicaat   # {n} dup
+msg.sort.dup.other = {n} duplicaten   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} verwijderd)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = {n} {noun} gesorteerd   # sorted {n} {noun}
+msg.bookmark.set_named = bladwijzer "{name}" ingesteld ({n} totaal)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = bladwijzer ingesteld ({n} totaal)   # bookmark set ({n} total)
+msg.bookmark.already_set = hier is al een bladwijzer ingesteld   # bookmark already set here
+msg.bookmark.goto = bladwijzer "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: geen bladwijzer met de naam "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = bladwijzer gewist ({n} over)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = hier geen bladwijzer   # no bookmark here
+msg.bookmark.none_to_clear = geen bladwijzers om te wissen   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} bladwijzer gewist   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} bladwijzers gewist   # {n} bookmarks cleared

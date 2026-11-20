@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\hu.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Kisebb   # Less
 menu.settings.appearance.reset_ui = Kezelőfelület méretének visszaállítása   # Reset UI sizing
 menu.settings.appearance.reset_dw = Könyvtárablak visszaállítása   # Reset directory window
 menu.settings.preview = Előnézet / PDF-oldalbeállítás   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Előnézeti panel szélessége (képernyőn)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Egyéni…   # Custom…
 menu.settings.preview.paper = Oldalformátum   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP: {matches}, {files} (felső határ: {cap})   # GR
 msg.grep.summary = GREP: {matches}, {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: eddig {matches}…   # GREP: {matches} so far…
 msg.search.not_found = nem található: {find}   # not found: {find}
+msg.replace.count.one = {n} módosítás   # {n} change
+msg.replace.count.other = {n} módosítás   # {n} changes
+msg.count.byte.one = bájt   # byte
+msg.count.byte.other = bájt   # bytes
+msg.clip.copied = {n} {noun} másolva   # copied {n} {noun}
+msg.clip.cut = {n} {noun} kivágva   # cut {n} {noun}
+msg.clip.hex_empty = a bájtvágólap üres   # byte clipboard is empty
+msg.clip.pasted = {n} {noun} beillesztve   # pasted {n} {noun}
+msg.count.char.one = karakter   # character
+msg.count.char.other = karakter   # characters
+msg.clip.appended = a kijelölés a vágólaphoz fűzve   # appended the selection to the clipboard
+msg.clip.prepended = a kijelölés a vágólap elé fűzve   # prepended the selection to the clipboard
 msg.open.not_found = a fájl nem található: {path}   # file not found: {path}
 msg.save.written = mentve: {name}   # saved {name}
+msg.bookmark.nav_moved = könyvjelző {index}/{total} — áthelyezve   # bookmark {index}/{total} — moved
+msg.bookmark.nav = könyvjelző {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = nincsenek könyvjelzők   # no bookmarks
 msg.readonly = a dokumentum csak olvasható (RO a feloldáshoz)   # document is read-only (RO to unlock)
 msg.hex_readonly = a hexadecimális nézet csak olvasható a szövegszerkesztéshez (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: keresés…   # GREP: searching…
+msg.count.selection = Kijelölés   # Selection
+msg.count.document = Dokumentum   # Document
+msg.count.word.one = szó   # word
+msg.count.word.other = szó   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = sor   # line
+msg.count.line.other = sor   # lines
+msg.sort.dup.one = {n} duplikátum   # {n} dup
+msg.sort.dup.other = {n} duplikátum   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} eltávolítva)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = {n} {noun} rendezve   # sorted {n} {noun}
+msg.bookmark.set_named = könyvjelző "{name}" beállítva (összesen {n})   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = könyvjelző beállítva (összesen {n})   # bookmark set ({n} total)
+msg.bookmark.already_set = itt már van könyvjelző   # bookmark already set here
+msg.bookmark.goto = könyvjelző "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: nincs "{name}" nevű könyvjelző   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = könyvjelző törölve ({n} maradt)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = itt nincs könyvjelző   # no bookmark here
+msg.bookmark.none_to_clear = nincs törölhető könyvjelző   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} könyvjelző törölve   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} könyvjelző törölve   # {n} bookmarks cleared

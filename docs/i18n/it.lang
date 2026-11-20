@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\it.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Minore   # Less
 menu.settings.appearance.reset_ui = Ripristina dimensione interfaccia   # Reset UI sizing
 menu.settings.appearance.reset_dw = Ripristina finestra directory   # Reset directory window
 menu.settings.preview = Anteprima / impostazione pagina PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Larghezza del riquadro (sullo schermo)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Personalizzato…   # Custom…
 menu.settings.preview.paper = Formato pagina   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP: {matches} in {files} (limitato a {cap})   # GREP
 msg.grep.summary = GREP: {matches} in {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP: {matches} finora…   # GREP: {matches} so far…
 msg.search.not_found = non trovato: {find}   # not found: {find}
+msg.replace.count.one = {n} modifica   # {n} change
+msg.replace.count.other = {n} modifiche   # {n} changes
+msg.count.byte.one = byte   # byte
+msg.count.byte.other = byte   # bytes
+msg.clip.copied = copiato {n} {noun}   # copied {n} {noun}
+msg.clip.cut = tagliato {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = gli appunti dei byte sono vuoti   # byte clipboard is empty
+msg.clip.pasted = incollato {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = carattere   # character
+msg.count.char.other = caratteri   # characters
+msg.clip.appended = selezione aggiunta agli appunti   # appended the selection to the clipboard
+msg.clip.prepended = selezione anteposta agli appunti   # prepended the selection to the clipboard
 msg.open.not_found = file non trovato: {path}   # file not found: {path}
 msg.save.written = salvato {name}   # saved {name}
+msg.bookmark.nav_moved = segnalibro {index}/{total} — spostato   # bookmark {index}/{total} — moved
+msg.bookmark.nav = segnalibro {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = nessun segnalibro   # no bookmarks
 msg.readonly = il documento è in sola lettura (RO per sbloccare)   # document is read-only (RO to unlock)
 msg.hex_readonly = la vista esadecimale è in sola lettura per le modifiche al testo (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP: ricerca in corso…   # GREP: searching…
+msg.count.selection = Selezione   # Selection
+msg.count.document = Documento   # Document
+msg.count.word.one = parola   # word
+msg.count.word.other = parole   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = riga   # line
+msg.count.line.other = righe   # lines
+msg.sort.dup.one = {n} duplicato   # {n} dup
+msg.sort.dup.other = {n} duplicati   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} rimossi)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = ordinato {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = segnalibro "{name}" impostato ({n} in totale)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = segnalibro impostato ({n} in totale)   # bookmark set ({n} total)
+msg.bookmark.already_set = segnalibro già impostato qui   # bookmark already set here
+msg.bookmark.goto = segnalibro "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK: nessun segnalibro di nome "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = segnalibro cancellato ({n} rimanenti)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = nessun segnalibro qui   # no bookmark here
+msg.bookmark.none_to_clear = nessun segnalibro da cancellare   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} segnalibro cancellato   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} segnalibri cancellati   # {n} bookmarks cleared

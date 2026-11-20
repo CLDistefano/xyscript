@@ -8099,6 +8099,89 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
     }
 
     #[test]
+    fn count_and_replace_messages_localize() {
+        // The word/char-count and CH change-count status reports route through the LANG catalog, so a
+        // Finnish user sees them translated instead of English. Regression guard: these bypassed tr()
+        // and always showed English ("Document: N words", "N changes").
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        let cat = "\
+msg.count.document = Asiakirja
+msg.count.selection = Valinta
+msg.count.word.one = sana
+msg.count.word.other = sanaa
+msg.count.char.one = merkki
+msg.count.char.other = merkkiä
+msg.count.result = {scope}: {n} {noun}
+msg.replace.count.one = {n} muutos
+msg.replace.count.other = {n} muutosta
+";
+        e.host_mut().files.insert("fi.lang".into(), cat.into());
+        e.run_command("LANG fi.lang");
+        e.run_command("insert \"yksi kaksi kolme\""); // 3 words, 16 chars
+        e.run_command("WORDCOUNT");
+        assert_eq!(e.status_message(), Some("Asiakirja: 3 sanaa"));
+        e.run_command("CHARCOUNT");
+        assert_eq!(e.status_message(), Some("Asiakirja: 16 merkkiä"));
+        // A selection uses the translated "Selection" scope label.
+        e.run_command("TOP");
+        e.run_command("DF");
+        for _ in 0..4 {
+            e.run_command("RIGHT"); // select "yksi" — 1 word
+        }
+        e.run_command("WORDCOUNT");
+        assert_eq!(e.status_message(), Some("Valinta: 1 sana")); // singular noun form
+        // CH change count pluralizes through the catalog.
+        e.run_command("NE");
+        e.run_command("insert \"aaa aaa aaa\"");
+        e.run_command("TOP");
+        e.run_command("CH /aaa/bbb/");
+        assert_eq!(e.status_message(), Some("3 muutosta"));
+        e.run_command("NE");
+        e.run_command("insert \"zzz\"");
+        e.run_command("TOP");
+        e.run_command("CH /zzz/qqq/");
+        assert_eq!(e.status_message(), Some("1 muutos"));
+    }
+
+    #[test]
+    fn clip_sort_bookmark_messages_localize() {
+        // Clipboard (character counts), sort, and bookmark status reports route through the catalog.
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        let cat = "\
+msg.count.char.one = merkki
+msg.count.char.other = merkkiä
+msg.count.line.one = rivi
+msg.count.line.other = riviä
+msg.clip.copied = kopioitu {n} {noun}
+msg.sort.sorted = järjestetty {n} {noun}
+msg.bookmark.set = kirjanmerkki asetettu ({n} yhteensä)
+msg.bookmark.nav = kirjanmerkki {index}/{total}
+msg.bookmark.nav_moved = kirjanmerkki {index}/{total} — siirretty
+";
+        e.host_mut().files.insert("fi.lang".into(), cat.into());
+        e.run_command("LANG fi.lang");
+        e.run_command("insert \"charlie\\nbravo\\nalpha\\n\""); // 20 chars, 3 lines
+        e.run_command("TOP");
+        e.run_command("DF");
+        e.run_command("BOTTOM"); // select the whole document
+        e.run_command("COPY");
+        assert_eq!(e.status_message(), Some("kopioitu 20 merkkiä")); // Finnish partitive noun
+        e.run_command("SORT"); // "SORT{flags}:" prefix stays, the body localizes
+        assert_eq!(e.status_message(), Some("SORT: järjestetty 3 riviä"));
+        e.run_command("TOP");
+        e.run_command("MARKSET");
+        assert_eq!(e.status_message(), Some("kirjanmerkki asetettu (1 yhteensä)"));
+        e.run_command("MARKNEXT"); // navigation frame localizes ("bookmark 2/5" family)
+        assert!(
+            e.status_message().is_some_and(|s| s.starts_with("kirjanmerkki 1/1")),
+            "bookmark nav localized: {:?}",
+            e.status_message()
+        );
+    }
+
+    #[test]
     fn extend_search_switch_grows_a_define_to_the_match() {
         // The "delete to the next period" gesture: DF at the cursor, then SE/X extends the define
         // through the match instead of replacing the selection with just ".".

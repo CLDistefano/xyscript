@@ -5,7 +5,7 @@
 # source string; if it changes, i18n-sync re-flags the entry '#, fuzzy'. A blank
 # value falls back to English. Keep every {placeholder} intact. Load with:
 #   LANG <path>\fr.lang
-# Merged from en.lang by i18n-sync.py — 2 untranslated, 0 fuzzy.
+# Merged from en.lang by i18n-sync.py — 0 untranslated, 0 fuzzy.
 # =============================================================================
 
 
@@ -261,8 +261,8 @@ menu.settings.appearance.line_spacing.less = Moins   # Less
 menu.settings.appearance.reset_ui = Réinitialiser la taille de l’interface   # Reset UI sizing
 menu.settings.appearance.reset_dw = Réinitialiser la fenêtre de répertoire   # Reset directory window
 menu.settings.preview = Aperçu / mise en page PDF   # Preview / PDF page setup
-menu.settings.preview.pane_width =    # Pane width (on screen)
-menu.settings.preview.pane_width.custom =    # Custom…
+menu.settings.preview.pane_width = Largeur du volet (à l’écran)   # Pane width (on screen)
+menu.settings.preview.pane_width.custom = Personnalisé…   # Custom…
 menu.settings.preview.paper = Format de page   # Page format
 menu.settings.preview.paper.letter = Letter   # Letter
 menu.settings.preview.paper.legal = Legal   # Legal
@@ -402,8 +402,44 @@ msg.grep.summary_capped = GREP : {matches} dans {files} (limité à {cap})   # G
 msg.grep.summary = GREP : {matches} dans {files}   # GREP: {matches} in {files}
 msg.grep.progress = GREP : {matches} jusqu'à présent…   # GREP: {matches} so far…
 msg.search.not_found = introuvable : {find}   # not found: {find}
+msg.replace.count.one = {n} modification   # {n} change
+msg.replace.count.other = {n} modifications   # {n} changes
+msg.count.byte.one = octet   # byte
+msg.count.byte.other = octets   # bytes
+msg.clip.copied = copié {n} {noun}   # copied {n} {noun}
+msg.clip.cut = coupé {n} {noun}   # cut {n} {noun}
+msg.clip.hex_empty = le presse-papiers d'octets est vide   # byte clipboard is empty
+msg.clip.pasted = collé {n} {noun}   # pasted {n} {noun}
+msg.count.char.one = caractère   # character
+msg.count.char.other = caractères   # characters
+msg.clip.appended = sélection ajoutée au presse-papiers   # appended the selection to the clipboard
+msg.clip.prepended = sélection insérée au début du presse-papiers   # prepended the selection to the clipboard
 msg.open.not_found = fichier introuvable : {path}   # file not found: {path}
 msg.save.written = enregistré {name}   # saved {name}
+msg.bookmark.nav_moved = signet {index}/{total} — déplacé   # bookmark {index}/{total} — moved
+msg.bookmark.nav = signet {index}/{total}   # bookmark {index}/{total}
+msg.bookmark.none = aucun signet   # no bookmarks
 msg.readonly = document en lecture seule (RO pour déverrouiller)   # document is read-only (RO to unlock)
 msg.hex_readonly = la vue hexadécimale est en lecture seule pour les modifications de texte (HEX off)   # hex view is read-only for text edits (HEX off)
 msg.grep.searching = GREP : recherche…   # GREP: searching…
+msg.count.selection = Sélection   # Selection
+msg.count.document = Document   # Document
+msg.count.word.one = mot   # word
+msg.count.word.other = mots   # words
+msg.count.result = {scope}: {n} {noun}   # {scope}: {n} {noun}
+msg.count.line.one = ligne   # line
+msg.count.line.other = lignes   # lines
+msg.sort.dup.one = {n} doublon   # {n} dup
+msg.sort.dup.other = {n} doublons   # {n} dups
+msg.sort.deduped = {from} -> {to} {noun} ({dups} supprimés)   # {from} -> {to} {noun} ({dups} removed)
+msg.sort.sorted = trié {n} {noun}   # sorted {n} {noun}
+msg.bookmark.set_named = signet "{name}" défini ({n} au total)   # bookmark "{name}" set ({n} total)
+msg.bookmark.set = signet défini ({n} au total)   # bookmark set ({n} total)
+msg.bookmark.already_set = signet déjà défini ici   # bookmark already set here
+msg.bookmark.goto = signet "{name}"   # bookmark "{name}"
+msg.bookmark.goto_missing = GOMARK : aucun signet nommé "{name}"   # GOMARK: no bookmark named "{name}"
+msg.bookmark.cleared = signet effacé ({n} restants)   # bookmark cleared ({n} left)
+msg.bookmark.none_here = aucun signet ici   # no bookmark here
+msg.bookmark.none_to_clear = aucun signet à effacer   # no bookmarks to clear
+msg.bookmark.clearall.one = {n} signet effacé   # {n} bookmark cleared
+msg.bookmark.clearall.other = {n} signets effacés   # {n} bookmarks cleared
