@@ -5928,21 +5928,6 @@ impl AppHost {
         None
     }
     /// A localized status/error MESSAGE: the `LANG` translation for `id`, else the English `en`.
-    /// Host-side sibling of the GUI's `tr` (the `lang` table lives here, so messages the host emits
-    /// translate at the source). Plain — no placeholders; use [`tr_fmt`](Self::tr_fmt) for those.
-    fn tr_msg(&self, id: &str, en: &str) -> String {
-        self.lang.get(id).map(String::as_str).unwrap_or(en).to_string()
-    }
-    /// Like [`tr_msg`](Self::tr_msg) but with named `{placeholder}` substitution: takes the translated
-    /// (or English) template and replaces each `{name}` with its value. Named — not positional — so a
-    /// translation can reorder the pieces (e.g. put `{path}` first). Values are substituted verbatim.
-    fn tr_fmt(&self, id: &str, en: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
-        let mut s = self.lang.get(id).map(String::as_str).unwrap_or(en).to_string();
-        for (name, value) in args {
-            s = s.replace(&format!("{{{name}}}"), &value.to_string());
-        }
-        s
-    }
     /// The CLDR-style plural CATEGORY for `n` under the loaded catalog's declared rule (the `_plural`
     /// key). English and most languages are the implicit `one`/`other`; Slavic/Romanian catalogs
     /// declare a rule that adds `few`/`many`. The rule NAMES and arithmetic here are mirrored by
@@ -6006,17 +5991,6 @@ impl AppHost {
         }
     }
 
-    /// A count phrase with plural selection: `<base>.<category>` for the loaded catalog's plural rule
-    /// (see [`plural_category`](Self::plural_category)), with `{n}` filled in. `en_one`/`en_other`
-    /// are the built-in English templates — English has only one/other, so `few`/`many`/`other` all
-    /// fall back to `en_other`. NOTE: `i18n-sync.py` extracts BOTH `<base>.one` and `<base>.other`
-    /// from each `tr_plural(...)` call and expands the extra categories per language — keep the base
-    /// and both English templates as string literals at the call site so translators see the forms.
-    fn tr_plural(&self, base: &str, en_one: &str, en_other: &str, n: usize) -> String {
-        let cat = self.plural_category(n);
-        let en = if cat == "one" { en_one } else { en_other };
-        self.tr_fmt(&format!("{base}.{cat}"), en, &[("n", &n)])
-    }
     /// `BALPAIRS` — is matched-bracket highlighting on?
     pub fn bal_pairs(&self) -> bool {
         self.bal_pairs
@@ -11097,6 +11071,25 @@ impl AppHost {
 }
 
 impl Host for AppHost {
+    // UI-string localization through the loaded `lang` catalog (overrides the trait's English default),
+    // so the interpreter's own status messages translate the same way the app's do. `plural_category`
+    // (the CLDR rule) stays an inherent helper.
+    fn tr_msg(&self, id: &str, en: &str) -> String {
+        self.lang.get(id).map(String::as_str).unwrap_or(en).to_string()
+    }
+    fn tr_fmt(&self, id: &str, en: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+        let mut s = self.lang.get(id).map(String::as_str).unwrap_or(en).to_string();
+        for (name, value) in args {
+            s = s.replace(&format!("{{{name}}}"), &value.to_string());
+        }
+        s
+    }
+    fn tr_plural(&self, base: &str, en_one: &str, en_other: &str, n: usize) -> String {
+        let cat = self.plural_category(n);
+        let en = if cat == "one" { en_one } else { en_other };
+        self.tr_fmt(&format!("{base}.{cat}"), en, &[("n", &n)])
+    }
+
     fn random_int(&self, min: i64, max: i64) -> Option<i64> {
         // SplitMix64: advance the state by the golden-ratio increment, then scramble it to an
         // output word. Good statistical quality, tiny state, deterministic from a seed.
@@ -12196,7 +12189,11 @@ impl Host for AppHost {
                 } else {
                     self.text_binders.insert(slot, text);
                 }
-                return Ok(Value::str(format!("loaded {sigil}{slot}")));
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.binder.loaded",
+                    "loaded {name}",
+                    &[("name", &format!("{sigil}{slot}"))],
+                )));
             }
             EditorOp::UseBinder { script, slot } => {
                 let store = if script { &self.script_binders } else { &self.text_binders };
@@ -12652,7 +12649,9 @@ impl Host for AppHost {
                     self.resolve_path(&path).to_string_lossy().into_owned()
                 };
                 self.write_file(&resolved, &text)?;
-                return Ok(Value::str(format!("saved keymap to {path}")));
+                return Ok(Value::str(
+                    self.tr_fmt("msg.save.kbd", "saved keymap to {path}", &[("path", &path)]),
+                ));
             }
             EditorOp::SaveKbdToString => {
                 // CAPTURE variant of SAVEKBD: return the keymap-dump text instead of writing a file.
@@ -12976,9 +12975,11 @@ impl Host for AppHost {
                         }
                     }
                 }
-                return Ok(Value::str(format!(
-                    "{verb}: {added} pair(s); {} loaded",
-                    self.auto_replace.len()
+                let total = self.auto_replace.len();
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.ar.loaded",
+                    "{verb}: {added} added, {total} loaded",
+                    &[("verb", &verb), ("added", &added), ("total", &total)],
                 )));
             }
             EditorOp::SaveAutoReplace(opt) => {
@@ -12989,7 +12990,9 @@ impl Host for AppHost {
                     self.resolve_path(&path).to_string_lossy().into_owned()
                 };
                 self.write_file(&resolved, &to_os_newlines(&self.ar_dump_text()))?;
-                return Ok(Value::str(format!("SAVEAR: wrote {path}")));
+                return Ok(Value::str(
+                    self.tr_fmt("msg.save.ar", "SAVEAR: wrote {path}", &[("path", &path)]),
+                ));
             }
             EditorOp::SaveAutoReplaceToString => {
                 // CAPTURE variant of SAVEAR: return the file text instead of writing it.
@@ -12998,7 +13001,7 @@ impl Host for AppHost {
             EditorOp::ClearAutoReplace => {
                 self.auto_replace.clear();
                 self.last_ar_path = None;
-                return Ok(Value::str("auto-replace cleared"));
+                return Ok(Value::str(self.tr_msg("msg.ar.cleared", "auto-replace cleared")));
             }
             EditorOp::SaveSelection { path, force } => {
                 if path.trim().is_empty() {
@@ -13201,7 +13204,9 @@ impl Host for AppHost {
                 };
                 let text = self.config_script(false, true); // manual SAVECFG includes command history
                 self.write_file(&resolved, &text)?;
-                return Ok(Value::str(format!("saved config to {path}")));
+                return Ok(Value::str(
+                    self.tr_fmt("msg.save.cfg", "saved config to {path}", &[("path", &path)]),
+                ));
             }
             EditorOp::SaveCfgToString => {
                 // CAPTURE variant of SAVECFG: return the config-script text instead of writing a file.
@@ -13221,9 +13226,11 @@ impl Host for AppHost {
                 let text = to_os_newlines(&self.history_script_text());
                 self.write_file(&resolved, &text)?;
                 let n = self.command_history.len();
-                return Ok(Value::str(format!(
-                    "saved {n} history command{} to {path}",
-                    if n == 1 { "" } else { "s" }
+                let count = self.tr_plural("msg.cm.count", "{n} history command", "{n} history commands", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.save.to_path",
+                    "saved {count} to {path}",
+                    &[("count", &count), ("path", &path)],
                 )));
             }
             EditorOp::SaveHistoryToString => {
@@ -13244,9 +13251,11 @@ impl Host for AppHost {
                 let text = to_os_newlines(&self.text_binder_script_text());
                 self.write_file(&resolved, &text)?;
                 let n = self.text_binders.values().filter(|v| !v.is_empty()).count();
-                return Ok(Value::str(format!(
-                    "saved {n} text register{} to {path}",
-                    if n == 1 { "" } else { "s" }
+                let count = self.tr_plural("msg.ldtx.count", "{n} text register", "{n} text registers", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.save.to_path",
+                    "saved {count} to {path}",
+                    &[("count", &count), ("path", &path)],
                 )));
             }
             EditorOp::SaveLdtxToString => {
@@ -13267,9 +13276,11 @@ impl Host for AppHost {
                 let text = to_os_newlines(&self.script_binder_script_text());
                 self.write_file(&resolved, &text)?;
                 let n = self.script_binders.values().filter(|v| !v.is_empty()).count();
-                return Ok(Value::str(format!(
-                    "saved {n} script register{} to {path}",
-                    if n == 1 { "" } else { "s" }
+                let count = self.tr_plural("msg.ldsc.count", "{n} script register", "{n} script registers", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.save.to_path",
+                    "saved {count} to {path}",
+                    &[("count", &count), ("path", &path)],
                 )));
             }
             EditorOp::SaveLdscToString => {
@@ -13288,9 +13299,11 @@ impl Host for AppHost {
                     .take(REOPEN_CAP)
                     .collect();
                 let n = self.recently_closed.len();
-                return Ok(Value::str(format!(
-                    "loaded {n} recently-closed file{}",
-                    if n == 1 { "" } else { "s" }
+                return Ok(Value::str(self.tr_plural(
+                    "msg.loadclosed.count",
+                    "loaded {n} recently-closed file",
+                    "loaded {n} recently-closed files",
+                    n,
                 )));
             }
             EditorOp::SaveClosed(opt) => {
@@ -13306,9 +13319,11 @@ impl Host for AppHost {
                 let text = to_os_newlines(&self.reopen_script_text());
                 self.write_file(&resolved, &text)?;
                 let n = self.recently_closed.len();
-                return Ok(Value::str(format!(
-                    "saved {n} recently-closed file{} to {path}",
-                    if n == 1 { "" } else { "s" }
+                let count = self.tr_plural("msg.closed.count", "{n} recently-closed file", "{n} recently-closed files", n);
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.save.to_path",
+                    "saved {count} to {path}",
+                    &[("count", &count), ("path", &path)],
                 )));
             }
             EditorOp::SaveClosedToString => {
@@ -13360,7 +13375,7 @@ impl Host for AppHost {
                 if !on {
                     self.config_track_path = None;
                     self.config_last_written.clear();
-                    return Ok(Value::str("config tracking off"));
+                    return Ok(Value::str(self.tr_msg("msg.config.track.off", "config tracking off")));
                 }
                 let path = path
                     .filter(|p| !p.trim().is_empty())
@@ -13375,7 +13390,9 @@ impl Host for AppHost {
                 self.write_file(&resolved, &text)?;
                 self.config_last_written = text;
                 self.config_track_path = Some(resolved);
-                return Ok(Value::str(format!("tracking config to {path}")));
+                return Ok(Value::str(
+                    self.tr_fmt("msg.config.track", "tracking config to {path}", &[("path", &path)]),
+                ));
             }
             EditorOp::LoadCfg(opt) => {
                 let path = opt
@@ -13393,8 +13410,13 @@ impl Host for AppHost {
                 // The config's own commands would clobber any status we set now, so confirm the load
                 // AFTER it runs, as a final queued line — so LOADCFG reports like LOADLIB/LOADAR.
                 // (`$CF` is the resolved path just set above.)
-                self.pending_run.push(("PR loaded config from $CF".to_string(), Vec::new()));
-                return Ok(Value::str(format!("loading config from {path}")));
+                // The message keeps the literal `$CF` token so it is substituted at PR time (a path with
+                // `;`/`$` can't then break the command); translations keep `$CF` too.
+                let confirm = self.tr_msg("msg.load.cfg", "loaded config from $CF");
+                self.pending_run.push((format!("PR {confirm}"), Vec::new()));
+                return Ok(Value::str(
+                    self.tr_fmt("msg.load.cfg.start", "loading config from {path}", &[("path", &path)]),
+                ));
             }
             EditorOp::LoadLang(opt) => {
                 // `LANG off` / bare `LANG` (None) clears the table → built-in English.
@@ -15502,7 +15524,12 @@ impl Host for AppHost {
                     text.split('\n').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect();
                 self.history_pos = None;
                 let n = self.command_history.len();
-                return Ok(Value::str(format!("loaded {n} history command{}", if n == 1 { "" } else { "s" })));
+                return Ok(Value::str(self.tr_plural(
+                    "msg.loadcm.count",
+                    "loaded {n} history command",
+                    "loaded {n} history commands",
+                    n,
+                )));
             }
             EditorOp::Newline => {
                 // In the Console tab, Enter at the prompt SUBMITS the command (console_submit is a
@@ -18073,6 +18100,7 @@ not a kv line
 
     #[test]
     fn tr_msg_and_tr_fmt_translate_or_fall_back_and_substitute() {
+        use xyscript_xpl::Host; // tr_* are Host-trait methods
         let mut host = super::AppHost::new();
         host.lang = super::parse_lang_table(
             "msg.readonly = document en lecture seule\nmsg.search.not_found = introuvable : {find}\n",
@@ -18094,6 +18122,7 @@ not a kv line
 
     #[test]
     fn tr_plural_selects_one_or_other_form() {
+        use xyscript_xpl::Host;
         let mut host = super::AppHost::new();
         // English fallback: n == 1 → the `.one` template, else `.other`; `{n}` filled in.
         assert_eq!(host.tr_plural("msg.grep.match", "{n} match", "{n} matches", 1), "1 match");
@@ -18110,6 +18139,7 @@ not a kv line
 
     #[test]
     fn tr_plural_honors_a_three_form_rule() {
+        use xyscript_xpl::Host;
         let mut host = super::AppHost::new();
         // Polish declares its rule via `_plural` and provides one/few/many forms.
         host.lang = super::parse_lang_table(
