@@ -143,6 +143,13 @@ pub enum UpdateAction {
     /// drop `.new` beside edited ones, back up what it replaces — then self-replace the running binary.
     /// Prompts to restart. Needs the `update` build.
     Install,
+    /// Schedule a staged (or freshly downloaded) release to be applied automatically at the NEXT launch
+    /// (`UPDATE INSTALL /NEXT`), instead of now — the safe moment to swap the binary. Needs the `update`
+    /// build. Cancel a schedule with `Cancel`.
+    Schedule,
+    /// Cancel a scheduled next-launch update (`UPDATE CANCEL`): drop the pending marker so the next
+    /// launch won't apply it (the staged files are kept). Pure-local; works in any build.
+    Cancel,
     /// Undo the last `Install` from its backup (restores the prior files + binary). Needs the backup.
     Rollback,
     /// Re-pull one shipped default, overriding the guard for that path: promote its `<name>.new` (or

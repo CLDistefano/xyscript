@@ -112,8 +112,9 @@ pub const SPECIAL_NAMES: &[&str] = &[
     // error code + generic-message catalog ($ERRORMSG[n]); error-log on/off + file path
     "ERROR", "ERRORMSG", "ERRORLOG", "ERRORLOGFILE",
     // auto-update: current policy ($UPDATEMODE) + latest available version if newer ($UPDATEAVAIL) +
-    // the tag of a downloaded+verified release waiting in staging ($UPDATESTAGED)
-    "UPDATEMODE", "UPDATEAVAIL", "UPDATESTAGED",
+    // the tag of a downloaded+verified release waiting in staging ($UPDATESTAGED) + the tag scheduled
+    // to apply at the next launch ($UPDATEPENDING)
+    "UPDATEMODE", "UPDATEAVAIL", "UPDATESTAGED", "UPDATEPENDING",
     // args / return
     "RV",
 ];

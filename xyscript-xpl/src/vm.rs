@@ -4792,7 +4792,18 @@ impl Vm<'_, '_> {
                 let action = match sub.as_str() {
                     "" | "check" => crate::host::UpdateAction::Check,
                     "download" => crate::host::UpdateAction::Download,
-                    "install" => crate::host::UpdateAction::Install,
+                    "install" => {
+                        // `UPDATE INSTALL /NEXT` schedules the apply for the next launch instead of now.
+                        let next = rest.eq_ignore_ascii_case("/next")
+                            || rest.eq_ignore_ascii_case("next")
+                            || vswitches.iter().any(|s| s.eq_ignore_ascii_case("NEXT"));
+                        if next {
+                            crate::host::UpdateAction::Schedule
+                        } else {
+                            crate::host::UpdateAction::Install
+                        }
+                    }
+                    "cancel" => crate::host::UpdateAction::Cancel,
                     "rollback" => crate::host::UpdateAction::Rollback,
                     "reset" => {
                         if rest.is_empty() {
@@ -4806,7 +4817,7 @@ impl Vm<'_, '_> {
                     other => {
                         return Err(XplError::trappable(format!(
                             "UPDATE: unknown sub-command {other:?} \
-                             (check, download, install, rollback, reset)"
+                             (check, download, install, cancel, rollback, reset)"
                         )))
                     }
                 };

@@ -3042,6 +3042,13 @@ mod tests {
         e.run_command("UPDATE RESET lang/does-not-exist.lang");
         assert!(!e.command_succeeded(), "RESET with nothing to promote errors");
         assert_eq!(e.special_str("UPDATESTAGED"), "", "nothing staged");
+        // Apply-at-next-launch routing: nothing scheduled; CANCEL with none pending succeeds cleanly
+        // (pure-local, no feature needed); `UPDATE INSTALL /NEXT` needs the update build (errors here).
+        assert_eq!(e.special_str("UPDATEPENDING"), "", "nothing scheduled");
+        e.run_command("UPDATE CANCEL");
+        assert!(e.command_succeeded(), "CANCEL with nothing pending still succeeds");
+        e.run_command("UPDATE INSTALL /NEXT");
+        assert!(!e.command_succeeded(), "scheduling needs the update build");
         // SaveCfg carries the policy.
         e.run_command("UPDATEMODE alert");
         e.run_command("SAVECFG up.cfg");

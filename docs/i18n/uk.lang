@@ -399,12 +399,14 @@ dialog.about.tagline = Налаштовуваний редактор у трад
 button.close = Закрити   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Оновлено до {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: ця збірка не підтримує автоматичні оновлення (скомпільовано без функції `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = актуально (версія {ver}) — нічого завантажувати   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} завантажено й перевірено ({n} файлів) — готово до встановлення   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = оновлення недоступні в цій збірці   # updates aren't available in this build
 msg.update.uptodate = У вас найновіша версія (версія {ver})   # You're up to date (version {ver})
 msg.update.available = Доступне оновлення {tag} — виконайте UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Оновлення {tag} підготовлено — встановиться під час наступного запуску   # Update {tag} staged — installs at next launch
 msg.update.staged = Оновлення {tag} завантажено та перевірено — виконайте UPDATE INSTALL для встановлення   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Не вдалося перевірити оновлення: {err}   # Update check failed: {err}
 msg.update.install.done = встановлено {tag}: {replaced} замінено, {added} додано, {deleted} видалено   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
@@ -412,6 +414,8 @@ msg.update.install.kept.one = збережено {n} ваш змінений ф�
 msg.update.install.kept.few = збережено {n} ваші змінені файли (нові стандарти збережено як .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.install.kept.many = збережено {n} ваших змінених файлів (нові стандарти збережено як .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = перезапустіть XyScript   # restart XyScript
+msg.update.cancelled = заплановане оновлення скасовано   # scheduled update cancelled
+msg.update.nopending = немає запланованого оновлення для скасування   # no scheduled update to cancel
 msg.update.rollback.done = останнє оновлення скасовано   # rolled back the last update
 msg.update.rollback.toversion = відкочено до версії {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} скинуто до стандартних налаштувань   # reset {rel} to the shipped default
