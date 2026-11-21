@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Autolagre innstillinger   # Auto-save settings
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Håndbok   # Manual
 menu.help.reference = Referanse   # Reference
+menu.help.update_avail = Oppdatering {ver} tilgjengelig…   # Update {ver} available…
+menu.help.check_updates = Se etter oppdateringer   # Check for updates
 menu.help.about = Om XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = En konfigurerbar editor i XyWrite-tradisjonen.   # A conf
 button.close = Lukk   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = oppdateringer er ikke tilgjengelige i denne build-en   # updates aren't available in this build
+msg.update.uptodate = Du er oppdatert (versjon {ver})   # You're up to date (version {ver})
+msg.update.available = Oppdatering {tag} tilgjengelig — kjør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Oppdatering {tag} lastet ned og verifisert — kjør UPDATE INSTALL for å installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Kontroll av oppdateringer mislyktes: {err}   # Update check failed: {err}
 msg.grep.none = GREP: ingen treff   # GREP: no matches
 msg.grep.match.one = {n} treff   # {n} match
 msg.grep.match.other = {n} treff   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutin   # {n} routine
 msg.lib.count.other = {n} rutiner   # {n} routines
 msg.lib.loaded = {count} lastet inn fra {path}   # loaded {count} from {path}
 msg.lib.added = {count} lagt til fra {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Ser etter oppdateringer…   # Checking for updates…

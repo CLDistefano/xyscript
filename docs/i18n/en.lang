@@ -339,6 +339,8 @@ menu.settings.autosave_settings = Auto-save settings
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Manual
 menu.help.reference = Reference
+menu.help.update_avail = Update {ver} available…
+menu.help.check_updates = Check for updates
 menu.help.about = About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -390,6 +392,11 @@ dialog.about.tagline = A configurable editor in the XyWrite tradition.
 button.close = Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = updates aren't available in this build
+msg.update.uptodate = You're up to date (version {ver})
+msg.update.available = Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Update check failed: {err}
 msg.grep.none = GREP: no matches
 msg.grep.match.one = {n} match
 msg.grep.match.other = {n} matches
@@ -473,3 +480,6 @@ msg.lib.count.one = {n} routine
 msg.lib.count.other = {n} routines
 msg.lib.loaded = loaded {count} from {path}
 msg.lib.added = added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Checking for updates…

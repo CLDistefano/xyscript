@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Gem indstillinger automatisk   # Auto-save set
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Håndbog   # Manual
 menu.help.reference = Reference   # Reference
+menu.help.update_avail = Opdatering {ver} tilgængelig…   # Update {ver} available…
+menu.help.check_updates = Søg efter opdateringer   # Check for updates
 menu.help.about = Om XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = En konfigurerbar editor i XyWrite-traditionen.   # A conf
 button.close = Luk   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = opdateringer er ikke tilgængelige i denne build   # updates aren't available in this build
+msg.update.uptodate = Du er opdateret (version {ver})   # You're up to date (version {ver})
+msg.update.available = Opdatering {tag} tilgængelig — kør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Opdatering {tag} downloadet og verificeret — kør UPDATE INSTALL for at installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Kontrol af opdateringer mislykkedes: {err}   # Update check failed: {err}
 msg.grep.none = GREP: ingen match   # GREP: no matches
 msg.grep.match.one = {n} match   # {n} match
 msg.grep.match.other = {n} match   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutine   # {n} routine
 msg.lib.count.other = {n} rutiner   # {n} routines
 msg.lib.loaded = {count} indlæst fra {path}   # loaded {count} from {path}
 msg.lib.added = {count} tilføjet fra {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Søger efter opdateringer…   # Checking for updates…

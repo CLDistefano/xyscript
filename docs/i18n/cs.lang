@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Automaticky ukládat nastavení   # Auto-save 
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Příručka   # Manual
 menu.help.reference = Referenční příručka   # Reference
+menu.help.update_avail = Dostupná aktualizace {ver}…   # Update {ver} available…
+menu.help.check_updates = Zkontrolovat aktualizace   # Check for updates
 menu.help.about = O aplikaci XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,11 @@ dialog.about.tagline = Konfigurovatelný editor v tradici XyWrite.   # A configu
 button.close = Zavřít   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = aktualizace nejsou v tomto sestavení dostupné   # updates aren't available in this build
+msg.update.uptodate = Máte aktuální verzi (verze {ver})   # You're up to date (version {ver})
+msg.update.available = Dostupná aktualizace {tag} — spusťte UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Aktualizace {tag} stažena a ověřena — pro instalaci spusťte UPDATE INSTALL   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Kontrola aktualizací selhala: {err}   # Update check failed: {err}
 msg.grep.none = GREP: žádné shody   # GREP: no matches
 msg.grep.match.one = {n} shoda   # {n} match
 msg.grep.match.few = {n} shody   # {n} matches
@@ -497,3 +504,6 @@ msg.lib.count.few = {n} rutiny   # {n} routines
 msg.lib.count.other = {n} rutin   # {n} routines
 msg.lib.loaded = načteno {count} z {path}   # loaded {count} from {path}
 msg.lib.added = přidáno {count} z {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Kontrola aktualizací…   # Checking for updates…

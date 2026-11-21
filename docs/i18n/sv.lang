@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Autospara inställningar   # Auto-save setting
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Handbok   # Manual
 menu.help.reference = Referens   # Reference
+menu.help.update_avail = Uppdatering {ver} tillgänglig…   # Update {ver} available…
+menu.help.check_updates = Sök efter uppdateringar   # Check for updates
 menu.help.about = Om XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = En konfigurerbar redigerare i XyWrite-traditionen.   # A 
 button.close = Stäng   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = uppdateringar är inte tillgängliga i den här versionen   # updates aren't available in this build
+msg.update.uptodate = Du har den senaste versionen (version {ver})   # You're up to date (version {ver})
+msg.update.available = Uppdatering {tag} tillgänglig — kör UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Uppdatering {tag} hämtad och verifierad — kör UPDATE INSTALL för att installera   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Sökningen efter uppdateringar misslyckades: {err}   # Update check failed: {err}
 msg.grep.none = GREP: inga träffar   # GREP: no matches
 msg.grep.match.one = {n} träff   # {n} match
 msg.grep.match.other = {n} träffar   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutin   # {n} routine
 msg.lib.count.other = {n} rutiner   # {n} routines
 msg.lib.loaded = {count} inlästa från {path}   # loaded {count} from {path}
 msg.lib.added = {count} tillagda från {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Söker efter uppdateringar…   # Checking for updates…

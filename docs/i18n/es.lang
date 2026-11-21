@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Guardar la configuración automáticamente   #
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Manual   # Manual
 menu.help.reference = Referencia   # Reference
+menu.help.update_avail = Actualización {ver} disponible…   # Update {ver} available…
+menu.help.check_updates = Buscar actualizaciones   # Check for updates
 menu.help.about = Acerca de XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = Un editor configurable en la tradición de XyWrite.   # A
 button.close = Cerrar   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = las actualizaciones no están disponibles en esta compilación   # updates aren't available in this build
+msg.update.uptodate = Estás al día (versión {ver})   # You're up to date (version {ver})
+msg.update.available = Actualización {tag} disponible: ejecuta UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Actualización {tag} descargada y verificada: ejecuta UPDATE INSTALL para aplicarla   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Error al buscar actualizaciones: {err}   # Update check failed: {err}
 msg.grep.none = GREP: sin coincidencias   # GREP: no matches
 msg.grep.match.one = {n} coincidencia   # {n} match
 msg.grep.match.other = {n} coincidencias   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutina   # {n} routine
 msg.lib.count.other = {n} rutinas   # {n} routines
 msg.lib.loaded = {count} cargadas desde {path}   # loaded {count} from {path}
 msg.lib.added = {count} añadidas desde {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Buscando actualizaciones…   # Checking for updates…

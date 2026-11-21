@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Salvează automat setările   # Auto-save sett
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Manual   # Manual
 menu.help.reference = Referință   # Reference
+menu.help.update_avail = Actualizarea {ver} este disponibilă…   # Update {ver} available…
+menu.help.check_updates = Verifică actualizările   # Check for updates
 menu.help.about = Despre XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,11 @@ dialog.about.tagline = Un editor configurabil în tradiția XyWrite.   # A confi
 button.close = Închide   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = actualizările nu sunt disponibile în această versiune   # updates aren't available in this build
+msg.update.uptodate = Ești la zi (versiunea {ver})   # You're up to date (version {ver})
+msg.update.available = Actualizarea {tag} este disponibilă — rulează UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Actualizarea {tag} a fost descărcată și verificată — rulează UPDATE INSTALL pentru a o aplica   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Verificarea actualizărilor a eșuat: {err}   # Update check failed: {err}
 msg.grep.none = GREP: nicio potrivire   # GREP: no matches
 msg.grep.match.one = {n} potrivire   # {n} match
 msg.grep.match.few = {n} potriviri   # {n} matches
@@ -497,3 +504,6 @@ msg.lib.count.few = {n} rutine   # {n} routines
 msg.lib.count.other = {n} de rutine   # {n} routines
 msg.lib.loaded = {count} încărcate din {path}   # loaded {count} from {path}
 msg.lib.added = {count} adăugate din {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Se verifică actualizările…   # Checking for updates…

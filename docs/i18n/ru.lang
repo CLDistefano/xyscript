@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Автосохранение настроек 
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Руководство   # Manual
 menu.help.reference = Справочник   # Reference
+menu.help.update_avail = Доступно обновление {ver}…   # Update {ver} available…
+menu.help.check_updates = Проверить наличие обновлений   # Check for updates
 menu.help.about = О программе XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,11 @@ dialog.about.tagline = Настраиваемый редактор в тради
 button.close = Закрыть   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = обновления недоступны в этой сборке   # updates aren't available in this build
+msg.update.uptodate = У вас последняя версия (версия {ver})   # You're up to date (version {ver})
+msg.update.available = Доступно обновление {tag} — выполните UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Обновление {tag} загружено и проверено — выполните UPDATE INSTALL для установки   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Не удалось проверить обновления: {err}   # Update check failed: {err}
 msg.grep.none = GREP: совпадений нет   # GREP: no matches
 msg.grep.match.one = {n} совпадение   # {n} match
 msg.grep.match.few = {n} совпадения   # {n} matches
@@ -497,3 +504,6 @@ msg.lib.count.few = {n} процедуры   # {n} routines
 msg.lib.count.many = {n} процедур   # {n} routines
 msg.lib.loaded = загружено {count} из {path}   # loaded {count} from {path}
 msg.lib.added = добавлено {count} из {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Проверка обновлений…   # Checking for updates…

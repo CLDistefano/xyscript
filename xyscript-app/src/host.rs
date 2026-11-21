@@ -3222,6 +3222,12 @@ pub struct AppHost {
     staged_update: Option<crate::update::StagedUpdate>,
     /// Receiver for a background update cycle (the Phase 5 cadence); `Some` while one runs. Session-only.
     update_pending: Option<std::sync::mpsc::Receiver<crate::update::UpdateCycleOutcome>>,
+    /// The in-flight cycle was started by an explicit `Help ▸ Check for updates`, so `poll_update`
+    /// should report an up-to-date / failure result too (the background cadence stays quiet). Session-only.
+    update_manual: bool,
+    /// A one-shot status line for a manual check that can't run (e.g. a build without the `update`
+    /// feature); surfaced by the next `poll_update`. Session-only.
+    update_manual_note: Option<String>,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3780,6 +3786,8 @@ impl AppHost {
             last_release: None,
             staged_update: None,
             update_pending: None,
+            update_manual: false,
+            update_manual_note: None,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4618,6 +4626,12 @@ impl AppHost {
         self.update_mode
     }
 
+    /// The version tag of an available update if the last check found one (`$UPDATEAVAIL`), else
+    /// `None`. The GUI reads this to show `Help ▸ Update N available…` instead of `Check for updates`.
+    pub fn update_available(&self) -> Option<&str> {
+        self.update_available.as_deref()
+    }
+
     /// Run a manual auto-update step (`UPDATE …`).
     fn run_update_action(&mut self, action: UpdateAction) -> VmResult<Value> {
         match action {
@@ -4726,19 +4740,44 @@ impl AppHost {
     /// running, or in a build without the `update` feature. The GUI calls this at boot when
     /// [`Self::update_check_due`] is true; [`Self::poll_update`] surfaces the result.
     pub fn start_update_cycle(&mut self) {
+        if self.update_mode == UpdateMode::Off {
+            return;
+        }
+        let want_download = matches!(self.update_mode, UpdateMode::Download | UpdateMode::Install);
+        self.spawn_update_cycle(want_download, false);
+    }
+
+    /// `Help ▸ Check for updates` — an explicit, non-blocking check that runs REGARDLESS of
+    /// `UPDATEMODE` (even `off`). It only checks (never downloads), and — unlike the quiet background
+    /// cadence — `poll_update` reports the result either way, so the click always gives feedback.
+    pub fn start_manual_update_check(&mut self) {
+        self.spawn_update_cycle(false, true);
+    }
+
+    /// Spawn a background update cycle (shared by the cadence and the manual check). `manual` makes
+    /// `poll_update` report an up-to-date / failed result too. No-op if one is already running.
+    fn spawn_update_cycle(&mut self, want_download: bool, manual: bool) {
         #[cfg(feature = "update")]
         {
-            if self.update_mode == UpdateMode::Off || self.update_pending.is_some() {
+            if self.update_pending.is_some() {
                 return;
             }
-            let want_download =
-                matches!(self.update_mode, UpdateMode::Download | UpdateMode::Install);
+            self.update_manual = manual;
             let staging = self.update_root().join("staging");
             let (tx, rx) = std::sync::mpsc::channel();
             std::thread::spawn(move || {
                 let _ = tx.send(crate::update::run_update_cycle(want_download, staging));
             });
             self.update_pending = Some(rx);
+        }
+        #[cfg(not(feature = "update"))]
+        {
+            let _ = want_download;
+            // No network in this build — a manual check still deserves feedback next frame.
+            if manual {
+                self.update_manual_note =
+                    Some(self.tr_msg("msg.update.unavailable", "updates aren't available in this build"));
+            }
         }
     }
 
@@ -4747,23 +4786,37 @@ impl AppHost {
     /// background *failure* is kept quiet (no nagging). Install policy stages + prompts rather than
     /// swapping the binary unattended — the actual swap stays a deliberate `UPDATE INSTALL`.
     pub fn poll_update(&mut self) -> Option<String> {
+        // A one-shot note from a manual check that couldn't run (e.g. no `update` feature).
+        if let Some(note) = self.update_manual_note.take() {
+            return Some(note);
+        }
         #[cfg(feature = "update")]
         {
             let outcome = self.update_pending.as_ref().and_then(|rx| rx.try_recv().ok())?;
             self.update_pending = None;
             self.write_last_check();
+            // A MANUAL check (Help ▸ Check for updates) reports either way; the cadence stays quiet.
+            let manual = std::mem::take(&mut self.update_manual);
             use crate::update::UpdateCycleOutcome::*;
             match outcome {
                 UpToDate => {
                     self.update_available = None;
-                    None
+                    manual.then(|| {
+                        self.tr_fmt(
+                            "msg.update.uptodate",
+                            "You're up to date (version {ver})",
+                            &[("ver", &crate::update::CURRENT_VERSION)],
+                        )
+                    })
                 }
                 Available(info) => {
                     let tag = info.tag.clone();
                     self.update_available = Some(tag.clone());
                     self.last_release = Some(info);
-                    Some(format!(
-                        "Update {tag} available — run UPDATE DOWNLOAD (or UPDATE CHECK for details)"
+                    Some(self.tr_fmt(
+                        "msg.update.available",
+                        "Update {tag} available — run UPDATE DOWNLOAD",
+                        &[("tag", &tag)],
                     ))
                 }
                 Staged { info, staged } => {
@@ -4771,11 +4824,15 @@ impl AppHost {
                     self.update_available = Some(tag.clone());
                     self.staged_update = Some(staged);
                     self.last_release = Some(info);
-                    Some(format!(
-                        "Update {tag} downloaded and verified — run UPDATE INSTALL to apply"
+                    Some(self.tr_fmt(
+                        "msg.update.staged",
+                        "Update {tag} downloaded and verified — run UPDATE INSTALL to apply",
+                        &[("tag", &tag)],
                     ))
                 }
-                Failed(_) => None,
+                Failed(e) => manual.then(|| {
+                    self.tr_fmt("msg.update.failed", "Update check failed: {err}", &[("err", &e)])
+                }),
             }
         }
         #[cfg(not(feature = "update"))]

@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Beállítások automatikus mentése   # Auto-s
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Kézikönyv   # Manual
 menu.help.reference = Referencia   # Reference
+menu.help.update_avail = {ver} frissítés elérhető…   # Update {ver} available…
+menu.help.check_updates = Frissítések keresése   # Check for updates
 menu.help.about = A XyScript névjegye   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = Konfigurálható szerkesztő a XyWrite hagyományában.  
 button.close = Bezárás   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = ebben a buildben nem érhetők el frissítések   # updates aren't available in this build
+msg.update.uptodate = Naprakész (verzió: {ver})   # You're up to date (version {ver})
+msg.update.available = {tag} frissítés elérhető — futtassa az UPDATE DOWNLOAD parancsot   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = A(z) {tag} frissítés letöltve és ellenőrizve — az alkalmazáshoz futtassa az UPDATE INSTALL parancsot   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = A frissítések keresése sikertelen: {err}   # Update check failed: {err}
 msg.grep.none = GREP: nincs találat   # GREP: no matches
 msg.grep.match.one = {n} találat   # {n} match
 msg.grep.match.other = {n} találat   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutin   # {n} routine
 msg.lib.count.other = {n} rutin   # {n} routines
 msg.lib.loaded = {count} betöltve innen: {path}   # loaded {count} from {path}
 msg.lib.added = {count} hozzáadva innen: {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Frissítések keresése…   # Checking for updates…

@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Instellingen automatisch opslaan   # Auto-save
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Handleiding   # Manual
 menu.help.reference = Naslagwerk   # Reference
+menu.help.update_avail = Update {ver} beschikbaar…   # Update {ver} available…
+menu.help.check_updates = Controleren op updates   # Check for updates
 menu.help.about = Over XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = Een configureerbare editor in de XyWrite-traditie.   # A 
 button.close = Sluiten   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = updates zijn niet beschikbaar in deze build   # updates aren't available in this build
+msg.update.uptodate = Je bent up-to-date (versie {ver})   # You're up to date (version {ver})
+msg.update.available = Update {tag} beschikbaar — voer UPDATE DOWNLOAD uit   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Update {tag} gedownload en geverifieerd — voer UPDATE INSTALL uit om toe te passen   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Controleren op updates mislukt: {err}   # Update check failed: {err}
 msg.grep.none = GREP: geen treffers   # GREP: no matches
 msg.grep.match.one = {n} treffer   # {n} match
 msg.grep.match.other = {n} treffers   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} routine   # {n} routine
 msg.lib.count.other = {n} routines   # {n} routines
 msg.lib.loaded = {count} geladen uit {path}   # loaded {count} from {path}
 msg.lib.added = {count} toegevoegd uit {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Controleren op updates…   # Checking for updates…

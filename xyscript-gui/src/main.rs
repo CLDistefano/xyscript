@@ -505,6 +505,8 @@ enum Act {
     ShowReference,
     /// Help ▸ Manual — open the embedded user manual in a tab.
     ShowManual,
+    /// Help ▸ Check for updates — kick off a non-blocking background update check.
+    CheckUpdates,
 }
 
 /// A native file dialog deferred to run AFTER the egui frame. The runtime drains it in
@@ -569,6 +571,7 @@ enum MenuAct {
     ShowAbout,
     ShowReference,
     ShowManual,
+    CheckUpdates,
 }
 
 /// One node in the menu tree.
@@ -8671,6 +8674,17 @@ impl GuiApp {
                 m_act(self.tr("menu.help.manual", "Manual"), ShowManual),
                 m_act(self.tr("menu.help.reference", "Reference"), ShowReference),
                 MenuNode::Sep,
+                // When a check has already found a newer version, the item advertises it; otherwise it
+                // offers to check. Either way it runs a non-blocking background check (see `CheckUpdates`).
+                m_act(
+                    match self.editor.update_available() {
+                        Some(ver) if !ver.is_empty() => self
+                            .tr("menu.help.update_avail", "Update {ver} available…")
+                            .replace("{ver}", ver),
+                        _ => self.tr("menu.help.check_updates", "Check for updates").to_string(),
+                    },
+                    CheckUpdates,
+                ),
                 m_act(self.tr("menu.help.about", "About XyScript"), ShowAbout),
             ]),
         ]
@@ -8725,6 +8739,7 @@ impl GuiApp {
             MenuAct::ShowAbout => Some(Act::ShowAbout),
             MenuAct::ShowReference => Some(Act::ShowReference),
             MenuAct::ShowManual => Some(Act::ShowManual),
+            MenuAct::CheckUpdates => Some(Act::CheckUpdates),
         }
     }
 
@@ -9902,6 +9917,13 @@ impl GuiApp {
                     }
                 }
                 Act::ShowManual => self.open_manual(),
+                Act::CheckUpdates => {
+                    // Non-blocking: kick off the background check and show an immediate acknowledgement;
+                    // the per-frame `poll_update` replaces the status with the result (available / up to
+                    // date / failed) a moment later, and `update_in_flight` keeps the loop repainting.
+                    self.editor.start_manual_update_check();
+                    self.status = self.tr("status.update.checking", "Checking for updates…").to_string();
+                }
             }
         }
 

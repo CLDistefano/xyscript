@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Αυτόματη αποθήκευση ρυθμ
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Εγχειρίδιο   # Manual
 menu.help.reference = Αναφορά   # Reference
+menu.help.update_avail = Διαθέσιμη ενημέρωση {ver}…   # Update {ver} available…
+menu.help.check_updates = Έλεγχος για ενημερώσεις   # Check for updates
 menu.help.about = Σχετικά με το XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = Ένας παραμετροποιήσιμος επεξε�
 button.close = Κλείσιμο   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = οι ενημερώσεις δεν είναι διαθέσιμες σε αυτήν την έκδοση   # updates aren't available in this build
+msg.update.uptodate = Είστε ενημερωμένοι (έκδοση {ver})   # You're up to date (version {ver})
+msg.update.available = Διαθέσιμη ενημέρωση {tag} — εκτελέστε UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Η ενημέρωση {tag} λήφθηκε και επαληθεύτηκε — εκτελέστε UPDATE INSTALL για εφαρμογή   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Ο έλεγχος για ενημερώσεις απέτυχε: {err}   # Update check failed: {err}
 msg.grep.none = GREP: καμία αντιστοιχία   # GREP: no matches
 msg.grep.match.one = {n} αντιστοιχία   # {n} match
 msg.grep.match.other = {n} αντιστοιχίες   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} ρουτίνα   # {n} routine
 msg.lib.count.other = {n} ρουτίνες   # {n} routines
 msg.lib.loaded = φορτώθηκαν {count} από {path}   # loaded {count} from {path}
 msg.lib.added = προστέθηκαν {count} από {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Έλεγχος για ενημερώσεις…   # Checking for updates…

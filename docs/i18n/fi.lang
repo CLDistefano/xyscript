@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Tallenna asetukset automaattisesti   # Auto-sa
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Käyttöopas   # Manual
 menu.help.reference = Viiteopas   # Reference
+menu.help.update_avail = Päivitys {ver} saatavilla…   # Update {ver} available…
+menu.help.check_updates = Tarkista päivitykset   # Check for updates
 menu.help.about = Tietoja XyScriptistä   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,11 @@ dialog.about.tagline = Muokattava editori XyWrite-perinteessä.   # A configurab
 button.close = Sulje   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.unavailable = päivitykset eivät ole käytettävissä tässä koontiversiossa   # updates aren't available in this build
+msg.update.uptodate = Ohjelmisto on ajan tasalla (versio {ver})   # You're up to date (version {ver})
+msg.update.available = Päivitys {tag} saatavilla — suorita UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Päivitys {tag} ladattu ja vahvistettu — ota käyttöön suorittamalla UPDATE INSTALL   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Päivitysten tarkistus epäonnistui: {err}   # Update check failed: {err}
 msg.grep.none = GREP: ei osumia   # GREP: no matches
 msg.grep.match.one = {n} osuma   # {n} match
 msg.grep.match.other = {n} osumaa   # {n} matches
@@ -476,3 +483,6 @@ msg.lib.count.one = {n} rutiini   # {n} routine
 msg.lib.count.other = {n} rutiinia   # {n} routines
 msg.lib.loaded = ladattu {count} kohteesta {path}   # loaded {count} from {path}
 msg.lib.added = lisätty {count} kohteesta {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Tarkistetaan päivityksiä…   # Checking for updates…
