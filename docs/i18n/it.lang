@@ -395,11 +395,22 @@ dialog.about.tagline = Un editor configurabile nella tradizione di XyWrite.   # 
 button.close = Chiudi   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: questa build non supporta gli aggiornamenti automatici (compilata senza la funzionalità `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = aggiornato (versione {ver}) — niente da scaricare   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} scaricato e verificato ({n} file) — pronto per l'installazione   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = gli aggiornamenti non sono disponibili in questa build   # updates aren't available in this build
 msg.update.uptodate = Sei aggiornato (versione {ver})   # You're up to date (version {ver})
 msg.update.available = Aggiornamento {tag} disponibile — esegui UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
 msg.update.staged = Aggiornamento {tag} scaricato e verificato — esegui UPDATE INSTALL per applicarlo   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Controllo degli aggiornamenti non riuscito: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} installato: {replaced} sostituiti, {added} aggiunti, {deleted} eliminati   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = conservato {n} dei tuoi file modificati (nuovo predefinito salvato come .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = conservati {n} dei tuoi file modificati (nuovi predefiniti salvati come .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = riavvia XyScript   # restart XyScript
+msg.update.rollback.done = ultimo aggiornamento annullato   # rolled back the last update
+msg.update.rollback.toversion = ripristinata la versione {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} ripristinato al valore predefinito originale   # reset {rel} to the shipped default
+msg.update.check.available = aggiornamento disponibile: {tag} (hai {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: nessun risultato   # GREP: no matches
 msg.grep.match.one = {n} corrispondenza   # {n} match
 msg.grep.match.other = {n} corrispondenze   # {n} matches

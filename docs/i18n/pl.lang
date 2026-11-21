@@ -399,11 +399,23 @@ dialog.about.tagline = Konfigurowalny edytor w tradycji XyWrite.   # A configura
 button.close = Zamknij   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: ta kompilacja nie obsługuje automatycznych aktualizacji (skompilowana bez funkcji `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = aktualne (wersja {ver}) — nie ma czego pobierać   # up to date (version {ver}) — nothing to download
+msg.update.download.done = pobrano i zweryfikowano {tag} ({n} plików) — gotowe do instalacji   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = aktualizacje nie są dostępne w tej kompilacji   # updates aren't available in this build
 msg.update.uptodate = Masz aktualną wersję (wersja {ver})   # You're up to date (version {ver})
 msg.update.available = Dostępna aktualizacja {tag} — uruchom UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
 msg.update.staged = Aktualizacja {tag} pobrana i zweryfikowana — uruchom UPDATE INSTALL, aby zainstalować   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Sprawdzanie aktualizacji nie powiodło się: {err}   # Update check failed: {err}
+msg.update.install.done = zainstalowano {tag}: {replaced} zastąpionych, {added} dodanych, {deleted} usuniętych   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = zachowano {n} edytowany plik (nowy domyślny zapisany jako .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.few = zachowano {n} edytowane pliki (nowe domyślne zapisane jako .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.install.kept.many = zachowano {n} edytowanych plików (nowe domyślne zapisane jako .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = uruchom ponownie XyScript   # restart XyScript
+msg.update.rollback.done = cofnięto ostatnią aktualizację   # rolled back the last update
+msg.update.rollback.toversion = przywrócono wersję {ver}   # rolled back to version {ver}
+msg.update.reset.done = przywrócono {rel} do domyślnej wartości fabrycznej   # reset {rel} to the shipped default
+msg.update.check.available = dostępna aktualizacja: {tag} (masz {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: brak dopasowań   # GREP: no matches
 msg.grep.match.one = {n} dopasowanie   # {n} match
 msg.grep.match.few = {n} dopasowania   # {n} matches

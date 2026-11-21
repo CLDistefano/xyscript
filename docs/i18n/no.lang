@@ -395,11 +395,22 @@ dialog.about.tagline = En konfigurerbar editor i XyWrite-tradisjonen.   # A conf
 button.close = Lukk   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: denne builden støtter ikke automatiske oppdateringer (kompilert uten funksjonen `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = oppdatert (versjon {ver}) — ingenting å laste ned   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} lastet ned og verifisert ({n} filer) — klar til å installere   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = oppdateringer er ikke tilgjengelige i denne build-en   # updates aren't available in this build
 msg.update.uptodate = Du er oppdatert (versjon {ver})   # You're up to date (version {ver})
 msg.update.available = Oppdatering {tag} tilgjengelig — kjør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
 msg.update.staged = Oppdatering {tag} lastet ned og verifisert — kjør UPDATE INSTALL for å installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Kontroll av oppdateringer mislyktes: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} installert: {replaced} erstattet, {added} lagt til, {deleted} slettet   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = beholdt {n} av den redigerte filen din (ny standard lagret som .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = beholdt {n} av de redigerte filene dine (nye standarder lagret som .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = start XyScript på nytt   # restart XyScript
+msg.update.rollback.done = siste oppdatering tilbakestilt   # rolled back the last update
+msg.update.rollback.toversion = tilbakestilt til versjon {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} tilbakestilt til standardverdien   # reset {rel} to the shipped default
+msg.update.check.available = oppdatering tilgjengelig: {tag} (du har {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: ingen treff   # GREP: no matches
 msg.grep.match.one = {n} treff   # {n} match
 msg.grep.match.other = {n} treff   # {n} matches

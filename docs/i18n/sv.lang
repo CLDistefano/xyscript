@@ -395,11 +395,22 @@ dialog.about.tagline = En konfigurerbar redigerare i XyWrite-traditionen.   # A 
 button.close = Stäng   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: den här versionen saknar stöd för automatiska uppdateringar (kompilerad utan funktionen `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = uppdaterad (version {ver}) — inget att hämta   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} hämtad och verifierad ({n} filer) — klar att installera   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = uppdateringar är inte tillgängliga i den här versionen   # updates aren't available in this build
 msg.update.uptodate = Du har den senaste versionen (version {ver})   # You're up to date (version {ver})
 msg.update.available = Uppdatering {tag} tillgänglig — kör UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
 msg.update.staged = Uppdatering {tag} hämtad och verifierad — kör UPDATE INSTALL för att installera   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Sökningen efter uppdateringar misslyckades: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} installerad: {replaced} ersatta, {added} tillagda, {deleted} borttagna   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = behöll {n} av din redigerade fil (ny standard sparad som .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = behöll {n} av dina redigerade filer (nya standarder sparade som .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = starta om XyScript   # restart XyScript
+msg.update.rollback.done = senaste uppdateringen återställd   # rolled back the last update
+msg.update.rollback.toversion = återställd till version {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} återställd till standardvärdet   # reset {rel} to the shipped default
+msg.update.check.available = uppdatering tillgänglig: {tag} (du har {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: inga träffar   # GREP: no matches
 msg.grep.match.one = {n} träff   # {n} match
 msg.grep.match.other = {n} träffar   # {n} matches

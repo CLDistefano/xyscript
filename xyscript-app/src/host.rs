@@ -4678,9 +4678,10 @@ impl AppHost {
     fn update_download(&mut self) -> VmResult<Value> {
         #[cfg(not(feature = "update"))]
         {
-            Err(XplError::trappable(
+            Err(XplError::trappable(self.tr_msg(
+                "msg.update.notbuilt",
                 "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
-            ))
+            )))
         }
         #[cfg(feature = "update")]
         {
@@ -4693,9 +4694,10 @@ impl AppHost {
             if !newer {
                 self.update_available = None;
                 self.last_release = Some(info);
-                return Ok(Value::str(format!(
-                    "up to date (version {}) — nothing to download",
-                    update::CURRENT_VERSION
+                return Ok(Value::str(self.tr_fmt(
+                    "msg.update.download.uptodate",
+                    "up to date (version {ver}) — nothing to download",
+                    &[("ver", &update::CURRENT_VERSION)],
                 )));
             }
             let staging = self.update_root().join("staging");
@@ -4706,8 +4708,10 @@ impl AppHost {
             self.update_available = Some(info.tag.clone());
             self.staged_update = Some(staged);
             self.last_release = Some(info);
-            Ok(Value::str(format!(
-                "downloaded and verified {tag} ({n} files) — ready to install"
+            Ok(Value::str(self.tr_fmt(
+                "msg.update.download.done",
+                "downloaded and verified {tag} ({n} files) — ready to install",
+                &[("tag", &tag), ("n", &n)],
             )))
         }
     }
@@ -4863,9 +4867,10 @@ impl AppHost {
     fn update_install(&mut self) -> VmResult<Value> {
         #[cfg(not(feature = "update"))]
         {
-            Err(XplError::trappable(
+            Err(XplError::trappable(self.tr_msg(
+                "msg.update.notbuilt",
                 "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
-            ))
+            )))
         }
         #[cfg(feature = "update")]
         {
@@ -4927,19 +4932,30 @@ impl AppHost {
             self.staged_update = None;
             self.update_available = None;
 
-            let mut msg = format!(
-                "installed {tag}: {} replaced, {} added, {} deleted",
-                report.replaced.len(),
-                report.written.len(),
-                report.deleted.len()
+            // Compose with code-level separators ("; ", " — ") so no catalog value needs a leading
+            // space (catalog values are trimmed on load).
+            let mut msg = self.tr_fmt(
+                "msg.update.install.done",
+                "installed {tag}: {replaced} replaced, {added} added, {deleted} deleted",
+                &[
+                    ("tag", &tag),
+                    ("replaced", &report.replaced.len()),
+                    ("added", &report.written.len()),
+                    ("deleted", &report.deleted.len()),
+                ],
             );
             if !report.new_defaults.is_empty() {
-                msg.push_str(&format!(
-                    "; kept {} of your edited file(s) (new defaults saved as .new)",
-                    report.new_defaults.len()
+                let kept = report.new_defaults.len();
+                msg.push_str("; ");
+                msg.push_str(&self.tr_plural(
+                    "msg.update.install.kept",
+                    "kept {n} of your edited file (new default saved as .new)",
+                    "kept {n} of your edited files (new defaults saved as .new)",
+                    kept,
                 ));
             }
-            msg.push_str(" — restart XyScript to run it");
+            msg.push_str(" — ");
+            msg.push_str(&self.tr_msg("msg.update.restart", "restart XyScript"));
             Ok(Value::str(msg))
         }
     }
@@ -4949,9 +4965,10 @@ impl AppHost {
     fn update_rollback(&mut self) -> VmResult<Value> {
         #[cfg(not(feature = "update"))]
         {
-            Err(XplError::trappable(
+            Err(XplError::trappable(self.tr_msg(
+                "msg.update.notbuilt",
                 "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
-            ))
+            )))
         }
         #[cfg(feature = "update")]
         {
@@ -4977,11 +4994,13 @@ impl AppHost {
             }
             let ver = std::fs::read_to_string(backup.join("version.txt")).unwrap_or_default();
             let ver = ver.trim();
-            let msg = if ver.is_empty() {
-                "rolled back the last update — restart XyScript".to_string()
+            let restart = self.tr_msg("msg.update.restart", "restart XyScript");
+            let done = if ver.is_empty() {
+                self.tr_msg("msg.update.rollback.done", "rolled back the last update")
             } else {
-                format!("rolled back to version {ver} — restart XyScript")
+                self.tr_fmt("msg.update.rollback.toversion", "rolled back to version {ver}", &[("ver", &ver)])
             };
+            let msg = format!("{done} — {restart}");
             Ok(Value::str(msg))
         }
     }
@@ -5033,7 +5052,11 @@ impl AppHost {
         if promoted_new {
             let _ = std::fs::remove_file(&new_path);
         }
-        Ok(Value::str(format!("reset {rel} to the shipped default")))
+        Ok(Value::str(self.tr_fmt(
+            "msg.update.reset.done",
+            "reset {rel} to the shipped default",
+            &[("rel", &rel)],
+        )))
     }
 
     /// `UPDATE CHECK` — query the release channel and report whether a newer version is available,
@@ -5042,9 +5065,10 @@ impl AppHost {
     fn update_check(&mut self) -> VmResult<Value> {
         #[cfg(not(feature = "update"))]
         {
-            Err(XplError::trappable(
+            Err(XplError::trappable(self.tr_msg(
+                "msg.update.notbuilt",
                 "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
-            ))
+            )))
         }
         #[cfg(feature = "update")]
         {
@@ -5057,14 +5081,18 @@ impl AppHost {
             };
             let msg = if newer {
                 self.update_available = Some(info.tag.clone());
-                format!(
-                    "update available: {} (you have {})",
-                    info.tag,
-                    crate::update::CURRENT_VERSION
+                self.tr_fmt(
+                    "msg.update.check.available",
+                    "update available: {tag} (you have {cur})",
+                    &[("tag", &info.tag), ("cur", &crate::update::CURRENT_VERSION)],
                 )
             } else {
                 self.update_available = None;
-                format!("up to date (version {})", crate::update::CURRENT_VERSION)
+                self.tr_fmt(
+                    "msg.update.uptodate",
+                    "You're up to date (version {ver})",
+                    &[("ver", &crate::update::CURRENT_VERSION)],
+                )
             };
             self.last_release = Some(info);
             Ok(Value::str(msg))
