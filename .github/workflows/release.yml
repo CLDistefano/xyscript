@@ -93,9 +93,9 @@ jobs:
 
       # Build from INSIDE xyscript-gui so its .cargo/config.toml applies (static MSVC CRT on Windows).
       # `lint` = language checker, `email` = mail verbs — the same feature set as the shipped dist.
-      - name: Build (release, lint + email)
+      - name: Build (release, lint + email + update)
         working-directory: xyscript-gui
-        run: cargo build --release --features lint,email
+        run: cargo build --release --features lint,email,update
 
       # Bundle the binary with everything the app discovers at runtime beside it (`$XSDIR`): the UI
       # translation catalogs (`lang/*.lang` → `Settings ▸ Language`), the colour-theme presets
@@ -140,6 +140,16 @@ jobs:
           sz=$(wc -c < "$dest")
           if [ "$sz" -lt 1000000 ]; then echo "emoji font download looks wrong ($sz bytes)"; exit 1; fi
           echo "fetched NotoColorEmoji-Regular.ttf ($sz bytes)"
+
+      # Hash every staged file into manifest.json, shipped INSIDE the bundle. This is the baseline the
+      # auto-updater's overwrite guard compares against on the next update, so it can tell a pristine
+      # shipped file from one the user edited and never clobber edits. Runs AFTER the emoji font is
+      # fetched (so that file is covered) and BEFORE zipping. Python is preinstalled on the runners.
+      - name: Generate the release manifest
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" packaging/gen-manifest.py "staged/${{ matrix.artifact }}" "${{ github.ref_name }}"
 
       # Zip the bundle, then attach it DIRECTLY to the Release (below). Release assets use separate,
       # effectively-unlimited storage — unlike the Actions artifact store, whose per-account quota was
@@ -196,11 +206,11 @@ jobs:
         with:
           workspaces: xyscript-gui
 
-      - name: Build both architectures (release, lint + email)
+      - name: Build both architectures (release, lint + email + update)
         working-directory: xyscript-gui
         run: |
-          cargo build --release --features lint,email --target aarch64-apple-darwin
-          cargo build --release --features lint,email --target x86_64-apple-darwin
+          cargo build --release --features lint,email,update --target aarch64-apple-darwin
+          cargo build --release --features lint,email,update --target x86_64-apple-darwin
 
       - name: Package (universal binary + language catalogs + themes + runtime kit)
         shell: bash
@@ -236,6 +246,14 @@ jobs:
           sz=$(wc -c < "$dest")
           if [ "$sz" -lt 1000000 ]; then echo "emoji font download looks wrong ($sz bytes)"; exit 1; fi
           echo "fetched NotoColorEmoji-Regular.ttf ($sz bytes)"
+
+      # See the matching step in the `build` job: hash the staged bundle into manifest.json (shipped
+      # inside the bundle) as the auto-updater's overwrite-guard baseline. After the font fetch, before zip.
+      - name: Generate the release manifest
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" packaging/gen-manifest.py "staged/xyscript-macos-universal" "${{ github.ref_name }}"
 
       - name: Zip bundle
         run: (cd staged && zip -r "../xyscript-macos-universal.zip" "xyscript-macos-universal")

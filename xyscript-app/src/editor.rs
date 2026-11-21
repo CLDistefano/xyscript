@@ -1336,6 +1336,22 @@ impl Editor {
     pub fn check_in_progress(&self) -> bool {
         self.host.check_in_progress()
     }
+    /// Whether an automatic update check is due on boot (the `UPDATEMODE` cadence).
+    pub fn update_check_due(&self) -> bool {
+        self.host.update_check_due()
+    }
+    /// Start a throttled background update cycle, honoring `UPDATEMODE` (the GUI calls this at boot).
+    pub fn start_update_cycle(&mut self) {
+        self.host.start_update_cycle()
+    }
+    /// Drain a finished background update cycle; returns a status/toast line to show, or `None`.
+    pub fn poll_update(&mut self) -> Option<String> {
+        self.host.poll_update()
+    }
+    /// Whether a background update cycle is running (keep the GUI loop repainting).
+    pub fn update_in_flight(&self) -> bool {
+        self.host.update_in_flight()
+    }
     /// The spelling correction choices for the word at rope offset `pos` (right-click spell menu), or
     /// `None` if the click isn't on a flagged word.
     pub fn lint_context_at(&self, pos: usize) -> Option<xyscript_xpl::LintFixChoices> {
@@ -2982,6 +2998,50 @@ mod tests {
         // SaveCfg carries it.
         e.run_command("SAVECFG ar.cfg");
         assert!(e.host_mut().files.get("ar.cfg").unwrap().contains("AUTOREOPEN on"));
+    }
+
+    #[test]
+    fn update_mode_defaults_to_alert_sets_reads_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // `alert` is the product default; nothing available until a check runs.
+        assert_eq!(e.special_str("UPDATEMODE"), "alert");
+        assert_eq!(e.special_str("UPDATEAVAIL"), "");
+        // Each keyword sets the policy and reads back canonically.
+        e.run_command("UPDATEMODE off");
+        assert_eq!(e.special_str("UPDATEMODE"), "off");
+        e.run_command("UPDATEMODE alert");
+        assert_eq!(e.special_str("UPDATEMODE"), "alert");
+        e.run_command("UPDATEMODE download");
+        assert_eq!(e.special_str("UPDATEMODE"), "download");
+        e.run_command("UPDATEMODE install");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // Bare = report, not a change.
+        e.run_command("UPDATEMODE");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // A bad value errors and leaves the policy untouched.
+        e.run_command("UPDATEMODE someday");
+        assert!(e.last_error().is_some(), "bad value errors");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // An unknown UPDATE sub-command errors (and never touches the network).
+        e.run_command("UPDATE frobnicate");
+        assert!(e.last_error().is_some(), "unknown sub-command errors");
+        // UPDATE RESET needs a path; with nothing to promote it fails cleanly (no files touched). The
+        // host-level step reports a *trappable* error (status line + $ERROR), so check command_succeeded.
+        e.run_command("UPDATE RESET");
+        assert!(!e.command_succeeded(), "RESET needs a path");
+        e.run_command("UPDATE RESET lang/does-not-exist.lang");
+        assert!(!e.command_succeeded(), "RESET with nothing to promote errors");
+        assert_eq!(e.special_str("UPDATESTAGED"), "", "nothing staged");
+        // SaveCfg carries the policy.
+        e.run_command("UPDATEMODE alert");
+        e.run_command("SAVECFG up.cfg");
+        assert!(e
+            .host_mut()
+            .files
+            .get("up.cfg")
+            .unwrap()
+            .contains("UPDATEMODE alert"));
     }
 
     /// Session save+restore (Phase 1, shadow-backup model): a clean named file, a DIRTY named file,

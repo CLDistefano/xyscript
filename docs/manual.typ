@@ -3535,6 +3535,50 @@ no longer corrupt a send: XyScript normalizes the whole message to #raw("CRLF") 
 need to clean up line endings by hand.]
 
 // ===================================================================================================
+= Keeping XyScript up to date
+
+XyScript can watch its own release channel and tell you when a newer version is out. A check happens
+quietly in the background at most once a day, on a worker thread, so it never slows down launch or
+interrupts your typing. What it does when it finds something is up to you — set it with
+#raw("UPDATEMODE"):
+
+/ #raw("off"): never check.
+/ #raw("alert"): check and, if a newer version exists, say so on the status line. This is the default.
+/ #raw("download"): also fetch the new release into a staging area and verify it, so it is ready to
+  install the moment you ask.
+/ #raw("install"): the same, and then prompt you to run #raw("UPDATE INSTALL"). XyScript never swaps
+  itself out from under you — applying an update is always a deliberate step.
+
+#raw("UPDATEMODE") persists with your other settings, and #raw("$UPDATEMODE") reads it back. You can
+also drive the whole thing by hand: #raw("UPDATE CHECK") asks the channel right now (and records the
+newer version in #raw("$UPDATEAVAIL")), #raw("UPDATE DOWNLOAD") stages and verifies it (recorded in
+#raw("$UPDATESTAGED")), and #raw("UPDATE INSTALL") applies it.
+
+== How an update protects your edits
+
+The parts of an install you are *meant* to edit — your keyboard map, your library, your
+#raw("startup.xpl"), the colour themes and language catalogs — sit in the same folder as the files
+XyScript ships. An update must never quietly overwrite your work, so it doesn't. Every release carries
+a manifest of exactly what it shipped and the checksum of each file. When you install, XyScript compares
+each file on disk against the version it originally shipped:
+
+- a file you never touched is replaced with the new version;
+- a file you *edited* is left exactly as it is, and the new default is written beside it as
+  #raw("<name>.new"), so you can compare the two and merge at your leisure;
+- a file the new release no longer ships is removed only if you never changed it;
+- the program itself is the one file always replaced — that is the whole point of the update.
+
+Nothing is downloaded without being checksum-verified first, and everything the install replaces is
+backed up, so #raw("UPDATE ROLLBACK") returns you to the previous version in one step. If you decide you
+*do* want a new default after all — or you edited a shipped file by accident — #raw("UPDATE RESET")
+followed by the file's path promotes the shipped version over your copy (backing your copy up first).
+
+#tip("The very first update is the careful one")[Versions built before this system shipped carry no
+manifest, so the first update after upgrading has no record of what was pristine. For that one step
+XyScript plays it safe: it protects your #raw("startup.xpl"), library, and auto-replace file by name and
+refreshes everything else. From then on the full file-by-file guard applies.]
+
+// ===================================================================================================
 = Appendix A — The Reference
 
 The exhaustive, always-current catalog of every command, function, operator, and special variable lives

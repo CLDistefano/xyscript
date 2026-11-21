@@ -192,6 +192,9 @@ pub const BUILTIN_VERBS: &[&str] = &[
     // implementation is behind the `email` cargo feature (a slim build reports "needs the email build").
     "SMTPURL", "MAILUSER", "MAILFROM", "MAILPASS", "MAILDEBUG", "SENDMAIL", "ATTACH", "CLEARATTACH",
     "IMAPURL", "MAILBOX", "LISTMAIL", "SAVEMAIL", "DELMAIL",
+    // Auto-update: policy setting (always available) + the manual step (network path behind the
+    // `update` cargo feature — a slim build reports it's not compiled in).
+    "UPDATEMODE", "UPDATE",
 ];
 
 /// Control-flow keyword names a library routine may not shadow.

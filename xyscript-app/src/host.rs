@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, UpdateAction, UpdateMode, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -3207,6 +3207,21 @@ pub struct AppHost {
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
+    /// Auto-update policy (`UPDATEMODE`; `$UPDATEMODE`; SaveCfg). Defaults to `alert` (check + notify,
+    /// the product default); `off` disables all checks. The network cadence needs the `update` build.
+    update_mode: UpdateMode,
+    /// Latest version tag from the last successful `UPDATE CHECK`, if newer than the running build
+    /// (else `None`). Powers `$UPDATEAVAIL`. Session-only.
+    update_available: Option<String>,
+    /// Full info from the last successful check (tag, notes, assets); consumed by the later NOTES tab
+    /// and the downloader. Session-only.
+    #[allow(dead_code)] // read by UPDATE NOTES / DOWNLOAD in later auto-update phases
+    last_release: Option<crate::update::ReleaseInfo>,
+    /// A downloaded, SHA-256-verified release sitting in staging, ready for `UPDATE INSTALL` (Phase 4).
+    /// `$UPDATESTAGED` reports its tag. Session-only.
+    staged_update: Option<crate::update::StagedUpdate>,
+    /// Receiver for a background update cycle (the Phase 5 cadence); `Some` while one runs. Session-only.
+    update_pending: Option<std::sync::mpsc::Receiver<crate::update::UpdateCycleOutcome>>,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3760,6 +3775,11 @@ impl AppHost {
             xlink_capture: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
+            update_mode: UpdateMode::Alert, // the product default: check + notify, never auto-install
+            update_available: None,
+            last_release: None,
+            staged_update: None,
+            update_pending: None,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4590,6 +4610,408 @@ impl AppHost {
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
+    }
+
+    /// The current auto-update policy (`UPDATEMODE`/`$UPDATEMODE`). The GUI reads this to drive the
+    /// (later) throttled startup check and the menu state.
+    pub fn update_mode(&self) -> UpdateMode {
+        self.update_mode
+    }
+
+    /// Run a manual auto-update step (`UPDATE …`).
+    fn run_update_action(&mut self, action: UpdateAction) -> VmResult<Value> {
+        match action {
+            UpdateAction::Check => self.update_check(),
+            UpdateAction::Download => self.update_download(),
+            UpdateAction::Install => self.update_install(),
+            UpdateAction::Rollback => self.update_rollback(),
+            UpdateAction::Reset(path) => self.update_reset(&path),
+        }
+    }
+
+    /// The install directory `$XSDIR` — where the running binary and the bundle files live.
+    fn install_root(&self) -> std::path::PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+    }
+
+    /// The auto-update working directory, `$XSDIR/.update` (staging + backups). Not part of any
+    /// manifest, so the overwrite guard never touches it.
+    fn update_root(&self) -> std::path::PathBuf {
+        self.install_root().join(".update")
+    }
+
+    /// The running binary's file name (e.g. `xyscript.exe`), matching how the bundle names it.
+    fn exe_file_name(&self) -> String {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    "xyscript.exe".to_string()
+                } else {
+                    "xyscript".to_string()
+                }
+            })
+    }
+
+    /// `UPDATE DOWNLOAD` — fetch the platform bundle for the latest release into
+    /// `$XSDIR/.update/staging/`, extract it, and verify every file's SHA-256 against the bundle's
+    /// manifest. The install is untouched; on success the verified tree is recorded for `UPDATE INSTALL`
+    /// (Phase 4) and reported by `$UPDATESTAGED`. Any verification failure aborts and clears staging.
+    fn update_download(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            let info = update::fetch_latest()
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD failed: {e}")))?;
+            let current = update::parse_version(update::CURRENT_VERSION);
+            let newer =
+                matches!((info.version, current), (Some(l), Some(c)) if update::is_newer(l, c));
+            if !newer {
+                self.update_available = None;
+                self.last_release = Some(info);
+                return Ok(Value::str(format!(
+                    "up to date (version {}) — nothing to download",
+                    update::CURRENT_VERSION
+                )));
+            }
+            let staging = self.update_root().join("staging");
+            let staged = update::download_and_stage(&info, &staging)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
+            let n = staged.manifest.files.len();
+            let tag = staged.tag.clone();
+            self.update_available = Some(info.tag.clone());
+            self.staged_update = Some(staged);
+            self.last_release = Some(info);
+            Ok(Value::str(format!(
+                "downloaded and verified {tag} ({n} files) — ready to install"
+            )))
+        }
+    }
+
+    // --- Phase 5: the automatic cadence (throttled background check, per UPDATEMODE) --------------
+
+    /// Whether an automatic update check is due now: the policy is on and the last check (recorded in
+    /// `$XSDIR/.update/last-check`) is older than the interval. The GUI calls this once at boot.
+    pub fn update_check_due(&self) -> bool {
+        if self.update_mode == UpdateMode::Off {
+            return false;
+        }
+        let last = std::fs::read_to_string(self.update_root().join("last-check"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        crate::update::due_now(last, now, 24 * 60 * 60)
+    }
+
+    /// Whether a background update cycle is running (the GUI keeps the loop repainting).
+    pub fn update_in_flight(&self) -> bool {
+        self.update_pending.is_some()
+    }
+
+    /// Start a throttled background update cycle off the UI thread, honoring `UPDATEMODE`: `alert`
+    /// checks only; `download`/`install` also download + verify into staging. No-op when off, already
+    /// running, or in a build without the `update` feature. The GUI calls this at boot when
+    /// [`Self::update_check_due`] is true; [`Self::poll_update`] surfaces the result.
+    pub fn start_update_cycle(&mut self) {
+        #[cfg(feature = "update")]
+        {
+            if self.update_mode == UpdateMode::Off || self.update_pending.is_some() {
+                return;
+            }
+            let want_download =
+                matches!(self.update_mode, UpdateMode::Download | UpdateMode::Install);
+            let staging = self.update_root().join("staging");
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(crate::update::run_update_cycle(want_download, staging));
+            });
+            self.update_pending = Some(rx);
+        }
+    }
+
+    /// Call each frame. If the background cycle finished, record its result, stamp the check time, and
+    /// return a status/toast line to show; `None` while running or when there is nothing to say. A
+    /// background *failure* is kept quiet (no nagging). Install policy stages + prompts rather than
+    /// swapping the binary unattended — the actual swap stays a deliberate `UPDATE INSTALL`.
+    pub fn poll_update(&mut self) -> Option<String> {
+        #[cfg(feature = "update")]
+        {
+            let outcome = self.update_pending.as_ref().and_then(|rx| rx.try_recv().ok())?;
+            self.update_pending = None;
+            self.write_last_check();
+            use crate::update::UpdateCycleOutcome::*;
+            match outcome {
+                UpToDate => {
+                    self.update_available = None;
+                    None
+                }
+                Available(info) => {
+                    let tag = info.tag.clone();
+                    self.update_available = Some(tag.clone());
+                    self.last_release = Some(info);
+                    Some(format!(
+                        "Update {tag} available — run UPDATE DOWNLOAD (or UPDATE CHECK for details)"
+                    ))
+                }
+                Staged { info, staged } => {
+                    let tag = info.tag.clone();
+                    self.update_available = Some(tag.clone());
+                    self.staged_update = Some(staged);
+                    self.last_release = Some(info);
+                    Some(format!(
+                        "Update {tag} downloaded and verified — run UPDATE INSTALL to apply"
+                    ))
+                }
+                Failed(_) => None,
+            }
+        }
+        #[cfg(not(feature = "update"))]
+        {
+            None
+        }
+    }
+
+    /// Stamp the last-check time (`$XSDIR/.update/last-check`, Unix seconds) so the throttle advances.
+    #[cfg(feature = "update")]
+    fn write_last_check(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = self.update_root().join("last-check");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, now.to_string());
+    }
+
+    /// `UPDATE INSTALL` — apply a staged (or freshly downloaded) release behind the overwrite guard,
+    /// back up what it replaces, then self-replace the running binary. The install directory's files
+    /// are written in place (they aren't locked); only the binary needs the self-replace dance. Prompts
+    /// to restart. For a *manual* install the user typing the verb is the confirmation; the mode-driven
+    /// auto-install (Phase 5) adds a confirm dialog before this runs.
+    fn update_install(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            // Make sure we have a verified staged bundle; download one if not.
+            if self.staged_update.is_none() {
+                let msg = self.update_download()?;
+                if self.staged_update.is_none() {
+                    return Ok(msg); // "up to date" / nothing to install
+                }
+            }
+            let (bundle_root, new_manifest, tag) = {
+                let s = self.staged_update.as_ref().unwrap();
+                (s.root.clone(), s.manifest.clone(), s.tag.clone())
+            };
+            let install_root = self.install_root();
+            let exe = self.exe_file_name();
+
+            // Baseline for the guard: the installed manifest (None → bootstrap hop).
+            let old_manifest = std::fs::read_to_string(install_root.join("manifest.json"))
+                .ok()
+                .and_then(|body| update::parse_manifest(&body).ok());
+
+            // Plan the update, hashing each local file on demand.
+            let hash_root = install_root.clone();
+            let local = move |rel: &str| {
+                std::fs::read(hash_root.join(rel)).ok().map(|b| update::sha256_hex(&b))
+            };
+            let plan = update::plan_update(
+                old_manifest.as_ref(),
+                &new_manifest,
+                local,
+                &exe,
+                update::SEED_FILES,
+            );
+
+            // Fresh one-step backup slot.
+            let backup = self.update_root().join("backup").join("previous");
+            let _ = std::fs::remove_dir_all(&backup);
+
+            let report = update::apply_plan(&install_root, &bundle_root, &plan, &backup)
+                .map_err(|e| XplError::trappable(format!("UPDATE INSTALL: apply failed — {e}")))?;
+            // Remember the version we backed up from, for the rollback report.
+            let _ = std::fs::write(backup.join("version.txt"), update::CURRENT_VERSION);
+
+            // Swap the running binary from the verified bundle (the only locked file).
+            if report.exe_pending {
+                let new_exe = bundle_root.join(&exe);
+                self_replace::self_replace(&new_exe).map_err(|e| {
+                    XplError::trappable(format!(
+                        "UPDATE INSTALL: files updated, but swapping the binary failed — {e}. \
+                         Run UPDATE ROLLBACK, or restart and retry."
+                    ))
+                })?;
+            }
+
+            // Applied — drop the staging tree and the staged-state.
+            let _ = std::fs::remove_dir_all(self.update_root().join("staging"));
+            self.staged_update = None;
+            self.update_available = None;
+
+            let mut msg = format!(
+                "installed {tag}: {} replaced, {} added, {} deleted",
+                report.replaced.len(),
+                report.written.len(),
+                report.deleted.len()
+            );
+            if !report.new_defaults.is_empty() {
+                msg.push_str(&format!(
+                    "; kept {} of your edited file(s) (new defaults saved as .new)",
+                    report.new_defaults.len()
+                ));
+            }
+            msg.push_str(" — restart XyScript to run it");
+            Ok(Value::str(msg))
+        }
+    }
+
+    /// `UPDATE ROLLBACK` — undo the last `UPDATE INSTALL` from its one-step backup: restore the prior
+    /// files and self-replace the binary back. Needs a backup from a prior install.
+    fn update_rollback(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            let install_root = self.install_root();
+            let exe = self.exe_file_name();
+            let backup = self.update_root().join("backup").join("previous");
+            if !backup.join("files").is_dir() {
+                return Err(XplError::trappable(
+                    "UPDATE ROLLBACK: nothing to roll back to (no backup from a prior UPDATE INSTALL)"
+                        .to_string(),
+                ));
+            }
+            let exe_pending = update::rollback_files(&install_root, &backup, &exe)
+                .map_err(|e| XplError::trappable(format!("UPDATE ROLLBACK: {e}")))?;
+            if exe_pending {
+                let backup_exe = backup.join("files").join(&exe);
+                self_replace::self_replace(&backup_exe).map_err(|e| {
+                    XplError::trappable(format!(
+                        "UPDATE ROLLBACK: files restored, but swapping the binary back failed — {e}"
+                    ))
+                })?;
+            }
+            let ver = std::fs::read_to_string(backup.join("version.txt")).unwrap_or_default();
+            let ver = ver.trim();
+            let msg = if ver.is_empty() {
+                "rolled back the last update — restart XyScript".to_string()
+            } else {
+                format!("rolled back to version {ver} — restart XyScript")
+            };
+            Ok(Value::str(msg))
+        }
+    }
+
+    /// `UPDATE RESET <path>` — the guard escape hatch. Override the guard for one path: promote its
+    /// `<name>.new` (or, failing that, copy from a staged bundle) over the local copy, backing the
+    /// local copy up to `$XSDIR/.update/backup/reset/` first. Pure local file ops — works in any build.
+    fn update_reset(&mut self, rel: &str) -> VmResult<Value> {
+        let rel = rel.trim().replace('\\', "/");
+        if rel.is_empty() || rel.contains("..") || rel.starts_with('/') || rel.ends_with('/') {
+            return Err(XplError::trappable(format!("UPDATE RESET: invalid path {rel:?}")));
+        }
+        let install_root = self.install_root();
+        let target = install_root.join(&rel);
+        let new_path = install_root.join(format!("{rel}{}", crate::update::NEW_SUFFIX));
+
+        // Source of the shipped default: a `<name>.new` beside it, else the staged bundle.
+        let (source, promoted_new) = if new_path.is_file() {
+            (new_path.clone(), true)
+        } else if let Some(staged) = self.staged_update.as_ref() {
+            let s = staged.root.join(&rel);
+            if s.is_file() {
+                (s, false)
+            } else {
+                return Err(XplError::trappable(format!(
+                    "UPDATE RESET: no {rel}.new, and the staged release has no {rel}"
+                )));
+            }
+        } else {
+            return Err(XplError::trappable(format!(
+                "UPDATE RESET: nothing to reset {rel} from (no {rel}.new; run UPDATE DOWNLOAD to fetch the shipped default)"
+            )));
+        };
+
+        // Back up the current local copy first.
+        if target.is_file() {
+            let bak = self.update_root().join("backup").join("reset").join(&rel);
+            if let Some(parent) = bak.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::copy(&target, &bak);
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| XplError::trappable(format!("UPDATE RESET: {e}")))?;
+        }
+        std::fs::copy(&source, &target)
+            .map_err(|e| XplError::trappable(format!("UPDATE RESET: copy failed — {e}")))?;
+        if promoted_new {
+            let _ = std::fs::remove_file(&new_path);
+        }
+        Ok(Value::str(format!("reset {rel} to the shipped default")))
+    }
+
+    /// `UPDATE CHECK` — query the release channel and report whether a newer version is available,
+    /// recording the result for `$UPDATEAVAIL` and the later NOTES/DOWNLOAD steps. The network path is
+    /// behind the `update` cargo feature; a slim build reports it's not compiled in.
+    fn update_check(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            let info = crate::update::fetch_latest()
+                .map_err(|e| XplError::trappable(format!("UPDATE CHECK failed: {e}")))?;
+            let current = crate::update::parse_version(crate::update::CURRENT_VERSION);
+            let newer = match (info.version, current) {
+                (Some(latest), Some(cur)) => crate::update::is_newer(latest, cur),
+                _ => false,
+            };
+            let msg = if newer {
+                self.update_available = Some(info.tag.clone());
+                format!(
+                    "update available: {} (you have {})",
+                    info.tag,
+                    crate::update::CURRENT_VERSION
+                )
+            } else {
+                self.update_available = None;
+                format!("up to date (version {})", crate::update::CURRENT_VERSION)
+            };
+            self.last_release = Some(info);
+            Ok(Value::str(msg))
+        }
     }
 
     /// Whether error logging is on (`ERRORLOG`/`$ERRORLOG`).
@@ -10250,6 +10672,7 @@ impl AppHost {
         put_opt_color(&mut s, "MSG box OK-button background colour -- R G B, 0-255", "MSGOKBGCOLOR", self.msg_ok_bg_color);
         put_opt_color(&mut s, "Bookmark gutter background colour -- R G B, 0-255", "MARKBGCOLOR", self.mark_bg_color);
         put(&mut s, "Reload a file automatically when changed on disk -- on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Automatic-update policy -- off | alert | download | install", format!("UPDATEMODE {}", self.update_mode.as_str()));
         put(&mut s, "Log trappable + fatal errors to a file -- on | off", format!("ERRORLOG {}", if self.error_log { "on" } else { "off" }));
         if self.error_log_file.is_none() {
             put_tmpl(&mut s, "Error-log file path (default: xyscript-errors.log in $XSDIR)", "ERRORLOGFILE my-errors.log");
@@ -14625,6 +15048,13 @@ impl Host for AppHost {
                     if self.auto_reopen { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetUpdateMode(mode) => {
+                self.update_mode = mode;
+                return Ok(Value::str(format!("UPDATEMODE {}", mode.as_str())));
+            }
+            EditorOp::Update(action) => {
+                return self.run_update_action(action);
+            }
             EditorOp::SetErrorLog(opt) => {
                 self.error_log = opt.unwrap_or(!self.error_log);
                 return Ok(Value::str(format!(
@@ -15728,6 +16158,19 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
+            "UPDATEMODE" => Some(Value::str(self.update_mode.as_str())),
+            // The latest available version tag if the last check found one newer than this build, else
+            // empty. Session-only — populated by `UPDATE CHECK`.
+            "UPDATEAVAIL" => Some(Value::str(
+                self.update_available.clone().unwrap_or_default(),
+            )),
+            // The tag of a downloaded + verified release waiting in staging (empty if none).
+            "UPDATESTAGED" => Some(Value::str(
+                self.staged_update
+                    .as_ref()
+                    .map(|s| s.tag.clone())
+                    .unwrap_or_default(),
+            )),
             "ERRORLOG" => Some(Value::Int(if self.error_log { 1 } else { 0 })),
             // The effective log path (default included), so a script/user can see where it writes.
             "ERRORLOGFILE" => Some(Value::str(self.error_log_path().to_string_lossy().into_owned())),

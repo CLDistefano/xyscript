@@ -89,6 +89,68 @@ impl FontMode {
     }
 }
 
+/// Auto-update policy (`UPDATEMODE off|alert|download|install`; `$UPDATEMODE`; SaveCfg).
+/// - `Off` — never check.
+/// - `Alert` — check on a throttled cadence and notify only.
+/// - `Download` — also fetch + verify the new bundle into a staging area, but don't apply it.
+/// - `Install` — also apply it (behind the overwrite guard), then prompt to restart.
+///
+/// The struct default is `Off`, so an unconfigured or lean build is inert; the shipped config sets
+/// `alert`. This is pure policy state — selecting a mode never itself touches the network; the actual
+/// check/download/install is driven by [`EditorOp::Update`] (manual) or a throttled startup poll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UpdateMode {
+    #[default]
+    Off,
+    Alert,
+    Download,
+    Install,
+}
+
+impl UpdateMode {
+    /// Parse the `UPDATEMODE` argument (case-insensitive). `""` is `None` (a bare report).
+    pub fn parse(s: &str) -> Option<UpdateMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "off" | "none" => Some(UpdateMode::Off),
+            "alert" | "notify" => Some(UpdateMode::Alert),
+            "download" => Some(UpdateMode::Download),
+            "install" | "auto" => Some(UpdateMode::Install),
+            _ => None,
+        }
+    }
+    /// The canonical keyword (`$UPDATEMODE`, status reports, `SAVECFG`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UpdateMode::Off => "off",
+            UpdateMode::Alert => "alert",
+            UpdateMode::Download => "download",
+            UpdateMode::Install => "install",
+        }
+    }
+}
+
+/// A manual `UPDATE` sub-action ([`EditorOp::Update`]). Bare `UPDATE` runs the step appropriate to the
+/// current [`UpdateMode`]; a sub-command forces one step. Grows across the auto-update phases — Phase 1
+/// implements `Check`; later phases add `Notes`, `Download`, `Install`, `Rollback`, and `Reset`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateAction {
+    /// Query the release channel and report whether a newer version exists (records `$UPDATEAVAIL`).
+    Check,
+    /// Download the new release bundle into staging and verify every file's SHA-256 against its
+    /// manifest, without touching the install (records `$UPDATESTAGED`). Needs the `update` build.
+    Download,
+    /// Apply a staged (or freshly downloaded) release behind the overwrite guard — write/replace files,
+    /// drop `.new` beside edited ones, back up what it replaces — then self-replace the running binary.
+    /// Prompts to restart. Needs the `update` build.
+    Install,
+    /// Undo the last `Install` from its backup (restores the prior files + binary). Needs the backup.
+    Rollback,
+    /// Re-pull one shipped default, overriding the guard for that path: promote its `<name>.new` (or
+    /// copy from the staged bundle) over the local copy, backing the local copy up first. The escape
+    /// hatch for when you want the new default or a managed file got corrupted.
+    Reset(String),
+}
+
 /// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"
 /// title text, the box background, or the OK button's text / background.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -711,6 +773,13 @@ pub enum EditorOp {
     /// `TRUST` (no external code runs — the editor only re-reads a file you already have open).
     /// Persisted by SaveCfg. `$AUTOREOPEN`.
     SetAutoReopen(Option<bool>),
+    /// Set the auto-update policy (`UPDATEMODE off|alert|download|install`). Persisted by SaveCfg;
+    /// `$UPDATEMODE`. Pure state — it never itself touches the network (see [`UpdateMode`]).
+    SetUpdateMode(UpdateMode),
+    /// Run a manual auto-update step (`UPDATE [CHECK|DOWNLOAD]`). `Check` reports whether a newer
+    /// version is available (`$UPDATEAVAIL`); `Download` fetches + verifies the new bundle into staging
+    /// (`$UPDATESTAGED`). Behind the `update` cargo feature — a build without it reports as much.
+    Update(UpdateAction),
     /// Error logging on/off (`ERRORLOG on|off`; `None` toggles). When on, each trappable *and* fatal
     /// error is appended as a TSV row to the error-log file. Off by default. Persisted by SaveCfg.
     /// `$ERRORLOG`.

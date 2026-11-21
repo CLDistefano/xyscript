@@ -4741,6 +4741,56 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetAutoReopen(want))?;
                 Ok(Flow::Next)
             }
+            // `UPDATEMODE off|alert|download|install` (bare = report) — the auto-update policy. Pure
+            // state + SaveCfg; the network step is driven by `UPDATE`. `$UPDATEMODE`.
+            "UPDATEMODE" => {
+                let t = args.trim();
+                if t.is_empty() {
+                    *self.ctx.status =
+                        Some(format!("UPDATEMODE: {}", self.special_str("UPDATEMODE")));
+                    return Ok(Flow::Next);
+                }
+                match crate::host::UpdateMode::parse(t) {
+                    Some(mode) => {
+                        self.host_op(EditorOp::SetUpdateMode(mode))?;
+                        Ok(Flow::Next)
+                    }
+                    None => Err(XplError::trappable(format!(
+                        "UPDATEMODE: expected off, alert, download, or install, got {t:?}"
+                    ))),
+                }
+            }
+            // `UPDATE [CHECK]` — manual auto-update step (bare = CHECK). The network query is behind the
+            // `update` cargo feature; a slim build reports it's not compiled in. `$UPDATEAVAIL`.
+            "UPDATE" => {
+                let trimmed = args.trim();
+                let mut parts = trimmed.splitn(2, char::is_whitespace);
+                let sub = parts.next().unwrap_or("").to_ascii_lowercase();
+                let rest = parts.next().unwrap_or("").trim();
+                let action = match sub.as_str() {
+                    "" | "check" => crate::host::UpdateAction::Check,
+                    "download" => crate::host::UpdateAction::Download,
+                    "install" => crate::host::UpdateAction::Install,
+                    "rollback" => crate::host::UpdateAction::Rollback,
+                    "reset" => {
+                        if rest.is_empty() {
+                            return Err(XplError::trappable(
+                                "UPDATE RESET: name a file to reset, e.g. UPDATE RESET lang/fi.lang"
+                                    .to_string(),
+                            ));
+                        }
+                        crate::host::UpdateAction::Reset(rest.to_string())
+                    }
+                    other => {
+                        return Err(XplError::trappable(format!(
+                            "UPDATE: unknown sub-command {other:?} \
+                             (check, download, install, rollback, reset)"
+                        )))
+                    }
+                };
+                self.host_op(EditorOp::Update(action))?;
+                Ok(Flow::Next)
+            }
             // `ERRORLOG on|off` (bare = toggle) — append every trappable + fatal error to the log
             // file as a TSV row (timestamp, code, class, command, location, doc, message). Off by
             // default; NOT TRUST-gated (it only writes a local log). SaveCfg. `$ERRORLOG`.
