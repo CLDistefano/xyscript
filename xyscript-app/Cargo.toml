@@ -90,6 +90,10 @@ sha2 = { version = "0.10", optional = true }
 # Unzip the downloaded release bundle. Only standard Deflate is needed (what `Compress-Archive` and
 # `zip -r` produce), so the heavier codecs (zstd/bzip2/lzma, some needing a C toolchain) are off.
 zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+# Replace the RUNNING executable (Windows can't overwrite a running .exe directly — this does the
+# rename-aside-then-place dance; on Unix it's an atomic rename). Only the binary needs it; the rest of
+# the bundle is written in place by `apply_plan`.
+self-replace = { version = "1", optional = true }
 
 # Unix only: read the local UTC offset (DST-aware) from `localtime_r`'s `tm_gmtoff` for the date/time
 # specials ($MDAY/$DA/…) and DIR file times. Windows uses `GetTimeZoneInformation` (hand-rolled FFI,
@@ -108,4 +112,4 @@ email = ["xyscript-xpl/email"]
 # Compile in the auto-update network path (`UPDATE CHECK` + later download/install), which queries the
 # GitHub Releases API. Off by default; the shipped dist is built with it. Without it the `UPDATEMODE`
 # setting still works, but `UPDATE CHECK` reports that updates aren't compiled in.
-update = ["dep:ureq", "dep:serde_json", "dep:sha2", "dep:zip"]
+update = ["dep:ureq", "dep:serde_json", "dep:sha2", "dep:zip", "dep:self-replace"]

@@ -139,6 +139,16 @@ pub enum UpdateAction {
     /// Download the new release bundle into staging and verify every file's SHA-256 against its
     /// manifest, without touching the install (records `$UPDATESTAGED`). Needs the `update` build.
     Download,
+    /// Apply a staged (or freshly downloaded) release behind the overwrite guard — write/replace files,
+    /// drop `.new` beside edited ones, back up what it replaces — then self-replace the running binary.
+    /// Prompts to restart. Needs the `update` build.
+    Install,
+    /// Undo the last `Install` from its backup (restores the prior files + binary). Needs the backup.
+    Rollback,
+    /// Re-pull one shipped default, overriding the guard for that path: promote its `<name>.new` (or
+    /// copy from the staged bundle) over the local copy, backing the local copy up first. The escape
+    /// hatch for when you want the new default or a managed file got corrupted.
+    Reset(String),
 }
 
 /// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"

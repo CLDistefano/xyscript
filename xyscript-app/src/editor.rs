@@ -3008,6 +3008,13 @@ mod tests {
         // An unknown UPDATE sub-command errors (and never touches the network).
         e.run_command("UPDATE frobnicate");
         assert!(e.last_error().is_some(), "unknown sub-command errors");
+        // UPDATE RESET needs a path; with nothing to promote it fails cleanly (no files touched). The
+        // host-level step reports a *trappable* error (status line + $ERROR), so check command_succeeded.
+        e.run_command("UPDATE RESET");
+        assert!(!e.command_succeeded(), "RESET needs a path");
+        e.run_command("UPDATE RESET lang/does-not-exist.lang");
+        assert!(!e.command_succeeded(), "RESET with nothing to promote errors");
+        assert_eq!(e.special_str("UPDATESTAGED"), "", "nothing staged");
         // SaveCfg carries the policy.
         e.run_command("UPDATEMODE alert");
         e.run_command("SAVECFG up.cfg");

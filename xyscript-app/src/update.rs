@@ -6,13 +6,15 @@
 //!   - Phase 1: the `UpdateMode` setting lives in `xyscript-xpl`; this module does the version
 //!     parse/compare and — behind the optional `update` cargo feature — the network check.
 //!   - Phase 2: the release [`Manifest`] and the manifest-diff overwrite guard ([`plan_update`]).
-//!   - Phase 3 (here): pick the platform asset, download it into `$XSDIR/.update/staging/`, read the
+//!   - Phase 3: pick the platform asset, download it into `$XSDIR/.update/staging/`, read the
 //!     bundle's manifest, and verify every file's SHA-256 — without touching the install.
-//!   - Phase 4: apply the [`UpdatePlan`] + exe swap + backup/rollback.
+//!   - Phase 4 (here): apply the [`UpdatePlan`] to the install ([`apply_plan`]), back up what it
+//!     replaces, and support one-step [`rollback_files`]. The running-binary swap (self-replace) is the
+//!     only piece that lives in the host layer.
 //!
-//! The network/JSON/hashing/zip code (ureq + serde_json + sha2 + zip) is behind the `update` feature;
-//! the pure version logic, the manifest data model, the guard planner, and the asset/verify helpers are
-//! always compiled so they stay unit-testable in a lean build.
+//! The network/JSON/hashing/zip/self-replace code is behind the `update` feature; the pure version
+//! logic, the manifest data model, the guard planner, the asset/verify helpers, AND the file apply +
+//! rollback (plain `std::fs`) are always compiled so they stay unit-testable in a lean build.
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
@@ -505,6 +507,173 @@ pub fn find_bundle_root(extract_dir: &std::path::Path) -> Result<PathBuf, String
     Err("the downloaded bundle has no manifest.json (built before auto-update manifests — update manually)".to_string())
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Phase 4 — apply the plan to the install (with a rollback backup), and roll back.
+//
+// Plain `std::fs` only, so the whole mutation core is unit-testable against temp dirs. The one thing
+// that is NOT here is swapping the *running* binary: that needs the self-replace dance and lives in the
+// host layer (behind the `update` feature), driven by `AppliedReport.exe_pending`.
+// ---------------------------------------------------------------------------------------------------
+
+/// What [`apply_plan`] did. `exe_pending` means a `ReplaceExe` entry was present: the current binary has
+/// been backed up and the caller must now self-replace it from `bundle_root/<exe_name>`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AppliedReport {
+    pub replaced: Vec<String>,
+    pub written: Vec<String>,
+    /// `.new` defaults written beside files the user had edited (never clobbering their version).
+    pub new_defaults: Vec<String>,
+    pub deleted: Vec<String>,
+    /// Dropped by the release but user-edited — left in place.
+    pub kept: Vec<String>,
+    pub exe_pending: bool,
+}
+
+fn copy_file(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    }
+    std::fs::copy(src, dst)
+        .map_err(|e| format!("copy {} -> {}: {e}", src.display(), dst.display()))?;
+    Ok(())
+}
+
+/// Apply `plan` to `install_root`, taking files from the verified bundle at `bundle_root`. Before any
+/// file is replaced or deleted its current copy is saved under `backup_dir/files/` (and the installed
+/// `manifest.json` under `backup_dir/manifest.json`), so [`rollback_files`] can undo the whole update.
+/// The new baseline `manifest.json` is installed last. Does NOT swap the running binary — it backs the
+/// old one up and sets `exe_pending`; the caller self-replaces from `bundle_root/<exe_name>`.
+pub fn apply_plan(
+    install_root: &std::path::Path,
+    bundle_root: &std::path::Path,
+    plan: &UpdatePlan,
+    backup_dir: &std::path::Path,
+) -> Result<AppliedReport, String> {
+    let backup_files = backup_dir.join("files");
+    std::fs::create_dir_all(&backup_files)
+        .map_err(|e| format!("mkdir {}: {e}", backup_files.display()))?;
+    let mut report = AppliedReport::default();
+    // Everything the update adds (new files + `.new` defaults), so rollback can remove them.
+    let mut added: Vec<String> = Vec::new();
+
+    for entry in &plan.entries {
+        let rel = &entry.path;
+        let dst = install_root.join(rel);
+        let src = bundle_root.join(rel);
+        match entry.action {
+            FileAction::Replace => {
+                if dst.exists() {
+                    copy_file(&dst, &backup_files.join(rel))?;
+                }
+                copy_file(&src, &dst)?;
+                report.replaced.push(rel.clone());
+            }
+            FileAction::Write => {
+                copy_file(&src, &dst)?;
+                added.push(rel.clone());
+                report.written.push(rel.clone());
+            }
+            FileAction::KeepEditedWriteNew => {
+                let new_rel = format!("{rel}{NEW_SUFFIX}");
+                copy_file(&src, &install_root.join(&new_rel))?;
+                added.push(new_rel.clone());
+                report.new_defaults.push(new_rel);
+            }
+            FileAction::Delete => {
+                if dst.exists() {
+                    copy_file(&dst, &backup_files.join(rel))?;
+                    std::fs::remove_file(&dst)
+                        .map_err(|e| format!("remove {}: {e}", dst.display()))?;
+                }
+                report.deleted.push(rel.clone());
+            }
+            FileAction::KeepRemoved => report.kept.push(rel.clone()),
+            FileAction::ReplaceExe => {
+                if dst.exists() {
+                    copy_file(&dst, &backup_files.join(rel))?;
+                }
+                report.exe_pending = true;
+            }
+        }
+    }
+
+    if !added.is_empty() {
+        std::fs::write(backup_dir.join("added.txt"), added.join("\n"))
+            .map_err(|e| format!("write added.txt: {e}"))?;
+    }
+
+    // Install the new baseline manifest last, backing up the old one (absent on a bootstrap).
+    let live_manifest = install_root.join("manifest.json");
+    if live_manifest.is_file() {
+        copy_file(&live_manifest, &backup_dir.join("manifest.json"))?;
+    }
+    let new_manifest = bundle_root.join("manifest.json");
+    if new_manifest.is_file() {
+        copy_file(&new_manifest, &live_manifest)?;
+    }
+
+    Ok(report)
+}
+
+/// Undo an [`apply_plan`] from its backup: restore every saved original over the install, delete the
+/// files the update added (new files + `.new` defaults), and restore the baseline manifest. Returns
+/// `true` if the backup holds a binary (`<exe_name>`) that the caller must self-replace to finish.
+pub fn rollback_files(
+    install_root: &std::path::Path,
+    backup_dir: &std::path::Path,
+    exe_name: &str,
+) -> Result<bool, String> {
+    let backup_files = backup_dir.join("files");
+    if !backup_files.is_dir() {
+        return Err(format!("no backup to roll back to at {}", backup_dir.display()));
+    }
+    let mut exe_pending = false;
+    restore_tree(&backup_files, &backup_files, install_root, exe_name, &mut exe_pending)?;
+
+    if let Ok(list) = std::fs::read_to_string(backup_dir.join("added.txt")) {
+        for rel in list.lines().map(str::trim).filter(|s| !s.is_empty()) {
+            let _ = std::fs::remove_file(install_root.join(rel));
+        }
+    }
+
+    let saved = backup_dir.join("manifest.json");
+    let live = install_root.join("manifest.json");
+    if saved.is_file() {
+        copy_file(&saved, &live)?;
+    } else {
+        let _ = std::fs::remove_file(&live); // the prior install had none (bootstrap)
+    }
+    Ok(exe_pending)
+}
+
+fn restore_tree(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    install_root: &std::path::Path,
+    exe_name: &str,
+    exe_pending: &mut bool,
+) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            restore_tree(base, &path, install_root, exe_name, exe_pending)?;
+        } else {
+            let rel = path
+                .strip_prefix(base)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == exe_name {
+                *exe_pending = true; // caller self-replaces from backup_files/<exe_name>
+                continue;
+            }
+            copy_file(&path, &install_root.join(&rel))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,5 +959,83 @@ mod tests {
         assert!(err.contains("lang/fi.lang"), "got: {err}");
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ---- Phase 4: apply + rollback ----------------------------------------------------------
+
+    #[test]
+    fn apply_then_rollback_round_trips_the_install() {
+        use std::fs;
+        let tmp = std::env::temp_dir().join(format!("xyapply_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let install = tmp.join("install");
+        let bundle = tmp.join("bundle");
+        let backup = tmp.join("backup");
+
+        let write = |root: &std::path::Path, rel: &str, body: &str| {
+            let p = root.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        };
+        // Install (v1): an edited fi.lang, a pristine de.lang, a soon-dropped theme, the exe, baseline.
+        write(&install, "xyscript.exe", "EXE_V1");
+        write(&install, "lang/fi.lang", "FI_USER"); // edited
+        write(&install, "lang/de.lang", "DE_OLD"); // pristine
+        write(&install, "themes/x.xpl", "TH_OLD"); // dropped in v2
+        write(&install, "manifest.json", "OLD_MANIFEST_JSON");
+        // Verified bundle (v2).
+        write(&bundle, "xyscript.exe", "EXE_V2");
+        write(&bundle, "lang/fi.lang", "FI_NEW");
+        write(&bundle, "lang/de.lang", "DE_NEW");
+        write(&bundle, "lang/el.lang", "EL_NEW"); // new file
+        write(&bundle, "manifest.json", "NEW_MANIFEST_JSON");
+
+        // Manifests use the pristine *content* as the "hash" — apply_plan never hashes, it copies per plan.
+        let old = manifest(
+            "v1",
+            &[
+                ("xyscript.exe", "EXE_V1"),
+                ("lang/fi.lang", "FI_OLD"), // shipped default ≠ the edited FI_USER on disk
+                ("lang/de.lang", "DE_OLD"),
+                ("themes/x.xpl", "TH_OLD"),
+            ],
+        );
+        let new = manifest(
+            "v2",
+            &[
+                ("xyscript.exe", "EXE_V2"),
+                ("lang/fi.lang", "FI_NEW"),
+                ("lang/de.lang", "DE_NEW"),
+                ("lang/el.lang", "EL_NEW"),
+            ],
+        );
+        let install_for_hash = install.clone();
+        let local = move |rel: &str| fs::read_to_string(install_for_hash.join(rel)).ok();
+        let plan = plan_update(Some(&old), &new, local, "xyscript.exe", SEED_FILES);
+
+        let report = apply_plan(&install, &bundle, &plan, &backup).unwrap();
+        assert!(report.exe_pending);
+        assert_eq!(fs::read_to_string(install.join("lang/de.lang")).unwrap(), "DE_NEW");
+        assert_eq!(fs::read_to_string(install.join("lang/el.lang")).unwrap(), "EL_NEW");
+        assert_eq!(fs::read_to_string(install.join("lang/fi.lang")).unwrap(), "FI_USER"); // kept
+        assert_eq!(fs::read_to_string(install.join("lang/fi.lang.new")).unwrap(), "FI_NEW");
+        assert!(!install.join("themes/x.xpl").exists());
+        assert_eq!(fs::read_to_string(install.join("manifest.json")).unwrap(), "NEW_MANIFEST_JSON");
+        assert_eq!(fs::read_to_string(install.join("xyscript.exe")).unwrap(), "EXE_V1"); // apply doesn't swap
+        assert_eq!(fs::read_to_string(backup.join("files/lang/de.lang")).unwrap(), "DE_OLD");
+        assert_eq!(fs::read_to_string(backup.join("files/themes/x.xpl")).unwrap(), "TH_OLD");
+        assert_eq!(fs::read_to_string(backup.join("files/xyscript.exe")).unwrap(), "EXE_V1");
+        assert_eq!(fs::read_to_string(backup.join("manifest.json")).unwrap(), "OLD_MANIFEST_JSON");
+
+        // Roll back → the install returns to v1 (data + manifest; exe flagged for self-replace).
+        let exe_pending = rollback_files(&install, &backup, "xyscript.exe").unwrap();
+        assert!(exe_pending);
+        assert_eq!(fs::read_to_string(install.join("lang/de.lang")).unwrap(), "DE_OLD");
+        assert_eq!(fs::read_to_string(install.join("themes/x.xpl")).unwrap(), "TH_OLD");
+        assert!(!install.join("lang/el.lang").exists()); // added file removed
+        assert!(!install.join("lang/fi.lang.new").exists()); // added `.new` removed
+        assert_eq!(fs::read_to_string(install.join("manifest.json")).unwrap(), "OLD_MANIFEST_JSON");
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

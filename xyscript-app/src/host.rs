@@ -4615,23 +4615,43 @@ impl AppHost {
         self.update_mode
     }
 
-    /// Run a manual auto-update step (`UPDATE …`). Phases 1 + 3 implement `Check` and `Download`.
+    /// Run a manual auto-update step (`UPDATE …`).
     fn run_update_action(&mut self, action: UpdateAction) -> VmResult<Value> {
         match action {
             UpdateAction::Check => self.update_check(),
             UpdateAction::Download => self.update_download(),
+            UpdateAction::Install => self.update_install(),
+            UpdateAction::Rollback => self.update_rollback(),
+            UpdateAction::Reset(path) => self.update_reset(&path),
         }
     }
 
-    /// The auto-update working directory, `$XSDIR/.update` (staging, and later backups). Not part of
-    /// any manifest, so the overwrite guard never touches it.
-    #[cfg(feature = "update")]
-    fn update_root(&self) -> std::path::PathBuf {
+    /// The install directory `$XSDIR` — where the running binary and the bundle files live.
+    fn install_root(&self) -> std::path::PathBuf {
         std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".update")
+    }
+
+    /// The auto-update working directory, `$XSDIR/.update` (staging + backups). Not part of any
+    /// manifest, so the overwrite guard never touches it.
+    fn update_root(&self) -> std::path::PathBuf {
+        self.install_root().join(".update")
+    }
+
+    /// The running binary's file name (e.g. `xyscript.exe`), matching how the bundle names it.
+    fn exe_file_name(&self) -> String {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    "xyscript.exe".to_string()
+                } else {
+                    "xyscript".to_string()
+                }
+            })
     }
 
     /// `UPDATE DOWNLOAD` — fetch the platform bundle for the latest release into
@@ -4717,6 +4737,187 @@ impl AppHost {
                 self.staged_update.as_ref().unwrap().tag
             )))
         }
+    }
+
+    /// `UPDATE INSTALL` — apply a staged (or freshly downloaded) release behind the overwrite guard,
+    /// back up what it replaces, then self-replace the running binary. The install directory's files
+    /// are written in place (they aren't locked); only the binary needs the self-replace dance. Prompts
+    /// to restart. For a *manual* install the user typing the verb is the confirmation; the mode-driven
+    /// auto-install (Phase 5) adds a confirm dialog before this runs.
+    fn update_install(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            // Make sure we have a verified staged bundle; download one if not.
+            if self.staged_update.is_none() {
+                let msg = self.update_download()?;
+                if self.staged_update.is_none() {
+                    return Ok(msg); // "up to date" / nothing to install
+                }
+            }
+            let (bundle_root, new_manifest, tag) = {
+                let s = self.staged_update.as_ref().unwrap();
+                (s.root.clone(), s.manifest.clone(), s.tag.clone())
+            };
+            let install_root = self.install_root();
+            let exe = self.exe_file_name();
+
+            // Baseline for the guard: the installed manifest (None → bootstrap hop).
+            let old_manifest = std::fs::read_to_string(install_root.join("manifest.json"))
+                .ok()
+                .and_then(|body| update::parse_manifest(&body).ok());
+
+            // Plan the update, hashing each local file on demand.
+            let hash_root = install_root.clone();
+            let local = move |rel: &str| {
+                std::fs::read(hash_root.join(rel)).ok().map(|b| update::sha256_hex(&b))
+            };
+            let plan = update::plan_update(
+                old_manifest.as_ref(),
+                &new_manifest,
+                local,
+                &exe,
+                update::SEED_FILES,
+            );
+
+            // Fresh one-step backup slot.
+            let backup = self.update_root().join("backup").join("previous");
+            let _ = std::fs::remove_dir_all(&backup);
+
+            let report = update::apply_plan(&install_root, &bundle_root, &plan, &backup)
+                .map_err(|e| XplError::trappable(format!("UPDATE INSTALL: apply failed — {e}")))?;
+            // Remember the version we backed up from, for the rollback report.
+            let _ = std::fs::write(backup.join("version.txt"), update::CURRENT_VERSION);
+
+            // Swap the running binary from the verified bundle (the only locked file).
+            if report.exe_pending {
+                let new_exe = bundle_root.join(&exe);
+                self_replace::self_replace(&new_exe).map_err(|e| {
+                    XplError::trappable(format!(
+                        "UPDATE INSTALL: files updated, but swapping the binary failed — {e}. \
+                         Run UPDATE ROLLBACK, or restart and retry."
+                    ))
+                })?;
+            }
+
+            // Applied — drop the staging tree and the staged-state.
+            let _ = std::fs::remove_dir_all(self.update_root().join("staging"));
+            self.staged_update = None;
+            self.update_available = None;
+
+            let mut msg = format!(
+                "installed {tag}: {} replaced, {} added, {} deleted",
+                report.replaced.len(),
+                report.written.len(),
+                report.deleted.len()
+            );
+            if !report.new_defaults.is_empty() {
+                msg.push_str(&format!(
+                    "; kept {} of your edited file(s) (new defaults saved as .new)",
+                    report.new_defaults.len()
+                ));
+            }
+            msg.push_str(" — restart XyScript to run it");
+            Ok(Value::str(msg))
+        }
+    }
+
+    /// `UPDATE ROLLBACK` — undo the last `UPDATE INSTALL` from its one-step backup: restore the prior
+    /// files and self-replace the binary back. Needs a backup from a prior install.
+    fn update_rollback(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            let install_root = self.install_root();
+            let exe = self.exe_file_name();
+            let backup = self.update_root().join("backup").join("previous");
+            if !backup.join("files").is_dir() {
+                return Err(XplError::trappable(
+                    "UPDATE ROLLBACK: nothing to roll back to (no backup from a prior UPDATE INSTALL)"
+                        .to_string(),
+                ));
+            }
+            let exe_pending = update::rollback_files(&install_root, &backup, &exe)
+                .map_err(|e| XplError::trappable(format!("UPDATE ROLLBACK: {e}")))?;
+            if exe_pending {
+                let backup_exe = backup.join("files").join(&exe);
+                self_replace::self_replace(&backup_exe).map_err(|e| {
+                    XplError::trappable(format!(
+                        "UPDATE ROLLBACK: files restored, but swapping the binary back failed — {e}"
+                    ))
+                })?;
+            }
+            let ver = std::fs::read_to_string(backup.join("version.txt")).unwrap_or_default();
+            let ver = ver.trim();
+            let msg = if ver.is_empty() {
+                "rolled back the last update — restart XyScript".to_string()
+            } else {
+                format!("rolled back to version {ver} — restart XyScript")
+            };
+            Ok(Value::str(msg))
+        }
+    }
+
+    /// `UPDATE RESET <path>` — the guard escape hatch. Override the guard for one path: promote its
+    /// `<name>.new` (or, failing that, copy from a staged bundle) over the local copy, backing the
+    /// local copy up to `$XSDIR/.update/backup/reset/` first. Pure local file ops — works in any build.
+    fn update_reset(&mut self, rel: &str) -> VmResult<Value> {
+        let rel = rel.trim().replace('\\', "/");
+        if rel.is_empty() || rel.contains("..") || rel.starts_with('/') || rel.ends_with('/') {
+            return Err(XplError::trappable(format!("UPDATE RESET: invalid path {rel:?}")));
+        }
+        let install_root = self.install_root();
+        let target = install_root.join(&rel);
+        let new_path = install_root.join(format!("{rel}{}", crate::update::NEW_SUFFIX));
+
+        // Source of the shipped default: a `<name>.new` beside it, else the staged bundle.
+        let (source, promoted_new) = if new_path.is_file() {
+            (new_path.clone(), true)
+        } else if let Some(staged) = self.staged_update.as_ref() {
+            let s = staged.root.join(&rel);
+            if s.is_file() {
+                (s, false)
+            } else {
+                return Err(XplError::trappable(format!(
+                    "UPDATE RESET: no {rel}.new, and the staged release has no {rel}"
+                )));
+            }
+        } else {
+            return Err(XplError::trappable(format!(
+                "UPDATE RESET: nothing to reset {rel} from (no {rel}.new; run UPDATE DOWNLOAD to fetch the shipped default)"
+            )));
+        };
+
+        // Back up the current local copy first.
+        if target.is_file() {
+            let bak = self.update_root().join("backup").join("reset").join(&rel);
+            if let Some(parent) = bak.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::copy(&target, &bak);
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| XplError::trappable(format!("UPDATE RESET: {e}")))?;
+        }
+        std::fs::copy(&source, &target)
+            .map_err(|e| XplError::trappable(format!("UPDATE RESET: copy failed — {e}")))?;
+        if promoted_new {
+            let _ = std::fs::remove_file(&new_path);
+        }
+        Ok(Value::str(format!("reset {rel} to the shipped default")))
     }
 
     /// `UPDATE CHECK` — query the release channel and report whether a newer version is available,
