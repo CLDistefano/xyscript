@@ -4771,9 +4771,10 @@ impl Vm<'_, '_> {
                     .to_ascii_lowercase();
                 let action = match sub.as_str() {
                     "" | "check" => crate::host::UpdateAction::Check,
+                    "download" => crate::host::UpdateAction::Download,
                     other => {
                         return Err(XplError::trappable(format!(
-                            "UPDATE: unknown sub-command {other:?} (expected check)"
+                            "UPDATE: unknown sub-command {other:?} (expected check or download)"
                         )))
                     }
                 };

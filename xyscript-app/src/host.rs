@@ -3217,6 +3217,9 @@ pub struct AppHost {
     /// and the downloader. Session-only.
     #[allow(dead_code)] // read by UPDATE NOTES / DOWNLOAD in later auto-update phases
     last_release: Option<crate::update::ReleaseInfo>,
+    /// A downloaded, SHA-256-verified release sitting in staging, ready for `UPDATE INSTALL` (Phase 4).
+    /// `$UPDATESTAGED` reports its tag. Session-only.
+    staged_update: Option<crate::update::StagedUpdate>,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3773,6 +3776,7 @@ impl AppHost {
             update_mode: UpdateMode::default(), // off by default; shipped config sets `alert`
             update_available: None,
             last_release: None,
+            staged_update: None,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4611,10 +4615,107 @@ impl AppHost {
         self.update_mode
     }
 
-    /// Run a manual auto-update step (`UPDATE …`). Phase 1 implements `Check`.
+    /// Run a manual auto-update step (`UPDATE …`). Phases 1 + 3 implement `Check` and `Download`.
     fn run_update_action(&mut self, action: UpdateAction) -> VmResult<Value> {
         match action {
             UpdateAction::Check => self.update_check(),
+            UpdateAction::Download => self.update_download(),
+        }
+    }
+
+    /// The auto-update working directory, `$XSDIR/.update` (staging, and later backups). Not part of
+    /// any manifest, so the overwrite guard never touches it.
+    #[cfg(feature = "update")]
+    fn update_root(&self) -> std::path::PathBuf {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".update")
+    }
+
+    /// `UPDATE DOWNLOAD` — fetch the platform bundle for the latest release into
+    /// `$XSDIR/.update/staging/`, extract it, and verify every file's SHA-256 against the bundle's
+    /// manifest. The install is untouched; on success the verified tree is recorded for `UPDATE INSTALL`
+    /// (Phase 4) and reported by `$UPDATESTAGED`. Any verification failure aborts and clears staging.
+    fn update_download(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            use crate::update;
+            let info = update::fetch_latest()
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD failed: {e}")))?;
+            let current = update::parse_version(update::CURRENT_VERSION);
+            let newer =
+                matches!((info.version, current), (Some(l), Some(c)) if update::is_newer(l, c));
+            if !newer {
+                self.update_available = None;
+                self.last_release = Some(info);
+                return Ok(Value::str(format!(
+                    "up to date (version {}) — nothing to download",
+                    update::CURRENT_VERSION
+                )));
+            }
+            let platform = update::platform_tag();
+            let asset = update::select_asset(&info.assets, platform)
+                .ok_or_else(|| {
+                    XplError::trappable(format!(
+                        "release {} has no {platform} bundle to download",
+                        info.tag
+                    ))
+                })?
+                .clone();
+
+            // Fresh staging dir under $XSDIR/.update.
+            let staging = self.update_root().join("staging");
+            let _ = std::fs::remove_dir_all(&staging);
+            std::fs::create_dir_all(&staging).map_err(|e| {
+                XplError::trappable(format!(
+                    "UPDATE DOWNLOAD: cannot create {} ({e})",
+                    staging.display()
+                ))
+            })?;
+
+            let zip_path = staging.join(&asset.name);
+            update::download_to(&asset.url, &zip_path)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
+            let extract = staging.join("bundle");
+            update::extract_zip(&zip_path, &extract)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: extract failed — {e}")))?;
+            let root = update::find_bundle_root(&extract)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
+            let manifest_body = std::fs::read_to_string(root.join("manifest.json")).map_err(|e| {
+                XplError::trappable(format!("UPDATE DOWNLOAD: cannot read manifest.json ({e})"))
+            })?;
+            let manifest = update::parse_manifest(&manifest_body)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
+            let actual = update::hash_tree(&root)
+                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
+            if let Err(e) = update::verify_hashes(&manifest, &actual) {
+                // Don't leave an unverified tree staged.
+                let _ = std::fs::remove_dir_all(&staging);
+                return Err(XplError::trappable(format!(
+                    "UPDATE DOWNLOAD: verification failed — {e}"
+                )));
+            }
+
+            let n = manifest.files.len();
+            self.update_available = Some(info.tag.clone());
+            self.staged_update = Some(update::StagedUpdate {
+                tag: info.tag.clone(),
+                root,
+                manifest,
+            });
+            self.last_release = Some(info);
+            Ok(Value::str(format!(
+                "downloaded and verified {} ({n} files) — ready to install",
+                self.staged_update.as_ref().unwrap().tag
+            )))
         }
     }
 
@@ -15802,6 +15903,13 @@ impl Host for AppHost {
             // empty. Session-only — populated by `UPDATE CHECK`.
             "UPDATEAVAIL" => Some(Value::str(
                 self.update_available.clone().unwrap_or_default(),
+            )),
+            // The tag of a downloaded + verified release waiting in staging (empty if none).
+            "UPDATESTAGED" => Some(Value::str(
+                self.staged_update
+                    .as_ref()
+                    .map(|s| s.tag.clone())
+                    .unwrap_or_default(),
             )),
             "ERRORLOG" => Some(Value::Int(if self.error_log { 1 } else { 0 })),
             // The effective log path (default included), so a script/user can see where it writes.

@@ -136,6 +136,9 @@ impl UpdateMode {
 pub enum UpdateAction {
     /// Query the release channel and report whether a newer version exists (records `$UPDATEAVAIL`).
     Check,
+    /// Download the new release bundle into staging and verify every file's SHA-256 against its
+    /// manifest, without touching the install (records `$UPDATESTAGED`). Needs the `update` build.
+    Download,
 }
 
 /// Which colour of the modal `MSG` box a `SetMsgColor`/`OpenMsgColorPicker` targets: the "Message"
@@ -763,9 +766,9 @@ pub enum EditorOp {
     /// Set the auto-update policy (`UPDATEMODE off|alert|download|install`). Persisted by SaveCfg;
     /// `$UPDATEMODE`. Pure state — it never itself touches the network (see [`UpdateMode`]).
     SetUpdateMode(UpdateMode),
-    /// Run a manual auto-update step (`UPDATE [CHECK]`). `Check` queries the GitHub release channel
-    /// (behind the `update` cargo feature) and records whether a newer version is available
-    /// (`$UPDATEAVAIL`); a build without the feature reports that updates aren't compiled in.
+    /// Run a manual auto-update step (`UPDATE [CHECK|DOWNLOAD]`). `Check` reports whether a newer
+    /// version is available (`$UPDATEAVAIL`); `Download` fetches + verifies the new bundle into staging
+    /// (`$UPDATESTAGED`). Behind the `update` cargo feature — a build without it reports as much.
     Update(UpdateAction),
     /// Error logging on/off (`ERRORLOG on|off`; `None` toggles). When on, each trappable *and* fatal
     /// error is appended as a TSV row to the error-log file. Off by default. Persisted by SaveCfg.

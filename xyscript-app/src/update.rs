@@ -5,16 +5,18 @@
 //! before they have a caller (hence the module-wide `dead_code` allowance):
 //!   - Phase 1: the `UpdateMode` setting lives in `xyscript-xpl`; this module does the version
 //!     parse/compare and — behind the optional `update` cargo feature — the network check.
-//!   - Phase 2 (here): the release [`Manifest`] and the manifest-diff overwrite guard ([`plan_update`]).
-//!   - Phase 3: download + staging + SHA-256 verification (consumes `Asset`/`ReleaseInfo.notes`).
+//!   - Phase 2: the release [`Manifest`] and the manifest-diff overwrite guard ([`plan_update`]).
+//!   - Phase 3 (here): pick the platform asset, download it into `$XSDIR/.update/staging/`, read the
+//!     bundle's manifest, and verify every file's SHA-256 — without touching the install.
 //!   - Phase 4: apply the [`UpdatePlan`] + exe swap + backup/rollback.
 //!
-//! The network/JSON/hashing code (ureq + serde_json + sha2) is behind the `update` feature; the pure
-//! version logic, the manifest data model, and the guard planner are always compiled so they stay
-//! unit-testable in a lean build.
+//! The network/JSON/hashing/zip code (ureq + serde_json + sha2 + zip) is behind the `update` feature;
+//! the pure version logic, the manifest data model, the guard planner, and the asset/verify helpers are
+//! always compiled so they stay unit-testable in a lean build.
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /// The running build's version string (tracks `Cargo.toml`), e.g. `"0.1.14"`. Same as `$VE`.
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -344,6 +346,165 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Phase 3 — pick the platform asset, download + stage, and verify against the manifest.
+// ---------------------------------------------------------------------------------------------------
+
+/// A downloaded, hash-verified bundle sitting in staging, ready for Phase 4 to apply. `root` is the
+/// extracted bundle directory (holds `manifest.json` and the files); `manifest` is its parsed manifest.
+#[derive(Clone, Debug)]
+pub struct StagedUpdate {
+    pub tag: String,
+    pub root: PathBuf,
+    pub manifest: Manifest,
+}
+
+/// The release-artifact tag for the running platform — matches the artifact names produced by
+/// `release.yml` (`xyscript-<tag>.zip`).
+pub fn platform_tag() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows-x86_64"
+    } else if cfg!(target_os = "macos") {
+        "macos-universal"
+    } else {
+        "linux-x86_64"
+    }
+}
+
+/// Pick the release asset for this platform: the `.zip` whose name carries `tag` (on Linux, the `.zip`
+/// over the `.tar.gz` — we extract with the `zip` crate on every platform).
+pub fn select_asset<'a>(assets: &'a [Asset], tag: &str) -> Option<&'a Asset> {
+    assets
+        .iter()
+        .find(|a| a.name.contains(tag) && a.name.ends_with(".zip"))
+}
+
+/// Verify a tree of actual `relpath -> sha256` hashes against a [`Manifest`]: every manifest file must
+/// be present with a matching hash, and there must be no file the manifest doesn't list (tampering or
+/// a stray file). `manifest.json` itself is excluded by the hasher, so it never appears on either side.
+pub fn verify_hashes(manifest: &Manifest, actual: &BTreeMap<String, String>) -> Result<(), String> {
+    for (path, want) in &manifest.files {
+        match actual.get(path) {
+            None => return Err(format!("missing from the download: {path}")),
+            Some(got) if got != want => return Err(format!("checksum mismatch: {path}")),
+            Some(_) => {}
+        }
+    }
+    for path in actual.keys() {
+        if !manifest.files.contains_key(path) {
+            return Err(format!("unexpected file not in the manifest: {path}"));
+        }
+    }
+    Ok(())
+}
+
+/// Hash every file under `dir` into `relpath -> sha256` (forward-slash paths, `manifest.json` excluded).
+#[cfg(feature = "update")]
+pub fn hash_tree(dir: &std::path::Path) -> Result<BTreeMap<String, String>, String> {
+    let mut out = BTreeMap::new();
+    hash_tree_into(dir, dir, &mut out)?;
+    Ok(out)
+}
+
+#[cfg(feature = "update")]
+fn hash_tree_into(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    out: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| format!("read dir {}: {e}", dir.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        if ft.is_dir() {
+            hash_tree_into(base, &path, out)?;
+        } else if ft.is_file() {
+            let rel = path
+                .strip_prefix(base)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel == "manifest.json" {
+                continue;
+            }
+            let bytes = std::fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            out.insert(rel, sha256_hex(&bytes));
+        }
+    }
+    Ok(())
+}
+
+/// Download `url` to `dest`, streaming the body (bundles are several MB). Follows redirects (a GitHub
+/// asset URL redirects to its storage host). Generic User-Agent — no identifying detail.
+#[cfg(feature = "update")]
+pub fn download_to(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    let resp = ureq::get(url)
+        .set("User-Agent", "xyscript-updater")
+        .timeout(std::time::Duration::from_secs(300))
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::Status(code, _) => format!("download returned HTTP {code}"),
+            other => format!("download error: {other}"),
+        })?;
+    let mut reader = resp.into_reader();
+    let mut file =
+        std::fs::File::create(dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+    std::io::copy(&mut reader, &mut file)
+        .map_err(|e| format!("write {}: {e}", dest.display()))?;
+    Ok(())
+}
+
+/// Extract a zip into `dest_dir`. Guards against zip-slip (rejects entries with `..`/absolute paths via
+/// `enclosed_name`) and preserves the Unix exec bit so an extracted binary stays runnable.
+#[cfg(feature = "update")]
+pub fn extract_zip(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> Result<(), String> {
+    let file =
+        std::fs::File::open(zip_path).map_err(|e| format!("open {}: {e}", zip_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("open zip: {e}"))?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
+        let rel = match entry.enclosed_name() {
+            Some(p) => p,
+            None => return Err(format!("unsafe path in zip: {}", entry.name())),
+        };
+        let out = dest_dir.join(&rel);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out).map_err(|e| format!("mkdir {}: {e}", out.display()))?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+        }
+        let mut f =
+            std::fs::File::create(&out).map_err(|e| format!("create {}: {e}", out.display()))?;
+        std::io::copy(&mut entry, &mut f).map_err(|e| format!("write {}: {e}", out.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = entry.unix_mode() {
+                let _ = std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Locate the bundle root (the directory holding `manifest.json`) inside an extracted tree. Our bundles
+/// wrap the files in a single top-level folder, so it is `extract_dir` itself or one level down.
+#[cfg(feature = "update")]
+pub fn find_bundle_root(extract_dir: &std::path::Path) -> Result<PathBuf, String> {
+    if extract_dir.join("manifest.json").is_file() {
+        return Ok(extract_dir.to_path_buf());
+    }
+    for entry in std::fs::read_dir(extract_dir).map_err(|e| e.to_string())? {
+        let p = entry.map_err(|e| e.to_string())?.path();
+        if p.is_dir() && p.join("manifest.json").is_file() {
+            return Ok(p);
+        }
+    }
+    Err("the downloaded bundle has no manifest.json (built before auto-update manifests — update manually)".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,5 +705,90 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    // ---- Phase 3: asset selection + verification --------------------------------------------
+
+    fn asset(name: &str, url: &str) -> Asset {
+        Asset {
+            name: name.to_string(),
+            url: url.to_string(),
+            size: 0,
+        }
+    }
+
+    #[test]
+    fn selects_the_platform_zip_over_the_tarball() {
+        let assets = vec![
+            asset("xyscript-linux-x86_64.tar.gz", "tar"),
+            asset("xyscript-linux-x86_64.zip", "linux"),
+            asset("xyscript-windows-x86_64.zip", "win"),
+            asset("manifest.json", "man"),
+        ];
+        assert_eq!(select_asset(&assets, "linux-x86_64").unwrap().url, "linux");
+        assert_eq!(select_asset(&assets, "windows-x86_64").unwrap().url, "win");
+        assert!(select_asset(&assets, "freebsd-x86_64").is_none());
+    }
+
+    #[test]
+    fn verify_hashes_catches_mismatch_missing_and_extra() {
+        let m = manifest("v1", &[("a", "H1"), ("b", "H2")]);
+        let hashes = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        };
+        assert!(verify_hashes(&m, &hashes(&[("a", "H1"), ("b", "H2")])).is_ok());
+        assert!(verify_hashes(&m, &hashes(&[("a", "H1"), ("b", "BAD")]))
+            .unwrap_err()
+            .contains("mismatch"));
+        assert!(verify_hashes(&m, &hashes(&[("a", "H1")]))
+            .unwrap_err()
+            .contains("missing"));
+        assert!(verify_hashes(&m, &hashes(&[("a", "H1"), ("b", "H2"), ("c", "H3")]))
+            .unwrap_err()
+            .contains("unexpected"));
+    }
+
+    #[cfg(feature = "update")]
+    #[test]
+    fn zip_extract_then_verify_roundtrip_and_tamper_detection() {
+        use std::io::Write as _;
+        let tmp = std::env::temp_dir().join(format!("xyupd_t_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let manifest_json = format!(
+            "{{\"release\":\"v9.9.9\",\"files\":{{\"lang/fi.lang\":\"{}\",\"xyscript.exe\":\"{}\"}}}}",
+            sha256_hex(b"kaannos"),
+            sha256_hex(b"binary")
+        );
+
+        // Build a bundle zip wrapped in a top-level folder, like release.yml produces.
+        let zip_path = tmp.join("bundle.zip");
+        std::fs::create_dir_all(&tmp).unwrap();
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            let opts: zip::write::SimpleFileOptions = Default::default();
+            zw.start_file("xyscript-test-x86_64/manifest.json", opts).unwrap();
+            zw.write_all(manifest_json.as_bytes()).unwrap();
+            zw.start_file("xyscript-test-x86_64/xyscript.exe", opts).unwrap();
+            zw.write_all(b"binary").unwrap();
+            zw.start_file("xyscript-test-x86_64/lang/fi.lang", opts).unwrap();
+            zw.write_all(b"kaannos").unwrap();
+            zw.finish().unwrap();
+        }
+
+        let extract = tmp.join("extract");
+        extract_zip(&zip_path, &extract).unwrap();
+        let root = find_bundle_root(&extract).unwrap();
+        let manifest =
+            parse_manifest(&std::fs::read_to_string(root.join("manifest.json")).unwrap()).unwrap();
+        // A faithful extraction verifies.
+        verify_hashes(&manifest, &hash_tree(&root).unwrap()).expect("clean bundle verifies");
+        // Tamper with one file → verification fails on it.
+        std::fs::write(root.join("lang/fi.lang"), b"TAMPERED").unwrap();
+        let err = verify_hashes(&manifest, &hash_tree(&root).unwrap()).unwrap_err();
+        assert!(err.contains("lang/fi.lang"), "got: {err}");
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
