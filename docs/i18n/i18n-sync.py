@@ -33,6 +33,7 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 SOURCES = [
     os.path.join(ROOT, "xyscript-gui", "src", "main.rs"),   # menu + dialog labels (tr)
     os.path.join(ROOT, "xyscript-app", "src", "host.rs"),   # status/error messages (tr_msg/tr_fmt)
+    os.path.join(ROOT, "xyscript-xpl", "src", "vm.rs"),     # interpreter-side status messages (via Host::tr_*)
 ]
 
 # Known sample languages: code -> (native name, English name). A .lang file for a code not

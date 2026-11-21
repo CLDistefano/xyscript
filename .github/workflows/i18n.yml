@@ -13,12 +13,14 @@ on:
     paths:
       - "xyscript-gui/src/main.rs"
       - "xyscript-app/src/host.rs"
+      - "xyscript-xpl/src/vm.rs"
       - "docs/i18n/**"
       - ".github/workflows/i18n.yml"
   pull_request:
     paths:
       - "xyscript-gui/src/main.rs"
       - "xyscript-app/src/host.rs"
+      - "xyscript-xpl/src/vm.rs"
       - "docs/i18n/**"
       - ".github/workflows/i18n.yml"
 

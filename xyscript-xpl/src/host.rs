@@ -1979,6 +1979,34 @@ pub trait Host {
     fn set_kbd_mode(&mut self, _name: &str) -> VmResult<()> {
         Ok(())
     }
+
+    // --- UI-string localization (so interpreter-side status messages translate too) -----------------
+    // The UI catalog lives on the app host; these let the interpreter localize the messages it emits
+    // (keyboard/library/variable load confirmations, etc.) through the same catalog the app uses. The
+    // defaults (hosts with no catalog) return the English text with placeholders filled, so behavior is
+    // unchanged where there is no translation.
+
+    /// Translate a plain message by catalog id, falling back to the English literal `en`.
+    fn tr_msg(&self, _id: &str, en: &str) -> String {
+        en.to_string()
+    }
+    /// Translate a message with `{name}` placeholders, substituting each from `args`. A translation may
+    /// reorder the placeholders; values are substituted verbatim.
+    fn tr_fmt(&self, _id: &str, en: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+        let mut s = en.to_string();
+        for (name, value) in args {
+            s = s.replace(&format!("{{{name}}}"), &value.to_string());
+        }
+        s
+    }
+    /// Translate a pluralized message: `base` names the catalog entry, `en_one`/`en_other` are the
+    /// English singular/plural templates (with `{n}`), and `n` picks the form. The default uses the
+    /// English `n == 1` rule; a real catalog applies the target language's CLDR plural rule.
+    fn tr_plural(&self, _base: &str, en_one: &str, en_other: &str, n: usize) -> String {
+        let en = if n == 1 { en_one } else { en_other };
+        en.replace("{n}", &n.to_string())
+    }
+
     /// `$SC` / `READKEY` — the canonical scan code of the last captured key.
     fn last_scan_code(&self) -> i64 {
         0

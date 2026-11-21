@@ -1604,7 +1604,12 @@ impl Vm<'_, '_> {
                 // survives to the end of a `startup.xpl` — where later commands (and nested `LOADCFG`/
                 // `THEME` runs) would otherwise overwrite/clear the status, hiding why there's no keyboard.
                 if self.ctx.env.error == 0 {
-                    *self.ctx.status = Some(format!("loaded keyboard from {path}"));
+                    let msg = self.ctx.host.tr_fmt(
+                        "msg.load.kbd",
+                        "loaded keyboard from {path}",
+                        &[("path", &path)],
+                    );
+                    *self.ctx.status = Some(msg);
                 }
                 Ok(Flow::Next)
             }
@@ -1629,7 +1634,12 @@ impl Vm<'_, '_> {
                 }
                 self.host_call(|h| h.load_kbd_named(&name, &path))?;
                 if self.ctx.env.error == 0 {
-                    *self.ctx.status = Some(format!("loaded keyboard layout '{name}' from {path}"));
+                    let msg = self.ctx.host.tr_fmt(
+                        "msg.load.kbdmode",
+                        "loaded keyboard layout '{name}' from {path}",
+                        &[("name", &name), ("path", &path)],
+                    );
+                    *self.ctx.status = Some(msg);
                 }
                 Ok(Flow::Next)
             }
@@ -2477,9 +2487,20 @@ impl Vm<'_, '_> {
                 }
                 if bad > 0 {
                     self.ctx.env.error = 1;
-                    *self.ctx.status = Some(format!("LoadVars: loaded {loaded}, skipped {bad} bad line(s)"));
+                    let msg = self.ctx.host.tr_fmt(
+                        "msg.loadvars.skipped",
+                        "LoadVars: loaded {loaded}, skipped {bad} bad lines",
+                        &[("loaded", &loaded), ("bad", &bad)],
+                    );
+                    *self.ctx.status = Some(msg);
                 } else {
-                    *self.ctx.status = Some(format!("LoadVars: loaded {loaded} variable(s)"));
+                    let msg = self.ctx.host.tr_plural(
+                        "msg.loadvars.ok",
+                        "LoadVars: loaded {n} variable",
+                        "LoadVars: loaded {n} variables",
+                        loaded,
+                    );
+                    *self.ctx.status = Some(msg);
                 }
                 Ok(Flow::Next)
             }
@@ -2492,7 +2513,8 @@ impl Vm<'_, '_> {
                 if self.is_capturing() {
                     self.capture_push(&text);
                 } else if pairs.is_empty() {
-                    *self.ctx.status = Some("ListVars: no global variables set".to_string());
+                    let msg = self.ctx.host.tr_msg("msg.listvars.empty", "ListVars: no global variables set");
+                    *self.ctx.status = Some(msg);
                 } else {
                     self.host_op(EditorOp::InsertText(text))?;
                 }
@@ -6224,8 +6246,12 @@ impl Vm<'_, '_> {
             return Ok(Flow::Next);
         }
         let n = accepted.len();
-        let verb = if replace { "loaded" } else { "added" };
-        let msg = format!("{verb} {n} routine{} from {path}", if n == 1 { "" } else { "s" });
+        let count = self.ctx.host.tr_plural("msg.lib.count", "{n} routine", "{n} routines", n);
+        let msg = if replace {
+            self.ctx.host.tr_fmt("msg.lib.loaded", "loaded {count} from {path}", &[("count", &count), ("path", &path)])
+        } else {
+            self.ctx.host.tr_fmt("msg.lib.added", "added {count} from {path}", &[("count", &count), ("path", &path)])
+        };
         if replace {
             self.ctx.library.set_user(accepted);
             self.ctx.lib_loads.clear();
