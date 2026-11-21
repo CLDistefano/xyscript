@@ -1344,6 +1344,15 @@ impl Editor {
     pub fn start_update_cycle(&mut self) {
         self.host.start_update_cycle()
     }
+    /// `Help ▸ Check for updates` — a non-blocking check regardless of `UPDATEMODE`; `poll_update`
+    /// reports the result either way.
+    pub fn start_manual_update_check(&mut self) {
+        self.host.start_manual_update_check()
+    }
+    /// The available-update tag if the last check found one, else `None` (for the Help menu label).
+    pub fn update_available(&self) -> Option<&str> {
+        self.host.update_available()
+    }
     /// Drain a finished background update cycle; returns a status/toast line to show, or `None`.
     pub fn poll_update(&mut self) -> Option<String> {
         self.host.poll_update()

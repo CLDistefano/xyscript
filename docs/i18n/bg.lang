@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Автоматично записване на
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Ръководство   # Manual
 menu.help.reference = Справочник   # Reference
+menu.help.update_avail = Налична е актуализация {ver}…   # Update {ver} available…
+menu.help.check_updates = Проверка за актуализации   # Check for updates
 menu.help.about = Относно XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,22 @@ dialog.about.tagline = Конфигурируем редактор в тради
 button.close = Затваряне   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: тази компилация не поддържа автоматични актуализации (компилирана без функцията `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = актуално (версия {ver}) — няма какво да се изтегля   # up to date (version {ver}) — nothing to download
+msg.update.download.done = изтеглено и проверено {tag} ({n} файла) — готово за инсталиране   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = актуализациите не са налични в тази компилация   # updates aren't available in this build
+msg.update.uptodate = Имате най-новата версия (версия {ver})   # You're up to date (version {ver})
+msg.update.available = Налична е актуализация {tag} — изпълнете UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Актуализация {tag} е изтеглена и проверена — изпълнете UPDATE INSTALL за прилагане   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Проверката за актуализации е неуспешна: {err}   # Update check failed: {err}
+msg.update.install.done = инсталирано {tag}: {replaced} заменени, {added} добавени, {deleted} изтрити   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = запазен е {n} ваш редактиран файл (новата стойност по подразбиране е записана като .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = запазени са {n} ваши редактирани файла (новите стойности по подразбиране са записани като .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = рестартирайте XyScript   # restart XyScript
+msg.update.rollback.done = последната актуализация е отменена   # rolled back the last update
+msg.update.rollback.toversion = върнато към версия {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} върнато към фабричната стойност по подразбиране   # reset {rel} to the shipped default
+msg.update.check.available = налична актуализация: {tag} (имате {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: няма съвпадения   # GREP: no matches
 msg.grep.match.one = {n} съвпадение   # {n} match
 msg.grep.match.other = {n} съвпадения   # {n} matches
@@ -476,3 +494,6 @@ msg.lib.count.one = {n} процедура   # {n} routine
 msg.lib.count.other = {n} процедури   # {n} routines
 msg.lib.loaded = заредени {count} от {path}   # loaded {count} from {path}
 msg.lib.added = добавени {count} от {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Проверка за актуализации…   # Checking for updates…

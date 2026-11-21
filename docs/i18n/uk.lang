@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Автозбереження параметр�
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Посібник   # Manual
 menu.help.reference = Довідник   # Reference
+menu.help.update_avail = Доступне оновлення {ver}…   # Update {ver} available…
+menu.help.check_updates = Перевірити наявність оновлень   # Check for updates
 menu.help.about = Про XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,23 @@ dialog.about.tagline = Налаштовуваний редактор у трад
 button.close = Закрити   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: ця збірка не підтримує автоматичні оновлення (скомпільовано без функції `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = актуально (версія {ver}) — нічого завантажувати   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} завантажено й перевірено ({n} файлів) — готово до встановлення   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = оновлення недоступні в цій збірці   # updates aren't available in this build
+msg.update.uptodate = У вас найновіша версія (версія {ver})   # You're up to date (version {ver})
+msg.update.available = Доступне оновлення {tag} — виконайте UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Оновлення {tag} завантажено та перевірено — виконайте UPDATE INSTALL для встановлення   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Не вдалося перевірити оновлення: {err}   # Update check failed: {err}
+msg.update.install.done = встановлено {tag}: {replaced} замінено, {added} додано, {deleted} видалено   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = збережено {n} ваш змінений файл (новий стандарт збережено як .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.few = збережено {n} ваші змінені файли (нові стандарти збережено як .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.install.kept.many = збережено {n} ваших змінених файлів (нові стандарти збережено як .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = перезапустіть XyScript   # restart XyScript
+msg.update.rollback.done = останнє оновлення скасовано   # rolled back the last update
+msg.update.rollback.toversion = відкочено до версії {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} скинуто до стандартних налаштувань   # reset {rel} to the shipped default
+msg.update.check.available = доступне оновлення: {tag} (у вас {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: збігів немає   # GREP: no matches
 msg.grep.match.one = {n} збіг   # {n} match
 msg.grep.match.few = {n} збіги   # {n} matches
@@ -497,3 +516,6 @@ msg.lib.count.few = {n} процедури   # {n} routines
 msg.lib.count.many = {n} процедур   # {n} routines
 msg.lib.loaded = завантажено {count} з {path}   # loaded {count} from {path}
 msg.lib.added = додано {count} з {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Перевірка оновлень…   # Checking for updates…

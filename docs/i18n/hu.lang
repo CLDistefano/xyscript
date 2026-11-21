@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Beállítások automatikus mentése   # Auto-s
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Kézikönyv   # Manual
 menu.help.reference = Referencia   # Reference
+menu.help.update_avail = {ver} frissítés elérhető…   # Update {ver} available…
+menu.help.check_updates = Frissítések keresése   # Check for updates
 menu.help.about = A XyScript névjegye   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,22 @@ dialog.about.tagline = Konfigurálható szerkesztő a XyWrite hagyományában.  
 button.close = Bezárás   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: ez a build nem támogatja az automatikus frissítéseket (az `update` funkció nélkül fordítva)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = naprakész ({ver} verzió) — nincs mit letölteni   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} letöltve és ellenőrizve ({n} fájl) — telepítésre kész   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = ebben a buildben nem érhetők el frissítések   # updates aren't available in this build
+msg.update.uptodate = Naprakész (verzió: {ver})   # You're up to date (version {ver})
+msg.update.available = {tag} frissítés elérhető — futtassa az UPDATE DOWNLOAD parancsot   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = A(z) {tag} frissítés letöltve és ellenőrizve — az alkalmazáshoz futtassa az UPDATE INSTALL parancsot   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = A frissítések keresése sikertelen: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} telepítve: {replaced} lecserélve, {added} hozzáadva, {deleted} törölve   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = {n} szerkesztett fájlja megtartva (az új alapértelmezett .new néven mentve)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = {n} szerkesztett fájlja megtartva (az új alapértelmezettek .new néven mentve)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = indítsa újra a XyScriptet   # restart XyScript
+msg.update.rollback.done = utolsó frissítés visszavonva   # rolled back the last update
+msg.update.rollback.toversion = visszaállítva a(z) {ver} verzióra   # rolled back to version {ver}
+msg.update.reset.done = {rel} visszaállítva a gyári alapértelmezettre   # reset {rel} to the shipped default
+msg.update.check.available = elérhető frissítés: {tag} (jelenlegi: {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: nincs találat   # GREP: no matches
 msg.grep.match.one = {n} találat   # {n} match
 msg.grep.match.other = {n} találat   # {n} matches
@@ -476,3 +494,6 @@ msg.lib.count.one = {n} rutin   # {n} routine
 msg.lib.count.other = {n} rutin   # {n} routines
 msg.lib.loaded = {count} betöltve innen: {path}   # loaded {count} from {path}
 msg.lib.added = {count} hozzáadva innen: {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Frissítések keresése…   # Checking for updates…

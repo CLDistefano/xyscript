@@ -342,6 +342,8 @@ menu.settings.autosave_settings = Einstellungen automatisch speichern   # Auto-s
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Handbuch   # Manual
 menu.help.reference = Referenz   # Reference
+menu.help.update_avail = Update {ver} verfügbar…   # Update {ver} available…
+menu.help.check_updates = Nach Updates suchen   # Check for updates
 menu.help.about = Über XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -393,6 +395,22 @@ dialog.about.tagline = Ein konfigurierbarer Editor in der XyWrite-Tradition.   #
 button.close = Schließen   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: dieser Build unterstützt keine automatischen Updates (ohne die Funktion `update` kompiliert)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = aktuell (Version {ver}) — nichts herunterzuladen   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} heruntergeladen und verifiziert ({n} Dateien) — installationsbereit   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = In diesem Build sind keine Updates verfügbar   # updates aren't available in this build
+msg.update.uptodate = Sie sind auf dem neuesten Stand (Version {ver})   # You're up to date (version {ver})
+msg.update.available = Update {tag} verfügbar – UPDATE DOWNLOAD ausführen   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Update {tag} heruntergeladen und verifiziert – zum Anwenden UPDATE INSTALL ausführen   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Updateprüfung fehlgeschlagen: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} installiert: {replaced} ersetzt, {added} hinzugefügt, {deleted} gelöscht   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = {n} Ihrer bearbeiteten Datei behalten (neuer Standard als .new gespeichert)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = {n} Ihrer bearbeiteten Dateien behalten (neue Standards als .new gespeichert)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = XyScript neu starten   # restart XyScript
+msg.update.rollback.done = letztes Update zurückgenommen   # rolled back the last update
+msg.update.rollback.toversion = auf Version {ver} zurückgesetzt   # rolled back to version {ver}
+msg.update.reset.done = {rel} auf den Auslieferungsstandard zurückgesetzt   # reset {rel} to the shipped default
+msg.update.check.available = Update verfügbar: {tag} (installiert: {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: keine Treffer   # GREP: no matches
 msg.grep.match.one = {n} Treffer   # {n} match
 msg.grep.match.other = {n} Treffer   # {n} matches
@@ -476,3 +494,6 @@ msg.lib.count.one = {n} Routine   # {n} routine
 msg.lib.count.other = {n} Routinen   # {n} routines
 msg.lib.loaded = {count} aus {path} geladen   # loaded {count} from {path}
 msg.lib.added = {count} aus {path} hinzugefügt   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Suche nach Updates…   # Checking for updates…

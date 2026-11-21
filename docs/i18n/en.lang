@@ -339,6 +339,8 @@ menu.settings.autosave_settings = Auto-save settings
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Manual
 menu.help.reference = Reference
+menu.help.update_avail = Update {ver} available…
+menu.help.check_updates = Check for updates
 menu.help.about = About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -390,6 +392,22 @@ dialog.about.tagline = A configurable editor in the XyWrite tradition.
 button.close = Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = up to date (version {ver}) — nothing to download
+msg.update.download.done = downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = updates aren't available in this build
+msg.update.uptodate = You're up to date (version {ver})
+msg.update.available = Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Update check failed: {err}
+msg.update.install.done = installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.other = kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = restart XyScript
+msg.update.rollback.done = rolled back the last update
+msg.update.rollback.toversion = rolled back to version {ver}
+msg.update.reset.done = reset {rel} to the shipped default
+msg.update.check.available = update available: {tag} (you have {cur})
 msg.grep.none = GREP: no matches
 msg.grep.match.one = {n} match
 msg.grep.match.other = {n} matches
@@ -473,3 +491,6 @@ msg.lib.count.one = {n} routine
 msg.lib.count.other = {n} routines
 msg.lib.loaded = loaded {count} from {path}
 msg.lib.added = added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Checking for updates…

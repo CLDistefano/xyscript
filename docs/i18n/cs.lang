@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Automaticky ukládat nastavení   # Auto-save 
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Příručka   # Manual
 menu.help.reference = Referenční příručka   # Reference
+menu.help.update_avail = Dostupná aktualizace {ver}…   # Update {ver} available…
+menu.help.check_updates = Zkontrolovat aktualizace   # Check for updates
 menu.help.about = O aplikaci XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,23 @@ dialog.about.tagline = Konfigurovatelný editor v tradici XyWrite.   # A configu
 button.close = Zavřít   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: toto sestavení nepodporuje automatické aktualizace (zkompilováno bez funkce `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = aktuální (verze {ver}) — není co stahovat   # up to date (version {ver}) — nothing to download
+msg.update.download.done = staženo a ověřeno {tag} ({n} souborů) — připraveno k instalaci   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = aktualizace nejsou v tomto sestavení dostupné   # updates aren't available in this build
+msg.update.uptodate = Máte aktuální verzi (verze {ver})   # You're up to date (version {ver})
+msg.update.available = Dostupná aktualizace {tag} — spusťte UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Aktualizace {tag} stažena a ověřena — pro instalaci spusťte UPDATE INSTALL   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Kontrola aktualizací selhala: {err}   # Update check failed: {err}
+msg.update.install.done = nainstalováno {tag}: {replaced} nahrazeno, {added} přidáno, {deleted} odstraněno   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = zachován {n} váš upravený soubor (nový výchozí uložen jako .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.few = zachovány {n} vaše upravené soubory (nové výchozí uloženy jako .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.install.kept.other = zachováno {n} vašich upravených souborů (nové výchozí uloženy jako .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = restartujte XyScript   # restart XyScript
+msg.update.rollback.done = poslední aktualizace vrácena zpět   # rolled back the last update
+msg.update.rollback.toversion = vráceno na verzi {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} obnoveno na výchozí nastavení   # reset {rel} to the shipped default
+msg.update.check.available = dostupná aktualizace: {tag} (máte {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: žádné shody   # GREP: no matches
 msg.grep.match.one = {n} shoda   # {n} match
 msg.grep.match.few = {n} shody   # {n} matches
@@ -497,3 +516,6 @@ msg.lib.count.few = {n} rutiny   # {n} routines
 msg.lib.count.other = {n} rutin   # {n} routines
 msg.lib.loaded = načteno {count} z {path}   # loaded {count} from {path}
 msg.lib.added = přidáno {count} z {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Kontrola aktualizací…   # Checking for updates…

@@ -346,6 +346,8 @@ menu.settings.autosave_settings = Salvează automat setările   # Auto-save sett
 # ---- menu.help ---------------------------------------------------
 menu.help.manual = Manual   # Manual
 menu.help.reference = Referință   # Reference
+menu.help.update_avail = Actualizarea {ver} este disponibilă…   # Update {ver} available…
+menu.help.check_updates = Verifică actualizările   # Check for updates
 menu.help.about = Despre XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -397,6 +399,23 @@ dialog.about.tagline = Un editor configurabil în tradiția XyWrite.   # A confi
 button.close = Închide   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.notbuilt = UPDATE: această versiune nu are suport pentru actualizări automate (compilată fără funcția `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
+msg.update.download.uptodate = la zi (versiunea {ver}) — nimic de descărcat   # up to date (version {ver}) — nothing to download
+msg.update.download.done = {tag} descărcat și verificat ({n} fișiere) — gata de instalare   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.unavailable = actualizările nu sunt disponibile în această versiune   # updates aren't available in this build
+msg.update.uptodate = Ești la zi (versiunea {ver})   # You're up to date (version {ver})
+msg.update.available = Actualizarea {tag} este disponibilă — rulează UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.staged = Actualizarea {tag} a fost descărcată și verificată — rulează UPDATE INSTALL pentru a o aplica   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
+msg.update.failed = Verificarea actualizărilor a eșuat: {err}   # Update check failed: {err}
+msg.update.install.done = {tag} instalat: {replaced} înlocuite, {added} adăugate, {deleted} șterse   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
+msg.update.install.kept.one = păstrat {n} fișier editat de-al tău (noua valoare implicită salvată ca .new)   # kept {n} of your edited file (new default saved as .new)
+msg.update.install.kept.few = păstrate {n} fișiere editate de-ale tale (noile valori implicite salvate ca .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.install.kept.other = păstrate {n} de fișiere editate de-ale tale (noile valori implicite salvate ca .new)   # kept {n} of your edited files (new defaults saved as .new)
+msg.update.restart = repornește XyScript   # restart XyScript
+msg.update.rollback.done = ultima actualizare anulată   # rolled back the last update
+msg.update.rollback.toversion = revenit la versiunea {ver}   # rolled back to version {ver}
+msg.update.reset.done = {rel} resetat la valoarea implicită originală   # reset {rel} to the shipped default
+msg.update.check.available = actualizare disponibilă: {tag} (ai {cur})   # update available: {tag} (you have {cur})
 msg.grep.none = GREP: nicio potrivire   # GREP: no matches
 msg.grep.match.one = {n} potrivire   # {n} match
 msg.grep.match.few = {n} potriviri   # {n} matches
@@ -497,3 +516,6 @@ msg.lib.count.few = {n} rutine   # {n} routines
 msg.lib.count.other = {n} de rutine   # {n} routines
 msg.lib.loaded = {count} încărcate din {path}   # loaded {count} from {path}
 msg.lib.added = {count} adăugate din {path}   # added {count} from {path}
+
+# ---- status ------------------------------------------------------
+status.update.checking = Se verifică actualizările…   # Checking for updates…
