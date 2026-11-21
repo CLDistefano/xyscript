@@ -2984,6 +2984,41 @@ mod tests {
         assert!(e.host_mut().files.get("ar.cfg").unwrap().contains("AUTOREOPEN on"));
     }
 
+    #[test]
+    fn update_mode_off_by_default_sets_reads_and_persists() {
+        let mut e = ed();
+        e.host_mut().virtual_fs = true;
+        // Off by default; nothing available until a check runs.
+        assert_eq!(e.special_str("UPDATEMODE"), "off");
+        assert_eq!(e.special_str("UPDATEAVAIL"), "");
+        // Each keyword sets the policy and reads back canonically.
+        e.run_command("UPDATEMODE alert");
+        assert_eq!(e.special_str("UPDATEMODE"), "alert");
+        e.run_command("UPDATEMODE download");
+        assert_eq!(e.special_str("UPDATEMODE"), "download");
+        e.run_command("UPDATEMODE install");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // Bare = report, not a change.
+        e.run_command("UPDATEMODE");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // A bad value errors and leaves the policy untouched.
+        e.run_command("UPDATEMODE someday");
+        assert!(e.last_error().is_some(), "bad value errors");
+        assert_eq!(e.special_str("UPDATEMODE"), "install");
+        // An unknown UPDATE sub-command errors (and never touches the network).
+        e.run_command("UPDATE frobnicate");
+        assert!(e.last_error().is_some(), "unknown sub-command errors");
+        // SaveCfg carries the policy.
+        e.run_command("UPDATEMODE alert");
+        e.run_command("SAVECFG up.cfg");
+        assert!(e
+            .host_mut()
+            .files
+            .get("up.cfg")
+            .unwrap()
+            .contains("UPDATEMODE alert"));
+    }
+
     /// Session save+restore (Phase 1, shadow-backup model): a clean named file, a DIRTY named file,
     /// and an untitled buffer all come back — the dirty/untitled ones marked modified with their
     /// unsaved content, the clean one reopened from disk, and the active tab re-selected. Transient

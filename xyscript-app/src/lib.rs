@@ -40,6 +40,7 @@ pub mod panes;
 pub mod sort;
 pub mod style;
 pub mod text;
+pub mod update;
 mod typst_esc;
 pub mod viewport;
 
@@ -60,6 +61,7 @@ pub use host::AppHost;
 pub use kbd_sugar::desugar_keymap;
 pub use text::{Buffer, BalMatch};
 pub use xyscript_xpl::{
-    describe_xlink_payload, BUILTIN_VERBS, CONTROL_KEYWORDS, FontMode, XlinkConfirmChoice,
+    describe_xlink_payload, BUILTIN_VERBS, CONTROL_KEYWORDS, FontMode, UpdateAction, UpdateMode,
+    XlinkConfirmChoice,
 };
 pub use viewport::Viewport;

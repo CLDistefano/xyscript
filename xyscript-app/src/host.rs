@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use xyscript_kbd::{load, Keymap, LoadOutcome};
 use xyscript_xpl::{
     BinderSource, CalcContext, ClipKind, ColorGround, DefineKind, DeleteKind, DirOpts, DocTypeReq, EditorOp,
-    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, Value,
+    ErrCode, HelpResponse, Host, LockKey, MarkGutterMode, MatchQuery, Motion, MsgColorSlot, Number, PersistKind, PvMarginSide, SearchSpec, UiSizeKind, UpdateAction, UpdateMode, Value,
     ViewFlag, ViewToggle, VmResult, XplError,
 };
 
@@ -3207,6 +3207,16 @@ pub struct AppHost {
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
+    /// Auto-update policy (`UPDATEMODE`; `$UPDATEMODE`; SaveCfg). `Off` by default (struct default);
+    /// the shipped config sets `alert`. Pure state — no network until `UPDATE`/the startup poll.
+    update_mode: UpdateMode,
+    /// Latest version tag from the last successful `UPDATE CHECK`, if newer than the running build
+    /// (else `None`). Powers `$UPDATEAVAIL`. Session-only.
+    update_available: Option<String>,
+    /// Full info from the last successful check (tag, notes, assets); consumed by the later NOTES tab
+    /// and the downloader. Session-only.
+    #[allow(dead_code)] // read by UPDATE NOTES / DOWNLOAD in later auto-update phases
+    last_release: Option<crate::update::ReleaseInfo>,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3760,6 +3770,9 @@ impl AppHost {
             xlink_capture: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
+            update_mode: UpdateMode::default(), // off by default; shipped config sets `alert`
+            update_available: None,
+            last_release: None,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4590,6 +4603,54 @@ impl AppHost {
     /// Whether files auto-reopen when changed on disk (`AUTOREOPEN`/`$AUTOREOPEN`).
     pub fn auto_reopen(&self) -> bool {
         self.auto_reopen
+    }
+
+    /// The current auto-update policy (`UPDATEMODE`/`$UPDATEMODE`). The GUI reads this to drive the
+    /// (later) throttled startup check and the menu state.
+    pub fn update_mode(&self) -> UpdateMode {
+        self.update_mode
+    }
+
+    /// Run a manual auto-update step (`UPDATE …`). Phase 1 implements `Check`.
+    fn run_update_action(&mut self, action: UpdateAction) -> VmResult<Value> {
+        match action {
+            UpdateAction::Check => self.update_check(),
+        }
+    }
+
+    /// `UPDATE CHECK` — query the release channel and report whether a newer version is available,
+    /// recording the result for `$UPDATEAVAIL` and the later NOTES/DOWNLOAD steps. The network path is
+    /// behind the `update` cargo feature; a slim build reports it's not compiled in.
+    fn update_check(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            ))
+        }
+        #[cfg(feature = "update")]
+        {
+            let info = crate::update::fetch_latest()
+                .map_err(|e| XplError::trappable(format!("UPDATE CHECK failed: {e}")))?;
+            let current = crate::update::parse_version(crate::update::CURRENT_VERSION);
+            let newer = match (info.version, current) {
+                (Some(latest), Some(cur)) => crate::update::is_newer(latest, cur),
+                _ => false,
+            };
+            let msg = if newer {
+                self.update_available = Some(info.tag.clone());
+                format!(
+                    "update available: {} (you have {})",
+                    info.tag,
+                    crate::update::CURRENT_VERSION
+                )
+            } else {
+                self.update_available = None;
+                format!("up to date (version {})", crate::update::CURRENT_VERSION)
+            };
+            self.last_release = Some(info);
+            Ok(Value::str(msg))
+        }
     }
 
     /// Whether error logging is on (`ERRORLOG`/`$ERRORLOG`).
@@ -10250,6 +10311,7 @@ impl AppHost {
         put_opt_color(&mut s, "MSG box OK-button background colour -- R G B, 0-255", "MSGOKBGCOLOR", self.msg_ok_bg_color);
         put_opt_color(&mut s, "Bookmark gutter background colour -- R G B, 0-255", "MARKBGCOLOR", self.mark_bg_color);
         put(&mut s, "Reload a file automatically when changed on disk -- on | off", format!("AUTOREOPEN {}", if self.auto_reopen { "on" } else { "off" }));
+        put(&mut s, "Automatic-update policy -- off | alert | download | install", format!("UPDATEMODE {}", self.update_mode.as_str()));
         put(&mut s, "Log trappable + fatal errors to a file -- on | off", format!("ERRORLOG {}", if self.error_log { "on" } else { "off" }));
         if self.error_log_file.is_none() {
             put_tmpl(&mut s, "Error-log file path (default: xyscript-errors.log in $XSDIR)", "ERRORLOGFILE my-errors.log");
@@ -14625,6 +14687,13 @@ impl Host for AppHost {
                     if self.auto_reopen { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetUpdateMode(mode) => {
+                self.update_mode = mode;
+                return Ok(Value::str(format!("UPDATEMODE {}", mode.as_str())));
+            }
+            EditorOp::Update(action) => {
+                return self.run_update_action(action);
+            }
             EditorOp::SetErrorLog(opt) => {
                 self.error_log = opt.unwrap_or(!self.error_log);
                 return Ok(Value::str(format!(
@@ -15728,6 +15797,12 @@ impl Host for AppHost {
                 None => String::new(),
             })),
             "AUTOREOPEN" => Some(Value::Int(if self.auto_reopen { 1 } else { 0 })),
+            "UPDATEMODE" => Some(Value::str(self.update_mode.as_str())),
+            // The latest available version tag if the last check found one newer than this build, else
+            // empty. Session-only — populated by `UPDATE CHECK`.
+            "UPDATEAVAIL" => Some(Value::str(
+                self.update_available.clone().unwrap_or_default(),
+            )),
             "ERRORLOG" => Some(Value::Int(if self.error_log { 1 } else { 0 })),
             // The effective log path (default included), so a script/user can see where it writes.
             "ERRORLOGFILE" => Some(Value::str(self.error_log_path().to_string_lossy().into_owned())),

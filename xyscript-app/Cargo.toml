@@ -78,6 +78,13 @@ harper-typst = { version = "2.7", optional = true }
 # the face bytes we hand Typst). Matches the version cosmic-text already pulls in.
 fontdb = "0.23"
 
+# Auto-update — behind the OPTIONAL `update` feature (below). `ureq` is a small blocking HTTP client
+# (its default `tls` feature uses rustls + bundled webpki roots, so no OpenSSL and no system-cert
+# dependency); `serde_json` parses the GitHub release JSON. Both off by default so lean dev/test builds
+# don't pull a TLS stack; the distributable is built with `--features update`.
+ureq = { version = "2", optional = true }
+serde_json = { version = "1", optional = true }
+
 # Unix only: read the local UTC offset (DST-aware) from `localtime_r`'s `tm_gmtoff` for the date/time
 # specials ($MDAY/$DA/…) and DIR file times. Windows uses `GetTimeZoneInformation` (hand-rolled FFI,
 # no crate); hand-declaring `struct tm` is unwise (layout differs across macOS/glibc/musl), so on Unix
@@ -92,3 +99,7 @@ lint = ["dep:harper-core", "dep:harper-typst"]
 # Compile in the email verbs (`SENDMAIL` + SMTP config), which shell out to `curl`. Off by default and
 # NOT in the distributable tester build — a personal "email edition" is built with `--features email`.
 email = ["xyscript-xpl/email"]
+# Compile in the auto-update network path (`UPDATE CHECK` + later download/install), which queries the
+# GitHub Releases API. Off by default; the shipped dist is built with it. Without it the `UPDATEMODE`
+# setting still works, but `UPDATE CHECK` reports that updates aren't compiled in.
+update = ["dep:ureq", "dep:serde_json"]

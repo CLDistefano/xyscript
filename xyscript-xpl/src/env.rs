@@ -111,6 +111,8 @@ pub const SPECIAL_NAMES: &[&str] = &[
     "SMTPURL", "MAILUSER", "MAILFROM", "MAILPASS", "MAILDEBUG", "IMAPURL", "MAILBOX", "ATTACH",
     // error code + generic-message catalog ($ERRORMSG[n]); error-log on/off + file path
     "ERROR", "ERRORMSG", "ERRORLOG", "ERRORLOGFILE",
+    // auto-update: current policy ($UPDATEMODE) + latest available version if newer ($UPDATEAVAIL)
+    "UPDATEMODE", "UPDATEAVAIL",
     // args / return
     "RV",
 ];

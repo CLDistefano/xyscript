@@ -24,9 +24,11 @@ long_description = "A modern, keyboard-first text editor in the XyWrite traditio
 lint = ["xyscript-app/lint"]
 # Forward the email verbs to the core. Off by default.
 email = ["xyscript-app/email"]
-# The shipped tester dist is built with BOTH:
-#   cargo build --release --features lint,email
-# Drop either flag only for a deliberately slimmer local build.
+# Forward the auto-update network path (GitHub release check/download) to the core. In the shipped dist.
+update = ["xyscript-app/update"]
+# The shipped tester dist is built with:
+#   cargo build --release --features lint,email,update
+# Drop a flag only for a deliberately slimmer local build.
 
 [dependencies]
 xyscript-app = { path = "../xyscript-app" }
