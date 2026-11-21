@@ -507,6 +507,90 @@ pub fn find_bundle_root(extract_dir: &std::path::Path) -> Result<PathBuf, String
     Err("the downloaded bundle has no manifest.json (built before auto-update manifests — update manually)".to_string())
 }
 
+/// Download + verify the platform bundle for `info` into a fresh `staging` directory, returning the
+/// verified [`StagedUpdate`]. Shared by the manual `UPDATE DOWNLOAD` and the background cadence.
+#[cfg(feature = "update")]
+pub fn download_and_stage(
+    info: &ReleaseInfo,
+    staging: &std::path::Path,
+) -> Result<StagedUpdate, String> {
+    let platform = platform_tag();
+    let asset = select_asset(&info.assets, platform)
+        .ok_or_else(|| format!("release {} has no {platform} bundle to download", info.tag))?;
+    let _ = std::fs::remove_dir_all(staging);
+    std::fs::create_dir_all(staging)
+        .map_err(|e| format!("cannot create {} ({e})", staging.display()))?;
+    let zip_path = staging.join(&asset.name);
+    download_to(&asset.url, &zip_path)?;
+    let extract = staging.join("bundle");
+    extract_zip(&zip_path, &extract).map_err(|e| format!("extract failed — {e}"))?;
+    let root = find_bundle_root(&extract)?;
+    let manifest_body = std::fs::read_to_string(root.join("manifest.json"))
+        .map_err(|e| format!("cannot read manifest.json ({e})"))?;
+    let manifest = parse_manifest(&manifest_body)?;
+    let actual = hash_tree(&root)?;
+    if let Err(e) = verify_hashes(&manifest, &actual) {
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(format!("verification failed — {e}"));
+    }
+    Ok(StagedUpdate {
+        tag: info.tag.clone(),
+        root,
+        manifest,
+    })
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 5 — the automatic cadence: a throttled background check (and download, per policy).
+// ---------------------------------------------------------------------------------------------------
+
+/// Is an automatic check due? `None` last-check means never checked (due); otherwise due once
+/// `interval` seconds have elapsed. Pure — the mode gate + the timestamp I/O live in the host.
+pub fn due_now(last: Option<u64>, now: u64, interval: u64) -> bool {
+    match last {
+        None => true,
+        Some(t) => now.saturating_sub(t) >= interval,
+    }
+}
+
+/// The result of one background update cycle (check, plus a download+verify when the policy wants it).
+/// Plain data so it rides an mpsc channel back to the main thread.
+#[derive(Clone, Debug)]
+pub enum UpdateCycleOutcome {
+    UpToDate,
+    /// Newer version found; not downloaded (alert policy).
+    Available(ReleaseInfo),
+    /// Newer version found, downloaded and verified into staging (download / install policy).
+    Staged {
+        info: ReleaseInfo,
+        staged: StagedUpdate,
+    },
+    /// The cycle failed (network, verification, …). The cadence keeps this quiet — no nagging.
+    Failed(String),
+}
+
+/// Run one background cycle off the UI thread: query the channel, and — when `want_download` — also
+/// download + verify the bundle into `staging`. Returns a plain [`UpdateCycleOutcome`].
+#[cfg(feature = "update")]
+pub fn run_update_cycle(want_download: bool, staging: std::path::PathBuf) -> UpdateCycleOutcome {
+    let info = match fetch_latest() {
+        Ok(i) => i,
+        Err(e) => return UpdateCycleOutcome::Failed(e),
+    };
+    let current = parse_version(CURRENT_VERSION);
+    let newer = matches!((info.version, current), (Some(l), Some(c)) if is_newer(l, c));
+    if !newer {
+        return UpdateCycleOutcome::UpToDate;
+    }
+    if !want_download {
+        return UpdateCycleOutcome::Available(info);
+    }
+    match download_and_stage(&info, &staging) {
+        Ok(staged) => UpdateCycleOutcome::Staged { info, staged },
+        Err(e) => UpdateCycleOutcome::Failed(e),
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Phase 4 — apply the plan to the install (with a rollback backup), and roll back.
 //
@@ -1037,5 +1121,16 @@ mod tests {
         assert_eq!(fs::read_to_string(install.join("manifest.json")).unwrap(), "OLD_MANIFEST_JSON");
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // ---- Phase 5: cadence throttle ----------------------------------------------------------
+
+    #[test]
+    fn due_now_respects_the_interval() {
+        assert!(due_now(None, 1000, 100), "never checked → due");
+        assert!(due_now(Some(0), 100, 100), "exactly the interval → due");
+        assert!(due_now(Some(0), 200, 100), "past the interval → due");
+        assert!(!due_now(Some(90), 100, 100), "within the interval → not due");
+        assert!(!due_now(Some(200), 100, 100), "clock skew (last > now) → not due");
     }
 }

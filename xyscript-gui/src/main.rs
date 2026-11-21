@@ -3143,6 +3143,12 @@ impl GuiApp {
                 startup_status = format!("error: {e}");
             }
         }
+        // Auto-update: a throttled background check on boot, honoring UPDATEMODE (off = no-op; the
+        // network path needs the `update` build). Non-blocking — the worker runs off-thread and
+        // `poll_update` (per frame) surfaces the result on the status line.
+        if editor.update_check_due() {
+            editor.start_update_cycle();
+        }
         // The capture resolver needs the operative (desugared) keymap: the startup-loaded one if
         // startup swapped it, else the bundled sample. (Consuming `reloaded_keymap` here also stops
         // the runtime's first resync from re-applying it.)
@@ -9696,6 +9702,16 @@ impl GuiApp {
         }
         if self.editor.lint_in_flight() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+
+        // Auto-update (`UPDATEMODE`): surface a finished background check/download on the status line,
+        // and keep the loop repainting while one is in flight so its result lands without more input.
+        if let Some(msg) = self.editor.poll_update() {
+            self.status = msg;
+            ctx.request_repaint();
+        }
+        if self.editor.update_in_flight() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(300));
         }
 
         // Background `CHECK` (whole-doc report on its own thread — never freezes the UI). Show a

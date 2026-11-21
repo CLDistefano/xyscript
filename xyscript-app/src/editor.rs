@@ -1336,6 +1336,22 @@ impl Editor {
     pub fn check_in_progress(&self) -> bool {
         self.host.check_in_progress()
     }
+    /// Whether an automatic update check is due on boot (the `UPDATEMODE` cadence).
+    pub fn update_check_due(&self) -> bool {
+        self.host.update_check_due()
+    }
+    /// Start a throttled background update cycle, honoring `UPDATEMODE` (the GUI calls this at boot).
+    pub fn start_update_cycle(&mut self) {
+        self.host.start_update_cycle()
+    }
+    /// Drain a finished background update cycle; returns a status/toast line to show, or `None`.
+    pub fn poll_update(&mut self) -> Option<String> {
+        self.host.poll_update()
+    }
+    /// Whether a background update cycle is running (keep the GUI loop repainting).
+    pub fn update_in_flight(&self) -> bool {
+        self.host.update_in_flight()
+    }
     /// The spelling correction choices for the word at rope offset `pos` (right-click spell menu), or
     /// `None` if the click isn't on a flagged word.
     pub fn lint_context_at(&self, pos: usize) -> Option<xyscript_xpl::LintFixChoices> {
@@ -2985,13 +3001,15 @@ mod tests {
     }
 
     #[test]
-    fn update_mode_off_by_default_sets_reads_and_persists() {
+    fn update_mode_defaults_to_alert_sets_reads_and_persists() {
         let mut e = ed();
         e.host_mut().virtual_fs = true;
-        // Off by default; nothing available until a check runs.
-        assert_eq!(e.special_str("UPDATEMODE"), "off");
+        // `alert` is the product default; nothing available until a check runs.
+        assert_eq!(e.special_str("UPDATEMODE"), "alert");
         assert_eq!(e.special_str("UPDATEAVAIL"), "");
         // Each keyword sets the policy and reads back canonically.
+        e.run_command("UPDATEMODE off");
+        assert_eq!(e.special_str("UPDATEMODE"), "off");
         e.run_command("UPDATEMODE alert");
         assert_eq!(e.special_str("UPDATEMODE"), "alert");
         e.run_command("UPDATEMODE download");

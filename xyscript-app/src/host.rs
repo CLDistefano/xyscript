@@ -3207,8 +3207,8 @@ pub struct AppHost {
     /// Auto-reopen a file when it changes on disk (`AUTOREOPEN`). Off by default. `$AUTOREOPEN`; SaveCfg.
     /// Independent of `TRUST` — it only re-reads a file already open, running no external code.
     auto_reopen: bool,
-    /// Auto-update policy (`UPDATEMODE`; `$UPDATEMODE`; SaveCfg). `Off` by default (struct default);
-    /// the shipped config sets `alert`. Pure state — no network until `UPDATE`/the startup poll.
+    /// Auto-update policy (`UPDATEMODE`; `$UPDATEMODE`; SaveCfg). Defaults to `alert` (check + notify,
+    /// the product default); `off` disables all checks. The network cadence needs the `update` build.
     update_mode: UpdateMode,
     /// Latest version tag from the last successful `UPDATE CHECK`, if newer than the running build
     /// (else `None`). Powers `$UPDATEAVAIL`. Session-only.
@@ -3220,6 +3220,8 @@ pub struct AppHost {
     /// A downloaded, SHA-256-verified release sitting in staging, ready for `UPDATE INSTALL` (Phase 4).
     /// `$UPDATESTAGED` reports its tag. Session-only.
     staged_update: Option<crate::update::StagedUpdate>,
+    /// Receiver for a background update cycle (the Phase 5 cadence); `Some` while one runs. Session-only.
+    update_pending: Option<std::sync::mpsc::Receiver<crate::update::UpdateCycleOutcome>>,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3773,10 +3775,11 @@ impl AppHost {
             xlink_capture: None,
             preview_marks: false, // off by default: printouts don't carry transient EMPH/URL marks
             auto_reopen: false, // off by default
-            update_mode: UpdateMode::default(), // off by default; shipped config sets `alert`
+            update_mode: UpdateMode::Alert, // the product default: check + notify, never auto-install
             update_available: None,
             last_release: None,
             staged_update: None,
+            update_pending: None,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4681,62 +4684,118 @@ impl AppHost {
                     update::CURRENT_VERSION
                 )));
             }
-            let platform = update::platform_tag();
-            let asset = update::select_asset(&info.assets, platform)
-                .ok_or_else(|| {
-                    XplError::trappable(format!(
-                        "release {} has no {platform} bundle to download",
-                        info.tag
-                    ))
-                })?
-                .clone();
-
-            // Fresh staging dir under $XSDIR/.update.
             let staging = self.update_root().join("staging");
-            let _ = std::fs::remove_dir_all(&staging);
-            std::fs::create_dir_all(&staging).map_err(|e| {
-                XplError::trappable(format!(
-                    "UPDATE DOWNLOAD: cannot create {} ({e})",
-                    staging.display()
-                ))
-            })?;
-
-            let zip_path = staging.join(&asset.name);
-            update::download_to(&asset.url, &zip_path)
+            let staged = update::download_and_stage(&info, &staging)
                 .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
-            let extract = staging.join("bundle");
-            update::extract_zip(&zip_path, &extract)
-                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: extract failed — {e}")))?;
-            let root = update::find_bundle_root(&extract)
-                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
-            let manifest_body = std::fs::read_to_string(root.join("manifest.json")).map_err(|e| {
-                XplError::trappable(format!("UPDATE DOWNLOAD: cannot read manifest.json ({e})"))
-            })?;
-            let manifest = update::parse_manifest(&manifest_body)
-                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
-            let actual = update::hash_tree(&root)
-                .map_err(|e| XplError::trappable(format!("UPDATE DOWNLOAD: {e}")))?;
-            if let Err(e) = update::verify_hashes(&manifest, &actual) {
-                // Don't leave an unverified tree staged.
-                let _ = std::fs::remove_dir_all(&staging);
-                return Err(XplError::trappable(format!(
-                    "UPDATE DOWNLOAD: verification failed — {e}"
-                )));
-            }
-
-            let n = manifest.files.len();
+            let n = staged.manifest.files.len();
+            let tag = staged.tag.clone();
             self.update_available = Some(info.tag.clone());
-            self.staged_update = Some(update::StagedUpdate {
-                tag: info.tag.clone(),
-                root,
-                manifest,
-            });
+            self.staged_update = Some(staged);
             self.last_release = Some(info);
             Ok(Value::str(format!(
-                "downloaded and verified {} ({n} files) — ready to install",
-                self.staged_update.as_ref().unwrap().tag
+                "downloaded and verified {tag} ({n} files) — ready to install"
             )))
         }
+    }
+
+    // --- Phase 5: the automatic cadence (throttled background check, per UPDATEMODE) --------------
+
+    /// Whether an automatic update check is due now: the policy is on and the last check (recorded in
+    /// `$XSDIR/.update/last-check`) is older than the interval. The GUI calls this once at boot.
+    pub fn update_check_due(&self) -> bool {
+        if self.update_mode == UpdateMode::Off {
+            return false;
+        }
+        let last = std::fs::read_to_string(self.update_root().join("last-check"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        crate::update::due_now(last, now, 24 * 60 * 60)
+    }
+
+    /// Whether a background update cycle is running (the GUI keeps the loop repainting).
+    pub fn update_in_flight(&self) -> bool {
+        self.update_pending.is_some()
+    }
+
+    /// Start a throttled background update cycle off the UI thread, honoring `UPDATEMODE`: `alert`
+    /// checks only; `download`/`install` also download + verify into staging. No-op when off, already
+    /// running, or in a build without the `update` feature. The GUI calls this at boot when
+    /// [`Self::update_check_due`] is true; [`Self::poll_update`] surfaces the result.
+    pub fn start_update_cycle(&mut self) {
+        #[cfg(feature = "update")]
+        {
+            if self.update_mode == UpdateMode::Off || self.update_pending.is_some() {
+                return;
+            }
+            let want_download =
+                matches!(self.update_mode, UpdateMode::Download | UpdateMode::Install);
+            let staging = self.update_root().join("staging");
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(crate::update::run_update_cycle(want_download, staging));
+            });
+            self.update_pending = Some(rx);
+        }
+    }
+
+    /// Call each frame. If the background cycle finished, record its result, stamp the check time, and
+    /// return a status/toast line to show; `None` while running or when there is nothing to say. A
+    /// background *failure* is kept quiet (no nagging). Install policy stages + prompts rather than
+    /// swapping the binary unattended — the actual swap stays a deliberate `UPDATE INSTALL`.
+    pub fn poll_update(&mut self) -> Option<String> {
+        #[cfg(feature = "update")]
+        {
+            let outcome = self.update_pending.as_ref().and_then(|rx| rx.try_recv().ok())?;
+            self.update_pending = None;
+            self.write_last_check();
+            use crate::update::UpdateCycleOutcome::*;
+            match outcome {
+                UpToDate => {
+                    self.update_available = None;
+                    None
+                }
+                Available(info) => {
+                    let tag = info.tag.clone();
+                    self.update_available = Some(tag.clone());
+                    self.last_release = Some(info);
+                    Some(format!(
+                        "Update {tag} available — run UPDATE DOWNLOAD (or UPDATE CHECK for details)"
+                    ))
+                }
+                Staged { info, staged } => {
+                    let tag = info.tag.clone();
+                    self.update_available = Some(tag.clone());
+                    self.staged_update = Some(staged);
+                    self.last_release = Some(info);
+                    Some(format!(
+                        "Update {tag} downloaded and verified — run UPDATE INSTALL to apply"
+                    ))
+                }
+                Failed(_) => None,
+            }
+        }
+        #[cfg(not(feature = "update"))]
+        {
+            None
+        }
+    }
+
+    /// Stamp the last-check time (`$XSDIR/.update/last-check`, Unix seconds) so the throttle advances.
+    #[cfg(feature = "update")]
+    fn write_last_check(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = self.update_root().join("last-check");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, now.to_string());
     }
 
     /// `UPDATE INSTALL` — apply a staged (or freshly downloaded) release behind the overwrite guard,

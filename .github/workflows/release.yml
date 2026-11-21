@@ -93,9 +93,9 @@ jobs:
 
       # Build from INSIDE xyscript-gui so its .cargo/config.toml applies (static MSVC CRT on Windows).
       # `lint` = language checker, `email` = mail verbs — the same feature set as the shipped dist.
-      - name: Build (release, lint + email)
+      - name: Build (release, lint + email + update)
         working-directory: xyscript-gui
-        run: cargo build --release --features lint,email
+        run: cargo build --release --features lint,email,update
 
       # Bundle the binary with everything the app discovers at runtime beside it (`$XSDIR`): the UI
       # translation catalogs (`lang/*.lang` → `Settings ▸ Language`), the colour-theme presets
@@ -206,11 +206,11 @@ jobs:
         with:
           workspaces: xyscript-gui
 
-      - name: Build both architectures (release, lint + email)
+      - name: Build both architectures (release, lint + email + update)
         working-directory: xyscript-gui
         run: |
-          cargo build --release --features lint,email --target aarch64-apple-darwin
-          cargo build --release --features lint,email --target x86_64-apple-darwin
+          cargo build --release --features lint,email,update --target aarch64-apple-darwin
+          cargo build --release --features lint,email,update --target x86_64-apple-darwin
 
       - name: Package (universal binary + language catalogs + themes + runtime kit)
         shell: bash
