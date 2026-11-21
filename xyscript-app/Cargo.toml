@@ -84,6 +84,9 @@ fontdb = "0.23"
 # don't pull a TLS stack; the distributable is built with `--features update`.
 ureq = { version = "2", optional = true }
 serde_json = { version = "1", optional = true }
+# SHA-256 for the overwrite guard: hash local files to tell a pristine shipped file from a user-edited
+# one, and verify downloaded assets against the release manifest (Phase 3). Pure Rust, tiny.
+sha2 = { version = "0.10", optional = true }
 
 # Unix only: read the local UTC offset (DST-aware) from `localtime_r`'s `tm_gmtoff` for the date/time
 # specials ($MDAY/$DA/…) and DIR file times. Windows uses `GetTimeZoneInformation` (hand-rolled FFI,
@@ -102,4 +105,4 @@ email = ["xyscript-xpl/email"]
 # Compile in the auto-update network path (`UPDATE CHECK` + later download/install), which queries the
 # GitHub Releases API. Off by default; the shipped dist is built with it. Without it the `UPDATEMODE`
 # setting still works, but `UPDATE CHECK` reports that updates aren't compiled in.
-update = ["dep:ureq", "dep:serde_json"]
+update = ["dep:ureq", "dep:serde_json", "dep:sha2"]

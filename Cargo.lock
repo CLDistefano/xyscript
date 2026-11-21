@@ -7735,6 +7735,7 @@ dependencies = [
  "regex",
  "ropey",
  "serde_json",
+ "sha2",
  "typst",
  "typst-as-lib",
  "typst-assets",
