@@ -343,7 +343,9 @@ menu.settings.autosave_settings = Instellingen automatisch opslaan   # Auto-save
 menu.help.manual = Handleiding   # Manual
 menu.help.reference = Naslagwerk   # Reference
 menu.help.update_avail = Update {ver} beschikbaar…   # Update {ver} available…
+menu.help.install_update = Update {ver} installeren   # Install update {ver}
 menu.help.check_updates = Controleren op updates   # Check for updates
+menu.help.whats_new = Wat is er nieuw   # What's new
 menu.help.about = Over XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -399,12 +401,12 @@ msg.update.updated = Bijgewerkt naar {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: deze build ondersteunt geen automatische updates (gecompileerd zonder de functie `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = up-to-date (versie {ver}) — niets te downloaden   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} gedownload en geverifieerd ({n} bestanden) — klaar om te installeren   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Update {tag} klaargezet — installeert bij volgende start   # Update {tag} staged — installs at next launch
+msg.update.failed = Controleren op updates mislukt: {err}   # Update check failed: {err}
 msg.update.unavailable = updates zijn niet beschikbaar in deze build   # updates aren't available in this build
 msg.update.uptodate = Je bent up-to-date (versie {ver})   # You're up to date (version {ver})
 msg.update.available = Update {tag} beschikbaar — voer UPDATE DOWNLOAD uit   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Update {tag} klaargezet — installeert bij volgende start   # Update {tag} staged — installs at next launch
 msg.update.staged = Update {tag} gedownload en geverifieerd — voer UPDATE INSTALL uit om toe te passen   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Controleren op updates mislukt: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} geïnstalleerd: {replaced} vervangen, {added} toegevoegd, {deleted} verwijderd   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = {n} van uw bewerkte bestand behouden (nieuwe standaard opgeslagen als .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = {n} van uw bewerkte bestanden behouden (nieuwe standaarden opgeslagen als .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -499,5 +501,12 @@ msg.lib.count.other = {n} routines   # {n} routines
 msg.lib.loaded = {count} geladen uit {path}   # loaded {count} from {path}
 msg.lib.added = {count} toegevoegd uit {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Nieuw in {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Controleren op updates…   # Checking for updates…
+status.update.installing = Update voorbereiden…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Geen release-opmerkingen voor deze versie.   # No release notes for this version.

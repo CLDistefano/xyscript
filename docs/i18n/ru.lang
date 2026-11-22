@@ -347,7 +347,9 @@ menu.settings.autosave_settings = Автосохранение настроек 
 menu.help.manual = Руководство   # Manual
 menu.help.reference = Справочник   # Reference
 menu.help.update_avail = Доступно обновление {ver}…   # Update {ver} available…
+menu.help.install_update = Установить обновление {ver}   # Install update {ver}
 menu.help.check_updates = Проверить наличие обновлений   # Check for updates
+menu.help.whats_new = Что нового   # What's new
 menu.help.about = О программе XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -403,12 +405,12 @@ msg.update.updated = Обновлено до {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: эта сборка не поддерживает автоматические обновления (скомпилирована без функции `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = актуально (версия {ver}) — нечего загружать   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} загружено и проверено ({n} файлов) — готово к установке   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Обновление {tag} подготовлено — установится при следующем запуске   # Update {tag} staged — installs at next launch
+msg.update.failed = Не удалось проверить обновления: {err}   # Update check failed: {err}
 msg.update.unavailable = обновления недоступны в этой сборке   # updates aren't available in this build
 msg.update.uptodate = У вас последняя версия (версия {ver})   # You're up to date (version {ver})
 msg.update.available = Доступно обновление {tag} — выполните UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Обновление {tag} подготовлено — установится при следующем запуске   # Update {tag} staged — installs at next launch
 msg.update.staged = Обновление {tag} загружено и проверено — выполните UPDATE INSTALL для установки   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Не удалось проверить обновления: {err}   # Update check failed: {err}
 msg.update.install.done = установлено {tag}: {replaced} заменено, {added} добавлено, {deleted} удалено   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = сохранён {n} ваш изменённый файл (новый стандарт сохранён как .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.few = сохранено {n} ваших изменённых файла (новые стандарты сохранены как .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -521,5 +523,12 @@ msg.lib.count.many = {n} процедур   # {n} routines
 msg.lib.loaded = загружено {count} из {path}   # loaded {count} from {path}
 msg.lib.added = добавлено {count} из {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Новое в {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Проверка обновлений…   # Checking for updates…
+status.update.installing = Подготовка обновления…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Для этой версии нет примечаний к выпуску.   # No release notes for this version.

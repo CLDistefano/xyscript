@@ -3557,6 +3557,18 @@ instead — the clean way to swap the program — use #raw("UPDATE INSTALL /NEXT
 #raw("$UPDATEPENDING")); #raw("UPDATE CANCEL") calls that off. When an update is applied at startup,
 the next window shows a brief #emph[Updated to …] note.
 
+If you would rather not type any of this, the #raw("Help") menu does it for you. #raw("Help ▸ Check for
+updates") runs a check on the spot (whatever #raw("UPDATEMODE") is set to), and whenever a check has
+found a newer version the menu advertises it — #emph[Update v… available] — and grows a second item,
+#emph[Install update v…], that schedules it for the next launch in one click. The download and
+verification happen in the background, so the menu never freezes the window, and the program is swapped
+cleanly at the next start rather than mid-session — exactly what #raw("UPDATE INSTALL /NEXT") does.
+
+The first time you run a version you have just updated to, XyScript opens a short, read-only
+#emph[New in …] tab describing what changed, and then never shows it again for that version. You can
+reopen the current version's notes whenever you like from #raw("Help ▸ What's new"); if a version
+shipped without notes, that menu item simply says so on the status line.
+
 == How an update protects your edits
 
 The parts of an install you are *meant* to edit — your keyboard map, your library, your

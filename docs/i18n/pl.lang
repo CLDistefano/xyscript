@@ -347,7 +347,9 @@ menu.settings.autosave_settings = Automatycznie zapisuj ustawienia   # Auto-save
 menu.help.manual = Podręcznik   # Manual
 menu.help.reference = Dokumentacja   # Reference
 menu.help.update_avail = Dostępna aktualizacja {ver}…   # Update {ver} available…
+menu.help.install_update = Zainstaluj aktualizację {ver}   # Install update {ver}
 menu.help.check_updates = Sprawdź dostępność aktualizacji   # Check for updates
+menu.help.whats_new = Co nowego   # What's new
 menu.help.about = O programie XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -403,12 +405,12 @@ msg.update.updated = Zaktualizowano do {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: ta kompilacja nie obsługuje automatycznych aktualizacji (skompilowana bez funkcji `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = aktualne (wersja {ver}) — nie ma czego pobierać   # up to date (version {ver}) — nothing to download
 msg.update.download.done = pobrano i zweryfikowano {tag} ({n} plików) — gotowe do instalacji   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Aktualizacja {tag} przygotowana — instalacja przy następnym uruchomieniu   # Update {tag} staged — installs at next launch
+msg.update.failed = Sprawdzanie aktualizacji nie powiodło się: {err}   # Update check failed: {err}
 msg.update.unavailable = aktualizacje nie są dostępne w tej kompilacji   # updates aren't available in this build
 msg.update.uptodate = Masz aktualną wersję (wersja {ver})   # You're up to date (version {ver})
 msg.update.available = Dostępna aktualizacja {tag} — uruchom UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Aktualizacja {tag} przygotowana — instalacja przy następnym uruchomieniu   # Update {tag} staged — installs at next launch
 msg.update.staged = Aktualizacja {tag} pobrana i zweryfikowana — uruchom UPDATE INSTALL, aby zainstalować   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Sprawdzanie aktualizacji nie powiodło się: {err}   # Update check failed: {err}
 msg.update.install.done = zainstalowano {tag}: {replaced} zastąpionych, {added} dodanych, {deleted} usuniętych   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = zachowano {n} edytowany plik (nowy domyślny zapisany jako .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.few = zachowano {n} edytowane pliki (nowe domyślne zapisane jako .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -521,5 +523,12 @@ msg.lib.count.many = {n} procedur   # {n} routines
 msg.lib.loaded = wczytano {count} z {path}   # loaded {count} from {path}
 msg.lib.added = dodano {count} z {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Nowości w {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Sprawdzanie aktualizacji…   # Checking for updates…
+status.update.installing = Przygotowywanie aktualizacji…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Brak informacji o wydaniu dla tej wersji.   # No release notes for this version.

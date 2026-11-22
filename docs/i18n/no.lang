@@ -343,7 +343,9 @@ menu.settings.autosave_settings = Autolagre innstillinger   # Auto-save settings
 menu.help.manual = Håndbok   # Manual
 menu.help.reference = Referanse   # Reference
 menu.help.update_avail = Oppdatering {ver} tilgjengelig…   # Update {ver} available…
+menu.help.install_update = Installer oppdatering {ver}   # Install update {ver}
 menu.help.check_updates = Se etter oppdateringer   # Check for updates
+menu.help.whats_new = Hva er nytt   # What's new
 menu.help.about = Om XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -399,12 +401,12 @@ msg.update.updated = Oppdatert til {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: denne builden støtter ikke automatiske oppdateringer (kompilert uten funksjonen `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = oppdatert (versjon {ver}) — ingenting å laste ned   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} lastet ned og verifisert ({n} filer) — klar til å installere   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Oppdatering {tag} klargjort — installeres ved neste oppstart   # Update {tag} staged — installs at next launch
+msg.update.failed = Kontroll av oppdateringer mislyktes: {err}   # Update check failed: {err}
 msg.update.unavailable = oppdateringer er ikke tilgjengelige i denne build-en   # updates aren't available in this build
 msg.update.uptodate = Du er oppdatert (versjon {ver})   # You're up to date (version {ver})
 msg.update.available = Oppdatering {tag} tilgjengelig — kjør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Oppdatering {tag} klargjort — installeres ved neste oppstart   # Update {tag} staged — installs at next launch
 msg.update.staged = Oppdatering {tag} lastet ned og verifisert — kjør UPDATE INSTALL for å installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Kontroll av oppdateringer mislyktes: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} installert: {replaced} erstattet, {added} lagt til, {deleted} slettet   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = beholdt {n} av den redigerte filen din (ny standard lagret som .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = beholdt {n} av de redigerte filene dine (nye standarder lagret som .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -499,5 +501,12 @@ msg.lib.count.other = {n} rutiner   # {n} routines
 msg.lib.loaded = {count} lastet inn fra {path}   # loaded {count} from {path}
 msg.lib.added = {count} lagt til fra {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Nytt i {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Ser etter oppdateringer…   # Checking for updates…
+status.update.installing = Forbereder oppdatering…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Ingen versjonsmerknader for denne versjonen.   # No release notes for this version.
