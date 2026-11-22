@@ -1,6 +1,6 @@
 [package]
 name = "xyscript-kbd"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2021"
 # MSRV: a modern floor — the `comrak` dependency tree (in the app crate) pushed
 # the workspace past 1.86 today; 1.88 is the shared declared minimum. Latest
