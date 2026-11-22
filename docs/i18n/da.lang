@@ -395,18 +395,22 @@ dialog.about.tagline = En konfigurerbar editor i XyWrite-traditionen.   # A conf
 button.close = Luk   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Opdateret til {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: denne build understøtter ikke automatiske opdateringer (kompileret uden funktionen `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = opdateret (version {ver}) — intet at downloade   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} downloadet og verificeret ({n} filer) — klar til installation   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = opdateringer er ikke tilgængelige i denne build   # updates aren't available in this build
 msg.update.uptodate = Du er opdateret (version {ver})   # You're up to date (version {ver})
 msg.update.available = Opdatering {tag} tilgængelig — kør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Opdatering {tag} klargjort — installeres ved næste start   # Update {tag} staged — installs at next launch
 msg.update.staged = Opdatering {tag} downloadet og verificeret — kør UPDATE INSTALL for at installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Kontrol af opdateringer mislykkedes: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} installeret: {replaced} erstattet, {added} tilføjet, {deleted} slettet   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = beholdt {n} af din redigerede fil (ny standard gemt som .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = beholdt {n} af dine redigerede filer (nye standarder gemt som .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = genstart XyScript   # restart XyScript
+msg.update.cancelled = planlagt opdatering annulleret   # scheduled update cancelled
+msg.update.nopending = ingen planlagt opdatering at annullere   # no scheduled update to cancel
 msg.update.rollback.done = seneste opdatering rullet tilbage   # rolled back the last update
 msg.update.rollback.toversion = rullet tilbage til version {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} nulstillet til standardindstillingen   # reset {rel} to the shipped default

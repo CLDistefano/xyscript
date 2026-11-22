@@ -4638,6 +4638,8 @@ impl AppHost {
             UpdateAction::Check => self.update_check(),
             UpdateAction::Download => self.update_download(),
             UpdateAction::Install => self.update_install(),
+            UpdateAction::Schedule => self.update_schedule(),
+            UpdateAction::Cancel => self.update_cancel(),
             UpdateAction::Rollback => self.update_rollback(),
             UpdateAction::Reset(path) => self.update_reset(&path),
         }
@@ -4825,14 +4827,25 @@ impl AppHost {
                 }
                 Staged { info, staged } => {
                     let tag = info.tag.clone();
+                    let root = staged.root.clone();
                     self.update_available = Some(tag.clone());
                     self.staged_update = Some(staged);
                     self.last_release = Some(info);
-                    Some(self.tr_fmt(
-                        "msg.update.staged",
-                        "Update {tag} downloaded and verified — run UPDATE INSTALL to apply",
-                        &[("tag", &tag)],
-                    ))
+                    if self.update_mode == UpdateMode::Install {
+                        // `install` policy applies automatically at the next launch — mark it pending.
+                        let _ = crate::update::write_pending(&self.update_root(), &tag, &root);
+                        Some(self.tr_fmt(
+                            "msg.update.scheduled",
+                            "Update {tag} staged — installs at next launch",
+                            &[("tag", &tag)],
+                        ))
+                    } else {
+                        Some(self.tr_fmt(
+                            "msg.update.staged",
+                            "Update {tag} downloaded and verified — run UPDATE INSTALL to apply",
+                            &[("tag", &tag)],
+                        ))
+                    }
                 }
                 Failed(e) => manual.then(|| {
                     self.tr_fmt("msg.update.failed", "Update check failed: {err}", &[("err", &e)])
@@ -4927,7 +4940,9 @@ impl AppHost {
                 })?;
             }
 
-            // Applied — drop the staging tree and the staged-state.
+            // Applied — drop the staging tree, any next-launch schedule (apply-now supersedes it), and
+            // the staged-state.
+            crate::update::clear_pending(&self.update_root());
             let _ = std::fs::remove_dir_all(self.update_root().join("staging"));
             self.staged_update = None;
             self.update_available = None;
@@ -4957,6 +4972,51 @@ impl AppHost {
             msg.push_str(" — ");
             msg.push_str(&self.tr_msg("msg.update.restart", "restart XyScript"));
             Ok(Value::str(msg))
+        }
+    }
+
+    /// `UPDATE INSTALL /NEXT` — schedule a staged (or freshly downloaded) release to be applied at the
+    /// NEXT launch (the safe moment to swap the binary), instead of now. Ensures a verified bundle is
+    /// staged, then writes the pending marker the boot applier reads.
+    fn update_schedule(&mut self) -> VmResult<Value> {
+        #[cfg(not(feature = "update"))]
+        {
+            Err(XplError::trappable(self.tr_msg(
+                "msg.update.notbuilt",
+                "UPDATE: this build has no auto-update support (compiled without the `update` feature)",
+            )))
+        }
+        #[cfg(feature = "update")]
+        {
+            if self.staged_update.is_none() {
+                let msg = self.update_download()?;
+                if self.staged_update.is_none() {
+                    return Ok(msg); // "up to date" / nothing to schedule
+                }
+            }
+            let (root, tag) = {
+                let s = self.staged_update.as_ref().unwrap();
+                (s.root.clone(), s.tag.clone())
+            };
+            crate::update::write_pending(&self.update_root(), &tag, &root)
+                .map_err(|e| XplError::trappable(format!("UPDATE INSTALL /NEXT: {e}")))?;
+            Ok(Value::str(self.tr_fmt(
+                "msg.update.scheduled",
+                "Update {tag} staged — installs at next launch",
+                &[("tag", &tag)],
+            )))
+        }
+    }
+
+    /// `UPDATE CANCEL` — drop a scheduled next-launch update so the next launch won't apply it (the
+    /// staged files are kept). Pure local file op — works in any build.
+    fn update_cancel(&mut self) -> VmResult<Value> {
+        let update_root = self.update_root();
+        if crate::update::read_pending(&update_root).is_some() {
+            crate::update::clear_pending(&update_root);
+            Ok(Value::str(self.tr_msg("msg.update.cancelled", "scheduled update cancelled")))
+        } else {
+            Ok(Value::str(self.tr_msg("msg.update.nopending", "no scheduled update to cancel")))
         }
     }
 
@@ -16281,6 +16341,13 @@ impl Host for AppHost {
                 self.staged_update
                     .as_ref()
                     .map(|s| s.tag.clone())
+                    .unwrap_or_default(),
+            )),
+            // The tag of an update SCHEDULED to apply at the next launch (empty if none). Read from the
+            // on-disk pending marker, so it reflects a schedule made in any session.
+            "UPDATEPENDING" => Some(Value::str(
+                crate::update::read_pending(&self.update_root())
+                    .map(|p| p.tag)
                     .unwrap_or_default(),
             )),
             "ERRORLOG" => Some(Value::Int(if self.error_log { 1 } else { 0 })),

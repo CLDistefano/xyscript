@@ -399,12 +399,14 @@ dialog.about.tagline = Un editor configurabil în tradiția XyWrite.   # A confi
 button.close = Închide   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Actualizat la {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: această versiune nu are suport pentru actualizări automate (compilată fără funcția `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = la zi (versiunea {ver}) — nimic de descărcat   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} descărcat și verificat ({n} fișiere) — gata de instalare   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = actualizările nu sunt disponibile în această versiune   # updates aren't available in this build
 msg.update.uptodate = Ești la zi (versiunea {ver})   # You're up to date (version {ver})
 msg.update.available = Actualizarea {tag} este disponibilă — rulează UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Actualizarea {tag} pregătită — se instalează la următoarea pornire   # Update {tag} staged — installs at next launch
 msg.update.staged = Actualizarea {tag} a fost descărcată și verificată — rulează UPDATE INSTALL pentru a o aplica   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Verificarea actualizărilor a eșuat: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} instalat: {replaced} înlocuite, {added} adăugate, {deleted} șterse   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
@@ -412,6 +414,8 @@ msg.update.install.kept.one = păstrat {n} fișier editat de-al tău (noua valoa
 msg.update.install.kept.few = păstrate {n} fișiere editate de-ale tale (noile valori implicite salvate ca .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.install.kept.other = păstrate {n} de fișiere editate de-ale tale (noile valori implicite salvate ca .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = repornește XyScript   # restart XyScript
+msg.update.cancelled = actualizare programată anulată   # scheduled update cancelled
+msg.update.nopending = nicio actualizare programată de anulat   # no scheduled update to cancel
 msg.update.rollback.done = ultima actualizare anulată   # rolled back the last update
 msg.update.rollback.toversion = revenit la versiunea {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} resetat la valoarea implicită originală   # reset {rel} to the shipped default

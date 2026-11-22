@@ -399,12 +399,14 @@ dialog.about.tagline = Настраиваемый редактор в тради
 button.close = Закрыть   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Обновлено до {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: эта сборка не поддерживает автоматические обновления (скомпилирована без функции `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = актуально (версия {ver}) — нечего загружать   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} загружено и проверено ({n} файлов) — готово к установке   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = обновления недоступны в этой сборке   # updates aren't available in this build
 msg.update.uptodate = У вас последняя версия (версия {ver})   # You're up to date (version {ver})
 msg.update.available = Доступно обновление {tag} — выполните UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Обновление {tag} подготовлено — установится при следующем запуске   # Update {tag} staged — installs at next launch
 msg.update.staged = Обновление {tag} загружено и проверено — выполните UPDATE INSTALL для установки   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Не удалось проверить обновления: {err}   # Update check failed: {err}
 msg.update.install.done = установлено {tag}: {replaced} заменено, {added} добавлено, {deleted} удалено   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
@@ -412,6 +414,8 @@ msg.update.install.kept.one = сохранён {n} ваш изменённый �
 msg.update.install.kept.few = сохранено {n} ваших изменённых файла (новые стандарты сохранены как .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.install.kept.many = сохранено {n} ваших изменённых файлов (новые стандарты сохранены как .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = перезапустите XyScript   # restart XyScript
+msg.update.cancelled = запланированное обновление отменено   # scheduled update cancelled
+msg.update.nopending = нет запланированного обновления для отмены   # no scheduled update to cancel
 msg.update.rollback.done = последнее обновление отменено   # rolled back the last update
 msg.update.rollback.toversion = выполнен откат к версии {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} сброшено к стандартным настройкам   # reset {rel} to the shipped default

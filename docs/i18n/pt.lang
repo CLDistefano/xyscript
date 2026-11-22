@@ -395,18 +395,22 @@ dialog.about.tagline = Um editor configurável na tradição do XyWrite.   # A c
 button.close = Fechar   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Atualizado para {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: esta compilação não tem suporte a atualizações automáticas (compilada sem o recurso `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = atualizado (versão {ver}) — nada para baixar   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} baixado e verificado ({n} arquivos) — pronto para instalar   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = as atualizações não estão disponíveis nesta compilação   # updates aren't available in this build
 msg.update.uptodate = Você está atualizado (versão {ver})   # You're up to date (version {ver})
 msg.update.available = Atualização {tag} disponível — execute UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Atualização {tag} preparada — instala no próximo arranque   # Update {tag} staged — installs at next launch
 msg.update.staged = Atualização {tag} baixada e verificada — execute UPDATE INSTALL para aplicar   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Falha ao verificar atualizações: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} instalado: {replaced} substituídos, {added} adicionados, {deleted} excluídos   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = mantido {n} do seu arquivo editado (novo padrão salvo como .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = mantidos {n} dos seus arquivos editados (novos padrões salvos como .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = reinicie o XyScript   # restart XyScript
+msg.update.cancelled = atualização agendada cancelada   # scheduled update cancelled
+msg.update.nopending = nenhuma atualização agendada para cancelar   # no scheduled update to cancel
 msg.update.rollback.done = última atualização revertida   # rolled back the last update
 msg.update.rollback.toversion = revertido para a versão {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} redefinido para o padrão original   # reset {rel} to the shipped default

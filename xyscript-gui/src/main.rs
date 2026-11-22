@@ -12571,11 +12571,63 @@ fn main() {
         return;
     }
 
+    // Auto-update apply-at-next-launch: if a verified update was scheduled (UPDATEMODE install, or
+    // `UPDATE INSTALL /NEXT`), apply it NOW — before the window — then relaunch into the new binary.
+    // Only on an interactive launch; the headless --run/--render-only/--message paths returned above.
+    {
+        let exe = std::env::current_exe().ok();
+        let install_root = exe
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let exe_name = exe
+            .as_ref()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| {
+                if cfg!(windows) {
+                    "xyscript.exe".to_string()
+                } else {
+                    "xyscript".to_string()
+                }
+            });
+        match xyscript_app::update::apply_pending_at_boot(&install_root, &exe_name) {
+            Ok(xyscript_app::update::BootApply::Applied(_tag)) => {
+                // The on-disk binary is now the new version; relaunch it with the same args and exit so
+                // the running (old) code is replaced. The relaunched process finds no pending marker.
+                let relaunched = std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| std::process::Command::new(&exe).args(&cli_args).spawn().ok())
+                    .is_some();
+                if relaunched {
+                    return;
+                }
+                // Relaunch failed: the update is applied on disk but we couldn't start the new binary.
+                // Keep running THIS (old-code) process so the app still opens; the update takes effect
+                // on the next launch. Fall through to normal startup.
+                eprintln!("xyscript: update applied, but relaunch failed — continuing; restart to use it");
+            }
+            Ok(xyscript_app::update::BootApply::None) => {}
+            Err(e) => eprintln!("xyscript: update: {e}"),
+        }
+    }
+
     // Remaining POSITIONAL arguments are files to open on startup (`xyscript.exe a.md notes.txt`).
     // Skip switches AND the value of a value-taking switch, so a stray `-run` — or the `<script>`
     // after `-s`/`--startup` — is never opened as a file (the earlier `!starts_with("--")` filter
     // did exactly that: `xyscript.exe -run startup.new` opened files named "-run" and "startup.new").
     let mut app = GuiApp::new();
+    // One-shot "Updated to {ver}" confirmation after an apply-at-next-launch (the boot applier left a
+    // marker for the relaunched process to read once).
+    if let Some(root) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(".update")))
+    {
+        if let Some(tag) = xyscript_app::update::take_just_updated(&root) {
+            app.status = app
+                .tr("msg.update.updated", "Updated to {ver}")
+                .replace("{ver}", &tag);
+        }
+    }
     // Restore the previous session's tabs (if `SESSION` is on) — before command-line files, so those
     // open ALONGSIDE the restored set (Notepad++-style) and land active.
     app.restore_session_if_enabled();

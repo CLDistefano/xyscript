@@ -395,18 +395,22 @@ dialog.about.tagline = Ένας παραμετροποιήσιμος επεξε�
 button.close = Κλείσιμο   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Ενημερώθηκε σε {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: αυτή η έκδοση δεν υποστηρίζει αυτόματες ενημερώσεις (μεταγλωττίστηκε χωρίς τη λειτουργία `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = ενημερωμένο (έκδοση {ver}) — τίποτα για λήψη   # up to date (version {ver}) — nothing to download
 msg.update.download.done = λήφθηκε και επαληθεύτηκε {tag} ({n} αρχεία) — έτοιμο για εγκατάσταση   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = οι ενημερώσεις δεν είναι διαθέσιμες σε αυτήν την έκδοση   # updates aren't available in this build
 msg.update.uptodate = Είστε ενημερωμένοι (έκδοση {ver})   # You're up to date (version {ver})
 msg.update.available = Διαθέσιμη ενημέρωση {tag} — εκτελέστε UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Η ενημέρωση {tag} ετοιμάστηκε — εγκαθίσταται στην επόμενη εκκίνηση   # Update {tag} staged — installs at next launch
 msg.update.staged = Η ενημέρωση {tag} λήφθηκε και επαληθεύτηκε — εκτελέστε UPDATE INSTALL για εφαρμογή   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Ο έλεγχος για ενημερώσεις απέτυχε: {err}   # Update check failed: {err}
 msg.update.install.done = εγκαταστάθηκε {tag}: {replaced} αντικαταστάθηκαν, {added} προστέθηκαν, {deleted} διαγράφηκαν   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = διατηρήθηκε {n} από το επεξεργασμένο σας αρχείο (η νέα προεπιλογή αποθηκεύτηκε ως .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = διατηρήθηκαν {n} από τα επεξεργασμένα σας αρχεία (οι νέες προεπιλογές αποθηκεύτηκαν ως .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = επανεκκινήστε το XyScript   # restart XyScript
+msg.update.cancelled = η προγραμματισμένη ενημέρωση ακυρώθηκε   # scheduled update cancelled
+msg.update.nopending = καμία προγραμματισμένη ενημέρωση προς ακύρωση   # no scheduled update to cancel
 msg.update.rollback.done = έγινε επαναφορά της τελευταίας ενημέρωσης   # rolled back the last update
 msg.update.rollback.toversion = επαναφορά στην έκδοση {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} επαναφέρθηκε στην προεπιλογή   # reset {rel} to the shipped default

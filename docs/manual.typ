@@ -3546,13 +3546,16 @@ interrupts your typing. What it does when it finds something is up to you — se
 / #raw("alert"): check and, if a newer version exists, say so on the status line. This is the default.
 / #raw("download"): also fetch the new release into a staging area and verify it, so it is ready to
   install the moment you ask.
-/ #raw("install"): the same, and then prompt you to run #raw("UPDATE INSTALL"). XyScript never swaps
-  itself out from under you — applying an update is always a deliberate step.
+/ #raw("install"): the same, and then install it automatically — but at the *next launch*, which is
+  the safe moment to swap the program out. XyScript never replaces itself out from under you mid-session.
 
 #raw("UPDATEMODE") persists with your other settings, and #raw("$UPDATEMODE") reads it back. You can
 also drive the whole thing by hand: #raw("UPDATE CHECK") asks the channel right now (and records the
 newer version in #raw("$UPDATEAVAIL")), #raw("UPDATE DOWNLOAD") stages and verifies it (recorded in
-#raw("$UPDATESTAGED")), and #raw("UPDATE INSTALL") applies it.
+#raw("$UPDATESTAGED")), and #raw("UPDATE INSTALL") applies it now. To install at the next launch
+instead — the clean way to swap the program — use #raw("UPDATE INSTALL /NEXT") (recorded in
+#raw("$UPDATEPENDING")); #raw("UPDATE CANCEL") calls that off. When an update is applied at startup,
+the next window shows a brief #emph[Updated to …] note.
 
 == How an update protects your edits
 

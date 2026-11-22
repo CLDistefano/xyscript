@@ -395,18 +395,22 @@ dialog.about.tagline = Muokattava editori XyWrite-perinteessä.   # A configurab
 button.close = Sulje   # Close
 
 # ---- msg ---------------------------------------------------------
+msg.update.updated = Päivitetty versioon {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: tämä koontiversio ei tue automaattisia päivityksiä (käännetty ilman `update`-ominaisuutta)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = ajan tasalla (versio {ver}) — ei ladattavaa   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} ladattu ja vahvistettu ({n} tiedostoa) — valmis asennettavaksi   # downloaded and verified {tag} ({n} files) — ready to install
 msg.update.unavailable = päivitykset eivät ole käytettävissä tässä koontiversiossa   # updates aren't available in this build
 msg.update.uptodate = Ohjelmisto on ajan tasalla (versio {ver})   # You're up to date (version {ver})
 msg.update.available = Päivitys {tag} saatavilla — suorita UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
+msg.update.scheduled = Päivitys {tag} valmisteltu — asennetaan seuraavalla käynnistyksellä   # Update {tag} staged — installs at next launch
 msg.update.staged = Päivitys {tag} ladattu ja vahvistettu — ota käyttöön suorittamalla UPDATE INSTALL   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
 msg.update.failed = Päivitysten tarkistus epäonnistui: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} asennettu: {replaced} korvattu, {added} lisätty, {deleted} poistettu   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = säilytettiin {n} muokkaamasi tiedosto (uusi oletus tallennettu nimellä .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = säilytettiin {n} muokkaamaasi tiedostoa (uudet oletukset tallennettu nimellä .new)   # kept {n} of your edited files (new defaults saved as .new)
 msg.update.restart = käynnistä XyScript uudelleen   # restart XyScript
+msg.update.cancelled = ajastettu päivitys peruutettu   # scheduled update cancelled
+msg.update.nopending = ei peruutettavaa ajastettua päivitystä   # no scheduled update to cancel
 msg.update.rollback.done = viimeisin päivitys peruttu   # rolled back the last update
 msg.update.rollback.toversion = palautettu versioon {ver}   # rolled back to version {ver}
 msg.update.reset.done = {rel} palautettu toimitettuun oletusarvoon   # reset {rel} to the shipped default

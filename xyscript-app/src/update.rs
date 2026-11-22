@@ -758,6 +758,172 @@ fn restore_tree(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Apply-at-next-launch — persist a "pending" staged update and apply it at the NEXT startup, before the
+// window loads (the safe moment to swap the binary). Reuses plan_update/apply_plan/verify + self-
+// replace; the GUI performs the relaunch. The marker I/O is plain fs (no feature needed); the boot
+// applier itself needs the `update` feature (hashing + self-replace).
+// ---------------------------------------------------------------------------------------------------
+
+/// A scheduled next-launch update: a verified bundle sitting in staging, to apply at boot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pending {
+    pub tag: String,
+    pub bundle_root: PathBuf,
+}
+
+const PENDING_FILE: &str = "pending.json";
+const JUST_UPDATED_FILE: &str = "just-updated";
+
+/// Record a pending next-launch update under `update_root` (`$XSDIR/.update`). Two lines — tag, then
+/// the staged bundle root — so it's dependency-free and readable even without the `update` feature.
+pub fn write_pending(
+    update_root: &std::path::Path,
+    tag: &str,
+    bundle_root: &std::path::Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(update_root)
+        .map_err(|e| format!("mkdir {}: {e}", update_root.display()))?;
+    let body = format!("{tag}\n{}\n", bundle_root.display());
+    std::fs::write(update_root.join(PENDING_FILE), body).map_err(|e| format!("write pending: {e}"))
+}
+
+/// The pending next-launch update, if one is scheduled.
+pub fn read_pending(update_root: &std::path::Path) -> Option<Pending> {
+    let body = std::fs::read_to_string(update_root.join(PENDING_FILE)).ok()?;
+    let mut lines = body.lines();
+    let tag = lines.next()?.trim().to_string();
+    let bundle_root = lines.next()?.trim();
+    if tag.is_empty() || bundle_root.is_empty() {
+        return None;
+    }
+    Some(Pending {
+        tag,
+        bundle_root: PathBuf::from(bundle_root),
+    })
+}
+
+/// Clear the pending-update marker (idempotent).
+pub fn clear_pending(update_root: &std::path::Path) {
+    let _ = std::fs::remove_file(update_root.join(PENDING_FILE));
+}
+
+/// Leave a one-shot "just updated to {tag}" marker that the relaunched app reads once (then clears).
+pub fn write_just_updated(update_root: &std::path::Path, tag: &str) {
+    let _ = std::fs::write(update_root.join(JUST_UPDATED_FILE), tag);
+}
+
+/// Read and REMOVE the "just updated" marker, returning the tag if present.
+pub fn take_just_updated(update_root: &std::path::Path) -> Option<String> {
+    let p = update_root.join(JUST_UPDATED_FILE);
+    let tag = std::fs::read_to_string(&p).ok()?.trim().to_string();
+    let _ = std::fs::remove_file(&p);
+    (!tag.is_empty()).then_some(tag)
+}
+
+/// Outcome of a boot-time apply.
+pub enum BootApply {
+    /// Nothing pending (or already applied / stale / corrupt) — continue booting normally.
+    None,
+    /// Applied version `tag`; the caller should RELAUNCH into the swapped binary.
+    Applied(String),
+}
+
+/// A build without the `update` feature never applies anything at boot.
+#[cfg(not(feature = "update"))]
+pub fn apply_pending_at_boot(
+    _install_root: &std::path::Path,
+    _exe_name: &str,
+) -> Result<BootApply, String> {
+    Ok(BootApply::None)
+}
+
+/// At the very top of startup (before the window): if a verified update is scheduled, apply it and
+/// return [`BootApply::Applied`] so the caller relaunches into the new binary. It RE-VERIFIES the staged
+/// tree (it has sat on disk across sessions), guards against re-applying a version already running (the
+/// loop-breaker), backs up (so `UPDATE ROLLBACK` still works), and clears the marker before returning.
+/// On any failure it rolls back from the backup, clears the marker (so a broken update can't wedge
+/// startup), and returns the error.
+#[cfg(feature = "update")]
+pub fn apply_pending_at_boot(
+    install_root: &std::path::Path,
+    exe_name: &str,
+) -> Result<BootApply, String> {
+    let update_root = install_root.join(".update");
+    let pending = match read_pending(&update_root) {
+        Some(p) => p,
+        None => return Ok(BootApply::None),
+    };
+    let bundle_root = &pending.bundle_root;
+
+    // 1. Re-verify the staged tree against its manifest. A corrupt/incomplete bundle is discarded.
+    let verify = || -> Result<Manifest, String> {
+        let body = std::fs::read_to_string(bundle_root.join("manifest.json"))
+            .map_err(|e| format!("read staged manifest: {e}"))?;
+        let manifest = parse_manifest(&body)?;
+        verify_hashes(&manifest, &hash_tree(bundle_root)?)?;
+        Ok(manifest)
+    };
+    let manifest = match verify() {
+        Ok(m) => m,
+        Err(_) => {
+            clear_pending(&update_root);
+            let _ = std::fs::remove_dir_all(update_root.join("staging"));
+            return Ok(BootApply::None);
+        }
+    };
+
+    // 2. Loop-breaker: never re-apply a version we're already running (or older).
+    if let (Some(staged), Some(cur)) = (parse_version(&pending.tag), parse_version(CURRENT_VERSION)) {
+        if !is_newer(staged, cur) {
+            clear_pending(&update_root);
+            return Ok(BootApply::None);
+        }
+    }
+
+    // 3. Plan against the installed baseline (None → bootstrap hop).
+    let old_manifest = std::fs::read_to_string(install_root.join("manifest.json"))
+        .ok()
+        .and_then(|b| parse_manifest(&b).ok());
+    let plan = plan_update(
+        old_manifest.as_ref(),
+        &manifest,
+        |rel| std::fs::read(install_root.join(rel)).ok().map(|b| sha256_hex(&b)),
+        exe_name,
+        SEED_FILES,
+    );
+    let backup = update_root.join("backup").join("previous");
+    let _ = std::fs::remove_dir_all(&backup);
+
+    // 4. Apply the data files (with backup). On failure, roll back and bail.
+    let report = match apply_plan(install_root, bundle_root, &plan, &backup) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = rollback_files(install_root, &backup, exe_name);
+            clear_pending(&update_root);
+            return Err(format!("apply failed, rolled back: {e}"));
+        }
+    };
+    let _ = std::fs::write(backup.join("version.txt"), CURRENT_VERSION);
+
+    // 5. Swap the binary. On failure, roll back the files + the exe, bail.
+    if report.exe_pending {
+        if let Err(e) = self_replace::self_replace(&bundle_root.join(exe_name)) {
+            if rollback_files(install_root, &backup, exe_name).unwrap_or(false) {
+                let _ = self_replace::self_replace(&backup.join("files").join(exe_name));
+            }
+            clear_pending(&update_root);
+            return Err(format!("binary swap failed, rolled back: {e}"));
+        }
+    }
+
+    // 6. Clear the marker BEFORE relaunch (the version guard also covers it), note success, tidy staging.
+    clear_pending(&update_root);
+    write_just_updated(&update_root, &pending.tag);
+    let _ = std::fs::remove_dir_all(update_root.join("staging"));
+    Ok(BootApply::Applied(pending.tag))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1132,5 +1298,70 @@ mod tests {
         assert!(due_now(Some(0), 200, 100), "past the interval → due");
         assert!(!due_now(Some(90), 100, 100), "within the interval → not due");
         assert!(!due_now(Some(200), 100, 100), "clock skew (last > now) → not due");
+    }
+
+    // ---- Apply-at-next-launch -----------------------------------------------------------------
+
+    #[test]
+    fn pending_and_just_updated_markers_roundtrip() {
+        use std::fs;
+        let tmp = std::env::temp_dir().join(format!("xypend_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        assert!(read_pending(&tmp).is_none());
+        write_pending(&tmp, "v0.1.15", &tmp).unwrap();
+        let p = read_pending(&tmp).unwrap();
+        assert_eq!(p.tag, "v0.1.15");
+        assert_eq!(p.bundle_root, tmp);
+        clear_pending(&tmp);
+        assert!(read_pending(&tmp).is_none());
+
+        // The just-updated marker is a one-shot (read consumes it).
+        assert!(take_just_updated(&tmp).is_none());
+        write_just_updated(&tmp, "v0.1.15");
+        assert_eq!(take_just_updated(&tmp).as_deref(), Some("v0.1.15"));
+        assert!(take_just_updated(&tmp).is_none());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(feature = "update")]
+    #[test]
+    fn boot_apply_is_noop_without_pending_and_skips_a_stale_schedule() {
+        use std::fs;
+        let tmp = std::env::temp_dir().join(format!("xyboot_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let install = tmp.join("install");
+        fs::create_dir_all(&install).unwrap();
+
+        // No pending marker → nothing to do.
+        assert!(matches!(
+            apply_pending_at_boot(&install, "xyscript.exe"),
+            Ok(BootApply::None)
+        ));
+
+        // A pending that VERIFIES but is older than the running version → skipped (version guard,
+        // before any apply/self-replace) and the marker is cleared. No binary is touched.
+        let bundle = tmp.join("staging").join("bundle");
+        fs::create_dir_all(&bundle).unwrap();
+        fs::write(bundle.join("a.txt"), b"hi").unwrap();
+        let manifest = format!(
+            "{{\"release\":\"v0.0.1\",\"files\":{{\"a.txt\":\"{}\"}}}}",
+            sha256_hex(b"hi")
+        );
+        fs::write(bundle.join("manifest.json"), manifest).unwrap();
+        write_pending(&install.join(".update"), "v0.0.1", &bundle).unwrap();
+
+        assert!(matches!(
+            apply_pending_at_boot(&install, "xyscript.exe"),
+            Ok(BootApply::None)
+        ));
+        assert!(
+            read_pending(&install.join(".update")).is_none(),
+            "a stale schedule is cleared"
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
