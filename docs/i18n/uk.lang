@@ -347,7 +347,9 @@ menu.settings.autosave_settings = Автозбереження параметр�
 menu.help.manual = Посібник   # Manual
 menu.help.reference = Довідник   # Reference
 menu.help.update_avail = Доступне оновлення {ver}…   # Update {ver} available…
+menu.help.install_update = Встановити оновлення {ver}   # Install update {ver}
 menu.help.check_updates = Перевірити наявність оновлень   # Check for updates
+menu.help.whats_new = Що нового   # What's new
 menu.help.about = Про XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -403,12 +405,12 @@ msg.update.updated = Оновлено до {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: ця збірка не підтримує автоматичні оновлення (скомпільовано без функції `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = актуально (версія {ver}) — нічого завантажувати   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} завантажено й перевірено ({n} файлів) — готово до встановлення   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Оновлення {tag} підготовлено — встановиться під час наступного запуску   # Update {tag} staged — installs at next launch
+msg.update.failed = Не вдалося перевірити оновлення: {err}   # Update check failed: {err}
 msg.update.unavailable = оновлення недоступні в цій збірці   # updates aren't available in this build
 msg.update.uptodate = У вас найновіша версія (версія {ver})   # You're up to date (version {ver})
 msg.update.available = Доступне оновлення {tag} — виконайте UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Оновлення {tag} підготовлено — встановиться під час наступного запуску   # Update {tag} staged — installs at next launch
 msg.update.staged = Оновлення {tag} завантажено та перевірено — виконайте UPDATE INSTALL для встановлення   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Не вдалося перевірити оновлення: {err}   # Update check failed: {err}
 msg.update.install.done = встановлено {tag}: {replaced} замінено, {added} додано, {deleted} видалено   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = збережено {n} ваш змінений файл (новий стандарт збережено як .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.few = збережено {n} ваші змінені файли (нові стандарти збережено як .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -521,5 +523,12 @@ msg.lib.count.many = {n} процедур   # {n} routines
 msg.lib.loaded = завантажено {count} з {path}   # loaded {count} from {path}
 msg.lib.added = додано {count} з {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Нове у {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Перевірка оновлень…   # Checking for updates…
+status.update.installing = Підготовка оновлення…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Для цієї версії немає приміток до випуску.   # No release notes for this version.

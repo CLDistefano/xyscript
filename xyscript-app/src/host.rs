@@ -3228,6 +3228,10 @@ pub struct AppHost {
     /// A one-shot status line for a manual check that can't run (e.g. a build without the `update`
     /// feature); surfaced by the next `poll_update`. Session-only.
     update_manual_note: Option<String>,
+    /// The in-flight cycle was started by `Help ▸ Install update` — when its bundle lands, `poll_update`
+    /// marks it pending (apply at next launch) regardless of `UPDATEMODE`, instead of just reporting it
+    /// staged. Session-only.
+    update_schedule_on_stage: bool,
     /// Append every trappable + fatal error to a log file (`ERRORLOG`). Off by default. `$ERRORLOG`; SaveCfg.
     error_log: bool,
     /// The error-log file path (`ERRORLOGFILE`; `None` = the default `xyscript-errors.log` in `$XSDIR`).
@@ -3788,6 +3792,7 @@ impl AppHost {
             update_pending: None,
             update_manual: false,
             update_manual_note: None,
+            update_schedule_on_stage: false,
             error_log: false, // off by default
             error_log_file: None, // default: xyscript-errors.log in $XSDIR
             disk_mtimes: HashMap::new(),
@@ -4760,6 +4765,44 @@ impl AppHost {
         self.spawn_update_cycle(false, true);
     }
 
+    /// `Help ▸ Install update {ver}` — schedule the available update to apply at the NEXT launch,
+    /// without blocking the UI and without touching the running binary now (the clean apply-at-boot
+    /// path). Runs regardless of `UPDATEMODE`. If a verified bundle is already staged, mark it pending
+    /// immediately (no network); otherwise download + verify in the background and let `poll_update`
+    /// mark it pending when the bundle lands. The result is surfaced by the next `poll_update`.
+    pub fn start_manual_install(&mut self) {
+        #[cfg(feature = "update")]
+        {
+            // Already have a verified bundle → schedule it right now (no download needed).
+            if let Some(s) = self.staged_update.as_ref() {
+                let (root, tag) = (s.root.clone(), s.tag.clone());
+                self.update_manual_note = Some(
+                    match crate::update::write_pending(&self.update_root(), &tag, &root) {
+                        Ok(()) => self.tr_fmt(
+                            "msg.update.scheduled",
+                            "Update {tag} staged — installs at next launch",
+                            &[("tag", &tag)],
+                        ),
+                        Err(e) => self.tr_fmt(
+                            "msg.update.failed",
+                            "Update check failed: {err}",
+                            &[("err", &e)],
+                        ),
+                    },
+                );
+                return;
+            }
+            // Otherwise fetch + verify in the background, then schedule when it lands.
+            self.update_schedule_on_stage = true;
+            self.spawn_update_cycle(true, true);
+        }
+        #[cfg(not(feature = "update"))]
+        {
+            self.update_manual_note =
+                Some(self.tr_msg("msg.update.unavailable", "updates aren't available in this build"));
+        }
+    }
+
     /// Spawn a background update cycle (shared by the cadence and the manual check). `manual` makes
     /// `poll_update` report an up-to-date / failed result too. No-op if one is already running.
     fn spawn_update_cycle(&mut self, want_download: bool, manual: bool) {
@@ -4803,6 +4846,9 @@ impl AppHost {
             self.write_last_check();
             // A MANUAL check (Help ▸ Check for updates) reports either way; the cadence stays quiet.
             let manual = std::mem::take(&mut self.update_manual);
+            // A manual INSTALL request (Help ▸ Install update) schedules the staged bundle for next
+            // launch even when `UPDATEMODE` isn't `install`. Consumed per cycle so it can't leak.
+            let schedule_on_stage = std::mem::take(&mut self.update_schedule_on_stage);
             use crate::update::UpdateCycleOutcome::*;
             match outcome {
                 UpToDate => {
@@ -4831,8 +4877,9 @@ impl AppHost {
                     self.update_available = Some(tag.clone());
                     self.staged_update = Some(staged);
                     self.last_release = Some(info);
-                    if self.update_mode == UpdateMode::Install {
-                        // `install` policy applies automatically at the next launch — mark it pending.
+                    if self.update_mode == UpdateMode::Install || schedule_on_stage {
+                        // `install` policy (or a Help ▸ Install click) applies at the next launch —
+                        // mark it pending.
                         let _ = crate::update::write_pending(&self.update_root(), &tag, &root);
                         Some(self.tr_fmt(
                             "msg.update.scheduled",
@@ -4946,6 +4993,11 @@ impl AppHost {
             let _ = std::fs::remove_dir_all(self.update_root().join("staging"));
             self.staged_update = None;
             self.update_available = None;
+            // Leave the one-shot "just updated" marker so the relaunched (new) binary shows its
+            // "Updated to {ver}" note and the one-time "New in {ver}" notes tab — the same signal the
+            // apply-at-next-launch boot applier leaves. The swap took effect on disk; it becomes the
+            // running version at the next start, which is when the marker is read and cleared.
+            crate::update::write_just_updated(&self.update_root(), &tag);
 
             // Compose with code-level separators ("; ", " — ") so no catalog value needs a leading
             // space (catalog values are trimmed on load).
@@ -9542,6 +9594,24 @@ impl AppHost {
     /// Whether the active buffer is a `HELP`/`MAN` results listing (the reusable read-only tab).
     pub fn active_is_help_listing(&self) -> bool {
         self.docs[self.active].is_help_listing()
+    }
+
+    /// Open (or reuse) the shared read-only results tab with `label` as its title and `text` as its
+    /// body — the HELP/REF/MAN/COLORNAMES presentation, without emphasis or colour spans. Used for the
+    /// "New in {ver}" release-notes tab (`Help ▸ What's new`, and the one-time post-update show).
+    pub fn show_help_text(&mut self, label: &str, text: &str) {
+        self.diff_source = None; // this tab is no longer a diff → DJ is inert
+        if let Some(i) = self.docs.iter().position(|d| d.is_help_listing()) {
+            self.docs[i].open_help_listing(label.to_string(), text);
+            self.docs[i].set_emph(None, false);
+            self.active = i;
+            self.sync_panes();
+        } else {
+            let mut doc = Document::new();
+            doc.open_help_listing(label.to_string(), text);
+            self.add_or_reuse(doc);
+        }
+        self.set_focus(Target::Document); // land the caret in the notes for scrolling
     }
 
     /// `GJ` — open the file for the `GREP` hit on the caret's line (or switch to it if already open),

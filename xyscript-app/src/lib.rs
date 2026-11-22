@@ -27,6 +27,7 @@ pub mod grep;
 pub mod help;
 pub mod hex;
 pub mod manual;
+pub mod news;
 pub mod highlight;
 pub mod html;
 pub mod pdf;

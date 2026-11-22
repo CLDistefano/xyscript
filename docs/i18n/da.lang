@@ -343,7 +343,9 @@ menu.settings.autosave_settings = Gem indstillinger automatisk   # Auto-save set
 menu.help.manual = Håndbog   # Manual
 menu.help.reference = Reference   # Reference
 menu.help.update_avail = Opdatering {ver} tilgængelig…   # Update {ver} available…
+menu.help.install_update = Installer opdatering {ver}   # Install update {ver}
 menu.help.check_updates = Søg efter opdateringer   # Check for updates
+menu.help.whats_new = Nyheder   # What's new
 menu.help.about = Om XyScript   # About XyScript
 
 # ---- dialog.find -------------------------------------------------
@@ -399,12 +401,12 @@ msg.update.updated = Opdateret til {ver}   # Updated to {ver}
 msg.update.notbuilt = UPDATE: denne build understøtter ikke automatiske opdateringer (kompileret uden funktionen `update`)   # UPDATE: this build has no auto-update support (compiled without the `update` feature)
 msg.update.download.uptodate = opdateret (version {ver}) — intet at downloade   # up to date (version {ver}) — nothing to download
 msg.update.download.done = {tag} downloadet og verificeret ({n} filer) — klar til installation   # downloaded and verified {tag} ({n} files) — ready to install
+msg.update.scheduled = Opdatering {tag} klargjort — installeres ved næste start   # Update {tag} staged — installs at next launch
+msg.update.failed = Kontrol af opdateringer mislykkedes: {err}   # Update check failed: {err}
 msg.update.unavailable = opdateringer er ikke tilgængelige i denne build   # updates aren't available in this build
 msg.update.uptodate = Du er opdateret (version {ver})   # You're up to date (version {ver})
 msg.update.available = Opdatering {tag} tilgængelig — kør UPDATE DOWNLOAD   # Update {tag} available — run UPDATE DOWNLOAD
-msg.update.scheduled = Opdatering {tag} klargjort — installeres ved næste start   # Update {tag} staged — installs at next launch
 msg.update.staged = Opdatering {tag} downloadet og verificeret — kør UPDATE INSTALL for at installere   # Update {tag} downloaded and verified — run UPDATE INSTALL to apply
-msg.update.failed = Kontrol af opdateringer mislykkedes: {err}   # Update check failed: {err}
 msg.update.install.done = {tag} installeret: {replaced} erstattet, {added} tilføjet, {deleted} slettet   # installed {tag}: {replaced} replaced, {added} added, {deleted} deleted
 msg.update.install.kept.one = beholdt {n} af din redigerede fil (ny standard gemt som .new)   # kept {n} of your edited file (new default saved as .new)
 msg.update.install.kept.other = beholdt {n} af dine redigerede filer (nye standarder gemt som .new)   # kept {n} of your edited files (new defaults saved as .new)
@@ -499,5 +501,12 @@ msg.lib.count.other = {n} rutiner   # {n} routines
 msg.lib.loaded = {count} indlæst fra {path}   # loaded {count} from {path}
 msg.lib.added = {count} tilføjet fra {path}   # added {count} from {path}
 
+# ---- news --------------------------------------------------------
+news.tab.title = Nyt i {ver}   # New in {ver}
+
 # ---- status ------------------------------------------------------
 status.update.checking = Søger efter opdateringer…   # Checking for updates…
+status.update.installing = Forbereder opdatering…   # Preparing update…
+
+# ---- news --------------------------------------------------------
+news.none = Ingen udgivelsesnoter for denne version.   # No release notes for this version.

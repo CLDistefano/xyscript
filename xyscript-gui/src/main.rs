@@ -507,6 +507,11 @@ enum Act {
     ShowManual,
     /// Help ▸ Check for updates — kick off a non-blocking background update check.
     CheckUpdates,
+    /// Help ▸ Install update {ver} — schedule the available update to apply at next launch
+    /// (background download, no live binary swap). Shown only when a check found a newer version.
+    InstallUpdate,
+    /// Help ▸ What's new — open this version's release notes in the read-only results tab.
+    WhatsNew,
 }
 
 /// A native file dialog deferred to run AFTER the egui frame. The runtime drains it in
@@ -572,6 +577,8 @@ enum MenuAct {
     ShowReference,
     ShowManual,
     CheckUpdates,
+    InstallUpdate,
+    WhatsNew,
 }
 
 /// One node in the menu tree.
@@ -6991,6 +6998,16 @@ impl GuiApp {
         }
     }
 
+    /// Open the "New in {ver}" release-notes tab (read-only) for the running version. `body` is the
+    /// baked `NEWS.md` section for `CURRENT_VERSION` (see `xyscript_app::news`).
+    fn show_whats_new(&mut self, body: &str) {
+        let ver = xyscript_app::update::CURRENT_VERSION;
+        let disp = if ver.starts_with('v') { ver.to_string() } else { format!("v{ver}") };
+        let title = self.tr("news.tab.title", "New in {ver}").replace("{ver}", &disp);
+        self.editor.open_help_text(&title, body);
+        self.reset_view();
+    }
+
     fn open_font_picker(&mut self, kind: FontPickerKind) {
         // The editor canvas + DIR/W listing + Preview CODE font are monospaced (column-aligned /
         // code), so their pickers list monospaced families only.
@@ -8670,23 +8687,38 @@ impl GuiApp {
                 m_act(self.tr("menu.settings.load_settings", "Load settings…"), pick(false, cfg_f, "LOADCFG {}")),
                 m_tog(self.tr("menu.settings.autosave_settings", "Auto-save settings"), autocfg_on, if autocfg_on { "AUTOCFG off" } else { "AUTOCFG" }),
             ]),
-            m_sub(self.tr("menubar.help", "Help"), vec![
-                m_act(self.tr("menu.help.manual", "Manual"), ShowManual),
-                m_act(self.tr("menu.help.reference", "Reference"), ShowReference),
-                MenuNode::Sep,
-                // When a check has already found a newer version, the item advertises it; otherwise it
-                // offers to check. Either way it runs a non-blocking background check (see `CheckUpdates`).
-                m_act(
-                    match self.editor.update_available() {
-                        Some(ver) if !ver.is_empty() => self
-                            .tr("menu.help.update_avail", "Update {ver} available…")
-                            .replace("{ver}", ver),
-                        _ => self.tr("menu.help.check_updates", "Check for updates").to_string(),
-                    },
-                    CheckUpdates,
-                ),
-                m_act(self.tr("menu.help.about", "About XyScript"), ShowAbout),
-            ]),
+            m_sub(self.tr("menubar.help", "Help"), {
+                let mut items = vec![
+                    m_act(self.tr("menu.help.manual", "Manual"), ShowManual),
+                    m_act(self.tr("menu.help.reference", "Reference"), ShowReference),
+                    MenuNode::Sep,
+                ];
+                // When a check has already found a newer version, the first item advertises it and a
+                // second item offers to install it; otherwise the first item just offers to check.
+                // Both the check and (when shown) the advertise label run a non-blocking background
+                // check (see `CheckUpdates`); the install item schedules the update for next launch.
+                match self.editor.update_available() {
+                    Some(ver) if !ver.is_empty() => {
+                        items.push(m_act(
+                            self.tr("menu.help.update_avail", "Update {ver} available…")
+                                .replace("{ver}", ver),
+                            CheckUpdates,
+                        ));
+                        items.push(m_act(
+                            self.tr("menu.help.install_update", "Install update {ver}")
+                                .replace("{ver}", ver),
+                            InstallUpdate,
+                        ));
+                    }
+                    _ => items.push(m_act(
+                        self.tr("menu.help.check_updates", "Check for updates").to_string(),
+                        CheckUpdates,
+                    )),
+                }
+                items.push(m_act(self.tr("menu.help.whats_new", "What's new"), WhatsNew));
+                items.push(m_act(self.tr("menu.help.about", "About XyScript"), ShowAbout));
+                items
+            }),
         ]
     }
 
@@ -8740,6 +8772,8 @@ impl GuiApp {
             MenuAct::ShowReference => Some(Act::ShowReference),
             MenuAct::ShowManual => Some(Act::ShowManual),
             MenuAct::CheckUpdates => Some(Act::CheckUpdates),
+            MenuAct::InstallUpdate => Some(Act::InstallUpdate),
+            MenuAct::WhatsNew => Some(Act::WhatsNew),
         }
     }
 
@@ -9924,6 +9958,22 @@ impl GuiApp {
                     self.editor.start_manual_update_check();
                     self.status = self.tr("status.update.checking", "Checking for updates…").to_string();
                 }
+                Act::InstallUpdate => {
+                    // Non-blocking: schedule the update for next launch. If a verified bundle is
+                    // already staged this is instant; otherwise a background download runs and
+                    // `poll_update` marks it pending when it lands. The running binary is never
+                    // swapped now — the next clean boot applies it.
+                    self.editor.start_manual_install();
+                    self.status =
+                        self.tr("status.update.installing", "Preparing update…").to_string();
+                }
+                Act::WhatsNew => match xyscript_app::news::current() {
+                    Some(body) => self.show_whats_new(&body),
+                    None => {
+                        self.status =
+                            self.tr("news.none", "No release notes for this version.").to_string()
+                    }
+                },
             }
         }
 
@@ -12616,17 +12666,17 @@ fn main() {
     // after `-s`/`--startup` — is never opened as a file (the earlier `!starts_with("--")` filter
     // did exactly that: `xyscript.exe -run startup.new` opened files named "-run" and "startup.new").
     let mut app = GuiApp::new();
-    // One-shot "Updated to {ver}" confirmation after an apply-at-next-launch (the boot applier left a
-    // marker for the relaunched process to read once).
-    if let Some(root) = std::env::current_exe()
+    // One-shot post-update signal: the boot applier (apply-at-next-launch) and `UPDATE INSTALL`
+    // (apply-now) both leave a marker that the relaunched/restarted process reads exactly once. We
+    // consume it here for the "Updated to {ver}" confirmation, and remember it so the one-time
+    // "New in {ver}" notes tab can be opened after the session/CLI files load (below), landing it
+    // foreground.
+    let just_updated: Option<String> = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(".update")))
-    {
-        if let Some(tag) = xyscript_app::update::take_just_updated(&root) {
-            app.status = app
-                .tr("msg.update.updated", "Updated to {ver}")
-                .replace("{ver}", &tag);
-        }
+        .and_then(|root| xyscript_app::update::take_just_updated(&root));
+    if let Some(tag) = &just_updated {
+        app.status = app.tr("msg.update.updated", "Updated to {ver}").replace("{ver}", tag);
     }
     // Restore the previous session's tabs (if `SESSION` is on) — before command-line files, so those
     // open ALONGSIDE the restored set (Notepad++-style) and land active.
@@ -12672,6 +12722,14 @@ fn main() {
     }
     if let Some(dir) = cwd_override {
         app.editor.set_cwd(std::path::PathBuf::from(dir));
+    }
+    // After an update, show this version's "New in {ver}" notes once — opened last so the read-only
+    // tab lands foreground over any restored session or command-line files. Only if the build carries
+    // notes for its version; otherwise nothing is shown (the "Updated to {ver}" status note stands).
+    if just_updated.is_some() {
+        if let Some(body) = xyscript_app::news::current() {
+            app.show_whats_new(&body);
+        }
     }
     runtime::run(app);
 }

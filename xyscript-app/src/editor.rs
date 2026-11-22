@@ -1349,6 +1349,12 @@ impl Editor {
     pub fn start_manual_update_check(&mut self) {
         self.host.start_manual_update_check()
     }
+    /// `Help ▸ Install update {ver}` — schedule the available update to apply at the next launch,
+    /// without blocking the UI (background download if nothing is staged yet). `poll_update` reports
+    /// when it's marked pending.
+    pub fn start_manual_install(&mut self) {
+        self.host.start_manual_install()
+    }
     /// The available-update tag if the last check found one, else `None` (for the Help menu label).
     pub fn update_available(&self) -> Option<&str> {
         self.host.update_available()
@@ -1438,6 +1444,12 @@ impl Editor {
     /// Whether the active buffer is a `HELP`/`MAN` results listing (the reusable read-only tab).
     pub fn active_is_help_listing(&self) -> bool {
         self.host.active_is_help_listing()
+    }
+
+    /// Open (or reuse) the shared read-only results tab titled `label` with `text` as its body — used
+    /// for the "New in {ver}" release-notes tab.
+    pub fn open_help_text(&mut self, label: &str, text: &str) {
+        self.host.show_help_text(label, text)
     }
 
     // ---- Proportional-font rule (USEFONT / EDPROPFAMILY) --------------------------------------------
