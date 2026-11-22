@@ -1661,6 +1661,8 @@ opens the file to read or adapt any of them. A few read user variables you set i
 / #lib("v3"): identify the character under the cursor.
 / #lib("values"): list XyScript's internal variables and their current values.
 / #lib("emoji"): open a new tab listing the major Unicode emoji blocks (a reference chart to copy from).
+/ #lib("symbols"): open a new tab listing selected symbol blocks --- arrows, punctuation, and currency --- a reference chart to copy from.
+/ #lib("putCharArray"): list the Unicode ranges held in #raw("$chararray") in a new tab; the shared helper behind #lib("emoji") and #lib("symbols") (set #raw("$chararray") to #raw("[[\"label\", lo, hi], ...]") first).
 / #lib("charse"): search Unicode character names (European and Slavic letters) for a string and list the matches in a new tab, e.g. #raw("charse dot"). Reads #raw("examples/unicode-latin-cyrillic-table.txt").
 / #lib("uchar"): insert a Unicode character by its decimal code point, or list a range --- #raw("uchar 233") inserts é, #raw("uchar 913 - 937") lists a range in a new tab.
 / #lib("uservars"): open the user-variables file.
@@ -1807,6 +1809,8 @@ Every bundled routine, alphabetical.
 / #lib("easter"): compute the date of Easter for a year (Oudin's algorithm).
 / #lib("ecp"): express-copy the current file to a target directory (no overwrite prompt).
 / #lib("emoji"): open a new tab listing the major Unicode emoji blocks (a reference chart to copy from).
+/ #lib("symbols"): open a new tab listing selected symbol blocks --- arrows, punctuation, and currency --- a reference chart to copy from.
+/ #lib("putCharArray"): list the Unicode ranges held in #raw("$chararray") in a new tab; the shared helper behind #lib("emoji") and #lib("symbols") (set #raw("$chararray") to #raw("[[\"label\", lo, hi], ...]") first).
 / #lib("emv"): express-move the current file to a target directory (no overwrite prompt).
 
 == F

@@ -813,7 +813,7 @@ ENDSUB
 ##### Character Idenfification #####
 
 SUB charse
-	# DOC: Unicode character-name search (European/Slavic languages)
+	# DOC: Unicode character-name search (Romance/Germanic/Slavic languages)
 	# DOC: Usage: CHARSE <string>
 	# DOC: Example: `CHARSE dot`
 	# DOC: `unicode-latin-cyrillic-table.txt` must be present in ./examples
@@ -837,7 +837,8 @@ ENDSUB
 SUB uchar
 	# DOC: Put single Unicode (UTF-8) character or list range of chars
 	# DOC: Usage: UCHAR n [- n] (decimal)
-	local array n rchar rchar0 rchar1
+	# DOC:        UCHAR \Un [- \Un] (hex)
+	local array n rchar rchar0 rchar1 tmp
 	set rchar = $*
 	set rchar = replace($rchar, " ", "")
 	if not contains($rchar, "-")
@@ -847,13 +848,16 @@ SUB uchar
 	set array = split($rchar, "-")
 	set rchar0 = strip($array[0])
 	set rchar1 = strip($array[1])
+	if index(upper($rchar0), "\U") == 0 set rchar0 = base(trimleft($rchar0, 2), 16, 10)
+	if index(upper($rchar1), "\U") == 0 set rchar1 = base(trimleft($rchar1, 2), 16, 10)
 	if not (isdec($rchar0) and isdec($rchar1))
-		pr Usage: UCHAR n [- n] (decimal)
+		pr Usage: UCHAR n [- n] (decimal); \Un [- \Un] (hex)
 		return	
 	ei
 	if $rchar1 < $rchar0
-		set rchar0 = strip($array[1])
-		set rchar1 = strip($array[0])
+		set tmp = $rchar1
+		set rchar1 = $rchar0
+		set rchar0 = $tmp
 	ei
 	ne
 	for n = $rchar0 to $rchar1
@@ -1822,9 +1826,9 @@ ENDSUB
 
 SUB emoji
 	# DOC: List major Unicode emoji characters in a new tab
-	local block emojarray n
+	local block n
 	ne
-	set emojarray = [ \
+	set chararray = [ \
 ["Emoticons: \\u{1F600} – \\u{1F64F}", 128512, 128591], \
 ["Transport and Map Symbols: \\u{1F680} – \\u{1F6C5}", 128640, 128709], \
 ["Miscellaneous Symbols and Pictographs: \\u{1F300} – \\u{1F5FF}", 127744, 128511], \
@@ -1834,7 +1838,30 @@ SUB emoji
 ["Miscellaneous Symbols: \\u2600 – \\u26FF", 9728, 9983], \
 ["Enclosed Alphanumeric Supplement / Enclosed Ideographic Supplement: \\u{1F200} – \\u{1F2FF}", 127488, 127743], \
 ]
-	for block in $emojarray
+	putCharArray
+	tf
+ENDSUB
+
+SUB symbols
+	# DOC: List selected symbols (arrows, punctuation, currency)
+	local block n
+	ne
+	set chararray = [ \
+["Currency: \\u20A0 - \\u20CF", 8352, 8399], \
+["Punctuation: \\u2010 - \\u20FF", 8208, 8447], \
+["More punctuation: \\u2E00 - \\u2E7F", 11776, 11903], \
+["Arrows-1: \\u2190 - \\u21FF", 8592, 8703], \
+["Arrows-2: \\u27F0 - \\u27FF", 10224, 10239], \
+["Arrows-3: \\u2900 - \\u297F",  10496, 10623], \
+]
+	putCharArray
+	tf
+ENDSUB
+
+SUB putCharArray
+	# DOC: List characters specified in $chararray
+	# DOC: set chararray = [ ["description", n, m], [],...]
+	for block in $chararray
 		insert $block[0]
 		insert $NL
 		for n = $block[1] to $block[2]
@@ -1842,7 +1869,6 @@ SUB emoji
 		ef
 		insert "$NL$NL"
 	ef
-	tf
 ENDSUB
 
 SUB GetIP
