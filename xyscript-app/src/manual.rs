@@ -121,9 +121,10 @@ fn build() -> Vec<Section> {
 const REGEX_META: &[char] = &['\\', '.', '^', '$', '|', '[', '(', '{', '*', '+', '?', '#'];
 
 /// Manual sections matching `query`, in manual order — regex when the query holds a metacharacter
-/// (case-insensitive), else a case-insensitive substring. A metachar query that fails to compile
-/// falls back to substring. Title matches come first, then body-only matches.
-pub fn search(query: &str) -> Vec<&'static Section> {
+/// (case-insensitive), else whole-word: by default a word that STARTS with the term (word-start),
+/// or the term anywhere in a word when `substring` is set (`/A`). A metachar query that fails to
+/// compile falls back to a word search. Title matches come first, then body-only matches.
+pub fn search(query: &str, substring: bool) -> Vec<&'static Section> {
     let raw = query.trim();
     if raw.is_empty() {
         return Vec::new();
@@ -146,9 +147,9 @@ pub fn search(query: &str) -> Vec<&'static Section> {
         None => {
             let q = raw.to_ascii_lowercase();
             for s in sections() {
-                if s.title.to_ascii_lowercase().contains(&q) {
+                if crate::help::haystack_hit(&s.title, &q, substring) {
                     title_hits.push(s);
-                } else if s.body.to_ascii_lowercase().contains(&q) {
+                } else if crate::help::haystack_hit(&s.body, &q, substring) {
                     body_hits.push(s);
                 }
             }
@@ -162,22 +163,20 @@ pub fn search(query: &str) -> Vec<&'static Section> {
 /// or plain multi-word) over each section's title + body when the query reads that way
 /// ([`crate::help::is_boolean_query`]), else the plain substring/regex [`search`]. Title matches
 /// rank first, then manual order — the same shape as `search`, using the shared query engine.
-pub fn search_query(query: &str) -> Vec<&'static Section> {
+pub fn search_query(query: &str, substring: bool) -> Vec<&'static Section> {
     if !crate::help::is_boolean_query(query) {
-        return search(query);
+        return search(query, substring);
     }
     let Some(ast) = crate::help::compile_query(query) else {
-        return search(query); // malformed → degrade to the plain search
+        return search(query, substring); // malformed → degrade to the plain search
     };
     let leaves = crate::help::positive_leaf_words(&ast);
     let (mut title_hits, mut body_hits): (Vec<&Section>, Vec<&Section>) = (Vec::new(), Vec::new());
     for s in sections() {
         let words = crate::help::words_of(&format!("{} {}", s.title, s.body));
-        if crate::help::query_matches(&ast, &words) {
-            let title_hit = {
-                let tl = s.title.to_ascii_lowercase();
-                leaves.iter().any(|w| tl.contains(w))
-            };
+        if crate::help::query_matches(&ast, &words, substring) {
+            let title_hit =
+                leaves.iter().any(|w| crate::help::haystack_hit(&s.title, w, substring));
             if title_hit {
                 title_hits.push(s);
             } else {
@@ -218,16 +217,20 @@ mod tests {
     }
 
     #[test]
-    fn search_finds_sections_by_substring_and_regex() {
-        // Substring: the Scratchpad chapter.
-        let hits = search("scratchpad");
+    fn search_finds_sections_by_word_and_regex() {
+        // Whole-word (default): the Scratchpad chapter matches the word `scratchpad`.
+        let hits = search("scratchpad", false);
         assert!(hits.iter().any(|s| s.title.to_lowercase().contains("scratchpad")), "scratchpad section");
         // Regex: `^Editing` anchors to a section titled Editing (title starts with it).
-        let hits = search("^Editing");
+        let hits = search("^Editing", false);
         assert!(hits.iter().any(|s| s.title.starts_with("Editing")), "regex ^Editing");
-        // A metachar query that can't compile falls back to substring (no panic, may be empty).
-        let _ = search("op(en");
+        // A metachar query that can't compile falls back to a word search (no panic, may be empty).
+        let _ = search("op(en", false);
+        // `/A` (substring) still resolves a word fragment (the word-start vs substring distinction
+        // itself is covered by `help::tests::word_start_is_the_default_substring_is_opt_in`).
+        let sub = search("scratch", true);
+        assert!(sub.iter().any(|s| s.title.to_lowercase().contains("scratchpad")), "/A: scratch → scratchpad");
         // Nonsense → nothing.
-        assert!(search("zzzznotawordxyz").is_empty());
+        assert!(search("zzzznotawordxyz", false).is_empty());
     }
 }

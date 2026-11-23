@@ -120,6 +120,10 @@ menu.view.cmdline.position.hidden = Skryté   # Hidden
 menu.view.statusline = Stavový řádek   # Status line
 menu.view.statusline.top = Nahoře (pod příkazovým řádkem)   # Top (under command line)
 menu.view.statusline.bottom = Dole   # Bottom
+menu.view.statusline.info = Zobrazené informace   # Information shown
+menu.view.statusline.info.file = Název souboru   # File name
+menu.view.statusline.info.linecol = Řádek : sloupec   # Line : column
+menu.view.statusline.info.enc = Kódování   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Typ dokumentu   # Document type

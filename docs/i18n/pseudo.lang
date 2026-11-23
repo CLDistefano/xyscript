@@ -115,6 +115,10 @@ menu.view.cmdline.position.hidden = [Ĥìđđèñ ··]   # Hidden
 menu.view.statusline = [Šţàţùš ĺìñè ····]   # Status line
 menu.view.statusline.top = [Ţòþ (ùñđèŕ çòɱɱàñđ ĺìñè) ··········]   # Top (under command line)
 menu.view.statusline.bottom = [Ɓòţţòɱ ··]   # Bottom
+menu.view.statusline.info = [Ìñƒòŕɱàţìòñ šĥòŵñ ·······]   # Information shown
+menu.view.statusline.info.file = [Ƒìĺè ñàɱè ····]   # File name
+menu.view.statusline.info.linecol = [Ĺìñè : çòĺùɱñ ·····]   # Line : column
+menu.view.statusline.info.enc = [Èñçòđìñĝ ···]   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = [Đòçùɱèñţ ţýþè ·····]   # Document type

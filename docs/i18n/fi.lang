@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Piilotettu   # Hidden
 menu.view.statusline = Tilarivi   # Status line
 menu.view.statusline.top = Ylhäällä (komentorivin alla)   # Top (under command line)
 menu.view.statusline.bottom = Alhaalla   # Bottom
+menu.view.statusline.info = Näytettävät tiedot   # Information shown
+menu.view.statusline.info.file = Tiedoston nimi   # File name
+menu.view.statusline.info.linecol = Rivi : sarake   # Line : column
+menu.view.statusline.info.enc = Merkistökoodaus   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Asiakirjatyyppi   # Document type

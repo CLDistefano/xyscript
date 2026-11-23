@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Verborgen   # Hidden
 menu.view.statusline = Statusregel   # Status line
 menu.view.statusline.top = Boven (onder de opdrachtregel)   # Top (under command line)
 menu.view.statusline.bottom = Onder   # Bottom
+menu.view.statusline.info = Getoonde informatie   # Information shown
+menu.view.statusline.info.file = Bestandsnaam   # File name
+menu.view.statusline.info.linecol = Regel : kolom   # Line : column
+menu.view.statusline.info.enc = Codering   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Documenttype   # Document type

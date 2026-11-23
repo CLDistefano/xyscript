@@ -223,6 +223,18 @@ impl Editor {
     pub fn status_path(&self) -> bool {
         self.host.status_path()
     }
+    /// Whether the status line shows the file name/path element (`STATUSINFO`).
+    pub fn status_show_file(&self) -> bool {
+        self.host.status_show_file()
+    }
+    /// Whether the status line shows the `line:col` position element (`STATUSINFO`).
+    pub fn status_show_linecol(&self) -> bool {
+        self.host.status_show_linecol()
+    }
+    /// Whether the status line shows the encoding element (`STATUSINFO`).
+    pub fn status_show_enc(&self) -> bool {
+        self.host.status_show_enc()
+    }
 
     /// The active document's highlight tokens (empty when highlighting is off). For a large file these
     /// cover only the windowed region last requested via [`ensure_highlights`](Editor::ensure_highlights).
@@ -6197,6 +6209,42 @@ PR [$RV]"); // run 2: call AND read $RV in the same run
         assert_eq!(e.special_str("STATUSPATH"), "0");
     }
 
+    #[test]
+    fn statusinfo_selects_shown_elements_and_reads() {
+        let mut e = ed();
+        // All three on by default.
+        assert_eq!(e.special_str("STATUSINFO"), "file linecol enc");
+        assert!(e.status_show_file() && e.status_show_linecol() && e.status_show_enc());
+
+        // Name a subset — only those show, in canonical display order regardless of argument order.
+        e.run_command("STATUSINFO enc file");
+        assert_eq!(e.special_str("STATUSINFO"), "file enc");
+        assert!(e.status_show_file() && !e.status_show_linecol() && e.status_show_enc());
+
+        // Aliases + comma/space separators resolve to the canonical tokens.
+        e.run_command("STATUSINFO pos, encoding");
+        assert_eq!(e.special_str("STATUSINFO"), "linecol enc");
+
+        // `none` hides everything; `all` restores everything.
+        e.run_command("STATUSINFO none");
+        assert_eq!(e.special_str("STATUSINFO"), "none");
+        assert!(!e.status_show_file() && !e.status_show_linecol() && !e.status_show_enc());
+        e.run_command("STATUSINFO all");
+        assert_eq!(e.special_str("STATUSINFO"), "file linecol enc");
+
+        // Bare reports without changing the set; an unknown element errors and changes nothing.
+        e.run_command("STATUSINFO linecol");
+        e.run_command("STATUSINFO"); // report only
+        assert_eq!(e.special_str("STATUSINFO"), "linecol");
+        e.run_command("STATUSINFO bogus");
+        assert!(e.last_error().is_some(), "unknown element should error");
+        assert_eq!(e.special_str("STATUSINFO"), "linecol", "errored command left the set unchanged");
+
+        // $STATUSINFO is read-only.
+        e.run_command("SET STATUSINFO = file");
+        assert!(e.last_error().is_some(), "STATUSINFO is a read-only special");
+    }
+
     // ---- xlinks (XLINK / XLDEL / XLGO + GOTOLINE) --------------------------
 
     #[test]
@@ -11495,6 +11543,39 @@ msg.bookmark.nav_moved = kirjanmerkki {index}/{total} — siirretty
         // MAN results highlight too.
         e.run_command("MAN scratchpad");
         assert!(!e.host().emph_highlights().is_empty(), "MAN results carry EMPH highlights");
+    }
+
+    #[test]
+    fn help_ref_man_default_to_whole_word_and_slash_a_widens() {
+        // `ndent` is purely a mid-word fragment (of `indent`/`indentation`) — no word in the corpus
+        // STARTS with it — so the whole-word DEFAULT finds nothing to list.
+        let mut e = Editor::new(typing_keymap());
+        e.run_command("HELP ndent");
+        assert!(
+            !e.active_is_help_listing() || !e.document().text().contains("PVINDENT"),
+            "word-start HELP `ndent` must not surface PVINDENT"
+        );
+        // `/A` widens the grep to substring, so `ndent` now matches inside `indent`.
+        e.run_command("HELP/A ndent");
+        assert!(e.active_is_help_listing(), "HELP/A ndent opens a results tab");
+        assert!(
+            e.document().text().contains("PVINDENT"),
+            "HELP/A ndent lists PVINDENT: {}",
+            e.document().text()
+        );
+        // REF (reference only) honours /A identically.
+        e.run_command("REF/A ndent");
+        assert!(e.document().text().contains("PVINDENT"), "REF/A ndent lists PVINDENT");
+        // MAN (manual only) accepts /A and still finds the chapter via a fragment.
+        e.run_command("MAN/A scratch");
+        assert!(
+            e.document().text().to_lowercase().contains("scratchpad"),
+            "MAN/A scratch finds the Scratchpad chapter"
+        );
+        // An unknown switch is rejected — proving /A is validated, not silently ignored.
+        let mut e2 = Editor::new(typing_keymap());
+        e2.run_command("HELP/Z ndent");
+        assert!(e2.last_error().is_some(), "an unknown HELP switch should error");
     }
 
     #[test]

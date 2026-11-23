@@ -379,7 +379,7 @@ const REGEX_META: &[char] = &['\\', '.', '^', '$', '|', '[', '(', '{', '*', '+',
 /// matches; a plain term is escaped and wrapped in `\w*…\w*` so the WHOLE word it sits in lights up —
 /// so `push` highlights `pushed`, `pushes`, `pushing`, and so on. `None` for an empty term (a leading
 /// `$` / trailing `()` is ignored first, matching how `search` normalizes a substring query).
-pub(crate) fn result_emphasis(query: &str) -> Option<(String, bool)> {
+pub(crate) fn result_emphasis(query: &str, substring: bool) -> Option<(String, bool)> {
     let raw = query.trim();
     let raw = raw.strip_prefix('$').unwrap_or(raw);
     let raw = raw.strip_suffix("()").unwrap_or(raw).trim();
@@ -388,20 +388,25 @@ pub(crate) fn result_emphasis(query: &str) -> Option<(String, bool)> {
     }
     let phrase = if raw.contains(|c| REGEX_META.contains(&c)) {
         raw.to_string()
-    } else {
+    } else if substring {
         format!(r"\w*{}\w*", regex::escape(raw))
+    } else {
+        // Word-start (the default): highlight from the START of the word the term begins, so `mark`
+        // lights up `marks`/`marker` but not `benchmark` — matching the search's word-start rule.
+        format!(r"\b{}\w*", regex::escape(raw))
     };
     Some((phrase, true))
 }
 
-/// Every help entry whose name(s) OR synopsis match `query` — the grep-like `HELP` fallback and
-/// `HELP/S`. If the query contains a regex metacharacter (`REGEX_META`) it is treated as a
-/// case-insensitive **regular expression**; otherwise it is a case-insensitive **substring** (with a
-/// leading `$` / trailing `()` ignored, so `HELP/S $color` and `HELP/S color` behave alike). A query
-/// that looks like a regex but fails to compile falls back to a literal substring search. NAME
-/// matches come first (more relevant), then description-only matches; each group keeps reference
-/// order. Returns all matches (the caller caps the display).
-pub fn search(query: &str) -> Vec<HelpEntry> {
+/// Every help entry whose name(s) OR synopsis match `query` — the grep-like `HELP` fallback. If the
+/// query contains a regex metacharacter (`REGEX_META`) it is treated as a case-insensitive **regular
+/// expression**; otherwise it matches whole words: by default a word that STARTS with the term
+/// (word-start — so `table` finds `table`/`tables` but not `portable`), or, when `substring` is set
+/// (`/A`), the term anywhere in a word (the old forgiving behaviour). A leading `$` / trailing `()`
+/// is ignored, case-insensitive. A query that looks like a regex but fails to compile falls back to
+/// a word search. NAME matches come first (more relevant), then description-only matches; each group
+/// keeps reference order. Returns all matches (the caller caps the display).
+pub fn search(query: &str, substring: bool) -> Vec<HelpEntry> {
     let raw = query.trim();
     if raw.is_empty() {
         return Vec::new();
@@ -431,9 +436,9 @@ pub fn search(query: &str) -> Vec<HelpEntry> {
                 return Vec::new(); // a `$`/`()`-only query has nothing left to match
             }
             for e in entries {
-                if e.names.iter().any(|n| n.to_ascii_lowercase().contains(&q)) {
+                if e.names.iter().any(|n| haystack_hit(n, &q, substring)) {
                     name_hits.push(e.clone());
-                } else if e.synopsis.to_ascii_lowercase().contains(&q) {
+                } else if haystack_hit(&e.synopsis, &q, substring) {
                     desc_hits.push(e.clone());
                 }
             }
@@ -478,6 +483,35 @@ pub(crate) fn words_of(s: &str) -> Vec<String> {
         .filter(|w| !w.is_empty())
         .map(|w| w.to_ascii_lowercase())
         .collect()
+}
+
+/// Whether one tokenized `text_word` matches a `query_word` under the match mode: by SUBSTRING
+/// (`/A` — the term anywhere in the word) or, by default, by PREFIX (word-start, which also admits
+/// inflections like `mark`→`marks`). Both inputs are already lowercased.
+pub(crate) fn word_hit(text_word: &str, query_word: &str, substring: bool) -> bool {
+    if substring {
+        text_word.contains(query_word)
+    } else {
+        text_word.starts_with(query_word)
+    }
+}
+
+/// Whether any whole word of `haystack` matches the (lowercased) `needle` under the mode — the
+/// name/synopsis/title test for the plain (non-boolean) search.
+pub(crate) fn haystack_hit(haystack: &str, needle: &str, substring: bool) -> bool {
+    words_of(haystack).iter().any(|w| word_hit(w, needle, substring))
+}
+
+/// Whether a tokenized `text_word` matches one word of a QUOTED PHRASE. A phrase is an explicit
+/// "exactly this" request, so by default each of its words must match a WHOLE word exactly (not by
+/// prefix the way a bare term does) — this keeps `"status line"` from matching `statusbar lineup` or
+/// `$STATUSLINE`. `/A` (`substring`) still relaxes it to match the word anywhere. Both lowercased.
+fn phrase_word_hit(text_word: &str, phrase_word: &str, substring: bool) -> bool {
+    if substring {
+        text_word.contains(phrase_word)
+    } else {
+        text_word == phrase_word
+    }
 }
 
 /// Whether `q` should be read as a boolean/proximity query rather than the plain substring/regex
@@ -632,26 +666,36 @@ fn parse_atom(toks: &[Tok], i: &mut usize) -> Option<Query> {
 }
 
 /// Word index positions of a `Word`/`Phrase` operand in `words` (for `Near`); empty for other nodes.
-fn positions(q: &Query, words: &[String]) -> Vec<usize> {
+fn positions(q: &Query, words: &[String], substring: bool) -> Vec<usize> {
     match q {
-        Query::Word(w) => {
-            words.iter().enumerate().filter(|(_, t)| t.contains(w.as_str())).map(|(i, _)| i).collect()
-        }
+        Query::Word(w) => words
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| word_hit(t, w, substring))
+            .map(|(i, _)| i)
+            .collect(),
         Query::Phrase(ws) if !ws.is_empty() && words.len() >= ws.len() => (0..=words.len() - ws.len())
-            .filter(|&i| ws.iter().enumerate().all(|(k, w)| words[i + k].contains(w.as_str())))
+            .filter(|&i| ws.iter().enumerate().all(|(k, w)| phrase_word_hit(&words[i + k], w, substring)))
             .collect(),
         _ => Vec::new(),
     }
 }
-fn eval(q: &Query, joined: &str, words: &[String]) -> bool {
+fn eval(q: &Query, words: &[String], substring: bool) -> bool {
     match q {
-        Query::Word(w) => joined.contains(w.as_str()),
-        Query::Phrase(ws) => joined.contains(ws.join(" ").as_str()),
-        Query::Not(x) => !eval(x, joined, words),
-        Query::And(xs) => xs.iter().all(|x| eval(x, joined, words)),
-        Query::Or(xs) => xs.iter().any(|x| eval(x, joined, words)),
+        Query::Word(w) => words.iter().any(|t| word_hit(t, w, substring)),
+        // A phrase matches a window of consecutive words, each an EXACT whole word of the phrase
+        // (word-start would make `"status line"` match `statusbar lineup`); `/A` relaxes to substring.
+        Query::Phrase(ws) => {
+            !ws.is_empty()
+                && words.len() >= ws.len()
+                && (0..=words.len() - ws.len())
+                    .any(|i| ws.iter().enumerate().all(|(k, w)| phrase_word_hit(&words[i + k], w, substring)))
+        }
+        Query::Not(x) => !eval(x, words, substring),
+        Query::And(xs) => xs.iter().all(|x| eval(x, words, substring)),
+        Query::Or(xs) => xs.iter().any(|x| eval(x, words, substring)),
         Query::Near(a, b, n) => {
-            let (pa, pb) = (positions(a, words), positions(b, words));
+            let (pa, pb) = (positions(a, words, substring), positions(b, words, substring));
             pa.iter().any(|&x| pb.iter().any(|&y| x.abs_diff(y) <= *n))
         }
     }
@@ -662,9 +706,10 @@ pub(crate) fn compile_query(q: &str) -> Option<Query> {
     parse(&lex_query(q))
 }
 
-/// Whether the parsed query matches a document given its lowercased alphanumeric `words`.
-pub(crate) fn query_matches(q: &Query, words: &[String]) -> bool {
-    eval(q, &words.join(" "), words)
+/// Whether the parsed query matches a document given its lowercased alphanumeric `words`. `substring`
+/// picks the per-word mode: word-start (default) or anywhere-in-word (`/A`).
+pub(crate) fn query_matches(q: &Query, words: &[String], substring: bool) -> bool {
+    eval(q, words, substring)
 }
 
 /// Positive (not negated) leaf words — for name-match ranking and the results highlight.
@@ -687,6 +732,61 @@ pub(crate) fn positive_leaf_words(q: &Query) -> Vec<String> {
     out
 }
 
+/// Highlight regex for a single term under the mode: word-start (`\bw\w*`) by default, or the whole
+/// surrounding word under `/A` (`\w*w\w*`).
+fn leaf_word_pattern(w: &str, substring: bool) -> String {
+    if substring {
+        format!(r"\w*{}\w*", regex::escape(w))
+    } else {
+        format!(r"\b{}\w*", regex::escape(w))
+    }
+}
+
+/// Highlight regex for a QUOTED PHRASE: its words in sequence, separated by non-word runs, so it
+/// lights up the phrase itself (`status line`) and not every stray `status`/`line`. Exact words with
+/// end boundaries by default; `/A` relaxes each to a substring.
+fn leaf_phrase_pattern(ws: &[String], substring: bool) -> String {
+    let mut s = String::new();
+    for (i, w) in ws.iter().enumerate() {
+        if i > 0 {
+            s.push_str(r"\W+");
+        }
+        let e = regex::escape(w);
+        if substring {
+            s.push_str(&format!(r"\w*{e}\w*"));
+        } else if i == 0 {
+            s.push_str(&format!(r"\b{e}"));
+        } else {
+            s.push_str(&e);
+        }
+    }
+    if !substring {
+        s.push_str(r"\b"); // exact end — don't bleed into `lineup`
+    }
+    s
+}
+
+/// Positive (not negated) leaf HIGHLIGHT patterns, preserving phrase adjacency — the results-highlight
+/// counterpart to [`positive_leaf_words`] (which flattens phrases for name-match ranking).
+fn positive_leaf_patterns(q: &Query, substring: bool) -> Vec<String> {
+    fn go(q: &Query, pos: bool, substring: bool, out: &mut Vec<String>) {
+        match q {
+            Query::Word(w) if pos => out.push(leaf_word_pattern(w, substring)),
+            Query::Phrase(ws) if pos && !ws.is_empty() => out.push(leaf_phrase_pattern(ws, substring)),
+            Query::Word(_) | Query::Phrase(_) => {}
+            Query::Not(x) => go(x, !pos, substring, out),
+            Query::And(xs) | Query::Or(xs) => xs.iter().for_each(|x| go(x, pos, substring, out)),
+            Query::Near(a, b, _) => {
+                go(a, pos, substring, out);
+                go(b, pos, substring, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    go(q, true, substring, &mut out);
+    out
+}
+
 fn entry_words(e: &HelpEntry) -> Vec<String> {
     words_of(&format!("{} {}", e.names.join(" "), e.synopsis))
 }
@@ -694,22 +794,22 @@ fn entry_words(e: &HelpEntry) -> Vec<String> {
 /// The query entry point `HELP` uses: a boolean/proximity search when the query reads that way
 /// ([`is_boolean_query`]), else the plain substring/regex [`search`]. Matching entries are ranked
 /// name-hits first (any positive term appears in a headword), then reference order.
-pub fn search_query(query: &str) -> Vec<HelpEntry> {
+pub fn search_query(query: &str, substring: bool) -> Vec<HelpEntry> {
     if !is_boolean_query(query) {
-        return search(query);
+        return search(query, substring);
     }
     let Some(q) = parse(&lex_query(query)) else {
-        return search(query); // malformed → degrade to the plain search
+        return search(query, substring); // malformed → degrade to the plain search
     };
     let leaves = positive_leaf_words(&q);
     let (mut name_hits, mut desc_hits) = (Vec::new(), Vec::new());
     for e in &index().entries {
         let words = entry_words(e);
-        if eval(&q, &words.join(" "), &words) {
-            let name_hit = e.names.iter().any(|n| {
-                let nl = n.to_ascii_lowercase();
-                leaves.iter().any(|w| nl.contains(w))
-            });
+        if eval(&q, &words, substring) {
+            let name_hit = e
+                .names
+                .iter()
+                .any(|n| leaves.iter().any(|w| haystack_hit(n, w, substring)));
             if name_hit {
                 name_hits.push(e.clone());
             } else {
@@ -721,22 +821,24 @@ pub fn search_query(query: &str) -> Vec<HelpEntry> {
     name_hits
 }
 
-/// Results-highlight phrase for a query: for a boolean query, a `\w*(w1|w2|…)\w*` alternation of its
-/// POSITIVE leaf words; otherwise the plain [`result_emphasis`]. `None` when there's nothing to light.
-pub(crate) fn query_emphasis(query: &str) -> Option<(String, bool)> {
+/// Results-highlight pattern for a query: for a boolean query, an alternation of its POSITIVE leaf
+/// patterns — bare terms as whole words, a `"quoted phrase"` as the adjacent phrase itself (so it
+/// lights up `status line`, not every stray `status`/`line`); otherwise the plain [`result_emphasis`].
+/// `None` when there's nothing to light.
+pub(crate) fn query_emphasis(query: &str, substring: bool) -> Option<(String, bool)> {
     if !is_boolean_query(query) {
-        return result_emphasis(query);
+        return result_emphasis(query, substring);
     }
     let q = parse(&lex_query(query))?;
-    let mut leaves = positive_leaf_words(&q);
-    leaves.sort();
-    leaves.dedup();
-    leaves.retain(|w| !w.is_empty());
-    if leaves.is_empty() {
+    let mut pats = positive_leaf_patterns(&q, substring);
+    pats.sort();
+    pats.dedup();
+    pats.retain(|p| !p.is_empty());
+    if pats.is_empty() {
         return None;
     }
-    let alt = leaves.iter().map(|w| regex::escape(w)).collect::<Vec<_>>().join("|");
-    Some((format!(r"\w*(?:{alt})\w*"), true))
+    // Each fragment is already anchored to the mode; alternate them at the top level.
+    Some((pats.join("|"), true))
 }
 
 /// A short overview shown by a bare `HELP` (no argument).
@@ -868,22 +970,28 @@ mod tests {
     }
 
     #[test]
-    fn result_emphasis_builds_a_whole_word_regex() {
-        // A plain term → whole-word regex (EMPH/R semantics), so it lights up longer words.
-        let (p, rx) = result_emphasis("push").unwrap();
+    fn result_emphasis_word_start_vs_substring() {
+        // Default (word-start): the regex anchors at the start of a word, lighting up the term and
+        // its inflections but NOT a word that merely ends with it.
+        let (p, rx) = result_emphasis("push", false).unwrap();
         assert!(rx, "emphasis is always regex mode");
-        assert_eq!(p, r"\w*push\w*");
+        assert_eq!(p, r"\bpush\w*");
         let re = Regex::new(&p).unwrap();
-        for w in ["push", "pushed", "pushes", "pushing", "repush"] {
-            assert_eq!(re.find(w).map(|m| m.as_str()), Some(w), "{w} should whole-word match");
+        for w in ["push", "pushed", "pushes", "pushing"] {
+            assert_eq!(re.find(w).map(|m| m.as_str()), Some(w), "{w} should word-start match");
         }
-        // A regex term passes through unchanged (it highlights its own matches).
-        assert_eq!(result_emphasis("^PV").unwrap().0, "^PV");
+        assert!(re.find("repush").is_none(), "word-start must not light a trailing occurrence");
+        // `/A` (substring): the forgiving form that lights up the whole surrounding word.
+        let (ps, _) = result_emphasis("push", true).unwrap();
+        assert_eq!(ps, r"\w*push\w*");
+        assert_eq!(Regex::new(&ps).unwrap().find("repush").map(|m| m.as_str()), Some("repush"));
+        // A regex term passes through unchanged (it highlights its own matches), in either mode.
+        assert_eq!(result_emphasis("^PV", false).unwrap().0, "^PV");
         // A leading `$` / trailing `()` is ignored (matches how the search normalizes); empty → None.
-        assert_eq!(result_emphasis("$cwd").unwrap().0, r"\w*cwd\w*");
-        assert_eq!(result_emphasis("UPPER()").unwrap().0, r"\w*UPPER\w*");
-        assert!(result_emphasis("   ").is_none());
-        assert!(result_emphasis("$").is_none());
+        assert_eq!(result_emphasis("$cwd", false).unwrap().0, r"\bcwd\w*");
+        assert_eq!(result_emphasis("UPPER()", true).unwrap().0, r"\w*UPPER\w*");
+        assert!(result_emphasis("   ", false).is_none());
+        assert!(result_emphasis("$", false).is_none());
     }
 
     #[test]
@@ -895,11 +1003,29 @@ mod tests {
 
     // ---- boolean / proximity query ----------------------------------------------------------
 
-    /// Evaluate a parsed query against a plain-text haystack (synthetic, deterministic).
+    /// Evaluate a parsed query against a plain-text haystack (synthetic, deterministic). Uses the
+    /// word-start default; [`word_start_is_the_default_substring_is_opt_in`] covers the `/A` mode.
     fn matches(query: &str, text: &str) -> bool {
         let q = parse(&lex_query(query)).expect("parses");
         let words = words_of(text);
-        eval(&q, &words.join(" "), &words)
+        eval(&q, &words, false)
+    }
+
+    #[test]
+    fn word_start_is_the_default_substring_is_opt_in() {
+        let table = parse(&lex_query("table")).unwrap();
+        // Word-start (default): `table` matches the real word and its plural, but NOT `portable`.
+        assert!(eval(&table, &words_of("a plain table"), false));
+        assert!(eval(&table, &words_of("two tables here"), false), "admits an inflection");
+        assert!(!eval(&table, &words_of("strictly portable"), false), "rejects a trailing occurrence");
+        // `/A` (substring) matches the term anywhere in a word.
+        assert!(eval(&table, &words_of("strictly portable"), true), "/A finds it inside `portable`");
+        // A bare word is word-start, but a quoted PHRASE is exact (see
+        // `a_quoted_phrase_is_exact_not_word_start`): `"mark set"` matches `mark set`, not `mark setpoint`.
+        let phrase = parse(&lex_query("\"mark set\"")).unwrap();
+        assert!(eval(&phrase, &words_of("the mark set here"), false), "exact phrase words");
+        assert!(!eval(&phrase, &words_of("the mark setpoint"), false), "phrase words are not prefixes");
+        assert!(!eval(&parse(&lex_query("able")).unwrap(), &words_of("a portable table"), false));
     }
 
     #[test]
@@ -941,6 +1067,31 @@ mod tests {
     }
 
     #[test]
+    fn a_quoted_phrase_is_exact_not_word_start() {
+        // A quoted phrase restricts to the EXACT consecutive words — the bug fix: it must NOT match a
+        // window that merely starts with the phrase's words (`statusbar lineup`) or a fused word.
+        let p = parse(&lex_query("\"status line\"")).unwrap();
+        assert!(eval(&p, &words_of("shown on the status line now"), false), "exact phrase matches");
+        assert!(!eval(&p, &words_of("a statusbar lineup"), false), "no word-start prefixes");
+        assert!(!eval(&p, &words_of("the statusline widget"), false), "no fused word");
+        assert!(!eval(&p, &words_of("status of the line"), false), "words must be consecutive");
+        assert!(!eval(&p, &words_of("two status lines"), false), "an inflected last word is not exact");
+        // `/A` relaxes a phrase's words to substrings again.
+        assert!(eval(&p, &words_of("a statusbar lineup"), true), "/A matches within words");
+    }
+
+    #[test]
+    fn phrase_highlight_targets_the_phrase_not_stray_words() {
+        let (pat, rx) = query_emphasis("\"status line\"", false).unwrap();
+        assert!(rx);
+        let re = Regex::new(&pat).unwrap();
+        assert!(re.is_match("shown on the status line"), "lights up the phrase");
+        assert!(!re.is_match("statuspath"), "does not light a lone status-word");
+        assert!(!re.is_match("the statusline special"), "does not light a fused word");
+        assert!(!re.is_match("a lineup of items"), "does not light a lone line-word");
+    }
+
+    #[test]
     fn is_boolean_query_distinguishes_from_plain_and_regex() {
         assert!(!is_boolean_query("indent")); // single word → plain substring
         assert!(!is_boolean_query("^PV")); // regex → stays regex
@@ -954,13 +1105,13 @@ mod tests {
 
     #[test]
     fn query_emphasis_lists_positive_leaves_only() {
-        let (p, rx) = query_emphasis("tab AND indent").unwrap();
+        let (p, rx) = query_emphasis("tab AND indent", false).unwrap();
         assert!(rx);
         assert!(p.contains("tab") && p.contains("indent"), "{p}");
-        let (p2, _) = query_emphasis("tab NOT indent").unwrap();
+        let (p2, _) = query_emphasis("tab NOT indent", false).unwrap();
         assert!(p2.contains("tab") && !p2.contains("indent"), "NOT term excluded: {p2}");
         // A plain single term still uses the whole-word emphasis path.
-        assert!(query_emphasis("indent").is_some());
+        assert!(query_emphasis("indent", false).is_some());
     }
 
     #[test]
@@ -968,7 +1119,7 @@ mod tests {
         // WRAPINDENT (name holds wrap+indent, synopsis is about indentation) matches `wrap AND indent`
         // but is excluded by `wrap NOT indent` — a clean differential that doesn't hard-code corpus text.
         let has_wi = |hits: &[HelpEntry]| hits.iter().any(|e| e.names.iter().any(|n| n.eq_ignore_ascii_case("WRAPINDENT")));
-        assert!(has_wi(&search_query("wrap AND indent")), "wrap AND indent finds WRAPINDENT");
-        assert!(!has_wi(&search_query("wrap NOT indent")), "wrap NOT indent excludes WRAPINDENT");
+        assert!(has_wi(&search_query("wrap AND indent", false)), "wrap AND indent finds WRAPINDENT");
+        assert!(!has_wi(&search_query("wrap NOT indent", false)), "wrap NOT indent excludes WRAPINDENT");
     }
 }

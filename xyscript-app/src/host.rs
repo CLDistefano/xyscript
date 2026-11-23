@@ -519,9 +519,9 @@ fn apply_xymeta_restore(doc: &mut Document, r: XymetaRestore) {
 /// The REFERENCE-matches block for `HELP`/`REF`: the formatted list of entries matching `q` (name
 /// hits first, exact headword promoted to the top), or `None` when nothing matches. Shared so `REF`
 /// (reference only) and `HELP` (reference + manual) format results identically.
-fn reference_block(q: &str) -> Option<String> {
+fn reference_block(q: &str, substring: bool) -> Option<String> {
     const CAP: usize = 40; // entries listed before "…and N more"
-    let mut hits = crate::help::search_query(q);
+    let mut hits = crate::help::search_query(q, substring);
     if let Some(exact) = crate::help::lookup(q) {
         hits.retain(|e| !(e.names == exact.names && e.kind == exact.kind));
         hits.insert(0, exact);
@@ -544,9 +544,9 @@ fn reference_block(q: &str) -> Option<String> {
 }
 
 /// The MANUAL-matches block for `HELP`/`MAN`: matching sections' titles + full bodies, or `None`.
-fn manual_block(q: &str) -> Option<String> {
+fn manual_block(q: &str, substring: bool) -> Option<String> {
     const CAP: usize = 25; // sections listed before "…and N more"
-    let hits = crate::manual::search_query(q);
+    let hits = crate::manual::search_query(q, substring);
     if hits.is_empty() {
         return None;
     }
@@ -3109,6 +3109,12 @@ pub struct AppHost {
     /// Whether the status line shows the active file's FULL PATH instead of just its name
     /// (`STATUSPATH`; `$STATUSPATH`). Off by default. Truncated to `path_len` like `$CWD`. SaveCfg.
     status_path: bool,
+    /// Which informational elements the status line shows (`STATUSINFO`; `$STATUSINFO`): the file
+    /// name/path, the `line:col` position, and the encoding. All on by default; the GUI reads these
+    /// when assembling the status line. SaveCfg.
+    status_show_file: bool,
+    status_show_linecol: bool,
+    status_show_enc: bool,
     /// User-added text-file extensions (`TEXTFILES`; `$TEXTFILES`), lowercased and dot-stripped —
     /// appended to the built-in list the File ▸ Open dialog's "Text files" filter matches. Empty by
     /// default (`OPEN <path>` opens any file regardless; this only widens the dialog's convenience filter).
@@ -3751,6 +3757,9 @@ impl AppHost {
             path_place: PathPlace::Status,
             path_len: 45,
             status_path: false,
+            status_show_file: true,
+            status_show_linecol: true,
+            status_show_enc: true,
             text_file_exts: Vec::new(),
             cmline_blank: false,
             caret_visual: false,
@@ -4243,6 +4252,38 @@ impl AppHost {
     /// Whether the status line shows the active file's full path (`STATUSPATH`/`$STATUSPATH`).
     pub fn status_path(&self) -> bool {
         self.status_path
+    }
+    /// Whether the status line shows the file name/path element (`STATUSINFO`). On by default.
+    pub fn status_show_file(&self) -> bool {
+        self.status_show_file
+    }
+    /// Whether the status line shows the `line:col` position element (`STATUSINFO`). On by default.
+    pub fn status_show_linecol(&self) -> bool {
+        self.status_show_linecol
+    }
+    /// Whether the status line shows the encoding element (`STATUSINFO`). On by default.
+    pub fn status_show_enc(&self) -> bool {
+        self.status_show_enc
+    }
+    /// The space-joined token list of shown status-line elements (`$STATUSINFO`): any of `file`,
+    /// `linecol`, `enc` in display order, or `none` when all are hidden. Used for `$STATUSINFO`,
+    /// SaveCfg, and the `STATUSINFO` report.
+    pub fn status_info_tokens(&self) -> String {
+        let mut v: Vec<&str> = Vec::new();
+        if self.status_show_file {
+            v.push("file");
+        }
+        if self.status_show_linecol {
+            v.push("linecol");
+        }
+        if self.status_show_enc {
+            v.push("enc");
+        }
+        if v.is_empty() {
+            "none".to_string()
+        } else {
+            v.join(" ")
+        }
     }
     /// The user's extra text-file extensions (`TEXTFILES`), lowercased and dot-stripped — the GUI
     /// appends these to the built-in list its File ▸ Open "Text files" filter matches.
@@ -10882,6 +10923,7 @@ impl AppHost {
         put(&mut s, "Working-directory path placement -- cmline | status", format!("PAPLACE {}", self.path_place.name()));
         put(&mut s, "Working-directory path -- max display width in characters", format!("PATHLEN {}", self.path_len));
         put(&mut s, "Show the active file's full path on the status line -- on | off", format!("STATUSPATH {}", if self.status_path { "on" } else { "off" }));
+        put(&mut s, "Status-line informational elements -- any of: file linecol enc | all | none", format!("STATUSINFO {}", self.status_info_tokens()));
         {
             // Extra text-file extensions for the File ▸ Open "Text files" filter (the built-in set is
             // always matched too). Emitted even when empty (`default`) so the setting is visible.
@@ -15557,6 +15599,15 @@ impl Host for AppHost {
                     if self.status_path { "on" } else { "off" }
                 )));
             }
+            EditorOp::SetStatusInfo { file, linecol, enc } => {
+                self.status_show_file = file;
+                self.status_show_linecol = linecol;
+                self.status_show_enc = enc;
+                return Ok(Value::str(format!(
+                    "status line shows: {}",
+                    self.status_info_tokens()
+                )));
+            }
             EditorOp::SetTextFileExts(list) => {
                 let report = |exts: &[String]| {
                     if exts.is_empty() {
@@ -16482,6 +16533,7 @@ impl Host for AppHost {
             "PAPLACE" => Some(Value::str(self.path_place.name())),
             "PATHLEN" => Some(Value::Int(self.path_len as i64)),
             "STATUSPATH" => Some(Value::Int(if self.status_path { 1 } else { 0 })),
+            "STATUSINFO" => Some(Value::str(self.status_info_tokens())),
             "TEXTFILES" => Some(Value::str(
                 self.text_file_exts.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(","),
             )),
@@ -16767,20 +16819,20 @@ impl Host for AppHost {
     // `REF <term>` — search the command REFERENCE only (the former `HELP` behaviour). Boolean/
     // proximity when the query reads that way, else substring/regex; an exact headword is promoted
     // to the top. Bare `REF` gives the reference overview.
-    fn help(&self, query: Option<&str>, _search: bool) -> HelpResponse {
+    fn help(&self, query: Option<&str>, _search: bool, substring: bool) -> HelpResponse {
         let Some(q) = query else {
             return HelpResponse { body: crate::help::overview(), not_found: false, emphasis: None };
         };
-        match reference_block(q) {
-            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q) },
+        match reference_block(q, substring) {
+            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q, substring) },
             None => help_miss(q),
         }
     }
 
     // `MAN <topic>` — search the MANUAL only. Boolean/proximity like `REF`/`HELP`.
-    fn manual_search(&self, q: &str) -> HelpResponse {
-        match manual_block(q) {
-            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q) },
+    fn manual_search(&self, q: &str, substring: bool) -> HelpResponse {
+        match manual_block(q, substring) {
+            Some(body) => HelpResponse { body, not_found: false, emphasis: crate::help::query_emphasis(q, substring) },
             None => HelpResponse {
                 body: format!("No manual sections match {q:?}. Type MAN for an overview."),
                 not_found: true,
@@ -16791,18 +16843,18 @@ impl Host for AppHost {
 
     // `HELP <term>` — search BOTH: the reference first, then the manual, in one results tab. Bare
     // `HELP` gives the reference overview (which points at `MAN` for the manual).
-    fn help_all(&self, query: Option<&str>) -> HelpResponse {
+    fn help_all(&self, query: Option<&str>, substring: bool) -> HelpResponse {
         let Some(q) = query else {
             return HelpResponse { body: crate::help::overview(), not_found: false, emphasis: None };
         };
-        let blocks: Vec<String> = [reference_block(q), manual_block(q)].into_iter().flatten().collect();
+        let blocks: Vec<String> = [reference_block(q, substring), manual_block(q, substring)].into_iter().flatten().collect();
         if blocks.is_empty() {
             return help_miss(q); // nothing in either corpus → near-name suggestions
         }
         HelpResponse {
             body: blocks.join("\n\n\n"),
             not_found: false,
-            emphasis: crate::help::query_emphasis(q),
+            emphasis: crate::help::query_emphasis(q, substring),
         }
     }
 

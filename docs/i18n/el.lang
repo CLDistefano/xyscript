@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Κρυφή   # Hidden
 menu.view.statusline = Γραμμή κατάστασης   # Status line
 menu.view.statusline.top = Πάνω (κάτω από τη γραμμή εντολών)   # Top (under command line)
 menu.view.statusline.bottom = Κάτω   # Bottom
+menu.view.statusline.info = Εμφανιζόμενες πληροφορίες   # Information shown
+menu.view.statusline.info.file = Όνομα αρχείου   # File name
+menu.view.statusline.info.linecol = Γραμμή : στήλη   # Line : column
+menu.view.statusline.info.enc = Κωδικοποίηση   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Τύπος εγγράφου   # Document type

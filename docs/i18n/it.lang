@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Nascosta   # Hidden
 menu.view.statusline = Riga di stato   # Status line
 menu.view.statusline.top = In alto (sotto la riga di comando)   # Top (under command line)
 menu.view.statusline.bottom = In basso   # Bottom
+menu.view.statusline.info = Informazioni mostrate   # Information shown
+menu.view.statusline.info.file = Nome del file   # File name
+menu.view.statusline.info.linecol = Riga : colonna   # Line : column
+menu.view.statusline.info.enc = Codifica   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Tipo di documento   # Document type

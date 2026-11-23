@@ -5227,6 +5227,35 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::SetStatusPath(want))?;
                 Ok(Flow::Next)
             }
+            // `STATUSINFO <tokens>` — pick which informational elements the status line shows:
+            // `file`, `linecol`, `enc` (aliases: `name`/`path`, `lc`/`pos`, `encoding`). `all` / `none`
+            // set every flag at once; bare reports the current set. `$STATUSINFO`; SaveCfg.
+            "STATUSINFO" => {
+                let t = args.trim();
+                if t.is_empty() {
+                    *self.ctx.status =
+                        Some(format!("status line shows: {}", self.special_str("STATUSINFO")));
+                    return Ok(Flow::Next);
+                }
+                let (mut file, mut linecol, mut enc) = (false, false, false);
+                for tok in t.split([',', ' ', '\t', ';']) {
+                    match tok.trim().to_ascii_lowercase().as_str() {
+                        "" => {}
+                        "all" => (file, linecol, enc) = (true, true, true),
+                        "none" | "off" => (file, linecol, enc) = (false, false, false),
+                        "file" | "name" | "path" => file = true,
+                        "linecol" | "lc" | "line" | "col" | "pos" => linecol = true,
+                        "enc" | "encoding" => enc = true,
+                        other => {
+                            return Err(XplError::trappable(format!(
+                                "STATUSINFO: unknown element {other:?} (expected file, linecol, enc, all, or none)"
+                            )))
+                        }
+                    }
+                }
+                self.host_op(EditorOp::SetStatusInfo { file, linecol, enc })?;
+                Ok(Flow::Next)
+            }
             // `TEXTFILES <.ext,…>` — extra text-file extensions for the File ▸ Open "Text files" filter.
             // Bare reports; `default`/`none` clears; otherwise a comma/space list (dots optional). `$TEXTFILES`.
             "TEXTFILES" => {
@@ -5669,8 +5698,9 @@ impl Vm<'_, '_> {
                 // manual, `HELP` is both). Take the name RAW (not `$`-substituted) so `REF $CWD` looks up
                 // the special rather than its value, and `REF UPPER` works without a leading `$`. `/S` is
                 // an accepted no-op alias (searching is always on).
+                let substring = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
                 let q = raw_args.trim();
-                let resp = self.ctx.host.help((!q.is_empty()).then_some(q), false);
+                let resp = self.ctx.host.help((!q.is_empty()).then_some(q), false, substring);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
                     return Ok(Flow::Next);
@@ -5686,8 +5716,9 @@ impl Vm<'_, '_> {
             "HELP" | "?" => {
                 // `HELP` searches BOTH the reference and the manual (reference first), merged into the
                 // one read-only Help tab. `REF` / `MAN` are the single-corpus commands.
+                let substring = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
                 let q = raw_args.trim();
-                let resp = self.ctx.host.help_all((!q.is_empty()).then_some(q));
+                let resp = self.ctx.host.help_all((!q.is_empty()).then_some(q), substring);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
                     return Ok(Flow::Next);
@@ -5705,13 +5736,14 @@ impl Vm<'_, '_> {
             // by section — boolean/proximity (`AND`/`OR`/`NOT`/`"phrase"`/`NEAR`, or plain multi-word)
             // when the query reads that way, else substring/regex. Capture-aware.
             "MAN" => {
+                let substring = vswitches.iter().any(|s| s.eq_ignore_ascii_case("A"));
                 let q = raw_args.trim();
                 if q.is_empty() {
                     // Bare: open the manual (a GUI action; headless no-op).
                     self.host_op(EditorOp::ShowManual)?;
                     return Ok(Flow::Next);
                 }
-                let resp = self.ctx.host.manual_search(q);
+                let resp = self.ctx.host.manual_search(q, substring);
                 if self.is_capturing() {
                     self.capture_push(&resp.body);
                     return Ok(Flow::Next);
@@ -7019,7 +7051,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         return Ok(());
     }
     let valid: &[&str] = match base {
-        "HELP" | "?" | "REF" => &["S"], // `/S` — accepted no-op alias (HELP/REF always search now)
+        "HELP" | "?" | "REF" => &["S", "A"], // `/S` no-op alias; `/A` — match the term anywhere in a word (vs the whole-word default)
+        "MAN" => &["A"], // `/A` — match the term anywhere in a word (vs the whole-word default)
         "QUIET" => &["NV"],
         "SAVE" | "SA" => &["NV"], // `/NV` — overwrite an existing copy target without confirming
         "ST" => &["NV"], // `/NV` — `ST/NV <path>` overwrites without confirming

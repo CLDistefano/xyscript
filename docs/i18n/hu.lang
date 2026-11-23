@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Rejtett   # Hidden
 menu.view.statusline = Állapotsor   # Status line
 menu.view.statusline.top = Fent (a parancssor alatt)   # Top (under command line)
 menu.view.statusline.bottom = Lent   # Bottom
+menu.view.statusline.info = Megjelenített adatok   # Information shown
+menu.view.statusline.info.file = Fájlnév   # File name
+menu.view.statusline.info.linecol = Sor : oszlop   # Line : column
+menu.view.statusline.info.enc = Kódolás   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Dokumentumtípus   # Document type
