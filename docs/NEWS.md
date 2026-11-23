@@ -171,8 +171,10 @@ number
   from HTML to Typst markup)
 
 
-2026-10-20 v0.1.8
------------------
+## v0.1.8
+
+*2026-10-20*
+
 - Added support for inputting Unicode characters in ranges above \u9999
   using five-digit hex escape codes wrapped in curly braces, e.g. `INSERT "
   \u{1F308}"` for rainbow emoji
@@ -328,8 +330,10 @@ on|off`, where `on` inserts a blank line between GREP results
 (previously, non-.md and -.typ files were interpreted as Markdown)
 
 
-2026-09-13 v0.1.4
------------------
+## v0.1.4
+
+*2026-09-13*
+
 - Top-level menu now responds to
 Alt-key combinations (Alt+F, etc.) in Windows and Linux and to F10 and
 Ctrl+F2 in macOS
