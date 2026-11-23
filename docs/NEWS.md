@@ -10,6 +10,8 @@ requests since the last tag; trim it to the user-facing highlights before taggin
 
 ## v0.1.17
 
+*yyyy-mm-dd*
+
 - **One-click updates from the menu.** When a check finds a newer version, the
   **Help** menu now offers **Install update v…** — it downloads and verifies the
   release in the background and applies it cleanly at the next launch, with no
@@ -19,9 +21,13 @@ requests since the last tag; trim it to the user-facing highlights before taggin
 
 ## v0.1.16
 
-New release to enable round-trip testing of auto-updates. Functionally identical to v0.1.15.
+*2026-11-22*
+
+New release to enable round-trip testing of auto-update. Functionally identical to v0.1.15.
 
 ## v0.1.15
+
+*2026-11-22*
 
 - **Automatic updates.** XyScript can watch its own release channel and tell you
   when a newer version is out (`UPDATEMODE`), download and verify it, and — at your
@@ -31,6 +37,8 @@ New release to enable round-trip testing of auto-updates. Functionally identical
   to date* chapter.
   
 ## v0.1.14
+
+*2026-11-17*
 
 - Added Xlinks — in-document hyperlinks that jump to a location (in this file or another) or run arbitrary XPL actions on click, with a per-document trust gate so code from someone else’s file never runs unasked. Modeled on XyWrite-U2's Xyperlinks. The suite of commands and special variables includes:
   - `XLINK <XPL code>` creates an xlink over selected text. Example: `XLINK open report.txt;gotoline 345`   
@@ -63,6 +71,8 @@ New release to enable round-trip testing of auto-updates. Functionally identical
 
 ## v0.1.13
 
+*2026-11-09*
+
 - New setting `PVWIDTH p` [20 >= p <= 80] sets the Preview width as a percentage of the XyScript window width (default value: 50)
   - `PVWIDTH` re-proportions the pane on window resize
 
@@ -73,6 +83,8 @@ New release to enable round-trip testing of auto-updates. Functionally identical
     option Cr (Mac), in addition to CrLf (Windows) and Lf (Linux)
         
 ## v0.1.12
+
+*2026-11-06*
 
 - Added special variable $XKBDMODE, which identifies the keyboard layout
   active *immediately before* the last KBDMODE command to change modes (empty
@@ -104,11 +116,15 @@ New release to enable round-trip testing of auto-updates. Functionally identical
 
 ## v0.1.11
 
+*2026-10-29*
+
 Linux build pinned to glibc 2.35 (was 2.43 in v0.1.10), for compatibility
 with older distros. Windows and macOS versions unchanged except for version
 number
 
 ## v0.1.10
+
+*2026-10-28*
 
 - Added XyScript window-management command `XSW`, with cross-platform functionality
   as follows:
@@ -158,6 +174,8 @@ number
 
 ## v0.1.9
 
+*2026-10-22*
+
 - `OPEN/EDIT/ED/CA <file>` now returns an error message if `<file>` does
   not exist (previously opened a new blank file)
 
@@ -169,7 +187,6 @@ number
 
 - Fixed bug in HTML Preview/Print-to-PDF/Print-to-SVG (incomplete conversion
   from HTML to Typst markup)
-
 
 ## v0.1.8
 
@@ -226,6 +243,8 @@ number
 - Optimization tweaks for opening big files
 
 ## v0.1.7
+
+*2026-10-08*
 
 - New multi-layout keyboard facility for immediate switching between KBD
   files (alternate languages, special-purpose layouts, Vim-style modal
@@ -291,6 +310,8 @@ number
 
 ## v0.1.6
 
+*2026-09-21*
+
 - Preview and PDF printout of plain-text files now give effect to the
 following:
   - `PVFAMILY` (preview/PDF font family) and `PVSIZE` (preview/PDF font
@@ -308,6 +329,8 @@ A rule with no named groups behaves the same as before
 local time in Linux and macOS -- fixed
 
 ## v0.1.5
+
+*2026-09-18*
 
 - Enhanced `HELP` command (synonym:
 `REF`) and new command `MAN` perform a grep-like keyword search of the
@@ -328,7 +351,6 @@ on|off`, where `on` inserts a blank line between GREP results
 
 - `PREVIEW`/`PRINT`/`TOPDF`/`FPRINT` now render text files correctly
 (previously, non-.md and -.typ files were interpreted as Markdown)
-
 
 ## v0.1.4
 
@@ -373,6 +395,8 @@ COLORS (adjust color settings on the fly) and COLORNAMES
 - Intermittent bug whereby screen fonts shrink to a tiny size -- fixed
 
 ## v0.1.3
+
+*2026-09-04*
 
 - Added new RGB settings to customize the foreground and background
 colors of the line-number gutter (`LNFGCOLOR(S)`, `LNBGCOLOR(S)`).
@@ -441,6 +465,8 @@ returns it with characters reversed (`REVERSE("string")` ==>
 `"gnirts"`)
 
 ## v0.1.2
+
+*2026-08-28*
 
 - Multilingual user interface
 allows switching among the following languages: Bulgarian, Czech,
@@ -533,6 +559,8 @@ slashes in Windows paths to avoid errors due to backslash escaping
 
 ## v0.1.1
 
+*2026-07-27*
+
 - Support for HTML
 preview/print-to-PDF, including rendering of raw HTML code in Markdown
 files
@@ -600,4 +628,6 @@ searching through a file
 
 ## v0.1.0
 
-Initial release (16 July 2026)
+*2026-07-16*
+
+Initial release
