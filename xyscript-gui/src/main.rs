@@ -8096,6 +8096,18 @@ impl GuiApp {
         let titlebar_on = ed.show_titlebar();
         let wv_on = ed.writer_view();
         let statusline_top = ed.status_line_top();
+        let (si_file, si_lc, si_enc) =
+            (ed.status_show_file(), ed.status_show_linecol(), ed.status_show_enc());
+        // `STATUSINFO` replaces the whole shown-element set, so a menu checkbox that toggles ONE
+        // element recomputes the full set with that flag flipped (the others held at their current
+        // state). Empty set → `none`.
+        let si_cmd = move |flip_file: bool, flip_lc: bool, flip_enc: bool| -> String {
+            let mut toks: Vec<&str> = Vec::new();
+            if si_file ^ flip_file { toks.push("file"); }
+            if si_lc ^ flip_lc { toks.push("linecol"); }
+            if si_enc ^ flip_enc { toks.push("enc"); }
+            format!("STATUSINFO {}", if toks.is_empty() { "none".to_string() } else { toks.join(" ") })
+        };
         let dimonblur_on = ed.special_str("DIMONBLUR") == "1";
         let closeback_on = ed.special_str("CLOSEBACK") == "1";
         let wingeo_on = ed.remember_window_geometry();
@@ -8304,6 +8316,11 @@ impl GuiApp {
                 m_sub(self.tr("menu.view.statusline", "Status line"), vec![
                     m_tog(self.tr("menu.view.statusline.top", "Top (under command line)"), statusline_top, "STATUSLINE top"),
                     m_tog(self.tr("menu.view.statusline.bottom", "Bottom"), !statusline_top, "STATUSLINE bottom"),
+                    m_sub(self.tr("menu.view.statusline.info", "Information shown"), vec![
+                        m_tog(self.tr("menu.view.statusline.info.file", "File name"), si_file, si_cmd(true, false, false)),
+                        m_tog(self.tr("menu.view.statusline.info.linecol", "Line : column"), si_lc, si_cmd(false, true, false)),
+                        m_tog(self.tr("menu.view.statusline.info.enc", "Encoding"), si_enc, si_cmd(false, false, true)),
+                    ]),
                 ]),
             ]),
             m_sub(self.tr("menubar.document", "Document"), vec![
@@ -9400,10 +9417,11 @@ impl GuiApp {
     }
 
     /// Status-line text with the leading `$CWD` prefix (`cwd_len` bytes) coloured by
-    /// `PAFGCOLOR`/`PABGCOLOR`. Returns a plain string (egui's default styling) when no path colours
-    /// are set or there's no prefix, so the common case is byte-for-byte unchanged. `Color32::
-    /// PLACEHOLDER` on a segment defers to egui's resolved default text colour at paint time.
-    fn status_text(&self, ui: &egui::Ui, text: &str, cwd_len: usize) -> egui::WidgetText {
+    /// `PAFGCOLOR`/`PABGCOLOR`, and the message separator (`sep_at` byte range, if any) coloured by
+    /// `$SEPCOLOR`. Returns a plain string (egui's default styling) when nothing needs decorating, so
+    /// the common case is byte-for-byte unchanged. `Color32::PLACEHOLDER` on a segment defers to
+    /// egui's resolved default text colour at paint time.
+    fn status_text(&self, ui: &egui::Ui, text: &str, cwd_len: usize, sep_at: Option<(usize, usize)>) -> egui::WidgetText {
         let fg = self.editor.host().path_fg_color();
         let bg = self.editor.host().path_bg_color();
         // An `MDA` live-typing indicator flags that subsequently typed text will be styled, and shows
@@ -9413,7 +9431,7 @@ impl GuiApp {
         let (tfg, tbg, tattr) = self.editor.mda_typing();
         let mda = tfg.is_some() || tbg.is_some() || tattr.is_some();
         let has_cwd = cwd_len != 0 && cwd_len <= text.len() && (fg.is_some() || bg.is_some());
-        if !mda && !has_cwd {
+        if !mda && !has_cwd && sep_at.is_none() {
             return text.to_owned().into(); // fast path — unchanged when there's nothing to decorate
         }
         use egui::text::{LayoutJob, TextFormat};
@@ -9448,22 +9466,41 @@ impl GuiApp {
             }
             job.append(" ", 0.0, TextFormat::simple(font.clone(), egui::Color32::PLACEHOLDER));
         }
-        if has_cwd {
+        // Emit the text left-to-right as coloured spans: an optional `$CWD` path prefix
+        // (PAFGCOLOR/PABGCOLOR), an optional `$SEPCOLOR`-ed message separator, and egui's default
+        // colour everywhere else. Byte ranges are clamped so a short `text` (e.g. a truncated
+        // multiline status) can't panic on a stale offset.
+        let plain = egui::Color32::PLACEHOLDER;
+        let cwd_end = if has_cwd { cwd_len.min(text.len()) } else { 0 };
+        if cwd_end > 0 {
             let mut prefix = TextFormat::simple(font.clone(), col(fg));
             if let Some((r, g, b)) = bg {
                 prefix.background = egui::Color32::from_rgb(r, g, b);
             }
-            job.append(&text[..cwd_len], 0.0, prefix);
-            job.append(&text[cwd_len..], 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
-        } else {
-            job.append(text, 0.0, TextFormat::simple(font, egui::Color32::PLACEHOLDER));
+            job.append(&text[..cwd_end], 0.0, prefix);
+        }
+        let mut pos = cwd_end;
+        if let Some((s, e)) = sep_at {
+            let s = s.clamp(pos, text.len());
+            let e = e.clamp(s, text.len());
+            if s > pos {
+                job.append(&text[pos..s], 0.0, TextFormat::simple(font.clone(), plain));
+            }
+            if e > s {
+                let (sr, sg, sb) = self.editor.sep_color();
+                job.append(&text[s..e], 0.0, TextFormat::simple(font.clone(), egui::Color32::from_rgb(sr, sg, sb)));
+            }
+            pos = e;
+        }
+        if pos < text.len() {
+            job.append(&text[pos..], 0.0, TextFormat::simple(font, plain));
         }
         job.into()
     }
 
     /// Render the status-line contents into `ui` (a top or bottom panel — see `STATUSLINE`). Shared so
     /// the status line reads identically whichever edge it sits on.
-    fn render_status_body(&mut self, ui: &mut egui::Ui, status: &str, cwd_len: usize, cwd_tip: &Option<String>, status_opens_cmline: bool) {
+    fn render_status_body(&mut self, ui: &mut egui::Ui, status: &str, cwd_len: usize, cwd_tip: &Option<String>, sep_at: Option<(usize, usize)>, status_opens_cmline: bool) {
         if status.contains('\n') {
             // Multiline status (e.g. `PR $CMH` or any PR output with real newlines): stack the lines as
             // a plain label so the panel auto-sizes to fit them. Cap at MAX rows so a big dump can't
@@ -9477,13 +9514,13 @@ impl GuiApp {
             } else {
                 status.to_string()
             };
-            let wt = self.status_text(ui, &shown, cwd_len);
+            let wt = self.status_text(ui, &shown, cwd_len, sep_at);
             let r = ui.add(egui::Label::new(wt).wrap()); // wrap long individual lines too
             Self::add_cwd_hover(ui, r.rect, &shown, cwd_len, cwd_tip);
         } else if status_opens_cmline {
             // `.wrap()` (not inside `ui.horizontal`, which would force no-wrap `Extend`): a long
             // single-line message wraps to the panel width instead of scrolling off the right edge.
-            let wt = self.status_text(ui, status, cwd_len);
+            let wt = self.status_text(ui, status, cwd_len, sep_at);
             let r = ui
                 .add(egui::Label::new(wt).wrap().sense(egui::Sense::click()))
                 .on_hover_text("Click to open the command line");
@@ -9495,7 +9532,7 @@ impl GuiApp {
                 ui.ctx().request_repaint();
             }
         } else {
-            let wt = self.status_text(ui, status, cwd_len);
+            let wt = self.status_text(ui, status, cwd_len, sep_at);
             let r = ui.add(egui::Label::new(wt).wrap());
             Self::add_cwd_hover(ui, r.rect, status, cwd_len, cwd_tip);
         }
@@ -10712,6 +10749,7 @@ impl GuiApp {
         let mut plain_status = false; // true = ordinary status (not a prompt/listing footer)
         let mut cwd_len = 0usize; // byte length of the leading `$CWD` prefix in `status` (0 = none)
         let mut cwd_tip: Option<String> = None; // full path, when the shown `$CWD` is TRUNCATED (hover reveals it)
+        let mut msg_sep: Option<(usize, usize)> = None; // byte range of the `│` dividing info from a status/error message ($SEPCOLOR), when one is shown
         let status = if self.quitting && self.editor.next_dirty_tab().is_some() {
             let name = self.editor.active_file_name().unwrap_or_else(|| "(untitled)".into());
             format!("Quit — save changes to {name}?  (y) save  (n) discard  (esc) cancel")
@@ -10751,18 +10789,30 @@ impl GuiApp {
             } else {
                 format!("  IME: {}", self.preedit)
             };
-            let msg = if self.status.is_empty() {
-                String::new()
-            } else {
-                format!("  —  {}", self.status)
-            };
             let flags = format!(
                 "{}{}",
                 if self.editor.modified() { " [+]" } else { "" },
                 if self.editor.read_only() { " [RO]" } else { "" },
             );
+            // Which informational elements the status line shows (`STATUSINFO`): the file name/path
+            // (with its [+]/[RO] flags), the line:col position, and the encoding. Each defaults on; a
+            // user can hide any of them. Built in a fixed display order and joined with two spaces, so
+            // a hidden element leaves neither a gap nor an orphan separator.
+            let mut info: Vec<String> = Vec::new();
+            if self.editor.status_show_file() {
+                info.push(format!("{name}{flags}"));
+            }
+            if self.editor.status_show_linecol() {
+                info.push(format!("{}:{}", doc.line(), doc.column()));
+            }
+            if self.editor.status_show_enc() {
+                info.push(doc.encoding_name().to_string());
+            }
+            let info_joined = info.join("  ");
             // The `$CWD` path shows here (PAPLACE status, the default) or as a command-line prefix
-            // (PAPLACE cmline); PATHLEN caps its width. When it's on the cmline, drop it here.
+            // (PAPLACE cmline); PATHLEN caps its width. When it's on the cmline, drop it here. The
+            // "  │  " separator trails the path only when an info element follows it (so an all-hidden
+            // STATUSINFO leaves no dangling separator after the path).
             let cwd_prefix = if self.editor.special_str("PAPLACE") == "cmline" {
                 String::new()
             } else {
@@ -10772,7 +10822,11 @@ impl GuiApp {
                 if disp != full {
                     cwd_tip = Some(full); // truncated to PATHLEN → hover shows the full path
                 }
-                format!("{disp}  │  ")
+                if info_joined.is_empty() {
+                    disp
+                } else {
+                    format!("{disp}  │  ")
+                }
             };
             cwd_len = cwd_prefix.len(); // colour just this leading span (PAFGCOLOR/PABGCOLOR)
             // Active keyboard layout (`KBDMODE`), shown only once the user has loaded more than one
@@ -10783,12 +10837,19 @@ impl GuiApp {
             } else {
                 String::new()
             };
-            format!(
-                "{cwd_prefix}{name}{flags}  {}:{}  {}{kbd}{ime}{msg}",
-                doc.line(),
-                doc.column(),
-                doc.encoding_name(),
-            )
+            // A status/error message is divided from the info items by a `│` in `$SEPCOLOR` (the same
+            // bar colour as the tab-strip dividers). The bar floats right after the info and shows
+            // ONLY when a message is present, so an idle status line never carries a dangling
+            // separator. `msg_sep` carries its byte range so `status_text` can colour just that glyph.
+            let head = format!("{cwd_prefix}{info_joined}{kbd}{ime}");
+            if self.status.is_empty() {
+                head
+            } else {
+                let sep = "  │  ";
+                let start = head.len();
+                msg_sep = Some((start, start + sep.len()));
+                format!("{head}{sep}{}", self.status)
+            }
         };
         // In Hidden placement there's no command-line row to click; let the always-visible status
         // line be the mouse affordance that opens it. A click isn't a key, so this works under an
@@ -10802,10 +10863,10 @@ impl GuiApp {
         // status; the top one grows DOWNWARD — either way the shared body reads the same.
         if self.editor.status_line_top() {
             egui::Panel::top("status_top")
-                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, status_opens_cmline));
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, msg_sep, status_opens_cmline));
         } else {
             egui::Panel::bottom("status")
-                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, status_opens_cmline));
+                .show_inside(ui, |ui| self.render_status_body(ui, &status, cwd_len, &cwd_tip, msg_sep, status_opens_cmline));
         }
 
         // Bottom-placed command line sits just above the status line (shown after

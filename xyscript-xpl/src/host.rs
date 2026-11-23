@@ -1179,6 +1179,10 @@ pub enum EditorOp {
     /// `STATUSPATH on|off` (bare toggles) — show the active file's FULL PATH on the status line instead
     /// of just its name (truncated to `PATHLEN`). Off by default. `$STATUSPATH`; SaveCfg.
     SetStatusPath(Option<bool>),
+    /// `STATUSINFO <tokens>` — which informational elements the status line shows, as the resolved
+    /// triple `(file, line:col, encoding)`. Each defaults to `true`; the command names the ones to
+    /// show (`all`/`none` set every flag). `$STATUSINFO`; SaveCfg.
+    SetStatusInfo { file: bool, linecol: bool, enc: bool },
     /// `TEXTFILES <.ext,…>` — the user's EXTRA text-file extensions, appended to the built-in set the
     /// File ▸ Open dialog's "Text files" filter matches. `Some(list)` replaces them (an empty list, from
     /// `TEXTFILES default`, clears); `None` reports the current list. Read back via `$TEXTFILES`.
@@ -2133,7 +2137,7 @@ pub trait Host {
     /// suggestions, instead of opening a modal). `search` (the `/S` flag) forces the grep-like
     /// search over names + descriptions instead of an exact lookup; an exact lookup that misses
     /// also falls back to that search. Default: help is unavailable.
-    fn help(&self, _query: Option<&str>, _search: bool) -> HelpResponse {
+    fn help(&self, _query: Option<&str>, _search: bool, _substring: bool) -> HelpResponse {
         HelpResponse {
             body: "Help is not available in this build.".to_string(),
             not_found: true,
@@ -2144,7 +2148,7 @@ pub trait Host {
     /// `HELP <term>` — search BOTH the command reference and the manual (reference first), merged into
     /// one results tab. `REF` (via [`Self::help`]) is the reference alone; `MAN` the manual alone.
     /// Bare `HELP` gives the overview. Default: unavailable.
-    fn help_all(&self, _query: Option<&str>) -> HelpResponse {
+    fn help_all(&self, _query: Option<&str>, _substring: bool) -> HelpResponse {
         HelpResponse {
             body: "Help is not available in this build.".to_string(),
             not_found: true,
@@ -2156,7 +2160,7 @@ pub trait Host {
     /// Returns a formatted title + body listing the matching sections with their full text;
     /// `not_found` when nothing matched (reported on the status line, like `HELP`). Bare `MAN` opens
     /// the manual via `EditorOp::ShowManual` instead of calling this. Default: unavailable.
-    fn manual_search(&self, _query: &str) -> HelpResponse {
+    fn manual_search(&self, _query: &str, _substring: bool) -> HelpResponse {
         HelpResponse {
             body: "The manual is not available in this build.".to_string(),
             not_found: true,

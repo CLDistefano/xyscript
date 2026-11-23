@@ -120,6 +120,10 @@ menu.view.cmdline.position.hidden = Ascunsă   # Hidden
 menu.view.statusline = Linie de stare   # Status line
 menu.view.statusline.top = Sus (sub linia de comandă)   # Top (under command line)
 menu.view.statusline.bottom = Jos   # Bottom
+menu.view.statusline.info = Informații afișate   # Information shown
+menu.view.statusline.info.file = Nume fișier   # File name
+menu.view.statusline.info.linecol = Linie : coloană   # Line : column
+menu.view.statusline.info.enc = Codificare   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Tip de document   # Document type

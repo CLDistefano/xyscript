@@ -113,6 +113,10 @@ menu.view.cmdline.position.hidden = Hidden
 menu.view.statusline = Status line
 menu.view.statusline.top = Top (under command line)
 menu.view.statusline.bottom = Bottom
+menu.view.statusline.info = Information shown
+menu.view.statusline.info.file = File name
+menu.view.statusline.info.linecol = Line : column
+menu.view.statusline.info.enc = Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Document type

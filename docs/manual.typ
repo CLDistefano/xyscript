@@ -155,10 +155,13 @@ special variable, checked against the code automatically. When you want to learn
 read here; when you want to look up *exactly* what a verb takes, go there. For a single item without
 leaving the keyboard, #raw("HELP <name>") (or #raw("?")) lists matches in a read-only tab, with any
 exact entry promoted to the top — so #raw("HELP CV") leads with the CV entry, and #raw("HELP indent")
-finds #raw("PVINDENT"), #raw("TAB"), and #raw("WRAPINDENT"). The term is matched as a substring, or as
-a *regular expression* if it contains a regex metacharacter (#raw("\\ . ^ $ | [ ( { * + ? #")) — so
-#raw("HELP ^PV") lists everything starting with #raw("PV") — and each occurrence in the results is
-highlighted, extended to the whole word. Its companion #raw("MAN") does the same for *this manual*:
+finds #raw("PVINDENT") and #raw("WRAPINDENT"). A term matches by *whole word* — a word that *starts*
+with it, so #raw("HELP table") finds #raw("table") and #raw("tables") but not #raw("portable"), while
+#raw("HELP mark") still finds #raw("marks"); add the #raw("/A") switch to match the term *anywhere* in
+a word (#raw("HELP/A dent") then reaches #raw("PVINDENT")). A term that contains a regex metacharacter
+(#raw("\\ . ^ $ | [ ( { * + ? #")) is instead a *regular expression* — so #raw("HELP ^PV") lists
+everything starting with #raw("PV") — and each occurrence in the results is highlighted, extended to
+the whole word. Its companion #raw("MAN") does the same for *this manual*:
 bare #raw("MAN") opens it, and #raw("MAN <topic>") searches it by section (#raw("MAN scratchpad")),
 with the same rules — so #raw("HELP") finds the terse reference entry and #raw("MAN") the fuller
 explanation.]
@@ -510,6 +513,12 @@ Two rows are the heart of XyScript. The *CMline* (by default, near the top of th
   encoding. #raw("STATUSPATH on") shows the file's *full path* there instead of just its name — handy when
   you keep several same-named files open in different folders; a long path is shortened the same way the
   working directory is (keeping the drive and the trailing folders, with #raw("PATHLEN") setting the width).
+- Those three idle readouts are each optional. #raw("STATUSINFO") picks which of them show — name the ones
+  you want to keep, as in #raw("STATUSINFO file linecol") (to drop the encoding) or #raw("STATUSINFO linecol")
+  (just the position). #raw("STATUSINFO all") brings them all back, #raw("STATUSINFO none") hides all three,
+  and a bare #raw("STATUSINFO") reports the current set; the same toggles live under *View ▸ Status line ▸
+  Information shown*. A hidden element leaves no gap behind it. (The working-directory path and the
+  keyboard-layout tag are separate — see #raw("PAPLACE") and #raw("KBDMODE").)
 
 Whether you submit with #kbd("Enter") or execute the CMline's contents from elsewhere with #raw("XC"),
 the command runs against the document. The full story — focus, the optional pop-up command line, staging

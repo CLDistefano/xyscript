@@ -116,6 +116,10 @@ menu.view.cmdline.position.hidden = Dold   # Hidden
 menu.view.statusline = Statusrad   # Status line
 menu.view.statusline.top = Överst (under kommandoraden)   # Top (under command line)
 menu.view.statusline.bottom = Nederst   # Bottom
+menu.view.statusline.info = Visad information   # Information shown
+menu.view.statusline.info.file = Filnamn   # File name
+menu.view.statusline.info.linecol = Rad : kolumn   # Line : column
+menu.view.statusline.info.enc = Teckenkodning   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Dokumenttyp   # Document type

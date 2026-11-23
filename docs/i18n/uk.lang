@@ -120,6 +120,10 @@ menu.view.cmdline.position.hidden = Приховано   # Hidden
 menu.view.statusline = Рядок стану   # Status line
 menu.view.statusline.top = Угорі (під командним рядком)   # Top (under command line)
 menu.view.statusline.bottom = Унизу   # Bottom
+menu.view.statusline.info = Показана інформація   # Information shown
+menu.view.statusline.info.file = Ім'я файлу   # File name
+menu.view.statusline.info.linecol = Рядок : стовпець   # Line : column
+menu.view.statusline.info.enc = Кодування   # Encoding
 
 # ---- menu.document -----------------------------------------------
 menu.document.doctype = Тип документа   # Document type
