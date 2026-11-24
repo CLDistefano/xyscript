@@ -919,6 +919,14 @@ impl Editor {
     pub fn emph_bg_color(&self) -> (u8, u8, u8) {
         self.host.emph_bg_color()
     }
+    /// On-screen tint for `MDA SU` superscript text (`SUCOLOR`).
+    pub fn su_color(&self) -> (u8, u8, u8) {
+        self.host.su_color()
+    }
+    /// On-screen tint for `MDA SD` subscript text (`SDCOLOR`).
+    pub fn sd_color(&self) -> (u8, u8, u8) {
+        self.host.sd_color()
+    }
     /// The `EMPH` emphasis colours as SET (`None` = follow selection) — for the colour-picker seed.
     pub fn emph_fg_override(&self) -> Option<(u8, u8, u8)> {
         self.host.emph_fg_override()
@@ -5027,6 +5035,47 @@ mod tests {
         e.run_command("MDA NM");
         assert!(e.attr_spans().is_empty(), "MDA NM clears the attribute layer");
         assert!(!e.color_spans().is_empty(), "MDA NM leaves the colour layer alone");
+    }
+
+    #[test]
+    fn mda_strike_super_sub_set_bits_and_su_sd_are_exclusive() {
+        use crate::document::{ATTR_STRIKE, ATTR_SUB, ATTR_SUPER};
+        let mut e = ed();
+        e.run_command(r#"INSERT "H2O and x2""#);
+        // SO strikethrough sets its own bit.
+        e.run_command("DFA");
+        e.run_command("MDA SO");
+        assert_eq!(e.attr_spans().first().map(|s| s.2), Some(ATTR_STRIKE), "MDA SO sets the strike bit");
+        // SU superscript replaces it (each MDA SETS the region's attrs).
+        e.run_command("DFA");
+        e.run_command("MDA SU");
+        assert_eq!(e.attr_spans().first().map(|s| s.2), Some(ATTR_SUPER), "MDA SU replaces with superscript");
+        // SD subscript replaces SU — mutually exclusive.
+        e.run_command("DFA");
+        e.run_command("MDA SD");
+        assert_eq!(e.attr_spans().first().map(|s| s.2), Some(ATTR_SUB), "MDA SD replaces SU (exclusive)");
+    }
+
+    #[test]
+    fn sucolor_sdcolor_default_set_read_and_savecfg() {
+        let mut e = Editor::new(typing_keymap());
+        e.host_mut().virtual_fs = true;
+        // Built-in defaults (visible on both themes): SU red, SD blue-violet.
+        assert_eq!(e.su_color(), (255, 64, 64));
+        assert_eq!(e.sd_color(), (138, 43, 226));
+        e.run_command("PR $SUCOLOR");
+        assert_eq!(e.output().last().map(String::as_str), Some("255 64 64"));
+        // Override, read back, then `default` restores the built-in.
+        e.run_command("SUCOLOR 10 20 30");
+        assert_eq!(e.su_color(), (10, 20, 30));
+        e.run_command("SDCOLOR 40 50 60");
+        assert_eq!(e.sd_color(), (40, 50, 60));
+        e.run_command("SAVECFG cfg.cfg");
+        let cfg = e.host_mut().files.get("cfg.cfg").unwrap().clone();
+        assert!(cfg.contains("SUCOLOR 10 20 30"), "SaveCfg round-trips SUCOLOR");
+        assert!(cfg.contains("SDCOLOR 40 50 60"), "SaveCfg round-trips SDCOLOR");
+        e.run_command("SUCOLOR default");
+        assert_eq!(e.su_color(), (255, 64, 64), "default restores the built-in SU tint");
     }
 
     #[test]

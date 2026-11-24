@@ -3234,6 +3234,25 @@ impl Vm<'_, '_> {
                 self.host_op(EditorOp::OpenPathColorPicker { fg: base == "PAFGCOLORS" })?;
                 Ok(Flow::Next)
             }
+            // `SUCOLOR`/`SDCOLOR <r g b>` — the on-screen tint for `MDA SU` superscript / `MDA SD`
+            // subscript text (`/HSL`); bare or `… default` restores the built-in default. The mode
+            // itself renders as true super/subscript in preview/PDF/HTML; this is only its editor
+            // appearance (XyWrite "mode colour"). `$SUCOLOR`/`$SDCOLOR`.
+            "SUCOLOR" | "SDCOLOR" => {
+                let hsl = vswitches.iter().any(|s| s.eq_ignore_ascii_case("HSL"));
+                let t = args.trim();
+                let color = if t.is_empty() || t.eq_ignore_ascii_case("default") {
+                    None
+                } else {
+                    Some(parse_color(base, t, hsl)?)
+                };
+                self.host_op(if base == "SUCOLOR" {
+                    EditorOp::SetSuColor(color)
+                } else {
+                    EditorOp::SetSdColor(color)
+                })?;
+                Ok(Flow::Next)
+            }
             // `PVFGCOLOR`/`PVBGCOLOR <r g b>` — the preview pane's text/background colour (`/HSL`);
             // bare or `… default` clears it (back to Typst's black text / white paper). PREVIEW ONLY —
             // never affects TOPDF/print. The `…S` forms open the picker. `$PVFGCOLOR`/`$PVBGCOLOR`.
@@ -7086,7 +7105,8 @@ fn validate_switches(base: &str, switches: &[String]) -> VmResult<()> {
         | "PANECOLOR" | "BALPAIRSCOLOR" | "EMPHFGCOLOR" | "EMPHBGCOLOR"
         | "MARKFGCOLOR" | "MARKBGCOLOR" | "URLFGCOLOR" | "URLBGCOLOR" | "XLFGCOLOR" | "XLBGCOLOR"
         | "LNFGCOLOR" | "LNBGCOLOR" | "SCRATCHFGCOLOR" | "SCRATCHBGCOLOR"
-        | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR" => &["HSL"], // triple as H S L
+        | "MSGHFGCOLOR" | "MSGBGCOLOR" | "MSGOKFGCOLOR" | "MSGOKBGCOLOR"
+        | "SUCOLOR" | "SDCOLOR" => &["HSL"], // triple as H S L
         "MDA" => &["B", "BG", "HSL"], // `/B` (or `/BG`) — background layer; `/HSL` — the colour as H S L
         "MDAS" => &["B", "BG"], // `/B` (or `/BG`) — pick the background layer instead of the foreground
         // `MDALL`: `/B`|`/BG` background; `/HSL` colour as H S L; `/R` regex; `/P` Perl regex;

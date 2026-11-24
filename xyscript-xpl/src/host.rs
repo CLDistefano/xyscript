@@ -27,11 +27,23 @@ pub const ATTR_UNDERLINE: u8 = 1 << 2;
 /// Reverse video: render the text in the current `BGCOLOR` over a `FGCOLOR` background (dynamic — it
 /// tracks the editor colours, so it stays inverted across a theme change).
 pub const ATTR_REVERSE: u8 = 1 << 3;
+/// Strikethrough (`MDA SO`): a line drawn through the middle of the glyphs. Like underline, it has no
+/// cosmic glyph attribute — the editor draws it as a rect; preview/PDF/HTML emit Typst `#strike[…]`.
+pub const ATTR_STRIKE: u8 = 1 << 4;
+/// Superscript (`MDA SU`): rendered as true superscript in preview/PDF/HTML (`#super[…]`). The editor
+/// canvas can't raise/shrink a sub-run (cosmic owns per-line vertical layout), so on screen it shows
+/// in the `SUCOLOR` tint — the XyWrite "mode colour" convention.
+pub const ATTR_SUPER: u8 = 1 << 5;
+/// Subscript (`MDA SD`): the lowered counterpart of [`ATTR_SUPER`] — `#sub[…]` in preview/PDF/HTML,
+/// the `SDCOLOR` tint on screen.
+pub const ATTR_SUB: u8 = 1 << 6;
 
 /// Map an `MDA` attribute keyword to its action. `None` = not an attribute keyword (so the argument
 /// is treated as a colour); `Some(None)` = `NM` (normal — strip attributes); `Some(Some(bits))` = set
 /// that bitset. Keywords: `BO` bold, `IT` italic, `BI` bold+italic, `UL` underline, `BU` bold+underline,
-/// `RV` reverse video.
+/// `RV` reverse video, `SO` strikethrough, `SU` superscript, `SD` subscript. `SU`/`SD` are mutually
+/// exclusive, and each `MDA` call SETS (replaces) the region's attribute bits, so applying one clears
+/// the other.
 pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
     match word.trim().to_ascii_uppercase().as_str() {
         "BO" => Some(Some(ATTR_BOLD)),
@@ -40,6 +52,9 @@ pub fn parse_mda_attr(word: &str) -> Option<Option<u8>> {
         "UL" => Some(Some(ATTR_UNDERLINE)),
         "BU" => Some(Some(ATTR_BOLD | ATTR_UNDERLINE)),
         "RV" | "REVERSE" => Some(Some(ATTR_REVERSE)),
+        "SO" | "STRIKE" | "STRIKEOUT" | "STRIKETHROUGH" => Some(Some(ATTR_STRIKE)),
+        "SU" | "SUPER" | "SUPERSCRIPT" => Some(Some(ATTR_SUPER)),
+        "SD" | "SUB" | "SUBSCRIPT" => Some(Some(ATTR_SUB)),
         "NM" | "NORMAL" => Some(None),
         _ => None,
     }
@@ -736,6 +751,13 @@ pub enum EditorOp {
     /// `EMPHBGCOLOR <r g b>` / `default` — the `EMPH` emphasis background band colour (`None` = follow
     /// the selection background). `$EMPHBGCOLOR`.
     SetEmphBgColor(Option<(u8, u8, u8)>),
+    /// `SUCOLOR <r g b>` / `default` — the on-screen colour for `MDA SU` superscript text (a display
+    /// convention; `SU` renders as real superscript only in preview/PDF/HTML). `None` = the built-in
+    /// default. `$SUCOLOR`.
+    SetSuColor(Option<(u8, u8, u8)>),
+    /// `SDCOLOR <r g b>` / `default` — the on-screen colour for `MDA SD` subscript text. `None` = the
+    /// built-in default. `$SDCOLOR`.
+    SetSdColor(Option<(u8, u8, u8)>),
     /// Toggle whether the GUI remembers the main window's size + position across runs
     /// (`WINGEO on|off`; `None` toggles). The runtime gates both restore and save on it; `$WINGEO`.
     SetRememberGeometry(Option<bool>),

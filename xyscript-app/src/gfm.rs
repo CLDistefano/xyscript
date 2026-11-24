@@ -113,6 +113,10 @@ impl Styler {
             } else {
                 piece
             };
+            // Strikethrough sits just outside underline (both are line decorations over the glyphs).
+            if attr & xyscript_xpl::ATTR_STRIKE != 0 {
+                s = format!("#strike[{s}]");
+            }
             if attr & xyscript_xpl::ATTR_BOLD != 0 {
                 s = format!("#strong[{s}]");
             }
@@ -129,6 +133,13 @@ impl Styler {
                 if let Some(c) = Self::cover(&self.bg, a) {
                     s = format!("#highlight(fill: {})[{s}]", rgb(c));
                 }
+            }
+            // Super/subscript wrap OUTERMOST so the baseline shift (and Typst's automatic size drop)
+            // enclose the fully styled piece. Mutually exclusive — `SU` wins if both bits are somehow set.
+            if attr & xyscript_xpl::ATTR_SUPER != 0 {
+                s = format!("#super[{s}]");
+            } else if attr & xyscript_xpl::ATTR_SUB != 0 {
+                s = format!("#sub[{s}]");
             }
             out.push_str(&s);
         }
@@ -584,6 +595,23 @@ mod tests {
         // An empty styler is identical to plain to_typst (no regression when nothing is styled).
         let empty = Styler::new(src, vec![], vec![], vec![], (0, 0, 0), (255, 255, 255), true);
         assert_eq!(to_typst_styled(src, &empty), to_typst(src));
+    }
+
+    #[test]
+    fn mda_strike_super_sub_emit_typst_decorations() {
+        use xyscript_xpl::{ATTR_STRIKE, ATTR_SUB, ATTR_SUPER};
+        let mk = |bits| {
+            Styler::new("x", vec![], vec![], vec![(0, 1, bits)], (0, 0, 0), (255, 255, 255), true)
+        };
+        // SO → #strike; SU → #super (outermost); SD → #sub.
+        assert_eq!(to_typst_styled("x", &mk(ATTR_STRIKE)), "#strike[x]");
+        assert_eq!(to_typst_styled("x", &mk(ATTR_SUPER)), "#super[x]");
+        assert_eq!(to_typst_styled("x", &mk(ATTR_SUB)), "#sub[x]");
+        // Super wraps the fully styled piece: H₂O-style subscript keeps the inner strike.
+        assert_eq!(
+            to_typst_styled("x", &mk(ATTR_SUPER | ATTR_STRIKE)),
+            "#super[#strike[x]]"
+        );
     }
 
     #[test]

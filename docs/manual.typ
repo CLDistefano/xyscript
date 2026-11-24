@@ -1169,6 +1169,8 @@ Select some text, then apply a layer:
 / #raw("MDA/B <r g b>"): color the *background* behind the selection.
 / #raw("MDA BO") / #raw("IT") / #raw("BI") / #raw("UL") / #raw("BU"): bold / italic / bold-italic / underlined / bold-underlined.
 / #raw("MDA RV"): reverse video — the text is drawn in the background color over a foreground-colored block, so it stays inverted even if you switch themes.
+/ #raw("MDA SO"): strikethrough — a line through the middle of the glyphs (drawn in the text color, like the underline).
+/ #raw("MDA SU") / #raw("MDA SD"): superscript / subscript. These two are mutually exclusive. They render as *true* super/subscript in the #raw("PV") preview, #raw("TOPDF") export, and printed HTML. On screen the editor can't raise-and-shrink a run of glyphs, so instead #raw("SU") and #raw("SD") text shows in a distinctive *color* — the way XyWrite mapped a color to each mode. The defaults are a vivid red for superscript and blue-violet for subscript (both chosen to read on light and dark themes); set your own with #raw("SUCOLOR <r g b>") and #raw("SDCOLOR <r g b>") (#raw("SUCOLOR default") restores the built-in). The color is only the mode's editor cue; an explicit #raw("FGCOLOR") on the same run still wins.
 
 The attribute keywords *replace* whatever attributes the region had — they do not accumulate — so
 #raw("MDA BI") makes a run bold-italic in one step, and #raw("MDA NM") ("normal") strips the attributes
@@ -1183,7 +1185,8 @@ into the same mechanism, and it persists the same way.
 
 #raw("MDAS") opens a color picker for the selection instead of typing numbers — bare for the
 foreground, #raw("MDAS/B") for the background. Everything is on the menu as well, under *Settings ▸
-Appearance ▸ Colors ▸ Block style*: the two color pickers, the attributes, and *Normal* to clear them.
+Appearance ▸ Colors ▸ Block style*: the two color pickers, the attributes (including *Strikethrough*,
+*Superscript*, and *Subscript*), and *Normal* to clear them.
 
 == Styling as you type
 
