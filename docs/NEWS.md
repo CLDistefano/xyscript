@@ -12,6 +12,15 @@ requests since the last tag; trim it to the user-facing highlights before taggin
 
 *yyyy-mm-dd*
 
+- **Strikethrough, superscript, and subscript.** Three new `MDA` text modes join the
+  existing block styles (bold, italic, underline, reverse, colours): `MDA SO` strikes
+  a line through the selection, and `MDA SU` / `MDA SD` mark it as super- or subscript.
+  Like the others they save with the file and also work in `MDALL` and `HLMODE`.
+  Superscript and subscript print as *true* raised / lowered text in the live preview,
+  the PDF export, and printed HTML. On screen — where the editor can't shrink and lift
+  a run mid-line — they instead show in a distinct colour: red for superscript,
+  blue-violet for subscript by default, each settable with `SUCOLOR` / `SDCOLOR`. All
+  three are on the menu under **Settings ▸ Appearance ▸ Colors ▸ Block style**.
 - **One-click updates from the menu.** When a check finds a newer version, the
   **Help** menu now offers **Install update v…** — it downloads and verifies the
   release in the background and applies it cleanly at the next launch, with no
