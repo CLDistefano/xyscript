@@ -638,7 +638,9 @@ fn m_tog(label: impl std::fmt::Display, on: bool, cmd: impl Into<String>) -> Men
 /// (`BO IT UL RV`), or `NM` to clear. Used by the per-kind Text-style menu toggles, which each pass the
 /// current bits XOR the one they flip.
 fn hlmode_cmd(kind: &str, bits: u8) -> String {
-    use xyscript_app::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
+    use xyscript_app::document::{
+        ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_STRIKE, ATTR_SUB, ATTR_SUPER, ATTR_UNDERLINE,
+    };
     if bits == 0 {
         return format!("HLMODE {kind} NM");
     }
@@ -647,6 +649,9 @@ fn hlmode_cmd(kind: &str, bits: u8) -> String {
     if bits & ATTR_ITALIC != 0 { kw.push("IT"); }
     if bits & ATTR_UNDERLINE != 0 { kw.push("UL"); }
     if bits & ATTR_REVERSE != 0 { kw.push("RV"); }
+    if bits & ATTR_STRIKE != 0 { kw.push("SO"); }
+    if bits & ATTR_SUPER != 0 { kw.push("SU"); }
+    if bits & ATTR_SUB != 0 { kw.push("SD"); }
     format!("HLMODE {kind} {}", kw.join(" "))
 }
 
@@ -3884,6 +3889,27 @@ impl GuiApp {
             let c = col(k);
             colors[a..b.min(n)].iter_mut().for_each(|slot| *slot = c);
         }
+        // `MDA SU`/`SD` mode tints: superscript/subscript have no true glyph form in the canvas (cosmic
+        // owns per-line vertical layout), so they show in `SUCOLOR`/`SDCOLOR` — the XyWrite "mode colour"
+        // convention. A DEFAULT, below an explicit FGCOLOR span (the `manual` pass next), so a deliberate
+        // colour still wins; the real super/subscript shows in preview/PDF. `SU` wins if both bits set.
+        {
+            use xyscript_app::document::{ATTR_SUB, ATTR_SUPER};
+            let su_c = { let (r, g, b) = self.editor.su_color(); CColor::rgb(r, g, b) };
+            let sd_c = { let (r, g, b) = self.editor.sd_color(); CColor::rgb(r, g, b) };
+            for &(s, e, bits) in &attr_disp {
+                let c = if bits & ATTR_SUPER != 0 {
+                    Some(su_c)
+                } else if bits & ATTR_SUB != 0 {
+                    Some(sd_c)
+                } else {
+                    None
+                };
+                if let Some(c) = c {
+                    colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = c);
+                }
+            }
+        }
         for &(s, e, cc) in &manual {
             colors[s..e.min(n)].iter_mut().for_each(|slot| *slot = cc);
         }
@@ -5193,11 +5219,20 @@ impl GuiApp {
                 out
             }
         };
+        // `MDA SO` strikethrough rects — the same wrap-aware geometry as the underline band, drawn later
+        // as a line through the glyph middle (vs just under the baseline for underline).
+        let mut mda_strike_rects: Vec<(i32, i32, i32, i32)> = {
+            let so_bit = xyscript_app::document::ATTR_STRIKE;
+            let spans: Vec<(usize, usize)> =
+                attr_all.iter().filter(|&&(_, _, b)| b & so_bit != 0).map(|&(s, e, _)| (s, e)).collect();
+            self.band_rects_decoded(&spans, &buffer, &win, w as i32, lh_px as i32)
+        };
         // `highlight_rects` fills a soft-WRAPPED row out to the right margin (correct for a selection/
         // FIND band, but for an MDA underline or reverse-video block it paints under the empty margin
         // past the wrap). Clamp both to the actual text extent on each row so a wrapped span stops
         // under its last glyph. Done here — before the `hshift` loop — so rects and layout share coords.
         self.clamp_rects_to_text(&mut mda_underline_rects, &buffer);
+        self.clamp_rects_to_text(&mut mda_strike_rects, &buffer);
         self.clamp_rects_to_text(&mut mda_reverse_rects, &buffer);
         // Record the visible byte window so the live checker can scope to it (bounded work on huge
         // files). Decoded-byte offsets, matching what `recheck_lints`/`compute_lints` expect.
@@ -5272,6 +5307,10 @@ impl GuiApp {
                 r.2 -= hshift;
             }
             for r in &mut mda_underline_rects {
+                r.0 -= hshift;
+                r.2 -= hshift;
+            }
+            for r in &mut mda_strike_rects {
                 r.0 -= hshift;
                 r.2 -= hshift;
             }
@@ -5501,6 +5540,17 @@ impl GuiApp {
             for &(x0, _y0, x1, y1) in &mda_underline_rects {
                 let base = y1 - lift;
                 fill_blend(&mut canvas, w, h, x0, base, x1, base + thick, ur, ug, ub, 1.0);
+            }
+        }
+
+        // `MDA SO` strikethrough: a solid line in the TEXT colour through the glyph middle (just above
+        // true centre, over the x-height), same thickness/colour as the underline.
+        if !mda_strike_rects.is_empty() {
+            let (ur, ug, ub) = self.editor.fg_color();
+            let thick = (scale.round()).max(1.0) as i32; // ~1 logical px
+            for &(x0, y0, x1, y1) in &mda_strike_rects {
+                let mid = y0 + (((y1 - y0) as f32) * 0.42).round() as i32;
+                fill_blend(&mut canvas, w, h, x0, mid, x1, mid + thick, ur, ug, ub, 1.0);
             }
         }
 
@@ -8447,6 +8497,9 @@ impl GuiApp {
                             m_item(self.tr("menu.settings.appearance.colors.block.underline", "Underline"), "MDA UL"),
                             m_item(self.tr("menu.settings.appearance.colors.block.boldunderline", "Bold underline"), "MDA BU"),
                             m_item(self.tr("menu.settings.appearance.colors.block.reverse", "Reverse video"), "MDA RV"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.strike", "Strikethrough"), "MDA SO"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.super", "Superscript"), "MDA SU"),
+                            m_item(self.tr("menu.settings.appearance.colors.block.sub", "Subscript"), "MDA SD"),
                             m_item(self.tr("menu.settings.appearance.colors.block.normal", "Normal (clear attributes)"), "MDA NM"),
                             MenuNode::Sep,
                             m_item(self.tr("menu.settings.appearance.colors.block.clear_fg", "Clear text colour"), "MDA off"),
@@ -9441,7 +9494,9 @@ impl GuiApp {
         };
         let mut job = LayoutJob::default();
         if mda {
-            use xyscript_app::document::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
+            use xyscript_app::document::{
+                ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_STRIKE, ATTR_SUB, ATTR_SUPER, ATTR_UNDERLINE,
+            };
             // Reverse-video block of attribute letters (only the armed ones).
             if let Some(a) = tattr {
                 let mut letters = String::new();
@@ -9449,6 +9504,9 @@ impl GuiApp {
                 if a & ATTR_ITALIC != 0 { letters.push('I'); }
                 if a & ATTR_UNDERLINE != 0 { letters.push('U'); }
                 if a & ATTR_REVERSE != 0 { letters.push('R'); }
+                if a & ATTR_STRIKE != 0 { letters.push('S'); }
+                if a & ATTR_SUPER != 0 { letters.push('\u{2191}'); } // ↑ (bundled glyph)
+                if a & ATTR_SUB != 0 { letters.push('\u{2193}'); } // ↓ (bundled glyph)
                 if !letters.is_empty() {
                     let (uf, ub) = (self.editor.ui_fg_color(), self.editor.ui_bg_color());
                     let mut fmt =

@@ -270,9 +270,12 @@ struct Unit {
 
 /// `MDA` text-attribute bits, stored per span in [`Document::attr_spans`] and persisted in the
 /// `.xymeta` sidecar's `[attrs]` section. Independent flags — the `MDA` keywords map to combinations
-/// (`BO`→bold, `IT`→italic, `BI`→bold+italic, `UL`→underline, `BU`→bold+underline). Defined once in
-/// `xyscript-xpl` (the verb layer that parses the keywords) and re-exported here for the app/GUI.
-pub use xyscript_xpl::{ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_UNDERLINE};
+/// (`BO`→bold, `IT`→italic, `BI`→bold+italic, `UL`→underline, `BU`→bold+underline, `SO`→strikethrough,
+/// `SU`→superscript, `SD`→subscript). Defined once in `xyscript-xpl` (the verb layer that parses the
+/// keywords) and re-exported here for the app/GUI.
+pub use xyscript_xpl::{
+    ATTR_BOLD, ATTR_ITALIC, ATTR_REVERSE, ATTR_STRIKE, ATTR_SUB, ATTR_SUPER, ATTR_UNDERLINE,
+};
 
 /// How many caret-set snapshots the `CARETPOP` ring keeps (a build sequence rarely runs deep; this
 /// is a runaway backstop, oldest dropped past it).

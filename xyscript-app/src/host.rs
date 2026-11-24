@@ -588,6 +588,15 @@ fn mda_attr_names(a: u8) -> String {
     if a & xyscript_xpl::ATTR_REVERSE != 0 {
         parts.push("reverse");
     }
+    if a & xyscript_xpl::ATTR_STRIKE != 0 {
+        parts.push("strikethrough");
+    }
+    if a & xyscript_xpl::ATTR_SUPER != 0 {
+        parts.push("superscript");
+    }
+    if a & xyscript_xpl::ATTR_SUB != 0 {
+        parts.push("subscript");
+    }
     parts.join(" ")
 }
 
@@ -606,6 +615,15 @@ fn mda_attr_keywords(a: u8) -> String {
     }
     if a & xyscript_xpl::ATTR_REVERSE != 0 {
         parts.push("RV");
+    }
+    if a & xyscript_xpl::ATTR_STRIKE != 0 {
+        parts.push("SO");
+    }
+    if a & xyscript_xpl::ATTR_SUPER != 0 {
+        parts.push("SU");
+    }
+    if a & xyscript_xpl::ATTR_SUB != 0 {
+        parts.push("SD");
     }
     parts.join(" ")
 }
@@ -2874,6 +2892,13 @@ pub struct AppHost {
     /// the selection colours, `SELFGCOLOR`/`SELBGCOLOR`). `$EMPHFGCOLOR`/`$EMPHBGCOLOR`.
     emph_fg: Option<(u8, u8, u8)>,
     emph_bg: Option<(u8, u8, u8)>,
+    /// The on-screen tint for `MDA SU` superscript / `MDA SD` subscript text (`SUCOLOR`/`SDCOLOR`).
+    /// The modes render as real super/subscript only in preview/PDF/HTML; in the editor canvas they
+    /// can't be raised/shrunk (cosmic owns per-line vertical layout), so they show in these fixed
+    /// colours — the XyWrite "mode colour" convention. Concrete (not theme-tracked); `SUCOLOR default`
+    /// restores [`DEF_SU_COLOR`]/[`DEF_SD_COLOR`]. `$SUCOLOR`/`$SDCOLOR`.
+    su_color: (u8, u8, u8),
+    sd_color: (u8, u8, u8),
     /// Auto-close typed pairs (`TYPEPAIRS`): typing a left `()[]{}"'` inserts the partner; Backspace
     /// deletes an empty pair. Interactive typing only (not the scripted `INSERT`). `$TYPEPAIRS`.
     type_pairs: bool,
@@ -3459,6 +3484,10 @@ const DEF_CARET_COLOR: (u8, u8, u8) = (220, 40, 40); // the GUI's prior fixed ca
 const DEF_SEP_COLOR: (u8, u8, u8) = (190, 190, 190); // ≈ egui's prior default separator gray
 const DEF_SEL_BG_COLOR: (u8, u8, u8) = (180, 210, 255); // the prior hardcoded selection band blue
 const DEF_SEL_FG_COLOR: (u8, u8, u8) = (20, 20, 20); // the prior hardcoded selected-text colour
+/// Default `MDA SU` superscript tint — a vivid red that reads on both light and dark themes.
+const DEF_SU_COLOR: (u8, u8, u8) = (255, 64, 64);
+/// Default `MDA SD` subscript tint — blue-violet, likewise legible on both themes.
+const DEF_SD_COLOR: (u8, u8, u8) = (138, 43, 226);
 const DEF_FIND_BG_COLOR: (u8, u8, u8) = (250, 230, 90); // FIND highlight band — the prior hardcoded yellow
 const DEF_FIND_FG_COLOR: (u8, u8, u8) = (20, 20, 20); // FIND-match text — a strong/intense fg on the yellow
 const DEF_SPELL_COLOR: (u8, u8, u8) = (220, 50, 50); // spelling underline — classic red
@@ -3586,6 +3615,8 @@ impl AppHost {
             bal_color: None,
             emph_fg: None,
             emph_bg: None,
+            su_color: DEF_SU_COLOR,
+            sd_color: DEF_SD_COLOR,
             float_decimals: None, // default precision
             viewport_top: 0,
             cursor_vis: None,
@@ -6258,6 +6289,15 @@ impl AppHost {
     /// background (`SELBGCOLOR`) when unset.
     pub fn emph_bg_color(&self) -> (u8, u8, u8) {
         self.emph_bg.unwrap_or(self.sel_bg_color)
+    }
+    /// The on-screen tint for `MDA SU` superscript text (`SUCOLOR`). Concrete — the mode's editor
+    /// appearance, independent of theme.
+    pub fn su_color(&self) -> (u8, u8, u8) {
+        self.su_color
+    }
+    /// The on-screen tint for `MDA SD` subscript text (`SDCOLOR`).
+    pub fn sd_color(&self) -> (u8, u8, u8) {
+        self.sd_color
     }
     /// The rope-offset spans of every case-insensitive occurrence of the ACTIVE document's `EMPH`
     /// phrase (empty when no emphasis is set). The GUI paints these as a persistent highlight.
@@ -11165,6 +11205,12 @@ impl AppHost {
         put_opt_color(&mut s, "Matched-bracket highlight colour -- R G B, 0-255", "BALPAIRSCOLOR", self.bal_color);
         put_opt_color(&mut s, "EMPH emphasis text colour -- R G B, 0-255", "EMPHFGCOLOR", self.emph_fg);
         put_opt_color(&mut s, "EMPH emphasis background colour -- R G B, 0-255", "EMPHBGCOLOR", self.emph_bg);
+        {
+            let (r, g, b) = self.su_color;
+            put(&mut s, "MDA SU superscript on-screen tint -- R G B, 0-255", format!("SUCOLOR {r} {g} {b}"));
+            let (r, g, b) = self.sd_color;
+            put(&mut s, "MDA SD subscript on-screen tint -- R G B, 0-255", format!("SDCOLOR {r} {g} {b}"));
+        }
         if let Some(n) = self.float_decimals {
             put(&mut s, "Fixed decimal places for float display", format!("DECIMALS {n}"));
         } else {
@@ -13837,6 +13883,16 @@ impl Host for AppHost {
                     None => "emphasis background colour = selection colour".to_string(),
                 }));
             }
+            EditorOp::SetSuColor(color) => {
+                self.su_color = color.unwrap_or(DEF_SU_COLOR);
+                let (r, g, b) = self.su_color;
+                return Ok(Value::str(format!("superscript colour = {r} {g} {b}")));
+            }
+            EditorOp::SetSdColor(color) => {
+                self.sd_color = color.unwrap_or(DEF_SD_COLOR);
+                let (r, g, b) = self.sd_color;
+                return Ok(Value::str(format!("subscript colour = {r} {g} {b}")));
+            }
             EditorOp::SetTypePairs(on) => {
                 self.type_pairs = on;
                 return Ok(Value::str(format!("auto-close pairs {}", if on { "on" } else { "off" })));
@@ -16346,6 +16402,14 @@ impl Host for AppHost {
             }
             "EMPHBGCOLOR" => {
                 let (r, g, b) = self.emph_bg_color();
+                Some(Value::str(format!("{r} {g} {b}")))
+            }
+            "SUCOLOR" => {
+                let (r, g, b) = self.su_color;
+                Some(Value::str(format!("{r} {g} {b}")))
+            }
+            "SDCOLOR" => {
+                let (r, g, b) = self.sd_color;
                 Some(Value::str(format!("{r} {g} {b}")))
             }
             "FINDBGCOLOR" => {
