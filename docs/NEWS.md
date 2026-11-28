@@ -10,7 +10,7 @@ requests since the last tag; trim it to the user-facing highlights before taggin
 
 ## v0.1.17
 
-*yyyy-mm-dd*
+*2026-11-27*
 
 - **Strikethrough, superscript, and subscript.** Three new `MDA` text modes join the
   existing block styles (bold, italic, underline, reverse, colours): `MDA SO` strikes

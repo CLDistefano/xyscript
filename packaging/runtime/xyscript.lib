@@ -647,7 +647,7 @@ SUB renas
 	ei
 	set new = $1
 	set old = $fp
-	if exists($fnm)
+	if exists($new)
 		input ans Target filename already exists. Overwrite it? (y|n)
 		if upper($ans) != "Y"
 			pr No operation.
@@ -1000,7 +1000,14 @@ ENDSUB
 SUB xysweb
 	# DOC: Open the XyScript web page
 	local url
-	set url = "https://ammaze.net/xyscript"
+	switch $(lower($1))
+		case news
+			set url = "https://github.com/CLDistefano/xyscript/blob/main/docs/NEWS.md"
+		case repo
+			set url = "https://github.com/CLDistefano/xyscript"
+		default
+			set url = "https://ammaze.net/xyscript"
+	esw		
 	opn $url
 ENDSUB
 
@@ -1843,16 +1850,21 @@ SUB emoji
 ENDSUB
 
 SUB symbols
-	# DOC: List selected symbols (arrows, punctuation, currency)
+	# DOC: List selected Unicode symbols:
+	# DOC: Currency, punctuation, arrows, geometric shapes, dingbats
 	local block n
 	ne
 	set chararray = [ \
-["Currency: \\u20A0 - \\u20CF", 8352, 8399], \
+["Currency: common + \\u20A0 - \\u20CF", 8352, 8399], \
 ["Punctuation: \\u2010 - \\u20FF", 8208, 8447], \
 ["More punctuation: \\u2E00 - \\u2E7F", 11776, 11903], \
 ["Arrows-1: \\u2190 - \\u21FF", 8592, 8703], \
 ["Arrows-2: \\u27F0 - \\u27FF", 10224, 10239], \
 ["Arrows-3: \\u2900 - \\u297F",  10496, 10623], \
+["Geometric shapes: \\u25A0 - \\u25CF",  9632, 9679], \
+["Manicules: \\u261A - \\u261F",  9754, 9759], \
+["Dingbats: \\u2700 - \\u27BF",  9984, 10175], \
+["Specials: \\uFFF0 - \\uFFFF",  65520, 65535], \
 ]
 	putCharArray
 	tf
@@ -1864,6 +1876,7 @@ SUB putCharArray
 	for block in $chararray
 		insert $block[0]
 		insert $NL
+		if contains($block[0], "Curr") put $ ¢ £ ¤ ¥ € ₹ ₩ ₽ ₺ ₱ ₦ ₴ ₿$(chr(32))
 		for n = $block[1] to $block[2]
 			insert "\u{$(base($n, 10, 16))} "
 		ef
@@ -2102,16 +2115,15 @@ SUB qe
 ENDSUB
 
 SUB siz
-	# DOC: Get size (length) of selected text
+	# DOC: Get size (length) of selected text or current line
 	QUIET
-	LOCAL y z
+	LOCAL z
 	IF $DF
-		SV y
-		SET z = LEN($y)
-		PR Length = $z
-		EXIT
+		set z = len($SE)
+	ELSE
+		set z = len($LI)
 	EI
-	PR No selection
+	PR Length = $z
 ENDSUB
 
 SUB values
