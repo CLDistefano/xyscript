@@ -27,6 +27,15 @@ requests since the last tag; trim it to the user-facing highlights before taggin
   commands to type.
 - **"New in" release notes.** After an update, XyScript opens a one-time read-only
   tab describing what changed, and **Help ▸ What's new** reopens it on demand.
+- New setting STATUSINFO controls which of the three informational elements (filename,
+  line:column, encoding) are shown on the status line; command `STATUSINFO file
+  linecol enc` (pick any) or `STATUSINFO none|all`
+- Separator bar appears to left of status messages; color matches UI separator color
+  (setting `SEPCOLOR r g b`, read-back `$SEPCOLOR`)
+- HELP / REF / MAN searches are now whole-word (start-of-word matches) by default;
+  override by appending switch /A (search "anywhere"); e.g., `HELP/A` 
+- HELP / REF / MAN phrase-match search (search terms in "double quotes") returned
+  extraneous results -- fixed
 
 ## v0.1.16
 
